@@ -1,0 +1,7 @@
+receivers:
+  hostmetrics:
+    collection_interval: 15s
+    scrapers: {cpu: {}, memory: {}, disk: {}, filesystem: {}, network: {}, paging: {}, system: {}}
+service:
+  pipelines:
+    metrics: {receivers: [otlp, hostmetrics]}

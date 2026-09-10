@@ -1,0 +1,10 @@
+processors:
+  resource/laptop:
+    attributes:
+      - {key: asset.type, value: laptop, action: upsert}
+      - {key: deployment.environment, value: homelab, action: upsert}
+service:
+  pipelines:
+    metrics: {processors: [memory_limiter, resource/laptop, batch]}
+    logs: {processors: [memory_limiter, resource/laptop, batch]}
+    traces: {processors: [memory_limiter, resource/laptop, batch]}

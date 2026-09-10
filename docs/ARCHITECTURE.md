@@ -296,6 +296,13 @@ Add secure registration and certificate handling, vendor-specific adapters/confi
 
 Alerting, incident creation, dashboards, topology persistence, AI/anomaly detection, and control-plane business logic remain outside the node agent.
 
+## Phase 1 implementation boundary
+
+Phase 1 provides platform identity and deterministic Collector configuration
+rendering only. It does not install or run the Collector. Collector-specific
+semantic validation through `otelcol-contrib validate` begins in the bootstrap
+and lifecycle phase.
+
 ## 11. Testing strategy
 
 Testing is prioritized as follows:
