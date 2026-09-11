@@ -8,6 +8,7 @@ import (
 )
 
 func collectPlatformDetails() (platformDetails, error) {
+	// Kernel release is required; distribution metadata is optional on Linux hosts.
 	release, err := os.ReadFile("/proc/sys/kernel/osrelease")
 	if err != nil {
 		return platformDetails{}, err

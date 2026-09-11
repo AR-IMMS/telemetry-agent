@@ -307,3 +307,22 @@ Phase 3: secure registration, vendor expansion, simulation, and validation
 
 When a proposal does not clearly serve one of these phases, defer it or create
 an ADR before implementation.
+
+## Code documentation
+
+- Every package must have a package-level Go doc comment in `doc.go`.
+- The package comment must explain:
+  1. the package responsibility;
+  2. its main input/output or result;
+  3. important boundaries: what it intentionally does not own.
+- Exported types, functions, methods, and constants must have Go doc comments.
+- Comments must explain intent, invariants, security assumptions, or non-obvious
+  decisions. Do not restate obvious syntax.
+- Keep comments accurate when behavior changes. Outdated documentation is a bug.
+- Prefer short English comments that start with the exported identifier name.
+
+Example:
+```go
+// SelectArtifact returns the committed Collector artifact supported by platform.
+func SelectArtifact(platform identity.PlatformInfo) (Artifact, error)
+```

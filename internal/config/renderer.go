@@ -12,6 +12,8 @@ import (
 const maxLayerBytes = 1 << 20
 
 func loadLayer(layer Layer) (map[string]any, error) {
+	// Limit each source before YAML parsing so configuration input cannot consume
+	// unbounded memory during rendering.
 	file, err := os.Open(layer.Path)
 	if err != nil {
 		return nil, fmt.Errorf("open %s layer %q: %w", layer.Name, layer.Path, err)
@@ -34,6 +36,7 @@ func loadLayer(layer Layer) (map[string]any, error) {
 	return document, nil
 }
 
+// Render merges, validates, substitutes, and serializes configuration layers.
 func Render(input RenderInput) ([]byte, error) {
 	if len(input.Layers) == 0 {
 		return nil, fmt.Errorf("render configuration: no layers supplied")
@@ -60,6 +63,8 @@ func Render(input RenderInput) ([]byte, error) {
 }
 
 func substituteValues(document []byte, values map[string]string) []byte {
+	// Substitution is intentionally explicit and literal; values are not interpreted
+	// as YAML or shell syntax after rendering.
 	result := string(document)
 	for key, value := range values {
 		result = strings.ReplaceAll(result, "${value:"+key+"}", value)

@@ -2,6 +2,7 @@ package config
 
 import "fmt"
 
+// ValidateDocument checks the minimum Collector component and pipeline structure.
 func ValidateDocument(document map[string]any) error {
 	for _, key := range []string{"receivers", "processors", "exporters"} {
 		value, ok := document[key].(map[string]any)

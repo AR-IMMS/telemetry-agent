@@ -8,43 +8,158 @@ import (
 	"time"
 )
 
-func Run(ctx context.Context, options Options, downloader Downloader, runner CommandRunner) (Result, error) {
+// Run installs or reuses a verified Collector binary and validates the supplied configuration.
+func Run(
+	ctx context.Context,
+	options Options,
+	downloader Downloader,
+	runner CommandRunner,
+) (Result, error) {
+	if options.InstallDir == "" {
+		return Result{}, fmt.Errorf("bootstrap install directory is required")
+	}
+
+	if options.ConfigPath == "" {
+		return Result{}, fmt.Errorf("bootstrap configuration path is required")
+	}
+
+	if downloader == nil {
+		return Result{}, fmt.Errorf("bootstrap downloader is required")
+	}
+
+	if runner == nil {
+		return Result{}, fmt.Errorf("bootstrap command runner is required")
+	}
+
+	configInfo, err := os.Stat(options.ConfigPath)
+	if err != nil {
+		return Result{}, fmt.Errorf("inspect Collector configuration: %w", err)
+	}
+	if configInfo.IsDir() {
+		return Result{}, fmt.Errorf(
+			"Collector configuration path %q is a directory",
+			options.ConfigPath,
+		)
+	}
+
+	if options.ValidationTimeout <= 0 {
+		options.ValidationTimeout = 2 * time.Minute
+	}
+
 	artifact, err := SelectArtifact(options.Platform)
 	if err != nil {
 		return Result{}, err
 	}
-	if options.InstallDir == "" {
-		return Result{}, fmt.Errorf("bootstrap install directory is required")
-	}
-	if options.ValidationTimeout <= 0 {
-		options.ValidationTimeout = 2 * time.Minute
-	}
+
 	if err := os.MkdirAll(options.InstallDir, 0755); err != nil {
-		return Result{}, fmt.Errorf("create Collector install directory: %w", err)
+		return Result{}, fmt.Errorf(
+			"create Collector install directory: %w",
+			err,
+		)
 	}
-	archivePath := filepath.Join(options.InstallDir, "."+artifact.ArchiveName+".download")
-	archive, err := os.OpenFile(archivePath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
+
+	binaryPath, reused, err := findVerifiedInstallation(
+		options.InstallDir,
+		artifact,
+	)
 	if err != nil {
-		return Result{}, fmt.Errorf("create Collector staging file: %w", err)
-	}
-	err = downloadAndVerify(ctx, downloader, artifact, archive)
-	closeErr := archive.Close()
-	if err != nil {
-		os.Remove(archivePath)
 		return Result{}, err
+	}
+
+	if !reused {
+		binaryPath, err = downloadAndInstall(
+			ctx,
+			options.InstallDir,
+			downloader,
+			artifact,
+		)
+		if err != nil {
+			return Result{}, err
+		}
+	}
+
+	validationContext, cancel := context.WithTimeout(
+		ctx,
+		options.ValidationTimeout,
+	)
+	defer cancel()
+
+	if err := validateCollector(
+		validationContext,
+		runner,
+		binaryPath,
+		options.ConfigPath,
+		options.ValidationEnvironment,
+	); err != nil {
+		return Result{}, err
+	}
+
+	return Result{
+		Artifact:   artifact,
+		BinaryPath: binaryPath,
+		ConfigPath: options.ConfigPath,
+		Reused:     reused,
+	}, nil
+}
+
+func downloadAndInstall(
+	ctx context.Context,
+	installDir string,
+	downloader Downloader,
+	artifact Artifact,
+) (string, error) {
+	// Download and extraction happen below the install root so cleanup cannot
+	// remove an existing version if either operation fails.
+	stagingDir, err := os.MkdirTemp(installDir, ".bootstrap-")
+	if err != nil {
+		return "", fmt.Errorf(
+			"create Collector download staging directory: %w",
+			err,
+		)
+	}
+	// Remove the staging directory on every exit so partial downloads are not reused.
+	defer os.RemoveAll(stagingDir)
+
+	archivePath := filepath.Join(stagingDir, artifact.ArchiveName)
+
+	archive, err := os.OpenFile(
+		archivePath,
+		os.O_CREATE|os.O_EXCL|os.O_WRONLY,
+		0600,
+	)
+	if err != nil {
+		return "", fmt.Errorf(
+			"create Collector archive staging file: %w",
+			err,
+		)
+	}
+
+	_, downloadErr := downloadAndVerify(
+		ctx,
+		downloader,
+		artifact,
+		archive,
+	)
+	closeErr := archive.Close()
+
+	if downloadErr != nil {
+		return "", downloadErr
 	}
 	if closeErr != nil {
-		return Result{}, fmt.Errorf("close Collector staging file: %w", closeErr)
+		return "", fmt.Errorf(
+			"close Collector archive staging file: %w",
+			closeErr,
+		)
 	}
-	// Archive extraction and config rendering are intentionally explicit follow-up seams.
-	binaryPath := filepath.Join(options.InstallDir, artifact.BinaryName)
-	validationContext, cancel := context.WithTimeout(ctx, options.ValidationTimeout)
-	defer cancel()
-	if options.ConfigPath == "" {
-		return Result{}, fmt.Errorf("bootstrap configuration path is required")
+
+	binaryPath, err := installArchive(
+		archivePath,
+		installDir,
+		artifact,
+	)
+	if err != nil {
+		return "", err
 	}
-	if err := validateCollector(validationContext, runner, binaryPath, options.ConfigPath); err != nil {
-		return Result{}, err
-	}
-	return Result{Artifact: artifact, BinaryPath: binaryPath, ConfigPath: options.ConfigPath}, nil
+
+	return binaryPath, nil
 }

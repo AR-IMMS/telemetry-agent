@@ -7,6 +7,7 @@ import (
 	"runtime"
 )
 
+// PlatformInfo identifies the host runtime and available operating-system details.
 type PlatformInfo struct {
 	OS           string `json:"os"`
 	Architecture string `json:"architecture"`
@@ -17,6 +18,7 @@ type PlatformInfo struct {
 	Version      string `json:"version,omitempty"`
 }
 
+// CollectPlatformInfo reads runtime, hostname, and platform-specific host details.
 func CollectPlatformInfo() (PlatformInfo, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -32,6 +34,7 @@ func CollectPlatformInfo() (PlatformInfo, error) {
 	return info, nil
 }
 
+// AsJSON serializes platform information using its stable JSON field names.
 func (p PlatformInfo) AsJSON() ([]byte, error) {
 	payload, err := json.Marshal(p)
 	if err != nil {

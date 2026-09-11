@@ -8,6 +8,7 @@ type osRelease struct {
 }
 
 func parseOSRelease(input []byte) osRelease {
+	// Parse only simple KEY=VALUE entries and let later entries override earlier ones.
 	values := make(map[string]string)
 	for _, line := range strings.Split(string(input), "\n") {
 		key, value, found := strings.Cut(line, "=")
