@@ -170,6 +170,7 @@ func downloadAndInstall(
 	}
 
 	binaryPath, err := installArchive(
+		ctx,
 		archivePath,
 		installDir,
 		artifact,

@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"archive/tar"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -69,6 +70,7 @@ func findVerifiedInstallation(
 }
 
 func installArchive(
+	ctx context.Context,
 	archivePath string,
 	installDir string,
 	artifact Artifact,
@@ -124,8 +126,7 @@ func installArchive(
 		return "", fmt.Errorf("inspect Collector installation target: %w", err)
 	}
 
-	if err := os.Rename(stagingDir, targetDir); err != nil {
-		// Rename publishes the complete verified installation atomically.
+	if err := publishInstallation(ctx, stagingDir, targetDir); err != nil {
 		return "", fmt.Errorf("atomically install Collector: %w", err)
 	}
 
