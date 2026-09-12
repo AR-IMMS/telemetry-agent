@@ -6,9 +6,12 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/ar-imms/telemetry-agent/internal/config"
 )
 
-// Run installs or reuses a verified Collector binary and validates the supplied configuration.
+// Run renders and activates a validated Collector configuration, then installs
+// or reuses its verified Collector binary.
 func Run(
 	ctx context.Context,
 	options Options,
@@ -31,14 +34,27 @@ func Run(
 		return Result{}, fmt.Errorf("bootstrap command runner is required")
 	}
 
-	configInfo, err := os.Stat(options.ConfigPath)
-	if err != nil {
-		return Result{}, fmt.Errorf("inspect Collector configuration: %w", err)
-	}
-	if configInfo.IsDir() {
+	if configInfo, err := os.Stat(options.ConfigPath); err == nil {
+		if configInfo.IsDir() {
+			return Result{}, fmt.Errorf(
+				"Collector configuration path %q is a directory",
+				options.ConfigPath,
+			)
+		}
+	} else if !os.IsNotExist(err) {
 		return Result{}, fmt.Errorf(
-			"Collector configuration path %q is a directory",
-			options.ConfigPath,
+			"inspect Collector configuration path: %w",
+			err,
+		)
+	}
+
+	// Render before downloading so invalid layers or invalid YAML fail without
+	// changing the local Collector installation.
+	renderedConfig, err := config.Render(options.ConfigInput)
+	if err != nil {
+		return Result{}, fmt.Errorf(
+			"render Collector configuration: %w",
+			err,
 		)
 	}
 
@@ -84,11 +100,12 @@ func Run(
 	)
 	defer cancel()
 
-	if err := validateCollector(
+	if err := validateAndActivateConfig(
 		validationContext,
 		runner,
 		binaryPath,
 		options.ConfigPath,
+		renderedConfig,
 		options.ValidationEnvironment,
 	); err != nil {
 		return Result{}, err
@@ -117,7 +134,6 @@ func downloadAndInstall(
 			err,
 		)
 	}
-	// Remove the staging directory on every exit so partial downloads are not reused.
 	defer os.RemoveAll(stagingDir)
 
 	archivePath := filepath.Join(stagingDir, artifact.ArchiveName)
@@ -145,6 +161,7 @@ func downloadAndInstall(
 	if downloadErr != nil {
 		return "", downloadErr
 	}
+
 	if closeErr != nil {
 		return "", fmt.Errorf(
 			"close Collector archive staging file: %w",

@@ -5,6 +5,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/ar-imms/telemetry-agent/internal/config"
 	"github.com/ar-imms/telemetry-agent/internal/identity"
 )
 
@@ -42,6 +43,8 @@ type Options struct {
 
 	// ConfigPath must point to an already rendered Collector config.
 	ConfigPath string
+
+	ConfigInput config.RenderInput
 
 	// ValidationEnvironment is supplied only to the validation subprocess.
 	// Example: OTEL_GATEWAY_ENDPOINT=127.0.0.1:4317.

@@ -3,11 +3,66 @@ package bootstrap
 import (
 	"context"
 	"io"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/ar-imms/telemetry-agent/internal/config"
 	"github.com/ar-imms/telemetry-agent/internal/identity"
 )
+
+type recordingDownloader struct {
+	calls int
+}
+
+func (d *recordingDownloader) Download(
+	_ context.Context,
+	_ string,
+	_ io.Writer,
+) error {
+	d.calls++
+	return nil
+}
+
+func TestRunDoesNotDownloadWhenConfigRenderingFails(t *testing.T) {
+	downloader := &recordingDownloader{}
+
+	_, err := Run(
+		context.Background(),
+		Options{
+			InstallDir: t.TempDir(),
+			ConfigPath: filepath.Join(
+				t.TempDir(),
+				"config",
+				"otel.yaml",
+			),
+			ConfigInput: config.RenderInput{
+				Layers: []config.Layer{
+					{
+						Name: "missing",
+						Path: filepath.Join(
+							t.TempDir(),
+							"missing.yaml",
+						),
+					},
+				},
+			},
+		},
+		downloader,
+		&activationRunner{},
+	)
+
+	if err == nil {
+		t.Fatal("Run() error = nil, want configuration rendering error")
+	}
+
+	if downloader.calls != 0 {
+		t.Fatalf(
+			"downloader calls = %d, want 0",
+			downloader.calls,
+		)
+	}
+}
 
 func TestSelectArtifactPinsOfficialRelease(t *testing.T) {
 	artifact, err := SelectArtifact(identity.PlatformInfo{OS: "linux", Architecture: "amd64"})
