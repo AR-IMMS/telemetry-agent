@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
@@ -97,6 +98,22 @@ func runBootstrap(
 		return usageError(stderr, flags, "--config-path is required")
 	}
 
+	if *validationEndpoint == "" {
+		return usageError(
+			stderr,
+			flags,
+			"--validation-endpoint must not be empty",
+		)
+	}
+
+	if *validationTimeout <= 0 {
+		return usageError(
+			stderr,
+			flags,
+			"--timeout must be greater than zero",
+		)
+	}
+
 	collectPlatform := deps.collectPlatform
 	if collectPlatform == nil {
 		collectPlatform = identity.CollectPlatformInfo
@@ -150,6 +167,7 @@ func usageError(stderr io.Writer, flags *flag.FlagSet, message string) int {
 }
 
 func configurationLayers(configRoot string, osName string) ([]config.Layer, error) {
+	osName = strings.ToLower(strings.TrimSpace(osName))
 	if osName != "linux" && osName != "windows" {
 		return nil, fmt.Errorf("unsupported operating system %q", osName)
 	}
