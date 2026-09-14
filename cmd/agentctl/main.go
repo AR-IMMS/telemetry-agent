@@ -55,10 +55,15 @@ func main() {
 		runSupervisor:   supervisor.Run,
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
+	ctx, stop := signal.NotifyContext(
+		context.Background(),
+		terminationSignals()...,
+	)
 
-	os.Exit(run(ctx, os.Args[1:], os.Stdout, os.Stderr, deps))
+	exitCode := run(ctx, os.Args[1:], os.Stdout, os.Stderr, deps)
+
+	stop()
+	os.Exit(exitCode)
 }
 
 func run(
