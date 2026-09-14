@@ -404,3 +404,86 @@ func (s capturingStarter) Start(options LaunchOptions) (Child, error) {
 	s.startedWith <- options
 	return s.child, nil
 }
+
+func TestSupervisorForceKillsChildWhenReadinessStopRequestFails(t *testing.T) {
+	readinessErr := errors.New("Collector is not ready")
+	child := newStopRequestFailureChild(
+		errors.New("graceful shutdown request failed"),
+	)
+
+	supervisor := newSupervisor(
+		stopRequestFailureStarter{child: child},
+		func(context.Context) error {
+			return readinessErr
+		},
+		time.Second,
+	)
+
+	err := supervisor.Run(context.Background(), LaunchOptions{
+		BinaryPath: "collector",
+		ConfigPath: "otel.yaml",
+	})
+
+	if !errors.Is(err, readinessErr) {
+		t.Fatalf("Run() error = %v, want wrapped readiness error", err)
+	}
+
+	if child.killCalls != 1 {
+		t.Fatalf("Kill() calls = %d, want 1", child.killCalls)
+	}
+}
+
+func TestSupervisorShutdownForceKillsChildWhenStopRequestFails(t *testing.T) {
+	child := newStopRequestFailureChild(
+		errors.New("graceful shutdown request failed"),
+	)
+
+	supervisor := newSupervisor(nil, nil, time.Second)
+
+	err := supervisor.shutdown(newLifecycle(), child)
+	if err == nil {
+		t.Fatal("shutdown() error = nil, want stop-request error")
+	}
+
+	if child.killCalls != 1 {
+		t.Fatalf("Kill() calls = %d, want 1", child.killCalls)
+	}
+}
+
+type stopRequestFailureStarter struct {
+	child Child
+}
+
+func (s stopRequestFailureStarter) Start(LaunchOptions) (Child, error) {
+	return s.child, nil
+}
+
+type stopRequestFailureChild struct {
+	exited    chan ExitResult
+	stopErr   error
+	killCalls int
+}
+
+func newStopRequestFailureChild(stopErr error) *stopRequestFailureChild {
+	return &stopRequestFailureChild{
+		exited:  make(chan ExitResult, 1),
+		stopErr: stopErr,
+	}
+}
+
+func (c *stopRequestFailureChild) Wait() <-chan ExitResult {
+	return c.exited
+}
+
+func (c *stopRequestFailureChild) RequestStop() error {
+	return c.stopErr
+}
+
+func (c *stopRequestFailureChild) Kill() error {
+	c.killCalls++
+
+	c.exited <- ExitResult{}
+	close(c.exited)
+
+	return nil
+}

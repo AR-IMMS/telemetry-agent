@@ -187,6 +187,15 @@ func (s *supervisor) Run(
 			if stopErr := child.RequestStop(); stopErr != nil {
 				_ = lifecycle.Transition(StateFailed)
 
+				if killErr := s.forceKillAndWait(child); killErr != nil {
+					return fmt.Errorf(
+						"wait for Collector readiness: %w; request Collector shutdown: %v; %v",
+						err,
+						stopErr,
+						killErr,
+					)
+				}
+
 				return fmt.Errorf(
 					"wait for Collector readiness: %w; request Collector shutdown: %v",
 					err,
@@ -238,6 +247,10 @@ func (s *supervisor) Run(
 			}
 		}
 
+		if transitionErr := lifecycle.Transition(StateReady); transitionErr != nil {
+			return transitionErr
+		}
+
 	case result := <-child.Wait():
 		// An exit before readiness is always a failed startup, even with exit code zero.
 		_ = lifecycle.Transition(StateFailed)
@@ -272,6 +285,14 @@ func (s *supervisor) shutdown(
 
 	if err := child.RequestStop(); err != nil {
 		_ = lifecycle.Transition(StateFailed)
+
+		if killErr := s.forceKillAndWait(child); killErr != nil {
+			return fmt.Errorf(
+				"request Collector shutdown: %w; %v",
+				err,
+				killErr,
+			)
+		}
 
 		return fmt.Errorf("request Collector shutdown: %w", err)
 	}
@@ -310,6 +331,34 @@ func (s *supervisor) shutdown(
 
 		return fmt.Errorf(
 			"Collector did not stop within %s and was force-killed",
+			s.shutdownTimeout,
+		)
+	}
+}
+
+func (s *supervisor) forceKillAndWait(child Child) error {
+	if err := child.Kill(); err != nil {
+		return fmt.Errorf("force-kill Collector: %w", err)
+	}
+
+	timer := time.NewTimer(s.shutdownTimeout)
+	defer timer.Stop()
+
+	select {
+	case result := <-child.Wait():
+		if result.Err != nil {
+			return fmt.Errorf(
+				"Collector exited with code %d after force-kill: %w",
+				result.Code,
+				result.Err,
+			)
+		}
+
+		return nil
+
+	case <-timer.C:
+		return fmt.Errorf(
+			"Collector did not exit within %s after force-kill",
 			s.shutdownTimeout,
 		)
 	}
