@@ -139,3 +139,37 @@ func TestExecStarterPassesLaunchEnvironmentToCollector(t *testing.T) {
 		t.Fatalf("child exit code = %d, want 0", result.Code)
 	}
 }
+
+func TestExecChildKillDelegatesToPlatformForceKill(t *testing.T) {
+	process, err := os.FindProcess(os.Getpid())
+	if err != nil {
+		t.Fatalf("os.FindProcess() error = %v", err)
+	}
+
+	command := &exec.Cmd{
+		Process: process,
+	}
+
+	called := false
+
+	child := &execChild{
+		command: command,
+		forceKill: func(got *exec.Cmd) error {
+			called = true
+
+			if got != command {
+				t.Fatal("forceKill() received an unexpected command")
+			}
+
+			return nil
+		},
+	}
+
+	if err := child.Kill(); err != nil {
+		t.Fatalf("Kill() error = %v", err)
+	}
+
+	if !called {
+		t.Fatal("Kill() did not delegate to platform forceKill")
+	}
+}

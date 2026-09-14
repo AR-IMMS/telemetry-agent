@@ -5,6 +5,7 @@ package supervisor
 import (
 	"fmt"
 	"os/exec"
+	"strconv"
 	"syscall"
 
 	"golang.org/x/sys/windows"
@@ -27,4 +28,16 @@ func requestGracefulStop(command *exec.Cmd) error {
 		windows.CTRL_BREAK_EVENT,
 		uint32(command.Process.Pid),
 	)
+}
+
+func forceKillCollector(command *exec.Cmd) error {
+	// /T terminates the process tree rooted at Collector; /F is the forced
+	// escalation used only after graceful CTRL_BREAK shutdown timed out.
+	return exec.Command(
+		"taskkill.exe",
+		"/PID",
+		strconv.Itoa(command.Process.Pid),
+		"/T",
+		"/F",
+	).Run()
 }

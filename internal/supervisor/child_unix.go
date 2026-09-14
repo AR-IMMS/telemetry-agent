@@ -23,3 +23,9 @@ func requestGracefulStop(command *exec.Cmd) error {
 	// Signal the process group, not only the Collector parent process.
 	return syscall.Kill(-command.Process.Pid, syscall.SIGTERM)
 }
+
+func forceKillCollector(command *exec.Cmd) error {
+	// The Collector starts in its own process group. SIGKILL to negative PID
+	// reaches every remaining process in that group.
+	return syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
+}

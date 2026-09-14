@@ -52,6 +52,8 @@ type Starter interface {
 
 type commandFactory func(string, ...string) *exec.Cmd
 
+type forceKillFunc func(*exec.Cmd) error
+
 type execStarter struct {
 	newCommand commandFactory
 }
@@ -88,8 +90,9 @@ func (s *execStarter) Start(options LaunchOptions) (Child, error) {
 	}
 
 	child := &execChild{
-		command: command,
-		exited:  make(chan ExitResult, 1),
+		command:   command,
+		exited:    make(chan ExitResult, 1),
+		forceKill: forceKillCollector,
 	}
 
 	go child.waitForExit()
@@ -98,8 +101,9 @@ func (s *execStarter) Start(options LaunchOptions) (Child, error) {
 }
 
 type execChild struct {
-	command *exec.Cmd
-	exited  chan ExitResult
+	command   *exec.Cmd
+	exited    chan ExitResult
+	forceKill forceKillFunc
 }
 
 func (c *execChild) Wait() <-chan ExitResult {
@@ -125,8 +129,12 @@ func (c *execChild) Kill() error {
 		return fmt.Errorf("Collector process has not started")
 	}
 
-	if err := c.command.Process.Kill(); err != nil {
-		return fmt.Errorf("force-kill Collector process: %w", err)
+	if c.forceKill == nil {
+		return fmt.Errorf("Collector force-kill function is required")
+	}
+
+	if err := c.forceKill(c.command); err != nil {
+		return fmt.Errorf("force-kill Collector process tree: %w", err)
 	}
 
 	return nil
