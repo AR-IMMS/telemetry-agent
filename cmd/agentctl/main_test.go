@@ -5,12 +5,14 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/identity"
+	"github.com/ar-imms/telemetry-agent/internal/supervisor"
 )
 
 func TestBootstrapPassesOrderedLinuxLayersAndValidationOptions(t *testing.T) {
@@ -231,5 +233,101 @@ func testDependencies(platform identity.PlatformInfo) dependencies {
 		collectPlatform: func() (identity.PlatformInfo, error) {
 			return platform, nil
 		},
+	}
+}
+
+func TestRunInvokesSupervisorWithExplicitRuntimeOptions(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	var gotOptions supervisor.Options
+
+	exitCode := run(
+		context.Background(),
+		[]string{
+			"run",
+			"--collector-path",
+			"C:/agent/bin/otelcol-contrib.exe",
+			"--config-path",
+			"C:/agent/config/otel.yaml",
+			"--gateway-endpoint",
+			"gateway.example:4317",
+			"--health-endpoint",
+			"http://127.0.0.1:13133",
+			"--startup-timeout",
+			"45s",
+			"--shutdown-timeout",
+			"12s",
+		},
+		&stdout,
+		&stderr,
+		dependencies{
+			runSupervisor: func(
+				ctx context.Context,
+				options supervisor.Options,
+			) error {
+				gotOptions = options
+				return nil
+			},
+		},
+	)
+
+	if exitCode != 0 {
+		t.Fatalf(
+			"run() exit code = %d, want 0; stderr = %s",
+			exitCode,
+			stderr.String(),
+		)
+	}
+
+	wantOptions := supervisor.Options{
+		BinaryPath:      "C:/agent/bin/otelcol-contrib.exe",
+		ConfigPath:      "C:/agent/config/otel.yaml",
+		GatewayEndpoint: "gateway.example:4317",
+		HealthEndpoint:  "http://127.0.0.1:13133",
+		StartupTimeout:  45 * time.Second,
+		ShutdownTimeout: 12 * time.Second,
+	}
+
+	if !reflect.DeepEqual(gotOptions, wantOptions) {
+		t.Fatalf(
+			"supervisor options = %#v, want %#v",
+			gotOptions,
+			wantOptions,
+		)
+	}
+}
+
+func TestRunRejectsMissingGatewayEndpoint(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := run(
+		context.Background(),
+		[]string{
+			"run",
+			"--collector-path",
+			"C:/agent/bin/otelcol-contrib.exe",
+			"--config-path",
+			"C:/agent/config/otel.yaml",
+		},
+		&stdout,
+		&stderr,
+		dependencies{
+			runSupervisor: func(
+				context.Context,
+				supervisor.Options,
+			) error {
+				t.Fatal("supervisor must not run with missing gateway endpoint")
+				return nil
+			},
+		},
+	)
+
+	if exitCode != 2 {
+		t.Fatalf(
+			"run() exit code = %d, want 2; stderr = %s",
+			exitCode,
+			stderr.String(),
+		)
 	}
 }
