@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"time"
@@ -13,11 +14,15 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/config"
 	"github.com/ar-imms/telemetry-agent/internal/identity"
+	"github.com/ar-imms/telemetry-agent/internal/supervisor"
 )
 
 const (
 	defaultValidationEndpoint = "127.0.0.1:4317"
 	defaultValidationTimeout  = 2 * time.Minute
+	defaultHealthEndpoint     = "http://127.0.0.1:13133"
+	defaultStartupTimeout     = 30 * time.Second
+	defaultShutdownTimeout    = 10 * time.Second
 )
 
 type dependencies struct {
@@ -25,6 +30,7 @@ type dependencies struct {
 	runBootstrap    bootstrapRunFunc
 	downloader      bootstrap.Downloader
 	runner          bootstrap.CommandRunner
+	runSupervisor   supervisorRunFunc
 }
 
 type bootstrapRunFunc func(
@@ -34,15 +40,30 @@ type bootstrapRunFunc func(
 	bootstrap.CommandRunner,
 ) (bootstrap.Result, error)
 
+type supervisorRunFunc func(
+	context.Context,
+	supervisor.Options,
+) error
+
 func main() {
+	// Convert Ctrl+C into context cancellation so the supervisor can shut down cleanly.
 	deps := dependencies{
 		collectPlatform: identity.CollectPlatformInfo,
 		runBootstrap:    bootstrap.Run,
 		downloader:      bootstrap.HTTPDownloader{},
 		runner:          bootstrap.OSCommandRunner{},
+		runSupervisor:   supervisor.Run,
 	}
 
-	os.Exit(run(context.Background(), os.Args[1:], os.Stdout, os.Stderr, deps))
+	ctx, stop := signal.NotifyContext(
+		context.Background(),
+		terminationSignals()...,
+	)
+
+	exitCode := run(ctx, os.Args[1:], os.Stdout, os.Stderr, deps)
+
+	stop()
+	os.Exit(exitCode)
 }
 
 func run(
@@ -52,12 +73,29 @@ func run(
 	stderr io.Writer,
 	deps dependencies,
 ) int {
-	if len(args) == 0 || args[0] != "bootstrap" {
-		fmt.Fprintln(stderr, "usage: agentctl bootstrap --config-root <path> --install-dir <path> --config-path <path> [--validation-endpoint <host:port>] [--timeout <duration>]")
+	// Keep command dispatch separate from command-specific flag validation and effects.
+	if len(args) == 0 {
+		fmt.Fprintln(
+			stderr,
+			"usage: agentctl <bootstrap|run> [command options]",
+		)
 		return 2
 	}
 
-	return runBootstrap(ctx, args[1:], stdout, stderr, deps)
+	switch args[0] {
+	case "bootstrap":
+		return runBootstrap(ctx, args[1:], stdout, stderr, deps)
+
+	case "run":
+		return runCollector(ctx, args[1:], stdout, stderr, deps)
+
+	default:
+		fmt.Fprintln(
+			stderr,
+			"usage: agentctl <bootstrap|run> [command options]",
+		)
+		return 2
+	}
 }
 
 func runBootstrap(
@@ -157,6 +195,104 @@ func runBootstrap(
 	fmt.Fprintf(stdout, "Final configuration path: %s\n", result.ConfigPath)
 	fmt.Fprintf(stdout, "Collector installation reused: %t\n", result.Reused)
 
+	return 0
+}
+
+func runCollector(
+	ctx context.Context,
+	args []string,
+	stdout io.Writer,
+	stderr io.Writer,
+	deps dependencies,
+) int {
+	// Runtime receives only already-validated paths and endpoint values from the CLI.
+	flags := flag.NewFlagSet("run", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	flags.Usage = func() {
+		fmt.Fprintln(
+			stderr,
+			"usage: agentctl run --collector-path <path> --config-path <path> --gateway-endpoint <host:port> [--health-endpoint <url>] [--startup-timeout <duration>] [--shutdown-timeout <duration>]",
+		)
+	}
+
+	collectorPath := flags.String(
+		"collector-path",
+		"",
+		"verified Collector binary path",
+	)
+	configPath := flags.String(
+		"config-path",
+		"",
+		"validated final Collector configuration path",
+	)
+	gatewayEndpoint := flags.String(
+		"gateway-endpoint",
+		"",
+		"OTLP gateway endpoint supplied to Collector at runtime",
+	)
+	healthEndpoint := flags.String(
+		"health-endpoint",
+		defaultHealthEndpoint,
+		"Collector health endpoint URL",
+	)
+	startupTimeout := flags.Duration(
+		"startup-timeout",
+		defaultStartupTimeout,
+		"maximum time to wait for Collector readiness",
+	)
+	shutdownTimeout := flags.Duration(
+		"shutdown-timeout",
+		defaultShutdownTimeout,
+		"maximum graceful Collector shutdown time",
+	)
+
+	if err := flags.Parse(args); err != nil {
+		flags.Usage()
+		return 2
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintln(stderr, "usage error: run does not accept positional arguments")
+		flags.Usage()
+		return 2
+	}
+	if *collectorPath == "" {
+		return usageError(stderr, flags, "--collector-path is required")
+	}
+	if *configPath == "" {
+		return usageError(stderr, flags, "--config-path is required")
+	}
+	if *gatewayEndpoint == "" {
+		return usageError(stderr, flags, "--gateway-endpoint is required")
+	}
+	if *healthEndpoint == "" {
+		return usageError(stderr, flags, "--health-endpoint must not be empty")
+	}
+	if *startupTimeout <= 0 {
+		return usageError(stderr, flags, "--startup-timeout must be greater than zero")
+	}
+	if *shutdownTimeout <= 0 {
+		return usageError(stderr, flags, "--shutdown-timeout must be greater than zero")
+	}
+
+	runSupervisor := deps.runSupervisor
+	if runSupervisor == nil {
+		runSupervisor = supervisor.Run
+	}
+
+	err := runSupervisor(ctx, supervisor.Options{
+		BinaryPath:      *collectorPath,
+		ConfigPath:      *configPath,
+		GatewayEndpoint: *gatewayEndpoint,
+		HealthEndpoint:  *healthEndpoint,
+		StartupTimeout:  *startupTimeout,
+		ShutdownTimeout: *shutdownTimeout,
+	})
+	if err != nil {
+		fmt.Fprintf(stderr, "run Collector: %v\n", err)
+		return 1
+	}
+
+	fmt.Fprintln(stdout, "Collector stopped")
 	return 0
 }
 
