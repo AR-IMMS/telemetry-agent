@@ -42,15 +42,15 @@ does not yet install, configure, or supervise that external service.
 
 ## Acceptance criteria
 
-* Rendered Linux and Windows configurations contain the hostmetrics baseline.
-* Rendered Agent configuration sets `exporters.otlp/gateway.tls.insecure: true`
+- Rendered Linux and Windows configurations contain the hostmetrics baseline.
+- Rendered Agent configuration sets `exporters.otlp/gateway.tls.insecure: true`
   for the homelab PoC.
-* Bootstrap validates the rendered configuration with the pinned Collector.
-* The Agent starts, becomes healthy, and starts the hostmetrics receiver.
-* Prometheus reports the Gateway target as `UP`.
-* Gateway `/metrics` exposes `system_*` metrics with `host_id`, `host_name`,
+- Bootstrap validates the rendered configuration with the pinned Collector.
+- The Agent starts, becomes healthy, and starts the hostmetrics receiver.
+- Prometheus reports the Gateway target as `UP`.
+- Gateway `/metrics` exposes `system_*` metrics with `host_id`, `host_name`,
   and `service_name` labels.
-* Grafana uses the provisioned Prometheus datasource.
+- Grafana uses the provisioned Prometheus datasource.
 
 ## Verification commands
 
@@ -83,8 +83,9 @@ go run ./cmd/agentctl run `
 
 ## Deferred work
 
-* Validate the same runtime path on native Linux or WSL.
-* Install and supervise Windows exporter.
-* Install and configure LibreHardwareMonitor.
-* Replace deprecated Collector component aliases.
-* Add TLS, mTLS, node registration, queueing, dashboards, logs, and traces.
+- A Linux amd64 Agent, built from Windows and executed in WSL, started successfully and exported host metrics through the same Gateway.
+- Grafana observed distinct Windows and Linux `host_id` series while both environments shared the same hostname.
+- Install and supervise Windows exporter.
+- Install and configure LibreHardwareMonitor.
+- Replace deprecated Collector component aliases.
+- Add TLS, mTLS, node registration, queueing, dashboards, logs, and traces.
