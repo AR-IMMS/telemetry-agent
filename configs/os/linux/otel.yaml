@@ -8,6 +8,9 @@ receivers:
       filesystem: {}
       network: {}
       paging: {}
+      process: {}
+      load: {}
+      system: {}
 
 service:
   pipelines:
