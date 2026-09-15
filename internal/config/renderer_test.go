@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ar-imms/telemetry-agent/internal/identity"
 	"gopkg.in/yaml.v3"
 )
 
@@ -398,5 +399,80 @@ func assertPipelineList(
 				want,
 			)
 		}
+	}
+}
+
+func TestRenderSubstitutesPlatformIdentityValues(t *testing.T) {
+	layer := Layer{
+		Name: "base",
+		Path: writeLayer(t, `
+receivers:
+  otlp: {}
+processors:
+  resource/agent_identity:
+    attributes:
+      - key: host.name
+        value: "${value:host.name}"
+        action: upsert
+      - key: host.id
+        value: "${value:host.id}"
+        action: upsert
+      - key: service.name
+        value: ar-imms-node-agent
+        action: insert
+exporters:
+  debug: {}
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [resource/agent_identity]
+      exporters: [debug]
+`),
+	}
+
+	rendered, err := Render(RenderInput{
+		Platform: identity.PlatformInfo{
+			Hostname: "MSI",
+			HostID:   "windows-abf00cac9374d455fd349d0c",
+		},
+		Layers: []Layer{layer},
+	})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	document := decodeYAML(t, rendered)
+
+	attributes, ok := nested(
+		t,
+		document,
+		"processors",
+		"resource/agent_identity",
+		"attributes",
+	).([]any)
+	if !ok {
+		t.Fatal("resource/agent_identity.attributes is not a list")
+	}
+
+	got := make(map[string]string, len(attributes))
+
+	for _, rawAttribute := range attributes {
+		attribute, ok := rawAttribute.(map[string]any)
+		if !ok {
+			t.Fatalf("attribute type = %T, want map", rawAttribute)
+		}
+
+		key, _ := attribute["key"].(string)
+		value, _ := attribute["value"].(string)
+		got[key] = value
+	}
+
+	if got["host.name"] != "MSI" {
+		t.Fatalf("host.name = %q, want %q", got["host.name"], "MSI")
+	}
+
+	if got["host.id"] != "windows-abf00cac9374d455fd349d0c" {
+		t.Fatalf("host.id = %q, want hashed host ID", got["host.id"])
 	}
 }

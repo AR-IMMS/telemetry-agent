@@ -56,10 +56,32 @@ func Render(input RenderInput) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("encode rendered configuration: %w", err)
 	}
-	if len(input.Values) > 0 {
-		rendered = substituteValues(rendered, input.Values)
+	values := renderValues(input)
+	if len(values) > 0 {
+		rendered = substituteValues(rendered, values)
 	}
+
 	return rendered, nil
+}
+
+func renderValues(input RenderInput) map[string]string {
+	values := make(map[string]string, len(input.Values)+2)
+
+	for key, value := range input.Values {
+		values[key] = value
+	}
+
+	// Platform-derived identity is reserved: callers must not replace a
+	// verified machine identity with arbitrary template values.
+	if input.Platform.Hostname != "" {
+		values["host.name"] = input.Platform.Hostname
+	}
+
+	if input.Platform.HostID != "" {
+		values["host.id"] = input.Platform.HostID
+	}
+
+	return values
 }
 
 func substituteValues(document []byte, values map[string]string) []byte {

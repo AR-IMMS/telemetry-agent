@@ -1,0 +1,36 @@
+extensions:
+  health_check:
+    endpoint: 127.0.0.1:13134
+
+receivers:
+  hostmetrics:
+    collection_interval: 15s
+    scrapers:
+      cpu: {}
+      memory: {}
+      paging: {}
+      disk: {}
+      filesystem: {}
+      network: {}
+
+processors:
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 256
+    spike_limit_mib: 64
+
+  batch:
+    timeout: 5s
+
+exporters:
+  debug:
+    verbosity: detailed
+
+service:
+  extensions: [health_check]
+
+  pipelines:
+    metrics:
+      receivers: [hostmetrics]
+      processors: [memory_limiter, batch]
+      exporters: [debug]

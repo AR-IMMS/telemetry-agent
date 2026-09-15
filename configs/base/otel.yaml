@@ -1,19 +1,55 @@
 extensions:
   health_check:
     endpoint: 127.0.0.1:13133
+
 receivers:
   otlp:
     protocols:
-      grpc: {endpoint: 127.0.0.1:4317}
-      http: {endpoint: 127.0.0.1:4318}
+      grpc:
+        endpoint: 127.0.0.1:4317
+      http:
+        endpoint: 127.0.0.1:4318
+
 processors:
-  memory_limiter: {check_interval: 5s, limit_mib: 256, spike_limit_mib: 64}
-  batch: {timeout: 5s}
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 256
+    spike_limit_mib: 64
+
+  resource/agent_identity:
+    attributes:
+      - key: host.name
+        value: "${value:host.name}"
+        action: upsert
+      - key: host.id
+        value: "${value:host.id}"
+        action: upsert
+      - key: service.name
+        value: ar-imms-node-agent
+        action: insert
+
+  batch:
+    timeout: 5s
+
 exporters:
-  otlp/gateway: {endpoint: '${env:OTEL_GATEWAY_ENDPOINT}'}
+  otlp/gateway:
+    endpoint: "${env:OTEL_GATEWAY_ENDPOINT}"
+
 service:
   extensions: [health_check]
+
   pipelines:
-    metrics: {receivers: [otlp], processors: [memory_limiter, batch], exporters: [otlp/gateway]}
-    logs: {receivers: [otlp], processors: [memory_limiter, batch], exporters: [otlp/gateway]}
-    traces: {receivers: [otlp], processors: [memory_limiter, batch], exporters: [otlp/gateway]}
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource/agent_identity, batch]
+      exporters: [otlp/gateway]
+
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource/agent_identity, batch]
+      exporters: [otlp/gateway]
+
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource/agent_identity, batch]
+      exporters: [otlp/gateway]
