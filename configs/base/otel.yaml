@@ -33,7 +33,9 @@ processors:
 
 exporters:
   otlp/gateway:
-    endpoint: "${env:OTEL_GATEWAY_ENDPOINT}"
+    endpoint: '${env:OTEL_GATEWAY_ENDPOINT}'
+    tls:
+      insecure: true
 
 service:
   extensions: [health_check]

@@ -476,3 +476,143 @@ service:
 		t.Fatalf("host.id = %q, want hashed host ID", got["host.id"])
 	}
 }
+
+func TestRenderProductionLinuxConfigIncludesHostMetrics(t *testing.T) {
+	assertProductionHostMetricsConfig(
+		t,
+		"linux",
+		[]string{"otlp", "hostmetrics"},
+	)
+}
+
+func TestRenderProductionWindowsConfigIncludesHostMetrics(t *testing.T) {
+	assertProductionHostMetricsConfig(
+		t,
+		"windows",
+		[]string{"otlp", "hostmetrics"},
+	)
+}
+
+func assertProductionHostMetricsConfig(
+	t *testing.T,
+	osName string,
+	wantReceivers []string,
+) {
+	t.Helper()
+
+	configRoot := filepath.Join("..", "..", "configs")
+
+	rendered, err := Render(RenderInput{
+		Layers: []Layer{
+			{
+				Name: "base",
+				Path: filepath.Join(configRoot, "base", "otel.yaml"),
+			},
+			{
+				Name: "profile",
+				Path: filepath.Join(configRoot, "profiles", "laptop.yaml"),
+			},
+			{
+				Name: "os",
+				Path: filepath.Join(configRoot, "os", osName, "otel.yaml"),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	document := decodeYAML(t, rendered)
+
+	hostmetrics, ok := nested(
+		t,
+		document,
+		"receivers",
+		"hostmetrics",
+	).(map[string]any)
+	if !ok {
+		t.Fatal("receivers.hostmetrics is not configured")
+	}
+
+	if got := hostmetrics["collection_interval"]; got != "15s" {
+		t.Fatalf(
+			"hostmetrics collection_interval = %v, want 15s",
+			got,
+		)
+	}
+
+	scrapers, ok := hostmetrics["scrapers"].(map[string]any)
+	if !ok {
+		t.Fatal("receivers.hostmetrics.scrapers is not a map")
+	}
+
+	for _, scraper := range []string{
+		"cpu",
+		"memory",
+		"disk",
+		"filesystem",
+		"network",
+		"paging",
+	} {
+		if _, exists := scrapers[scraper]; !exists {
+			t.Fatalf(
+				"receivers.hostmetrics.scrapers.%s is not configured",
+				scraper,
+			)
+		}
+	}
+
+	assertPipelineList(
+		t,
+		document,
+		"metrics",
+		"receivers",
+		wantReceivers,
+	)
+}
+
+func TestRenderProductionGatewayExporterUsesPlaintextForHomelabPoC(
+	t *testing.T,
+) {
+	configRoot := filepath.Join("..", "..", "configs")
+
+	rendered, err := Render(RenderInput{
+		Layers: []Layer{
+			{
+				Name: "base",
+				Path: filepath.Join(configRoot, "base", "otel.yaml"),
+			},
+			{
+				Name: "profile",
+				Path: filepath.Join(configRoot, "profiles", "laptop.yaml"),
+			},
+			{
+				Name: "os",
+				Path: filepath.Join(configRoot, "os", "linux", "otel.yaml"),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	document := decodeYAML(t, rendered)
+
+	tls, ok := nested(
+		t,
+		document,
+		"exporters",
+		"otlp/gateway",
+		"tls",
+	).(map[string]any)
+	if !ok {
+		t.Fatal("exporters.otlp/gateway.tls is not configured")
+	}
+
+	if got := tls["insecure"]; got != true {
+		t.Fatalf(
+			"exporters.otlp/gateway.tls.insecure = %v, want true",
+			got,
+		)
+	}
+}

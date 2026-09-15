@@ -1,0 +1,54 @@
+name: ar-imms-observability
+
+services:
+  otel-gateway:
+    image: otel/opentelemetry-collector:0.160.0
+    command:
+      - --config=/etc/otelcol-contrib/config.yaml
+    restart: unless-stopped
+    ports:
+      # Deliberately reachable by Windows/Linux agents on the LAN.
+      - "0.0.0.0:${OTLP_GRPC_PORT}:4317"
+      # Operational health is not exposed to the LAN.
+      - "127.0.0.1:${GATEWAY_HEALTH_PORT}:13133"
+    volumes:
+      - ./otel-gateway/gateway-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    networks:
+      - observability
+
+  prometheus:
+    image: ${PROMETHEUS_IMAGE}
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION}
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - observability
+  
+  grafana:
+    image: ${GRAFANA_IMAGE}
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+    ports:
+      # Access through the Ubuntu host only: http://127.0.0.1:13000
+      - "127.0.0.1:${GRAFANA_PORT}:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - observability
+
+networks:
+  observability:
+
+volumes:
+  prometheus-data:
+  grafana-data:
