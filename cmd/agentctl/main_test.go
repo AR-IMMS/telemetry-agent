@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
+	"github.com/ar-imms/telemetry-agent/internal/dependency"
 	"github.com/ar-imms/telemetry-agent/internal/identity"
 	"github.com/ar-imms/telemetry-agent/internal/supervisor"
 )
@@ -329,5 +330,66 @@ func TestRunRejectsMissingGatewayEndpoint(t *testing.T) {
 			exitCode,
 			stderr.String(),
 		)
+	}
+}
+
+func TestDependencyInstallInvokesInstaller(t *testing.T) {
+	var gotName string
+
+	deps := dependencies{
+		installDependency: func(
+			_ context.Context,
+			name string,
+		) (dependency.InstallResult, error) {
+			gotName = name
+
+			return dependency.InstallResult{
+				Name:   "windows-exporter",
+				Reused: false,
+			}, nil
+		},
+	}
+
+	code, stdout, stderr := runForTest(
+		t,
+		[]string{
+			"dependency",
+			"install",
+			"windows-exporter",
+		},
+		deps,
+	)
+
+	if code != 0 {
+		t.Fatalf(
+			"exit code = %d, want 0; stderr = %s",
+			code,
+			stderr,
+		)
+	}
+
+	if gotName != "windows-exporter" {
+		t.Fatalf(
+			"installer dependency name = %q, want windows-exporter",
+			gotName,
+		)
+	}
+
+	if !strings.Contains(
+		stdout,
+		"Dependency installed: windows-exporter",
+	) {
+		t.Fatalf(
+			"stdout = %q, want installation result",
+			stdout,
+		)
+	}
+}
+
+func TestDefaultDependenciesConfigureDependencyInstaller(t *testing.T) {
+	deps := defaultDependencies()
+
+	if deps.installDependency == nil {
+		t.Fatal("default dependency installer is nil")
 	}
 }

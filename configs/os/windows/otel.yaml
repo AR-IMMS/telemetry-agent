@@ -12,9 +12,19 @@ receivers:
       load: {}
       system: {}
 
+  prometheus/windows_exporter:
+    config:
+      scrape_configs:
+        - job_name: windows_exporter
+          scrape_interval: 15s
+          metrics_path: /metrics
+          static_configs:
+            - targets: [127.0.0.1:9182]
+
 service:
   pipelines:
     metrics:
       receivers:
         - otlp
         - hostmetrics
+        - prometheus/windows_exporter

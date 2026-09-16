@@ -489,7 +489,7 @@ func TestRenderProductionWindowsConfigIncludesHostMetrics(t *testing.T) {
 	assertProductionHostMetricsConfig(
 		t,
 		"windows",
-		[]string{"otlp", "hostmetrics"},
+		[]string{"otlp", "hostmetrics", "prometheus/windows_exporter"},
 	)
 }
 
@@ -615,4 +615,70 @@ func TestRenderProductionGatewayExporterUsesPlaintextForHomelabPoC(
 			got,
 		)
 	}
+}
+
+func TestRenderRepositoryWindowsConfigScrapesWindowsExporter(
+	t *testing.T,
+) {
+	configRoot := filepath.Join("..", "..", "configs")
+
+	rendered, err := Render(RenderInput{
+		Platform: identity.PlatformInfo{
+			OS:           "windows",
+			Architecture: "amd64",
+			Hostname:     "test-windows-node",
+			HostID:       "windows-test-node",
+		},
+		Layers: []Layer{
+			{
+				Name: "base",
+				Path: filepath.Join(configRoot, "base", "otel.yaml"),
+			},
+			{
+				Name: "profile",
+				Path: filepath.Join(
+					configRoot,
+					"profiles",
+					"laptop.yaml",
+				),
+			},
+			{
+				Name: "os",
+				Path: filepath.Join(
+					configRoot,
+					"os",
+					"windows",
+					"otel.yaml",
+				),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	document := decodeRenderedDocument(t, rendered)
+
+	receivers, ok := document["receivers"].(map[string]any)
+	if !ok {
+		t.Fatal("receivers is not a map")
+	}
+
+	if _, ok := receivers["prometheus/windows_exporter"]; !ok {
+		t.Fatal(
+			"prometheus/windows_exporter receiver is missing from Windows config",
+		)
+	}
+
+	assertPipelineList(
+		t,
+		document,
+		"metrics",
+		"receivers",
+		[]string{
+			"otlp",
+			"hostmetrics",
+			"prometheus/windows_exporter",
+		},
+	)
 }

@@ -13,6 +13,7 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/config"
+	"github.com/ar-imms/telemetry-agent/internal/dependency"
 	"github.com/ar-imms/telemetry-agent/internal/identity"
 	"github.com/ar-imms/telemetry-agent/internal/supervisor"
 )
@@ -26,12 +27,18 @@ const (
 )
 
 type dependencies struct {
-	collectPlatform func() (identity.PlatformInfo, error)
-	runBootstrap    bootstrapRunFunc
-	downloader      bootstrap.Downloader
-	runner          bootstrap.CommandRunner
-	runSupervisor   supervisorRunFunc
+	collectPlatform   func() (identity.PlatformInfo, error)
+	runBootstrap      bootstrapRunFunc
+	downloader        bootstrap.Downloader
+	runner            bootstrap.CommandRunner
+	runSupervisor     supervisorRunFunc
+	installDependency dependencyInstallFunc
 }
+
+type dependencyInstallFunc func(
+	context.Context,
+	string,
+) (dependency.InstallResult, error)
 
 type bootstrapRunFunc func(
 	context.Context,
@@ -46,14 +53,8 @@ type supervisorRunFunc func(
 ) error
 
 func main() {
-	// Convert Ctrl+C into context cancellation so the supervisor can shut down cleanly.
-	deps := dependencies{
-		collectPlatform: identity.CollectPlatformInfo,
-		runBootstrap:    bootstrap.Run,
-		downloader:      bootstrap.HTTPDownloader{},
-		runner:          bootstrap.OSCommandRunner{},
-		runSupervisor:   supervisor.Run,
-	}
+	// Convert termination signals into cancellation for graceful shutdown.
+	deps := defaultDependencies()
 
 	ctx, stop := signal.NotifyContext(
 		context.Background(),
@@ -66,6 +67,44 @@ func main() {
 	os.Exit(exitCode)
 }
 
+// defaultDependencies wires production implementations for the agentctl binary.
+func defaultDependencies() dependencies {
+	return dependencies{
+		collectPlatform:   identity.CollectPlatformInfo,
+		runBootstrap:      bootstrap.Run,
+		downloader:        bootstrap.HTTPDownloader{},
+		runner:            bootstrap.OSCommandRunner{},
+		runSupervisor:     supervisor.Run,
+		installDependency: defaultInstallDependency,
+	}
+}
+
+// defaultInstallDependency selects the platform-safe dependency installer for
+// one real CLI invocation.
+func defaultInstallDependency(
+	ctx context.Context,
+	name string,
+) (dependency.InstallResult, error) {
+	platform, err := identity.CollectPlatformInfo()
+	if err != nil {
+		return dependency.InstallResult{}, fmt.Errorf(
+			"collect platform information: %w",
+			err,
+		)
+	}
+
+	service := dependency.Service{
+		Registry: dependency.DefaultRegistry(),
+		OS:       platform.OS,
+		InstallWindowsExporter: dependency.NewWindowsExporterInstaller(
+			dependency.DefaultWindowsExporterOptions(),
+			bootstrap.HTTPDownloader{},
+		),
+	}
+
+	return service.Install(ctx, name)
+}
+
 func run(
 	ctx context.Context,
 	args []string,
@@ -74,6 +113,7 @@ func run(
 	deps dependencies,
 ) int {
 	// Keep command dispatch separate from command-specific flag validation and effects.
+	// usage: agentctl <bootstrap|run|dependency> [command options]
 	if len(args) == 0 {
 		fmt.Fprintln(
 			stderr,
@@ -88,6 +128,9 @@ func run(
 
 	case "run":
 		return runCollector(ctx, args[1:], stdout, stderr, deps)
+
+	case "dependency":
+		return runDependency(ctx, args[1:], stdout, stderr, deps)
 
 	default:
 		fmt.Fprintln(
