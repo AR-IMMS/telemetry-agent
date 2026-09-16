@@ -11,7 +11,11 @@ type Registry struct {
 func DefaultRegistry() Registry {
 	return Registry{
 		definitions: map[string]Definition{
-			windowsExporterDefinition.Name: windowsExporterDefinition,
+			"windows-exporter": windowsExporterDefinition,
+			"node-exporter": {
+				Name:        "node-exporter",
+				SupportedOS: []string{"linux"},
+			},
 		},
 	}
 }

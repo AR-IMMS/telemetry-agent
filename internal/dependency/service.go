@@ -6,9 +6,6 @@ import (
 	"strings"
 )
 
-// WindowsExporterInstaller installs or reconciles the Windows Exporter dependency.
-type WindowsExporterInstaller func(context.Context) (InstallResult, error)
-
 // Service coordinates dependency lookup, platform checks, and installation.
 type Service struct {
 	// Registry lists the dependencies that this Agent release supports.
@@ -17,8 +14,8 @@ type Service struct {
 	// OS is the normalized host operating system, for example "windows".
 	OS string
 
-	// InstallWindowsExporter performs the Windows-specific installation work.
-	InstallWindowsExporter WindowsExporterInstaller
+	// Installers maps a stable dependency name to its concrete installer.
+	Installers map[string]Installer
 }
 
 // Install validates and installs one named dependency for the current platform.
@@ -46,33 +43,25 @@ func (s Service) Install(
 		)
 	}
 
-	switch definition.Name {
-	case windowsExporterDefinition.Name:
-		if s.InstallWindowsExporter == nil {
-			return InstallResult{}, fmt.Errorf(
-				"dependency %q installer is not configured",
-				definition.Name,
-			)
-		}
-
-		result, err := s.InstallWindowsExporter(ctx)
-		if err != nil {
-			return InstallResult{}, fmt.Errorf(
-				"install dependency %q: %w",
-				definition.Name,
-				err,
-			)
-		}
-
-		// The dependency catalog owns the canonical result name.
-		result.Name = definition.Name
-
-		return result, nil
-
-	default:
+	installer := s.Installers[definition.Name]
+	if installer == nil {
 		return InstallResult{}, fmt.Errorf(
-			"dependency %q has no installer",
+			"dependency %q installer is not configured",
 			definition.Name,
 		)
 	}
+
+	result, err := installer(ctx)
+	if err != nil {
+		return InstallResult{}, fmt.Errorf(
+			"install dependency %q: %w",
+			definition.Name,
+			err,
+		)
+	}
+
+	// The dependency catalog owns the canonical result name.
+	result.Name = definition.Name
+
+	return result, nil
 }

@@ -1,6 +1,9 @@
 package dependency
 
-import "strings"
+import (
+	"context"
+	"strings"
+)
 
 // Definition describes one built-in external dependency supported by agentctl.
 type Definition struct {
@@ -13,6 +16,13 @@ type InstallResult struct {
 	Name   string
 	Reused bool
 }
+
+// Installer installs or reconciles one dependency.
+type Installer func(context.Context) (InstallResult, error)
+
+// WindowsExporterInstaller preserves the existing Windows Exporter constructor
+// contract while using the generic installer function type.
+type WindowsExporterInstaller = Installer
 
 // SupportsOS reports whether the dependency can run on the supplied OS name.
 func (d Definition) SupportsOS(osName string) bool {

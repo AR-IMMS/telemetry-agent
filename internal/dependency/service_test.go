@@ -25,11 +25,13 @@ func TestServiceRejectsUnsupportedPlatformBeforeInstallation(t *testing.T) {
 	service := Service{
 		Registry: DefaultRegistry(),
 		OS:       "linux",
-		InstallWindowsExporter: func(
-			context.Context,
-		) (InstallResult, error) {
-			called = true
-			return InstallResult{}, nil
+		Installers: map[string]Installer{
+			"windows-exporter": func(
+				context.Context,
+			) (InstallResult, error) {
+				called = true
+				return InstallResult{}, nil
+			},
 		},
 	}
 
@@ -49,14 +51,16 @@ func TestServiceInstallsWindowsExporter(t *testing.T) {
 	service := Service{
 		Registry: DefaultRegistry(),
 		OS:       "windows",
-		InstallWindowsExporter: func(
-			context.Context,
-		) (InstallResult, error) {
-			calls++
+		Installers: map[string]Installer{
+			"windows-exporter": func(
+				context.Context,
+			) (InstallResult, error) {
+				calls++
 
-			return InstallResult{
-				Reused: true,
-			}, nil
+				return InstallResult{
+					Reused: true,
+				}, nil
+			},
 		},
 	}
 
@@ -75,5 +79,44 @@ func TestServiceInstallsWindowsExporter(t *testing.T) {
 	}
 	if !result.Reused {
 		t.Fatal("result Reused = false, want true")
+	}
+}
+
+func TestServiceInstallsNodeExporter(t *testing.T) {
+	installed := false
+
+	service := Service{
+		Registry: DefaultRegistry(),
+		OS:       "linux",
+		Installers: map[string]Installer{
+			"node-exporter": func(
+				context.Context,
+			) (InstallResult, error) {
+				installed = true
+
+				return InstallResult{
+					Name: "node-exporter",
+				}, nil
+			},
+		},
+	}
+
+	result, err := service.Install(
+		context.Background(),
+		"node-exporter",
+	)
+	if err != nil {
+		t.Fatalf("Service.Install() error = %v", err)
+	}
+
+	if !installed {
+		t.Fatal("node-exporter installer was not called")
+	}
+
+	if result.Name != "node-exporter" {
+		t.Fatalf(
+			"install result name = %q, want node-exporter",
+			result.Name,
+		)
 	}
 }

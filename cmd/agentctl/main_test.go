@@ -393,3 +393,16 @@ func TestDefaultDependenciesConfigureDependencyInstaller(t *testing.T) {
 		t.Fatal("default dependency installer is nil")
 	}
 }
+
+func TestDefaultDependencyInstallersIncludeNodeExporter(t *testing.T) {
+	installers := defaultDependencyInstallers()
+
+	for _, name := range []string{
+		"windows-exporter",
+		"node-exporter",
+	} {
+		if installers[name] == nil {
+			t.Fatalf("default installer %q is not configured", name)
+		}
+	}
+}

@@ -14,11 +14,12 @@ import (
 func writeLayer(t *testing.T, content string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "layer.yaml")
-	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return path
 }
+
 func decodeYAML(t *testing.T, rendered []byte) map[string]any {
 	t.Helper()
 	var document map[string]any
@@ -27,6 +28,7 @@ func decodeYAML(t *testing.T, rendered []byte) map[string]any {
 	}
 	return document
 }
+
 func nested(t *testing.T, document map[string]any, keys ...string) any {
 	t.Helper()
 	var current any = document
@@ -39,6 +41,7 @@ func nested(t *testing.T, document map[string]any, keys ...string) any {
 	}
 	return current
 }
+
 func list(t *testing.T, document map[string]any, keys ...string) []string {
 	t.Helper()
 	raw, ok := nested(t, document, keys...).([]any)
@@ -75,6 +78,7 @@ func TestRenderReturnsContextualErrors(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 }
+
 func TestValidateDocumentRejectsMissingPipelines(t *testing.T) {
 	err := ValidateDocument(map[string]any{"receivers": map[string]any{"x": map[string]any{}}, "processors": map[string]any{"x": map[string]any{}}, "exporters": map[string]any{"x": map[string]any{}}, "service": map[string]any{}})
 	if err == nil || !strings.Contains(err.Error(), "service.pipelines") {
@@ -284,11 +288,11 @@ func writePlatformContractLayer(
 
 	path := filepath.Join(root, relativePath)
 
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
 
-	if err := os.WriteFile(path, []byte(content), 0640); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o640); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
@@ -478,11 +482,32 @@ service:
 }
 
 func TestRenderProductionLinuxConfigIncludesHostMetrics(t *testing.T) {
-	assertProductionHostMetricsConfig(
+	document := assertProductionHostMetricsConfig(
 		t,
 		"linux",
-		[]string{"otlp", "hostmetrics"},
+		[]string{
+			"otlp",
+			"hostmetrics",
+			"prometheus/node_exporter",
+		},
 	)
+
+	scrapers, ok := nested(
+		t,
+		document,
+		"receivers",
+		"hostmetrics",
+		"scrapers",
+	).(map[string]any)
+	if !ok {
+		t.Fatal("hostmetrics.scrapers is not a map")
+	}
+
+	if _, enabled := scrapers["process"]; enabled {
+		t.Fatal(
+			"Linux hostmetrics must not enable the process scraper without privileged runtime",
+		)
+	}
 }
 
 func TestRenderProductionWindowsConfigIncludesHostMetrics(t *testing.T) {
@@ -497,7 +522,7 @@ func assertProductionHostMetricsConfig(
 	t *testing.T,
 	osName string,
 	wantReceivers []string,
-) {
+) map[string]any {
 	t.Helper()
 
 	configRoot := filepath.Join("..", "..", "configs")
@@ -569,6 +594,8 @@ func assertProductionHostMetricsConfig(
 		"receivers",
 		wantReceivers,
 	)
+
+	return document
 }
 
 func TestRenderProductionGatewayExporterUsesPlaintextForHomelabPoC(
@@ -679,6 +706,72 @@ func TestRenderRepositoryWindowsConfigScrapesWindowsExporter(
 			"otlp",
 			"hostmetrics",
 			"prometheus/windows_exporter",
+		},
+	)
+}
+
+func TestRenderRepositoryLinuxConfigScrapesNodeExporter(
+	t *testing.T,
+) {
+	configRoot := filepath.Join("..", "..", "configs")
+
+	rendered, err := Render(RenderInput{
+		Platform: identity.PlatformInfo{
+			OS:           "linux",
+			Architecture: "amd64",
+			Hostname:     "test-linux-node",
+			HostID:       "linux-test-node",
+		},
+		Layers: []Layer{
+			{
+				Name: "base",
+				Path: filepath.Join(configRoot, "base", "otel.yaml"),
+			},
+			{
+				Name: "profile",
+				Path: filepath.Join(
+					configRoot,
+					"profiles",
+					"laptop.yaml",
+				),
+			},
+			{
+				Name: "os",
+				Path: filepath.Join(
+					configRoot,
+					"os",
+					"linux",
+					"otel.yaml",
+				),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	document := decodeRenderedDocument(t, rendered)
+
+	receivers, ok := document["receivers"].(map[string]any)
+	if !ok {
+		t.Fatal("receivers is not a map")
+	}
+
+	if _, ok := receivers["prometheus/node_exporter"]; !ok {
+		t.Fatal(
+			"prometheus/node_exporter receiver is missing from Linux config",
+		)
+	}
+
+	assertPipelineList(
+		t,
+		document,
+		"metrics",
+		"receivers",
+		[]string{
+			"otlp",
+			"hostmetrics",
+			"prometheus/node_exporter",
 		},
 	)
 }
