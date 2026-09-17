@@ -39,5 +39,5 @@ Reconciliation policy:
 | Unit exists and `/metrics` is healthy | Reuse                                          |
 | Unit exists but unhealthy             | Fail without overwrite                         |
 
-The default Linux `hostmetrics` profile does not enable the `process`` scraper.
+The default Linux `hostmetrics` profile does not enable the `process` scraper.
 Per-process `/proc` access requires elevated runtime privileges and is deferred to an explicit future capability.
