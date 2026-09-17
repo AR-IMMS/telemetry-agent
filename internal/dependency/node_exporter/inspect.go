@@ -18,13 +18,18 @@ type systemdServiceInspector func(
 // healthInspector checks whether the local Node Exporter endpoint is healthy.
 type healthInspector func(context.Context) error
 
-// inspectNodeExporterInstallation reads service presence and health without
-// changing the machine.
+// systemdUnitMatcher reports whether the Agent-owned unit matches the current
+// expected Node Exporter unit.
+type systemdUnitMatcher func(context.Context) (bool, error)
+
+// inspectNodeExporterInstallation reads service, health, and managed-unit state
+// without changing the machine.
 func inspectNodeExporterInstallation(
 	ctx context.Context,
 	serviceName string,
 	inspectService systemdServiceInspector,
 	checkHealth healthInspector,
+	matchUnit systemdUnitMatcher,
 ) (installationState, error) {
 	serviceName = strings.TrimSpace(serviceName)
 
@@ -41,6 +46,11 @@ func inspectNodeExporterInstallation(
 	if checkHealth == nil {
 		return installationState{}, fmt.Errorf(
 			"Node Exporter health inspector is required",
+		)
+	}
+	if matchUnit == nil {
+		return installationState{}, fmt.Errorf(
+			"Node Exporter systemd unit matcher is required",
 		)
 	}
 
@@ -61,9 +71,18 @@ func inspectNodeExporterInstallation(
 		}, nil
 	}
 
+	matches, err := matchUnit(ctx)
+	if err != nil {
+		return installationState{}, fmt.Errorf(
+			"match Node Exporter systemd unit: %w",
+			err,
+		)
+	}
+
 	return installationState{
 		ServiceExists: true,
 		Healthy:       true,
+		UnitMatches:   matches,
 	}, nil
 }
 
@@ -105,6 +124,9 @@ func newInstallationInspector(
 					healthEndpoint,
 					healthPollInterval,
 				)
+			},
+			func(ctx context.Context) (bool, error) {
+				return systemdUnitMatches(options)
 			},
 		)
 	}

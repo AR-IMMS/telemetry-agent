@@ -16,6 +16,7 @@ func TestReconcilerReusesHealthyExistingService(t *testing.T) {
 			return installationState{
 				ServiceExists: true,
 				Healthy:       true,
+				UnitMatches:   true,
 			}, nil
 		},
 		install: func(
@@ -103,5 +104,49 @@ func TestReconcilerDoesNotOverwriteUnhealthyService(t *testing.T) {
 			"fresh install calls = %d, want 0 for unhealthy existing service",
 			installCalls,
 		)
+	}
+}
+
+func TestReconcilerUpdatesHealthyServiceWhenManagedUnitDiffers(
+	t *testing.T,
+) {
+	updateCalls := 0
+
+	reconciler := reconciler{
+		inspect: func(
+			ctx context.Context,
+		) (installationState, error) {
+			return installationState{
+				ServiceExists: true,
+				Healthy:       true,
+				UnitMatches:   false,
+			}, nil
+		},
+		install: func(
+			ctx context.Context,
+		) (dependency.InstallResult, error) {
+			t.Fatal("fresh install must not run when only the managed unit differs")
+			return dependency.InstallResult{}, nil
+		},
+		update: func(
+			ctx context.Context,
+		) (dependency.InstallResult, error) {
+			updateCalls++
+
+			return dependency.InstallResult{
+				Name: "node-exporter",
+			}, nil
+		},
+	}
+
+	result, err := reconciler.Install(context.Background())
+	if err != nil {
+		t.Fatalf("reconciler.Install() error = %v", err)
+	}
+	if updateCalls != 1 {
+		t.Fatalf("unit update calls = %d, want 1", updateCalls)
+	}
+	if result.Reused {
+		t.Fatal("reconciler.Install() reused = true, want false after unit update")
 	}
 }

@@ -143,3 +143,28 @@ func TestWriteSystemdUnitPersistsRenderedUnit(t *testing.T) {
 		)
 	}
 }
+
+func TestRenderSystemdUnitUsesLeastPrivilegeServiceAccount(t *testing.T) {
+	rendered, err := RenderSystemdUnit(Options{
+		InstallDir:    "/opt/ar-imms/node-exporter",
+		ServicePath:   "/etc/systemd/system/ar-imms-node-exporter.service",
+		ListenAddress: "127.0.0.1:9100",
+	})
+	if err != nil {
+		t.Fatalf("RenderSystemdUnit() error = %v", err)
+	}
+
+	for _, want := range []string{
+		"DynamicUser=yes",
+		"NoNewPrivileges=yes",
+		"ProtectHome=yes",
+	} {
+		if !strings.Contains(string(rendered), want) {
+			t.Fatalf(
+				"rendered unit does not contain %q:\n%s",
+				want,
+				rendered,
+			)
+		}
+	}
+}

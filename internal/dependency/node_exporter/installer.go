@@ -65,6 +65,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectHome=yes
 ExecStart=%s --web.listen-address=%s
 Restart=on-failure
 RestartSec=5s

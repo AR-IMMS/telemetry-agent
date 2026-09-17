@@ -35,6 +35,7 @@ type freshInstaller struct {
 	writeUnit      systemdUnitWriter
 	startService   systemdServiceStarter
 	waitForHealth  nodeExporterHealthWaiter
+	restartService systemdServiceStarter
 }
 
 // Install stages, publishes, starts, and verifies one Node Exporter instance.
@@ -108,6 +109,67 @@ func (i freshInstaller) Install(
 	if err := i.waitForHealth(startupContext, healthEndpoint); err != nil {
 		return dependency.InstallResult{}, fmt.Errorf(
 			"wait for Node Exporter health: %w",
+			err,
+		)
+	}
+
+	return dependency.InstallResult{
+		Name: "node-exporter",
+	}, nil
+}
+
+// Update replaces a drifted Agent-owned unit, restarts the existing service,
+// and verifies the local metrics endpoint without reinstalling the binary.
+func (i freshInstaller) Update(
+	ctx context.Context,
+) (dependency.InstallResult, error) {
+	if err := i.options.Validate(); err != nil {
+		return dependency.InstallResult{}, fmt.Errorf(
+			"validate Node Exporter update options: %w",
+			err,
+		)
+	}
+	if i.startupTimeout <= 0 {
+		return dependency.InstallResult{}, fmt.Errorf(
+			"Node Exporter startup timeout must be positive",
+		)
+	}
+	if i.writeUnit == nil ||
+		i.restartService == nil ||
+		i.waitForHealth == nil {
+		return dependency.InstallResult{}, fmt.Errorf(
+			"Node Exporter unit updater is incomplete",
+		)
+	}
+
+	if err := i.writeUnit(i.options); err != nil {
+		return dependency.InstallResult{}, fmt.Errorf(
+			"write Node Exporter systemd unit: %w",
+			err,
+		)
+	}
+
+	serviceName := filepath.Base(
+		strings.TrimSpace(i.options.ServicePath),
+	)
+
+	if err := i.restartService(ctx, serviceName); err != nil {
+		return dependency.InstallResult{}, fmt.Errorf(
+			"restart Node Exporter systemd service: %w",
+			err,
+		)
+	}
+
+	startupContext, cancel := context.WithTimeout(ctx, i.startupTimeout)
+	defer cancel()
+
+	healthEndpoint := "http://" +
+		strings.TrimSpace(i.options.ListenAddress) +
+		"/metrics"
+
+	if err := i.waitForHealth(startupContext, healthEndpoint); err != nil {
+		return dependency.InstallResult{}, fmt.Errorf(
+			"wait for Node Exporter health after unit update: %w",
 			err,
 		)
 	}

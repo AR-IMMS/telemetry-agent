@@ -58,3 +58,43 @@ func EnableAndStartSystemdService(
 
 	return nil
 }
+
+// ReloadAndRestartSystemdService activates a changed Agent-owned unit without
+// changing whether the service starts automatically at boot.
+func ReloadAndRestartSystemdService(
+	ctx context.Context,
+	serviceName string,
+	run systemdRunner,
+) error {
+	serviceName = strings.TrimSpace(serviceName)
+
+	if serviceName == "" {
+		return fmt.Errorf("Node Exporter systemd service name is required")
+	}
+	if run == nil {
+		return fmt.Errorf("Node Exporter systemd runner is required")
+	}
+
+	commands := []systemdCommand{
+		{
+			Executable: "systemctl",
+			Args:       []string{"daemon-reload"},
+		},
+		{
+			Executable: "systemctl",
+			Args:       []string{"restart", serviceName},
+		},
+	}
+
+	for _, command := range commands {
+		if err := run(ctx, command); err != nil {
+			return fmt.Errorf(
+				"run Node Exporter systemd command %#v: %w",
+				command.Args,
+				err,
+			)
+		}
+	}
+
+	return nil
+}

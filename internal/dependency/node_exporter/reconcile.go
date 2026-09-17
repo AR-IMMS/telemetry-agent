@@ -11,6 +11,10 @@ import (
 type installationState struct {
 	ServiceExists bool
 	Healthy       bool
+
+	// UnitMatches reports whether the Agent-owned systemd unit matches the
+	// version currently rendered by this Agent release.
+	UnitMatches bool
 }
 
 // installationInspector reads Node Exporter state without changing the machine.
@@ -19,10 +23,17 @@ type installationInspector func(context.Context) (installationState, error)
 // freshInstaller performs a complete new Node Exporter installation.
 type freshInstallFunc func(context.Context) (dependency.InstallResult, error)
 
+// managedUnitUpdateFunc replaces a stale Agent-owned unit and confirms the
+// restarted service becomes healthy.
+type managedUnitUpdateFunc func(
+	context.Context,
+) (dependency.InstallResult, error)
+
 // reconciler decides whether to reuse, install, or reject existing state.
 type reconciler struct {
 	inspect installationInspector
 	install freshInstallFunc
+	update  managedUnitUpdateFunc
 }
 
 // Install reuses a healthy service and only installs when no service exists.
@@ -49,10 +60,20 @@ func (r reconciler) Install(
 	}
 
 	if state.ServiceExists && state.Healthy {
-		return dependency.InstallResult{
-			Name:   "node-exporter",
-			Reused: true,
-		}, nil
+		if state.UnitMatches {
+			return dependency.InstallResult{
+				Name:   "node-exporter",
+				Reused: true,
+			}, nil
+		}
+
+		if r.update == nil {
+			return dependency.InstallResult{}, fmt.Errorf(
+				"Node Exporter managed unit updater is required",
+			)
+		}
+
+		return r.update(ctx)
 	}
 
 	if state.ServiceExists {

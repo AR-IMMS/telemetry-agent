@@ -18,6 +18,7 @@ type installerDependencies struct {
 	installArchive archivePublisher
 	writeUnit      systemdUnitWriter
 	startService   systemdServiceStarter
+	restartService systemdServiceStarter
 	waitForHealth  nodeExporterHealthWaiter
 
 	startupTimeout time.Duration
@@ -37,12 +38,14 @@ func newInstaller(
 		installArchive: dependencies.installArchive,
 		writeUnit:      dependencies.writeUnit,
 		startService:   dependencies.startService,
+		restartService: dependencies.restartService,
 		waitForHealth:  dependencies.waitForHealth,
 	}
 
 	reconciler := reconciler{
 		inspect: dependencies.inspect,
 		install: fresh.Install,
+		update:  fresh.Update,
 	}
 
 	managed := managedInstaller{
@@ -95,6 +98,16 @@ func NewInstaller(
 				serviceName string,
 			) error {
 				return EnableAndStartSystemdService(
+					ctx,
+					serviceName,
+					runSystemd,
+				)
+			},
+			restartService: func(
+				ctx context.Context,
+				serviceName string,
+			) error {
+				return ReloadAndRestartSystemdService(
 					ctx,
 					serviceName,
 					runSystemd,

@@ -31,6 +31,9 @@ func TestInspectNodeExporterInstallationReportsHealthyService(t *testing.T) {
 			healthCalls++
 			return nil
 		},
+		func(ctx context.Context) (bool, error) {
+			return true, nil
+		},
 	)
 	if err != nil {
 		t.Fatalf("inspectNodeExporterInstallation() error = %v", err)
@@ -41,6 +44,9 @@ func TestInspectNodeExporterInstallationReportsHealthyService(t *testing.T) {
 	if !state.Healthy {
 		t.Fatal("Healthy = false, want true")
 	}
+	if !state.UnitMatches {
+		t.Fatal("UnitMatches = false, want true")
+	}
 	if healthCalls != 1 {
 		t.Fatalf("health calls = %d, want 1", healthCalls)
 	}
@@ -50,6 +56,7 @@ func TestInspectNodeExporterInstallationSkipsHealthWhenServiceIsAbsent(
 	t *testing.T,
 ) {
 	healthCalls := 0
+	unitMatchCalls := 0
 
 	state, err := inspectNodeExporterInstallation(
 		context.Background(),
@@ -64,6 +71,10 @@ func TestInspectNodeExporterInstallationSkipsHealthWhenServiceIsAbsent(
 			healthCalls++
 			return nil
 		},
+		func(ctx context.Context) (bool, error) {
+			unitMatchCalls++
+			return true, nil
+		},
 	)
 	if err != nil {
 		t.Fatalf("inspectNodeExporterInstallation() error = %v", err)
@@ -77,6 +88,42 @@ func TestInspectNodeExporterInstallationSkipsHealthWhenServiceIsAbsent(
 	if healthCalls != 0 {
 		t.Fatalf("health calls = %d, want 0", healthCalls)
 	}
+	if unitMatchCalls != 0 {
+		t.Fatalf("unit match calls = %d, want 0", unitMatchCalls)
+	}
+}
+
+func TestInspectNodeExporterInstallationReportsHealthyDriftedUnit(
+	t *testing.T,
+) {
+	state, err := inspectNodeExporterInstallation(
+		context.Background(),
+		"ar-imms-node-exporter.service",
+		func(
+			ctx context.Context,
+			serviceName string,
+		) (bool, error) {
+			return true, nil
+		},
+		func(ctx context.Context) error {
+			return nil
+		},
+		func(ctx context.Context) (bool, error) {
+			return false, nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("inspectNodeExporterInstallation() error = %v", err)
+	}
+	if !state.ServiceExists || !state.Healthy {
+		t.Fatalf(
+			"installation state = %+v, want existing healthy service",
+			state,
+		)
+	}
+	if state.UnitMatches {
+		t.Fatal("UnitMatches = true, want false for drifted unit")
+	}
 }
 
 func TestNewInstallationInspectorReadsUnitAndMetricsEndpoint(t *testing.T) {
@@ -84,10 +131,6 @@ func TestNewInstallationInspectorReadsUnitAndMetricsEndpoint(t *testing.T) {
 		t.TempDir(),
 		"ar-imms-node-exporter.service",
 	)
-
-	if err := os.WriteFile(unitPath, []byte("[Unit]\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
 
 	server := httptest.NewServer(http.HandlerFunc(
 		func(writer http.ResponseWriter, request *http.Request) {
@@ -100,12 +143,23 @@ func TestNewInstallationInspectorReadsUnitAndMetricsEndpoint(t *testing.T) {
 	))
 	defer server.Close()
 
+	options := Options{
+		InstallDir:    "/opt/ar-imms/node-exporter",
+		ServicePath:   unitPath,
+		ListenAddress: strings.TrimPrefix(server.URL, "http://"),
+	}
+
+	rendered, err := RenderSystemdUnit(options)
+	if err != nil {
+		t.Fatalf("RenderSystemdUnit() error = %v", err)
+	}
+
+	if err := os.WriteFile(unitPath, rendered, 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
 	inspector := newInstallationInspector(
-		Options{
-			InstallDir:    "/opt/ar-imms/node-exporter",
-			ServicePath:   unitPath,
-			ListenAddress: strings.TrimPrefix(server.URL, "http://"),
-		},
+		options,
 		server.Client(),
 		10*time.Millisecond,
 	)
@@ -114,7 +168,10 @@ func TestNewInstallationInspectorReadsUnitAndMetricsEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("installation inspector error = %v", err)
 	}
-	if !state.ServiceExists || !state.Healthy {
-		t.Fatalf("installation state = %+v, want existing healthy service", state)
+	if !state.ServiceExists || !state.Healthy || !state.UnitMatches {
+		t.Fatalf(
+			"installation state = %+v, want existing healthy matching service",
+			state,
+		)
 	}
 }

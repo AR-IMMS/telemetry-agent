@@ -6,20 +6,23 @@
 ```mermaid
 flowchart TD
     CLI["sudo agentctl dependency install node-exporter"]
-    Check["Root preflight + reconcile"]
-    Install["Verified archive → /opt/ar-imms/node-exporter"]
-    Service["ar-imms-node-exporter.service<br/>127.0.0.1:9100"]
-    Agent["OTel Agent<br/>prometheus/node_exporter"]
+    Check["Root preflight + inspect managed service"]
+    Install["Download verified archive<br/>→ /opt/ar-imms/node-exporter"]
+    Update["Rewrite managed unit<br/>→ daemon-reload → restart → health check"]
+    Reject["Fail safely<br/>do not overwrite"]
+    Service["Node Exporter systemd service<br/>127.0.0.1:9100"]
+    Agent["OTel Agent<br/>Prometheus receiver"]
     Gateway["OTel Gateway"]
     Stack["Prometheus → Grafana"]
 
     CLI --> Check
-    Check -->|service absent| Install
-    Check -->|healthy service| Service
+    Check -->|"absent"| Install
+    Check -->|"healthy + matching unit"| Service
+    Check -->|"healthy + drifted unit"| Update
+    Check -->|"unhealthy"| Reject
     Install --> Service
-    Service --> Agent
-    Agent --> Gateway
-    Gateway --> Stack
+    Update --> Service
+    Service --> Agent --> Gateway --> Stack
 ```
 # Ownership and safety
 | Resource         | Owner                                               |

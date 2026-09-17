@@ -64,6 +64,13 @@ func InstallArchive(
 		)
 	}
 
+	if err := os.Chmod(stagingDir, 0o755); err != nil {
+		return "", fmt.Errorf(
+			"set Node Exporter installation directory permissions: %w",
+			err,
+		)
+	}
+
 	if err := os.Rename(stagingDir, installDir); err != nil {
 		return "", fmt.Errorf(
 			"atomically install Node Exporter: %w",

@@ -41,6 +41,18 @@ func TestInstallArchiveAtomicallyPublishesNodeExporterBinary(
 		)
 	}
 
+	installationInfo, err := os.Stat(installDir)
+	if err != nil {
+		t.Fatalf("Stat() installation directory error = %v", err)
+	}
+
+	if got := installationInfo.Mode().Perm(); got != 0o755 {
+		t.Fatalf(
+			"installation directory mode = %04o, want 0755 for DynamicUser traversal",
+			got,
+		)
+	}
+
 	content, err := os.ReadFile(binaryPath)
 	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
