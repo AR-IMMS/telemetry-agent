@@ -8,7 +8,7 @@ receivers:
       filesystem: {}
       network: {}
       paging: {}
-      process: {}
+      # process: {} # administrative privileges are required to collect process metrics on Windows
       load: {}
       system: {}
 
@@ -21,6 +21,15 @@ receivers:
           static_configs:
             - targets: [127.0.0.1:9182]
 
+  prometheus/libre_hardware_monitor:
+    config:
+      scrape_configs:
+        - job_name: libre_hardware_monitor
+          scrape_interval: 15s
+          static_configs:
+            - targets:
+                - 127.0.0.1:9190
+
 service:
   pipelines:
     metrics:
@@ -28,3 +37,4 @@ service:
         - otlp
         - hostmetrics
         - prometheus/windows_exporter
+        - prometheus/libre_hardware_monitor

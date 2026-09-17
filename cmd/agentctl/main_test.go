@@ -406,3 +406,18 @@ func TestDefaultDependencyInstallersIncludeNodeExporter(t *testing.T) {
 		}
 	}
 }
+
+func TestDefaultDependencyInstallersIncludeLibreHardwareMonitor(t *testing.T) {
+	installers := defaultDependencyInstallers()
+
+	installer, found := installers["libre-hardware-monitor"]
+
+	if !found {
+		t.Fatal(
+			"defaultDependencyInstallers() does not include libre-hardware-monitor",
+		)
+	}
+	if installer == nil {
+		t.Fatal("Libre Hardware Monitor installer is nil")
+	}
+}

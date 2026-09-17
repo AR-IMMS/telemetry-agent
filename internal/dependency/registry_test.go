@@ -45,3 +45,28 @@ func TestDefaultRegistryFindsNodeExporter(t *testing.T) {
 		)
 	}
 }
+
+func TestDefaultRegistryFindsLibreHardwareMonitor(t *testing.T) {
+	definition, found := DefaultRegistry().Find("libre-hardware-monitor")
+
+	if !found {
+		t.Fatal(
+			"DefaultRegistry() does not contain libre-hardware-monitor",
+		)
+	}
+
+	if definition.Name != "libre-hardware-monitor" {
+		t.Fatalf(
+			"definition name = %q, want libre-hardware-monitor",
+			definition.Name,
+		)
+	}
+
+	if !definition.SupportsOS("windows") {
+		t.Fatal("Libre Hardware Monitor must support Windows")
+	}
+
+	if definition.SupportsOS("linux") {
+		t.Fatal("Libre Hardware Monitor must not support Linux")
+	}
+}

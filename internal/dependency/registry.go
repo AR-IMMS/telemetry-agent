@@ -7,11 +7,17 @@ type Registry struct {
 	definitions map[string]Definition
 }
 
+var libreHardwareMonitorDefinition = Definition{
+	Name:        "libre-hardware-monitor",
+	SupportedOS: []string{"windows"},
+}
+
 // DefaultRegistry contains dependencies supported by this Agent version.
 func DefaultRegistry() Registry {
 	return Registry{
 		definitions: map[string]Definition{
-			"windows-exporter": windowsExporterDefinition,
+			"windows-exporter":       windowsExporterDefinition,
+			"libre-hardware-monitor": libreHardwareMonitorDefinition,
 			"node-exporter": {
 				Name:        "node-exporter",
 				SupportedOS: []string{"linux"},

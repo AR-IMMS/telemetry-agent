@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -46,11 +47,15 @@ func TestInstallArchiveAtomicallyPublishesNodeExporterBinary(
 		t.Fatalf("Stat() installation directory error = %v", err)
 	}
 
-	if got := installationInfo.Mode().Perm(); got != 0o755 {
-		t.Fatalf(
-			"installation directory mode = %04o, want 0755 for DynamicUser traversal",
-			got,
-		)
+	// Windows does not provide POSIX permission semantics. This contract matters
+	// on Linux, where systemd DynamicUser must traverse the install directory.
+	if runtime.GOOS == "linux" {
+		if got := installationInfo.Mode().Perm(); got != 0o755 {
+			t.Fatalf(
+				"installation directory mode = %04o, want 0755 for DynamicUser traversal",
+				got,
+			)
+		}
 	}
 
 	content, err := os.ReadFile(binaryPath)

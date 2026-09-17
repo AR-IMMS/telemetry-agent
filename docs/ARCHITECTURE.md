@@ -1,344 +1,375 @@
 # AR-IMMS Telemetry Agent Architecture
 
-> Status: Initial working design. This document is intentionally revisable as implementation and Collector capability checks add evidence.
+> **Status**: implemented PoC architecture — Windows and Linux AMD64  
+> **Scope**: up to three monitored nodes
 
-## 1. Purpose and scope
+## Purpose
 
-The telemetry agent is a small, cross-platform node service for the AR-assisted Infrastructure Monitoring and Maintenance System (AR-IMMS). It runs on Windows and Linux nodes, discovers stable node identity, installs and supervises a pinned OpenTelemetry Collector, renders its configuration, and delivers telemetry to the AR-IMMS gateway.
+The Telemetry Agent is a small Go control wrapper around a pinned
+OpenTelemetry Collector. It manages local metric dependencies, renders a
+deterministic Collector configuration, supervises the Collector process, and
+exports telemetry to the AR-IMMS OTLP Gateway.
 
-The agent is a focused proof of concept for at most three laptops or nodes. It is not a replacement for the OpenTelemetry Collector or a general-purpose monitoring platform.
+The Agent is not a monitoring backend and does not replace the Collector.
 
-## 2. Core architectural decision
-
-OpenTelemetry Collector is the telemetry data plane. The Go agent only implements lifecycle, identity, configuration, diagnostics, and capabilities that the Collector does not provide.
-
-The Go agent must prefer the following order before custom collection code is introduced:
-
-1. An OpenTelemetry Collector receiver, processor, connector, or exporter.
-2. An existing local exporter consumed by the Collector.
-3. A small platform or workload adapter with a stable interface.
-4. Custom Go collection only when the previous options are insufficient.
-
-The Go agent must not reimplement Collector receivers, processors, resource detection, batching, retry, persistent delivery buffering, or exporters when a supported Collector component can provide the capability.
-
-## 3. Runtime topology
+## Runtime topology
 
 ```mermaid
 flowchart TD
-    subgraph Node["Monitored node"]
-        subgraph Agent["Go agent"]
-            CLI["agentctl<br/>Install, configure, diagnose"]
-            Runtime["agent service<br/>Composition and supervision"]
-            Bootstrap["bootstrap<br/>Install and configure"]
-            Identity["identity<br/>Platform and node identity"]
-            Config["config<br/>Render and validate"]
-            Adapters["custom adapters<br/>LHM, Docker inventory, service state"]
-            Health["health<br/>Readiness and diagnostics"]
-        end
+    CLI["agentctl<br/>bootstrap · dependency · run"]
+    Deps["Managed local dependencies"]
+    Sources["Local metrics endpoints"]
+    Config["Rendered Collector configuration"]
+    Collector["Supervised OTel Collector"]
+    Gateway["OTLP Gateway<br/>Prometheus → Grafana"]
 
-        subgraph OTel["Pinned otelcol-contrib process"]
-            Receivers["Receivers<br/>Host, Prometheus, Event Log, OTLP"]
-            Pipeline["Processors<br/>Resources, filtering, batching"]
-            Delivery["Exporter delivery<br/>Retry and persistent queue"]
-        end
+    CLI --> Deps
+    Deps --> Sources
+    CLI --> Config
+    Config --> Collector
+    Sources -->|Prometheus scrape| Collector
+    Collector -->|OTLP| Gateway
+```
 
-        Native["Native sources<br/>OS metrics, Windows exporter, logs"]
-    end
+The local data path is always:
 
-    Control["Registration / Control API"]
-    Gateway["AR-IMMS gateway<br/>OTLP ingestion boundary"]
+```text
+Local source → OTel Collector → OTLP Gateway → Prometheus → Grafana
+```
 
+`agentctl` performs administrative work. The Collector owns telemetry
+receivers, processors, batching, retry, and gateway export.
+
+## Current boundaries
+
+| Boundary              | Owns                                                                                  |
+| --------------------- | ------------------------------------------------------------------------------------- |
+| `cmd/agentctl`        | CLI parsing and production dependency wiring                                          |
+| `internal/identity`   | Stable platform and host identity                                                     |
+| `internal/config`     | Layer merge, rendering, validation, and atomic config writes                          |
+| `internal/bootstrap`  | Pinned Collector download, checksum verification, installation, and config activation |
+| `internal/dependency` | Dependency registry, platform validation, and installation dispatch                   |
+| Dependency packages   | Platform-specific install, reconciliation, health, and managed-resource drift repair  |
+| `internal/supervisor` | Collector child process, readiness, restart, and graceful shutdown                    |
+| OTel Collector        | Scraping, telemetry processing, batching, retry, and OTLP export                      |
+| Gateway stack         | OTLP ingestion, Prometheus storage, and Grafana visualization                         |
+
+## Node control plane
+
+`agentctl` is the single administrative entrypoint. It has three independent
+flows: dependency management, Collector bootstrap, and foreground supervision.
+
+```mermaid
+flowchart TD
+    CLI["agentctl"]
+    Dependency["dependency install"]
+    Bootstrap["bootstrap"]
+    Run["run"]
+
+    Identity["identity"]
+    Config["config"]
+    Install["bootstrap installer"]
+    Supervisor["supervisor"]
+    Collector["otelcol-contrib"]
+
+    CLI --> Dependency
     CLI --> Bootstrap
+    CLI --> Run
+
     Bootstrap --> Identity
     Bootstrap --> Config
-    Identity --> Config
-    Config --> Runtime
-
-    Runtime --> OTel
-    Native --> Receivers
-    Adapters -->|OTLP localhost| Receivers
-    Receivers --> Pipeline --> Delivery --> Gateway
-
-    Runtime -->|enroll / renew| Control
-    Control -->|certificate / policy| Runtime
-
-    Health --> Runtime
-    Health --> OTel
-````
-
-The Go agent and Collector are separate processes. They may be distributed in one installer, but each process remains independently restartable and observable.
-
-`agentctl` is the administrative entrypoint. It installs dependencies, renders configuration, validates it, and manages administrative lifecycle commands.
-
-The long-running agent service owns runtime supervision, custom adapters, runtime health, and communication with the registration/control plane.
-
-Telemetry and control do not share the same endpoint:
-
-```text
-Telemetry:
-Go adapters or local sources
-  -> OTel Collector
-  -> OTLP Gateway
-
-Control:
-Go agent
-  -> Registration / Control API
+    Bootstrap --> Install
+    Run --> Supervisor
+    Supervisor --> Collector
 ```
 
-## 4. Responsibility boundaries
+## Managed metric sources
 
-| Area                                                            | Go agent                                                                  | OpenTelemetry Collector                          |
-| --------------------------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------ |
-| Platform and architecture detection                             | Owns                                                                      | Not applicable                                   |
-| Physical host, compute node, vendor, and workload identity      | Owns                                                                      | Adds configured resource attributes              |
-| Collector installation and configuration rendering              | Owns                                                                      | Consumes rendered configuration                  |
-| Collector start, health checks, restart, upgrade, and uninstall | Owns                                                                      | Exposes process and health signals               |
-| Host/workload/hardware collection                               | Owns adapters only where OTel is insufficient; sends output to local OTLP | Owns supported receivers/exporters               |
-| Resource detection                                              | Provides identity unavailable to OTel                                     | Owns supported resource detectors                |
-| Filtering, batching, retry, and persistent delivery queue       | Does not own                                                              | Owns                                             |
-| OTLP/export protocol handling                                   | Only for custom adapter output to local Collector                         | Owns gateway delivery by default                 |
-| Registration and certificate handling                           | Calls Registration API and stores returned identity material              | Consumes resulting secure endpoint/configuration |
+| Platform | Dependency             |   Local endpoint | Lifecycle owner              |
+| -------- | ---------------------- | ---------------: | ---------------------------- |
+| Windows  | Windows Exporter       | `127.0.0.1:9182` | Windows service              |
+| Windows  | Libre Hardware Monitor | `127.0.0.1:9190` | `LocalSystem` scheduled task |
+| Linux    | Node Exporter          | `127.0.0.1:9100` | systemd service              |
+| Both     | Collector host metrics |       in-process | OTel Collector               |
 
-## 5. Source ingestion model
+All external exporters are scraped through Collector Prometheus receivers.
+They never export directly to the gateway.
 
-Sources follow one of two paths.
+Libre Hardware Monitor can retain an upstream wildcard HTTP binding. Its
+managed Windows Firewall rule blocks inbound TCP `9190`; only the local Agent
+is intended to scrape it.
 
-### Standard OTel path
+## Dependency architecture
 
-Use this path whenever the Collector has a supported receiver or can consume an existing local exporter:
+The shared dependency package owns lookup and platform validation. Each
+dependency package owns only its platform-specific resources.
 
-```text
-Windows exporter
-  -> Prometheus receiver
-  -> OTel pipeline
+```mermaid
+flowchart TD
+    Command["agentctl dependency install <name>"]
+    Service["dependency.Service"]
+    Registry["Registry<br/>name + supported OS"]
+    Installer["Platform installer<br/>preflight + reconcile"]
+    Inspect["Inspect managed state"]
+    Apply["Install or repair"]
+    Health["Local health check"]
 
-Windows Event Log
-  -> Windows Event Log receiver
-  -> OTel pipeline
-
-Linux host metrics
-  -> hostmetrics receiver
-  -> OTel pipeline
-
-Application OTLP
-  -> OTLP receiver
-  -> OTel pipeline
+    Command --> Service
+    Service --> Registry
+    Registry --> Installer
+    Installer --> Inspect
+    Inspect -->|absent or drifted| Apply
+    Inspect -->|healthy and matching| Health
+    Apply --> Health
 ```
 
-### Custom Go adapter path
+| Dependency             | Managed resources                                                                               |
+| ---------------------- | ----------------------------------------------------------------------------------------------- |
+| Windows Exporter       | MSI installation, Agent-owned config, Windows service, `127.0.0.1:9182`                         |
+| Node Exporter          | Verified binary, systemd unit, DynamicUser hardening, `127.0.0.1:9100`                          |
+| Libre Hardware Monitor | Complete application directory, config XML, `LocalSystem` task, firewall rule, `127.0.0.1:9190` |
 
-Use this path only when OTel does not provide enough capability:
+Note: The installer returns Reused=true only when the managed installation is already healthy and matches the Agent contract.
 
-```text
-LibreHardwareMonitor
-  -> Go hardware adapter
-  -> OTLP localhost
-  -> OTel OTLP receiver
-  -> OTel pipeline
+## Dependency lifecycle
 
-Docker inventory/events/inspect
-  -> Go Docker adapter
-  -> OTLP localhost
-  -> OTel OTLP receiver
-  -> OTel pipeline
-
-Windows service state
-  -> Go service adapter
-  -> OTLP localhost
-  -> OTel OTLP receiver
-  -> OTel pipeline
-```
-
-All telemetry reaches the gateway through the same local Collector pipeline.
-
-The agent must avoid collecting duplicate canonical host metrics. For example, Windows exporter and `hostmetrics` must not both be enabled for the same CPU, memory, disk, and network metric set unless an ADR defines their distinct purpose and naming.
-
-## 6. Package structure
+Each dependency follows the same decision model:
 
 ```text
-cmd/
-  agent/             runtime process composition and startup only
-  agentctl/          administrative lifecycle commands
-
-internal/
-  bootstrap/         dependency installation and first-run setup
-  supervisor/        Collector process/service supervision
-  config/            layered config loading, merging, rendering, validation
-  identity/          platform, host, node, vendor, and workload identity
-  platform/          Windows/Linux service and OS implementations
-  adapters/          small integrations for capabilities unavailable in OTel
-  otlp/              emits custom adapter output to the local Collector
-  spool/             future bounded adapter-input buffering only
-  health/            readiness, diagnostics, and lifecycle checks
-
-configs/
-  base/              platform-neutral Collector defaults
-  profiles/          deployment profiles such as laptop
-  os/windows/        Windows-specific Collector overrides
-  os/linux/          Linux-specific Collector overrides
-  vendors/           future vendor-specific overrides
-
-packaging/           Windows service and Linux systemd assets
-docs/                architecture, ADRs, runbooks, and plans
-schemas/             configuration and telemetry contracts
-tests/               integration and end-to-end tests
+platform preflight
+  → inspect managed state
+  → absent: install and verify
+  → healthy + matching: reuse
+  → healthy + drifted: repair managed resources and verify
+  → unhealthy: fail; never overwrite automatically
 ```
 
-`main.go` composes dependencies and starts the process. It must not contain vendor checks, OS shell commands, transport details, or business logic.
+A dependency owns only its own files, service/task, configuration, and firewall
+rule. It must not modify unrelated installations.
 
-`spool/` is intentionally deferred. It must not receive failed records from an OTel exporter. If introduced later, it buffers only custom adapter input before that input reaches the local OTLP receiver.
+## Extending to N exporters
 
-## 7. Identity model
-
-Identity is hierarchical:
-
-```text
-physical_host_id -> compute_node_id -> workload_id -> container_id
-```
-
-* `physical_host_id` is the stable identity of the physical laptop or server.
-* `compute_node_id` identifies this monitored agent installation/node.
-* `workload_id` identifies a stable logical service, process, or workload where one can be established.
-* `container_id` identifies an ephemeral runtime container.
-
-Container IDs must not be the sole identity for historical workload data. Current inventory may use container IDs, but historical telemetry must preserve the logical workload distinction where possible.
-
-The first identity contract is `PlatformInfo`, produced by `internal/identity` and consumed by configuration selection, diagnostics, and registration. It includes normalized OS/architecture data and optional platform metadata without exposing platform-specific types to shared consumers.
-
-Go injects stable identity into the rendered Collector configuration, for example:
-
-```text
-asset.node.id
-physical.host.id
-device.manufacturer
-device.model.identifier
-```
-
-The Collector resource detection then contributes runtime attributes such as:
-
-```text
-host.name
-host.arch
-os.type
-os.description
-```
-
-The Collector applies both identity sets consistently to telemetry records.
-
-## 8. Configuration flow
-
-Configuration layers are merged in this order:
-
-```text
-base -> profile -> OS -> vendor -> local machine override
-```
-
-Later layers override earlier scalar values. Nested objects merge recursively using explicit rules. Lists use a documented deterministic policy; the initial implementation replaces a prior list rather than relying on implicit YAML concatenation.
+Adding another local exporter should not change the shared Collector pipeline.
 
 ```mermaid
 sequenceDiagram
+    participant Operator
     participant CLI as agentctl
-    participant Identity as identity
-    participant Config as config
-    participant Runtime as agent service
-    participant Collector as OTel Collector
-    participant Gateway as AR-IMMS gateway
+    participant Deps as Dependency + local source
+    participant Collector
+    participant Gateway
 
-    CLI->>Identity: CollectPlatformInfo()
-    Identity-->>CLI: PlatformInfo
-    CLI->>Config: Load base/profile/OS/local layers
-    Config->>Config: Merge deterministically
-    Config->>Config: Validate merged configuration
-    Config-->>CLI: Rendered Collector YAML
-    CLI->>Runtime: Install or restart service
-    Runtime->>Collector: Start with rendered configuration
-    Collector->>Collector: Receive, detect, process, batch, retry
-    Collector->>Gateway: Export OTLP telemetry
-    Collector-->>Runtime: Health/readiness signals
+    Operator->>CLI: dependency install <name>
+    CLI->>Deps: validate platform and reconcile
+    Deps-->>CLI: healthy local metrics endpoint
+
+    Operator->>CLI: bootstrap and run
+    CLI->>Collector: render source receiver configuration
+    Collector->>Deps: scrape localhost endpoint
+    Collector->>Gateway: export OTLP telemetry
 ```
 
-Generated configuration must be reproducible from committed inputs plus explicitly supplied machine-local overrides. Secrets, private keys, tokens, and real machine endpoints stay outside version control.
+A new exporter normally requires:
 
-## 9. Failure and recovery boundaries
+1. a `Definition` in `internal/dependency`;
+2. a platform-specific installer/reconciler;
+3. an Agent-owned local endpoint and health check;
+4. an OS config fragment with a Prometheus receiver;
+5. unit tests for installation, reuse, drift, failure, and rendered config.
 
-* Invalid configuration prevents Collector startup and is reported with a contextual validation error.
-* Collector crashes are observed by `supervisor`; restart behavior is bounded and observable.
-* Gateway outages use the Collector retry queue and persistent storage first.
-* A Go-owned spool, if introduced later, is bounded by explicit memory/disk limits and buffers only custom adapter input before that input reaches local OTLP.
-* Missing hardware sensors, Docker permissions, service-manager failures, registration failures, and certificate errors are visible diagnostics; they are not silently downgraded to insecure behavior.
-* Local receivers bind to localhost unless a network listener is explicitly required.
+Use custom Go telemetry collection only when neither an OTel receiver nor a
+local exporter can provide the capability.
 
-## 10. Delivery phases
+## Configuration model
 
-### Phase 1: Bootstrap, configuration, lifecycle, and health
-
-Implement platform identity, layered configuration, Collector installation/configuration, service lifecycle, health checks, and diagnostics.
-
-The first working path is:
+The implemented layer order is:
 
 ```text
-agentctl
-  -> detect platform
-  -> render and validate Collector config
-  -> install/start agent service
-  -> supervise Collector
-  -> verify local health
-  -> export test OTLP to gateway
+configs/base/otel.yaml
+  → configs/profiles/laptop.yaml
+  → configs/os/<windows|linux>/otel.yaml
+  → rendered otel.yaml
 ```
 
-### Phase 2: Collection, adapter output, and OTLP delivery
+Later layers override earlier scalar values; nested maps merge
+deterministically. The rendered file contains host identity and is validated
+before activation.
 
-Enable supported Collector receivers, add only necessary adapters, emit custom adapter data to local OTLP, and configure Collector-owned delivery buffering to the gateway.
+The current configuration provides:
 
-### Phase 3: Registration, vendor expansion, simulation, and validation
+- OTLP receive on `127.0.0.1:4317` and `127.0.0.1:4318`;
+- Collector health endpoint on `127.0.0.1:13133`;
+- local Prometheus scrapes for managed exporters;
+- resource attributes for stable host identity;
+- OTLP export to the configured gateway.
 
-Add secure registration and certificate handling, vendor-specific adapters/configuration, controlled simulation producers, and Windows/Linux plus three-node validation.
+Vendor and machine-local override layers are future work; they are not part of
+the current renderer contract.
 
-Alerting, incident creation, dashboards, topology persistence, AI/anomaly detection, and control-plane business logic remain outside the node agent.
+## Configuration and telemetry runtime
 
-## Phase 1 implementation boundary
+Configuration is composed once during bootstrap. The running Collector consumes
+only the rendered file and runtime gateway endpoint.
 
-Phase 1 provides platform identity and deterministic Collector configuration
-rendering only. It does not install or run the Collector. Collector-specific
-semantic validation through `otelcol-contrib validate` begins in the bootstrap
-and lifecycle phase.
+```mermaid
+flowchart TD
+    Base["base/otel.yaml"]
+    Profile["profiles/laptop.yaml"]
+    OS["os/windows or os/linux"]
+    Render["Merge, substitute identity,<br/>validate, atomic write"]
+    Collector["OTel Collector"]
+    Receivers["OTLP · hostmetrics · Prometheus"]
+    Pipeline["Resource processors · batch"]
+    Gateway["OTLP Gateway"]
 
-## 11. Testing strategy
+    Base --> Render
+    Profile --> Render
+    OS --> Render
+    Render --> Collector
+    Collector --> Receivers
+    Receivers --> Pipeline
+    Pipeline --> Gateway
+```
 
-Testing is prioritized as follows:
+| OS layer | Managed local scrapes                                    |
+| -------- | -------------------------------------------------------- |
+| Windows  | Windows Exporter `:9182`, Libre Hardware Monitor `:9190` |
+| Linux    | Node Exporter `:9100`                                    |
 
-1. Pure tests for identity, config merge, adapter mapping, and supervisor restart limits.
-2. Fake platform and service-manager tests.
-3. Source adapter tests using recorded or simulated input.
-4. Collector configuration validation tests.
-5. Windows/Linux integration tests.
-6. Three-node end-to-end tests through the gateway.
+All receiver output uses the same metrics pipeline and gateway exporter.
+Adding an exporter changes its dependency package and OS config fragment; it
+does not create another delivery path.
 
-Failure tests are first-class:
+## Operational commands
+
+Start the local observability stack:
+
+```bash
+docker compose -f infra/observability/compose.yaml up -d
+```
+
+Run repository verification:
+
+```bash
+go test ./...
+go vet ./...
+```
+
+### Windows
+
+Run PowerShell as Administrator when installing dependencies:
+
+```powershell
+New-Item -ItemType Directory -Force ./tmp | Out-Null
+go build -o ./tmp/agentctl.exe ./cmd/agentctl
+
+$agentctl = './tmp/agentctl.exe'
+
+& $agentctl dependency install windows-exporter
+& $agentctl dependency install libre-hardware-monitor
+```
+
+Bootstrap and run the Collector:
+
+```powershell
+$collectorInstall = Join-Path $PWD 'tmp\collector-windows'
+$configPath = Join-Path $PWD 'tmp\collector-windows-config\otel.yaml'
+
+& $agentctl bootstrap `
+  --config-root ./configs `
+  --install-dir $collectorInstall `
+  --config-path $configPath
+
+$collectorPath = Join-Path `
+  $collectorInstall `
+  'versions\otelcol-contrib-0.160.0-windows-amd64\otelcol-contrib.exe'
+
+& $agentctl run `
+  --collector-path $collectorPath `
+  --config-path $configPath `
+  --gateway-endpoint 127.0.0.1:14317
+```
+
+### Linux
+
+Build normally, then use root only for the systemd-managed dependency:
+
+```bash
+mkdir -p ./tmp
+go build -o ./tmp/agentctl ./cmd/agentctl
+
+agentctl=./tmp/agentctl
+
+sudo "$agentctl" dependency install node-exporter
+```
+
+Bootstrap and run the Collector:
+
+```bash
+collector_install="$HOME/.local/share/telemetry-agent"
+config_path="$HOME/.config/telemetry-agent/otel.yaml"
+
+"$agentctl" bootstrap \
+  --config-root ./configs \
+  --install-dir "$collector_install" \
+  --config-path "$config_path"
+
+collector_path="$collector_install/versions/otelcol-contrib-0.160.0-linux-amd64/otelcol-contrib"
+
+"$agentctl" run \
+  --collector-path "$collector_path" \
+  --config-path "$config_path" \
+  --gateway-endpoint "<gateway-host>:14317"
+```
+
+`run` is foreground supervision; stop it with `Ctrl+C`.
+
+## Verification
+
+Check a local exporter before starting the Collector:
 
 ```text
-gateway unavailable
-registration denied
-invalid or expired certificate
-invalid configuration
-missing sensors
-Docker permission failure
-Collector crash
-reboot recovery
-duplicate delivery
-full adapter-input spool
+Windows Exporter:          http://127.0.0.1:9182/metrics
+Libre Hardware Monitor:    http://127.0.0.1:9190/metrics
+Node Exporter:             http://127.0.0.1:9100/metrics
+Collector health:          http://127.0.0.1:13133/
 ```
 
-## 12. Architectural guardrails
+After one scrape interval, query Prometheus:
 
-The following require an explicit ADR and demonstrated proof-of-concept need before introduction:
+```promql
+count by (exported_job) (
+  {exported_job=~"windows_exporter|node_exporter|libre_hardware_monitor"}
+)
+```
 
-* dynamic remote code execution or arbitrary plugin loading;
-* a custom query language;
-* a distributed control plane inside the agent;
-* a full package manager or auto-update service;
-* AI or anomaly detection inside the node agent;
-* replacement of the OpenTelemetry Collector;
-* Datadog-style multi-process orchestration or framework abstraction.
+A positive result confirms the local source → Collector → Gateway →
+Prometheus path.
 
-This document is the initial baseline and should be updated when a change affects package boundaries, public APIs, telemetry/configuration schemas, deployment behavior, or the security model.
+## Safety rules
+
+- All artifacts are version- and SHA-256-pinned.
+- Administrative dependencies require Administrator/root before changing
+  machine-wide state.
+- Existing unhealthy managed dependencies are not overwritten automatically.
+- Exporter metrics remain local; external exposure requires an explicit design
+  and security decision.
+- The Agent does not reimplement Collector receivers, processors, retry queues,
+  or OTLP delivery.
+- Secrets and real gateway credentials stay outside committed configuration.
+
+## Explicitly deferred
+
+The following are not implemented yet:
+
+- Agent registration, certificate issuance, and certificate rotation;
+- Agent registration as a Windows Service or Linux systemd service;
+- Collector auto-upgrades, dependency upgrades, and uninstall;
+- bounded disk spool for custom Go adapters;
+- Docker inventory/events collection and Windows Event Log collection;
+- vendor-specific configuration layers;
+- process-level telemetry capability policy;
+- three-node automated end-to-end validation.
+
+Changes to these boundaries, the managed-resource model, or security posture
+require an ADR.
