@@ -14,13 +14,14 @@ type processRunner func(context.Context, processCommand) error
 func RegisterTask(
 	ctx context.Context,
 	options Options,
+	interactiveUserSID string,
 	run processRunner,
 ) error {
 	if run == nil {
 		return fmt.Errorf("Libre Hardware Monitor process runner is required")
 	}
 
-	rendered, err := RenderTaskXML(options)
+	rendered, err := RenderTaskXML(options, interactiveUserSID)
 	if err != nil {
 		return err
 	}

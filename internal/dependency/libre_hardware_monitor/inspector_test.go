@@ -43,11 +43,15 @@ func TestNewInstallationInspectorReadsManagedLHMState(t *testing.T) {
 		t.Fatalf("WriteConfig() error = %v", err)
 	}
 
-	expectedTaskXML, err := RenderTaskXML(options)
-	expectedTaskXMLText := decodeUTF16LE(t, expectedTaskXML)
+	expectedTaskXML, err := RenderTaskXML(
+		options,
+		testInteractiveUserSID,
+	)
 	if err != nil {
 		t.Fatalf("RenderTaskXML() error = %v", err)
 	}
+
+	expectedTaskXMLText := decodeUTF16LE(t, expectedTaskXML)
 
 	inspector := newInstallationInspector(
 		options,
@@ -71,6 +75,10 @@ func TestNewInstallationInspectorReadsManagedLHMState(t *testing.T) {
 				t.Fatalf("unexpected PowerShell script:\n%s", script)
 				return nil, nil
 			}
+		},
+
+		func() (string, error) {
+			return testInteractiveUserSID, nil
 		},
 	)
 

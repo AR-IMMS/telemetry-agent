@@ -3,7 +3,6 @@ package librehardwaremonitor
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"strings"
 )
 
@@ -76,6 +75,7 @@ func scheduledTaskExists(
 func scheduledTaskMatches(
 	ctx context.Context,
 	options Options,
+	interactiveUserSID string,
 	run processOutputRunner,
 ) (bool, error) {
 	if err := options.Validate(); err != nil {
@@ -84,6 +84,14 @@ func scheduledTaskMatches(
 			err,
 		)
 	}
+
+	interactiveUserSID = strings.TrimSpace(interactiveUserSID)
+	if interactiveUserSID == "" {
+		return false, fmt.Errorf(
+			"Libre Hardware Monitor interactive user SID is required",
+		)
+	}
+
 	if run == nil {
 		return false, fmt.Errorf(
 			"Libre Hardware Monitor process output runner is required",
@@ -119,23 +127,26 @@ func scheduledTaskMatches(
 		)
 	}
 
-	return taskXMLMatches(options, string(output)), nil
+	return taskXMLMatches(
+		options,
+		interactiveUserSID,
+		string(output),
+	), nil
 }
 
 // taskXMLMatches checks only the fields owned by the Agent. Task Scheduler may
 // add unrelated defaults when it persists the definition.
 func taskXMLMatches(
 	options Options,
+	interactiveUserSID string,
 	taskXML string,
 ) bool {
-	executablePath := filepath.Join(
-		options.InstallDir,
-		"LibreHardwareMonitor.exe",
-	)
+	executablePath := windowsExecutablePath(options.InstallDir)
 
 	for _, want := range []string{
-		"<BootTrigger>",
-		"<UserId>S-1-5-18</UserId>",
+		"<LogonTrigger>",
+		"<UserId>" + interactiveUserSID + "</UserId>",
+		"<LogonType>InteractiveToken</LogonType>",
 		"<RunLevel>HighestAvailable</RunLevel>",
 		"<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>",
 		"<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>",
