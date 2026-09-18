@@ -76,6 +76,7 @@ func NewInstaller(
 				http.DefaultClient,
 				defaultHealthPoll,
 				runOSProcessOutput,
+				currentWindowsUserSID,
 			),
 			stageArchive: func(
 				ctx context.Context,
@@ -94,7 +95,17 @@ func NewInstaller(
 				ctx context.Context,
 				options Options,
 			) error {
-				return RegisterTask(ctx, options, runOSProcess)
+				userSID, err := currentWindowsUserSID()
+				if err != nil {
+					return err
+				}
+
+				return RegisterTask(
+					ctx,
+					options,
+					userSID,
+					runOSProcess,
+				)
 			},
 			waitForHealth: func(
 				ctx context.Context,

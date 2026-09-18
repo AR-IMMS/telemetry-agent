@@ -50,7 +50,10 @@ func TestScheduledTaskExistsReadsPowerShellTrueResult(t *testing.T) {
 func TestScheduledTaskMatchesRecognizesManagedDefinition(t *testing.T) {
 	options := DefaultOptions()
 
-	expectedXML, err := RenderTaskXML(options)
+	expectedXML, err := RenderTaskXML(
+		options,
+		testInteractiveUserSID,
+	)
 	if err != nil {
 		t.Fatalf("RenderTaskXML() error = %v", err)
 	}
@@ -60,6 +63,7 @@ func TestScheduledTaskMatchesRecognizesManagedDefinition(t *testing.T) {
 	matches, err := scheduledTaskMatches(
 		context.Background(),
 		options,
+		testInteractiveUserSID,
 		func(
 			ctx context.Context,
 			command processCommand,

@@ -7,10 +7,12 @@ import (
 	"unicode/utf16"
 )
 
-func TestRenderTaskXMLRunsLHMAsLocalSystemAtStartup(t *testing.T) {
+const testInteractiveUserSID = "S-1-5-21-1000-2000-3000-1001"
+
+func TestRenderTaskXMLRunsLHMForInteractiveUserAtLogon(t *testing.T) {
 	options := DefaultOptions()
 
-	rendered, err := RenderTaskXML(options)
+	rendered, err := RenderTaskXML(options, testInteractiveUserSID)
 	if err != nil {
 		t.Fatalf("RenderTaskXML() error = %v", err)
 	}
@@ -18,8 +20,9 @@ func TestRenderTaskXMLRunsLHMAsLocalSystemAtStartup(t *testing.T) {
 	taskXML := decodeUTF16LE(t, rendered)
 
 	for _, want := range []string{
-		"<BootTrigger>",
-		"<UserId>S-1-5-18</UserId>",
+		"<LogonTrigger>",
+		"<UserId>" + testInteractiveUserSID + "</UserId>",
+		"<LogonType>InteractiveToken</LogonType>",
 		"<RunLevel>HighestAvailable</RunLevel>",
 		"<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>",
 		"<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>",
@@ -38,10 +41,40 @@ func TestRenderTaskXMLRunsLHMAsLocalSystemAtStartup(t *testing.T) {
 			)
 		}
 	}
+
+	for _, unwanted := range []string{
+		"<BootTrigger>",
+		"<UserId>S-1-5-18</UserId>",
+	} {
+		if strings.Contains(taskXML, unwanted) {
+			t.Fatalf(
+				"task XML unexpectedly contains %q:\n%s",
+				unwanted,
+				taskXML,
+			)
+		}
+	}
+}
+
+func TestRenderTaskXMLRejectsMissingInteractiveUserSID(t *testing.T) {
+	_, err := RenderTaskXML(DefaultOptions(), "")
+
+	if err == nil {
+		t.Fatal("RenderTaskXML() error = nil, want missing user SID error")
+	}
+	if !strings.Contains(err.Error(), "user SID") {
+		t.Fatalf(
+			"RenderTaskXML() error = %v, want user SID error",
+			err,
+		)
+	}
 }
 
 func TestRenderTaskXMLDeclaresUTF16Encoding(t *testing.T) {
-	rendered, err := RenderTaskXML(DefaultOptions())
+	rendered, err := RenderTaskXML(
+		DefaultOptions(),
+		testInteractiveUserSID,
+	)
 	if err != nil {
 		t.Fatalf("RenderTaskXML() error = %v", err)
 	}
@@ -60,7 +93,10 @@ func TestRenderTaskXMLDeclaresUTF16Encoding(t *testing.T) {
 }
 
 func TestRenderTaskXMLReturnsUTF16LEWithBOM(t *testing.T) {
-	rendered, err := RenderTaskXML(DefaultOptions())
+	rendered, err := RenderTaskXML(
+		DefaultOptions(),
+		testInteractiveUserSID,
+	)
 	if err != nil {
 		t.Fatalf("RenderTaskXML() error = %v", err)
 	}
@@ -72,6 +108,23 @@ func TestRenderTaskXMLReturnsUTF16LEWithBOM(t *testing.T) {
 			"task XML prefix = % x, want UTF-16LE BOM ff fe",
 			rendered[:2],
 		)
+	}
+}
+
+func TestRenderTaskXMLUsesWindowsExecutablePath(t *testing.T) {
+	rendered, err := RenderTaskXML(
+		DefaultOptions(),
+		testInteractiveUserSID,
+	)
+	if err != nil {
+		t.Fatalf("RenderTaskXML() error = %v", err)
+	}
+
+	taskXML := decodeUTF16LE(t, rendered)
+
+	want := `<Command>C:\Program Files\AR-IMMS\LibreHardwareMonitor\LibreHardwareMonitor.exe</Command>`
+	if !strings.Contains(taskXML, want) {
+		t.Fatalf("task XML does not contain %q:\n%s", want, taskXML)
 	}
 }
 
@@ -94,34 +147,4 @@ func decodeUTF16LE(t *testing.T, content []byte) string {
 	}
 
 	return string(utf16.Decode(codeUnits))
-}
-
-func TestRenderTaskXMLOmitsLogonTypeForLocalSystem(t *testing.T) {
-	rendered, err := RenderTaskXML(DefaultOptions())
-	if err != nil {
-		t.Fatalf("RenderTaskXML() error = %v", err)
-	}
-
-	xml := decodeUTF16LE(t, rendered)
-
-	if strings.Contains(xml, "<LogonType>") {
-		t.Fatalf(
-			"SYSTEM task must omit LogonType; schtasks rejects ServiceAccount:\n%s",
-			xml,
-		)
-	}
-}
-
-func TestRenderTaskXMLUsesWindowsExecutablePath(t *testing.T) {
-	rendered, err := RenderTaskXML(DefaultOptions())
-	if err != nil {
-		t.Fatalf("RenderTaskXML() error = %v", err)
-	}
-
-	xml := decodeUTF16LE(t, rendered)
-
-	want := `<Command>C:\Program Files\AR-IMMS\LibreHardwareMonitor\LibreHardwareMonitor.exe</Command>`
-	if !strings.Contains(xml, want) {
-		t.Fatalf("task XML does not contain %q:\n%s", want, xml)
-	}
 }

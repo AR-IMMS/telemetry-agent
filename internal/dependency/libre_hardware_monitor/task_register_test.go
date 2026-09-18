@@ -14,6 +14,7 @@ func TestRegisterTaskCreatesThenRunsManagedTask(t *testing.T) {
 	err := RegisterTask(
 		context.Background(),
 		DefaultOptions(),
+		testInteractiveUserSID,
 		func(
 			ctx context.Context,
 			command processCommand,
@@ -58,6 +59,7 @@ func TestRegisterTaskDoesNotRunTaskWhenCreationFails(t *testing.T) {
 	err := RegisterTask(
 		context.Background(),
 		DefaultOptions(),
+		testInteractiveUserSID,
 		func(
 			ctx context.Context,
 			command processCommand,
