@@ -28,6 +28,12 @@ const (
 	defaultShutdownTimeout    = 10 * time.Second
 )
 
+var (
+	version   = "dev"
+	commit    = "none"
+	buildDate = "unknown"
+)
+
 type dependencies struct {
 	collectPlatform   func() (identity.PlatformInfo, error)
 	runBootstrap      bootstrapRunFunc
@@ -150,13 +156,33 @@ func run(
 	case "dependency":
 		return runDependency(ctx, args[1:], stdout, stderr, deps)
 
+	case "version":
+		return runVersion(args[1:], stdout, stderr)
+
 	default:
 		fmt.Fprintln(
 			stderr,
-			"usage: agentctl <bootstrap|run> [command options]",
+			"usage: agentctl <bootstrap|run|dependency|version> [command options]",
 		)
 		return 2
 	}
+}
+
+func runVersion(
+	args []string,
+	stdout io.Writer,
+	stderr io.Writer,
+) int {
+	if len(args) != 0 {
+		fmt.Fprintln(stderr, "usage: agentctl version")
+		return 2
+	}
+
+	fmt.Fprintf(stdout, "agentctl version: %s\n", version)
+	fmt.Fprintf(stdout, "commit: %s\n", commit)
+	fmt.Fprintf(stdout, "build date: %s\n", buildDate)
+
+	return 0
 }
 
 func runBootstrap(

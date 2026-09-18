@@ -421,3 +421,62 @@ func TestDefaultDependencyInstallersIncludeLibreHardwareMonitor(t *testing.T) {
 		t.Fatal("Libre Hardware Monitor installer is nil")
 	}
 }
+
+func TestRunVersionPrintsBuildInformation(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := run(
+		context.Background(),
+		[]string{"version"},
+		&stdout,
+		&stderr,
+		dependencies{},
+	)
+
+	if exitCode != 0 {
+		t.Fatalf("run(version) exit code = %d, want 0", exitCode)
+	}
+
+	want := "" +
+		"agentctl version: dev\n" +
+		"commit: none\n" +
+		"build date: unknown\n"
+
+	if stdout.String() != want {
+		t.Fatalf(
+			"version output = %q, want %q",
+			stdout.String(),
+			want,
+		)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("version stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunVersionRejectsArguments(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := run(
+		context.Background(),
+		[]string{"version", "extra"},
+		&stdout,
+		&stderr,
+		dependencies{},
+	)
+
+	if exitCode != 2 {
+		t.Fatalf("run(version extra) exit code = %d, want 2", exitCode)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("version stdout = %q, want empty", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "usage: agentctl version") {
+		t.Fatalf(
+			"version stderr = %q, want version usage",
+			stderr.String(),
+		)
+	}
+}
