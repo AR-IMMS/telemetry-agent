@@ -57,22 +57,6 @@ func TestScheduledTaskMatchesRecognizesManagedDefinition(t *testing.T) {
 
 	expectedXMLText := decodeUTF16LE(t, expectedXML)
 
-	for _, want := range []string{
-		"<BootTrigger>",
-		"<UserId>S-1-5-18</UserId>",
-		"<RunLevel>HighestAvailable</RunLevel>",
-		"<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>",
-		"<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>",
-		"<RestartOnFailure>",
-		"<Interval>PT1M</Interval>",
-		"<Count>3</Count>",
-		"<Command>C:\\Program Files\\AR-IMMS\\LibreHardwareMonitor\\LibreHardwareMonitor.exe</Command>",
-	} {
-		if !strings.Contains(expectedXMLText, want) {
-			t.Fatalf("test task XML is missing %q:\n%s", want, expectedXMLText)
-		}
-	}
-
 	matches, err := scheduledTaskMatches(
 		context.Background(),
 		options,

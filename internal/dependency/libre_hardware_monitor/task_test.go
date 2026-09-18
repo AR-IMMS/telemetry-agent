@@ -2,7 +2,6 @@ package librehardwaremonitor
 
 import (
 	"encoding/binary"
-	"path/filepath"
 	"strings"
 	"testing"
 	"unicode/utf16"
@@ -27,10 +26,9 @@ func TestRenderTaskXMLRunsLHMAsLocalSystemAtStartup(t *testing.T) {
 		"<RestartOnFailure>",
 		"<Interval>PT1M</Interval>",
 		"<Count>3</Count>",
-		"<Command>" + filepath.Join(
-			options.InstallDir,
-			"LibreHardwareMonitor.exe",
-		) + "</Command>",
+		"<Command>" +
+			windowsExecutablePath(options.InstallDir) +
+			"</Command>",
 	} {
 		if !strings.Contains(taskXML, want) {
 			t.Fatalf(
@@ -111,5 +109,19 @@ func TestRenderTaskXMLOmitsLogonTypeForLocalSystem(t *testing.T) {
 			"SYSTEM task must omit LogonType; schtasks rejects ServiceAccount:\n%s",
 			xml,
 		)
+	}
+}
+
+func TestRenderTaskXMLUsesWindowsExecutablePath(t *testing.T) {
+	rendered, err := RenderTaskXML(DefaultOptions())
+	if err != nil {
+		t.Fatalf("RenderTaskXML() error = %v", err)
+	}
+
+	xml := decodeUTF16LE(t, rendered)
+
+	want := `<Command>C:\Program Files\AR-IMMS\LibreHardwareMonitor\LibreHardwareMonitor.exe</Command>`
+	if !strings.Contains(xml, want) {
+		t.Fatalf("task XML does not contain %q:\n%s", want, xml)
 	}
 }

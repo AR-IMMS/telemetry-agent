@@ -3,7 +3,6 @@ package librehardwaremonitor
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"strings"
 )
 
@@ -128,10 +127,7 @@ func taskXMLMatches(
 	options Options,
 	taskXML string,
 ) bool {
-	executablePath := filepath.Join(
-		options.InstallDir,
-		"LibreHardwareMonitor.exe",
-	)
+	executablePath := windowsExecutablePath(options.InstallDir)
 
 	for _, want := range []string{
 		"<BootTrigger>",

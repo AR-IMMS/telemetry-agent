@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/xml"
 	"fmt"
-	"path/filepath"
+	"strings"
 	"unicode/utf16"
 )
 
@@ -18,10 +18,7 @@ func RenderTaskXML(options Options) ([]byte, error) {
 		)
 	}
 
-	executablePath := filepath.Join(
-		options.InstallDir,
-		"LibreHardwareMonitor.exe",
-	)
+	executablePath := windowsExecutablePath(options.InstallDir)
 
 	var escapedCommand bytes.Buffer
 
@@ -89,4 +86,13 @@ func encodeUTF16LE(content string) []byte {
 	}
 
 	return result
+}
+
+// windowsExecutablePath builds the executable path written into a Windows
+// scheduled-task definition, independent of the host running the renderer.
+func windowsExecutablePath(installDir string) string {
+	return strings.TrimRight(
+		strings.TrimSpace(installDir),
+		`\/`,
+	) + `\LibreHardwareMonitor.exe`
 }

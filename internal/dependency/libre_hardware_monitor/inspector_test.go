@@ -44,10 +44,11 @@ func TestNewInstallationInspectorReadsManagedLHMState(t *testing.T) {
 	}
 
 	expectedTaskXML, err := RenderTaskXML(options)
-	expectedTaskXMLText := decodeUTF16LE(t, expectedTaskXML)
 	if err != nil {
 		t.Fatalf("RenderTaskXML() error = %v", err)
 	}
+
+	expectedTaskXMLText := decodeUTF16LE(t, expectedTaskXML)
 
 	inspector := newInstallationInspector(
 		options,
