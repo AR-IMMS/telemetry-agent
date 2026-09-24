@@ -8,8 +8,10 @@ import (
 // windowsExporterInstallationState is the observed local service state.
 type windowsExporterInstallationState struct {
 	serviceExists  bool
+	serviceEnabled bool
 	serviceRunning bool
 	healthReady    bool
+	startupMatches bool
 }
 
 // windowsExporterStateInspector reads current service and health state.

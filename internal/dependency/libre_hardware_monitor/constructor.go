@@ -23,6 +23,22 @@ type installerDependencies struct {
 	startupTimeout time.Duration
 }
 
+// NewInspector creates the production lifecycle inspector for the
+// Agent-owned Libre Hardware Monitor installation.
+func NewInspector(
+	options Options,
+) dependency.Inspector {
+	return newDependencyInspector(
+		newInstallationInspector(
+			options,
+			http.DefaultClient,
+			defaultHealthPoll,
+			runOSProcessOutput,
+			currentWindowsUserSID,
+		),
+	)
+}
+
 // newInstaller composes privilege policy, reconciliation, fresh installation,
 // and managed-resource updates into the public dependency installer contract.
 func newInstaller(

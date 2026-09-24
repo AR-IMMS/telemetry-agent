@@ -96,3 +96,45 @@ func TestScheduledTaskMatchesRecognizesManagedDefinition(t *testing.T) {
 		t.Fatal("scheduledTaskMatches() = false, want true")
 	}
 }
+
+func TestScheduledTaskEnabledReadsPowerShellTrueResult(t *testing.T) {
+	enabled, err := scheduledTaskEnabled(
+		context.Background(),
+		"AR-IMMS-LibreHardwareMonitor",
+		func(
+			ctx context.Context,
+			command processCommand,
+		) ([]byte, error) {
+			if command.Executable != "powershell.exe" {
+				t.Fatalf(
+					"Executable = %q, want powershell.exe",
+					command.Executable,
+				)
+			}
+
+			script := command.Args[len(command.Args)-1]
+
+			for _, want := range []string{
+				"Get-ScheduledTask",
+				"AR-IMMS-LibreHardwareMonitor",
+				"Disabled",
+			} {
+				if !strings.Contains(script, want) {
+					t.Fatalf(
+						"task enabled script does not contain %q:\n%s",
+						want,
+						script,
+					)
+				}
+			}
+
+			return []byte("true\n"), nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("scheduledTaskEnabled() error = %v", err)
+	}
+	if !enabled {
+		t.Fatal("scheduledTaskEnabled() = false, want true")
+	}
+}

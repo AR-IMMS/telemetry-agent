@@ -62,3 +62,81 @@ func (s Service) Install(
 
 	return result, nil
 }
+
+// Status reads one dependency's lifecycle status for the current platform.
+func (s Service) Status(
+	ctx context.Context,
+	name string,
+) (Status, error) {
+	normalizedName := strings.ToLower(strings.TrimSpace(name))
+
+	integration, found := s.Catalog.Find(normalizedName)
+	if !found {
+		return Status{}, fmt.Errorf(
+			"unknown dependency %q",
+			normalizedName,
+		)
+	}
+
+	definition := integration.Definition
+	normalizedOS := strings.ToLower(strings.TrimSpace(s.OS))
+
+	if !definition.SupportsOS(normalizedOS) {
+		return Status{}, fmt.Errorf(
+			"dependency %q does not support operating system %q",
+			definition.Name,
+			normalizedOS,
+		)
+	}
+
+	if integration.Inspect == nil {
+		return Status{}, fmt.Errorf(
+			"dependency %q inspector is not configured",
+			definition.Name,
+		)
+	}
+
+	inspection, err := integration.Inspect(ctx)
+	if err != nil {
+		return Status{}, fmt.Errorf(
+			"inspect dependency %q: %w",
+			definition.Name,
+			err,
+		)
+	}
+
+	return inspection.Status(), nil
+}
+
+// ListStatus reads lifecycle statuses for all dependencies supported by the
+// current operating system, ordered by the catalog.
+func (s Service) ListStatus(
+	ctx context.Context,
+) ([]StatusResult, error) {
+	definitions := s.Catalog.List(s.OS)
+
+	results := make([]StatusResult, 0, len(definitions))
+
+	for _, definition := range definitions {
+		status, err := s.Status(ctx, definition.Name)
+		if err != nil {
+			results = append(results, StatusResult{
+				Definition: definition,
+				Status: Status{
+					Availability: AvailabilityUnknown,
+					Health:       HealthUnknown,
+				},
+				InspectionError: err,
+			})
+
+			continue
+		}
+
+		results = append(results, StatusResult{
+			Definition: definition,
+			Status:     status,
+		})
+	}
+
+	return results, nil
+}

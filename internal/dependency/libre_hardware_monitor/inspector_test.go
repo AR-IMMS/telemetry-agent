@@ -89,6 +89,7 @@ func TestNewInstallationInspectorReadsManagedLHMState(t *testing.T) {
 
 	want := installationState{
 		TaskExists:      true,
+		TaskEnabled:     true,
 		Healthy:         true,
 		ConfigMatches:   true,
 		FirewallMatches: true,

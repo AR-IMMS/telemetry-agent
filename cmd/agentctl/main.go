@@ -29,15 +29,20 @@ const (
 )
 
 type dependencies struct {
-	collectPlatform    func() (identity.PlatformInfo, error)
-	runBootstrap       bootstrapRunFunc
-	downloader         bootstrap.Downloader
-	runner             bootstrap.CommandRunner
-	runSupervisor      supervisorRunFunc
-	installDependency  dependencyInstallFunc
-	listDependencies   dependencyListFunc
-	selectDependencies dependencySelectionFunc
+	collectPlatform        func() (identity.PlatformInfo, error)
+	runBootstrap           bootstrapRunFunc
+	downloader             bootstrap.Downloader
+	runner                 bootstrap.CommandRunner
+	runSupervisor          supervisorRunFunc
+	installDependency      dependencyInstallFunc
+	listDependencies       dependencyListFunc
+	selectDependencies     dependencySelectionFunc
+	listDependencyStatuses dependencyStatusListFunc
 }
+
+type dependencyStatusListFunc func(
+	context.Context,
+) ([]dependency.StatusResult, error)
 
 type dependencySelectionFunc func(
 	context.Context,
@@ -103,7 +108,33 @@ func defaultDependencies() dependencies {
 			},
 			runDependencyMultiSelectProgram(os.Stdin),
 		),
+		listDependencyStatuses: defaultListDependencyStatuses,
 	}
+}
+
+func defaultListDependencyStatuses(
+	ctx context.Context,
+) ([]dependency.StatusResult, error) {
+	platform, err := identity.CollectPlatformInfo()
+	if err != nil {
+		return nil, fmt.Errorf(
+			"collect platform information: %w",
+			err,
+		)
+	}
+
+	catalog, err := defaultDependencyCatalog()
+	if err != nil {
+		return nil, fmt.Errorf(
+			"build dependency catalog: %w",
+			err,
+		)
+	}
+
+	return (dependency.Service{
+		Catalog: catalog,
+		OS:      platform.OS,
+	}).ListStatus(ctx)
 }
 
 // defaultListDependencies returns integrations supported by the local platform.
@@ -144,6 +175,9 @@ func defaultDependencyCatalog() (dependency.Catalog, error) {
 				dependency.DefaultWindowsExporterOptions(),
 				bootstrap.HTTPDownloader{},
 			),
+			Inspect: dependency.NewWindowsExporterInspector(
+				dependency.DefaultWindowsExporterOptions(),
+			),
 		},
 		{
 			Definition: dependency.Definition{
@@ -156,6 +190,9 @@ func defaultDependencyCatalog() (dependency.Catalog, error) {
 				nodeexporter.DefaultOptions(),
 				bootstrap.HTTPDownloader{},
 			),
+			Inspect: nodeexporter.NewInspector(
+				nodeexporter.DefaultOptions(),
+			),
 		},
 		{
 			Definition: dependency.Definition{
@@ -167,6 +204,9 @@ func defaultDependencyCatalog() (dependency.Catalog, error) {
 			Install: librehardwaremonitor.NewInstaller(
 				librehardwaremonitor.DefaultOptions(),
 				bootstrap.HTTPDownloader{},
+			),
+			Inspect: librehardwaremonitor.NewInspector(
+				librehardwaremonitor.DefaultOptions(),
 			),
 		},
 	})

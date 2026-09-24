@@ -468,3 +468,54 @@ func TestDefaultDependenciesConfigureDependencySelector(t *testing.T) {
 		t.Fatal("default dependency selector is nil")
 	}
 }
+
+func TestDefaultDependencyCatalogConfiguresNodeExporterInspector(
+	t *testing.T,
+) {
+	catalog, err := defaultDependencyCatalog()
+	if err != nil {
+		t.Fatalf("defaultDependencyCatalog() error = %v", err)
+	}
+
+	integration, found := catalog.Find("node-exporter")
+	if !found {
+		t.Fatal("node-exporter integration was not found")
+	}
+	if integration.Inspect == nil {
+		t.Fatal("node-exporter inspector is nil")
+	}
+}
+
+func TestDefaultDependencyCatalogConfiguresWindowsExporterInspector(
+	t *testing.T,
+) {
+	catalog, err := defaultDependencyCatalog()
+	if err != nil {
+		t.Fatalf("defaultDependencyCatalog() error = %v", err)
+	}
+
+	integration, found := catalog.Find("windows-exporter")
+	if !found {
+		t.Fatal("windows-exporter integration was not found")
+	}
+	if integration.Inspect == nil {
+		t.Fatal("windows-exporter inspector is nil")
+	}
+}
+
+func TestDefaultDependencyCatalogConfiguresLibreHardwareMonitorInspector(
+	t *testing.T,
+) {
+	catalog, err := defaultDependencyCatalog()
+	if err != nil {
+		t.Fatalf("defaultDependencyCatalog() error = %v", err)
+	}
+
+	integration, found := catalog.Find("libre-hardware-monitor")
+	if !found {
+		t.Fatal("libre-hardware-monitor integration was not found")
+	}
+	if integration.Inspect == nil {
+		t.Fatal("libre-hardware-monitor inspector is nil")
+	}
+}

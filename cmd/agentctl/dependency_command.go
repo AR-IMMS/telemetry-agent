@@ -93,6 +93,60 @@ func runDependency(
 		return 0
 	}
 
+	if args[0] == "status" {
+		if len(args) != 1 {
+			fmt.Fprintln(
+				stderr,
+				"usage error: dependency status does not accept arguments",
+			)
+			fmt.Fprintln(stderr)
+			writeDependencyHelp(stderr)
+
+			return 2
+		}
+
+		if deps.listDependencyStatuses == nil {
+			fmt.Fprintln(
+				stderr,
+				"dependency status: lister is not configured",
+			)
+
+			return 1
+		}
+
+		results, err := deps.listDependencyStatuses(ctx)
+		if err != nil {
+			fmt.Fprintf(stderr, "dependency status: %v\n", err)
+
+			return 1
+		}
+
+		fmt.Fprintln(stdout, "Dependency status:")
+
+		for _, result := range results {
+			if result.InspectionError != nil {
+				fmt.Fprintf(
+					stdout,
+					"- %s: unknown (%v)\n",
+					result.Definition.Name,
+					result.InspectionError,
+				)
+
+				continue
+			}
+
+			fmt.Fprintf(
+				stdout,
+				"- %s: %s (%s)\n",
+				result.Definition.Name,
+				result.Status.Availability,
+				result.Status.Health,
+			)
+		}
+
+		return 0
+	}
+
 	if args[0] != "install" {
 		fmt.Fprintf(
 			stderr,

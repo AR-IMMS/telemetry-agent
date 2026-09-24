@@ -39,6 +39,7 @@ func inspectInstallation(
 	ctx context.Context,
 	options Options,
 	inspectTask scheduledTaskInspector,
+	inspectTaskEnabled scheduledTaskInspector,
 	matchTask scheduledTaskMatcher,
 	inspectConfig configurationInspector,
 	inspectFirewall firewallInspector,
@@ -53,6 +54,11 @@ func inspectInstallation(
 	if inspectTask == nil {
 		return installationState{}, fmt.Errorf(
 			"Libre Hardware Monitor task inspector is required",
+		)
+	}
+	if inspectTaskEnabled == nil {
+		return installationState{}, fmt.Errorf(
+			"Libre Hardware Monitor task enabled inspector is required",
 		)
 	}
 	if matchTask == nil {
@@ -88,6 +94,20 @@ func inspectInstallation(
 		return installationState{}, nil
 	}
 
+	taskEnabled, err := inspectTaskEnabled(ctx, options.TaskName)
+	if err != nil {
+		return installationState{}, fmt.Errorf(
+			"inspect Libre Hardware Monitor task state: %w",
+			err,
+		)
+	}
+
+	if !taskEnabled {
+		return installationState{
+			TaskExists: true,
+		}, nil
+	}
+
 	taskMatches, err := matchTask(ctx, options)
 	if err != nil {
 		return installationState{}, fmt.Errorf(
@@ -114,6 +134,7 @@ func inspectInstallation(
 
 	state := installationState{
 		TaskExists:      true,
+		TaskEnabled:     true,
 		ConfigMatches:   configMatches,
 		FirewallMatches: firewallMatches,
 
@@ -157,6 +178,12 @@ func newInstallationInspector(
 				taskName string,
 			) (bool, error) {
 				return scheduledTaskExists(ctx, taskName, run)
+			},
+			func(
+				ctx context.Context,
+				taskName string,
+			) (bool, error) {
+				return scheduledTaskEnabled(ctx, taskName, run)
 			},
 			func(
 				ctx context.Context,

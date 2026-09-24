@@ -64,7 +64,16 @@ func inspectWindowsExporterInstallation(
 	}
 	defer service.Close()
 
-	// Query the service to determine whether it is running and healthy.
+	// Read startup configuration before classifying the service lifecycle.
+	serviceConfig, err := service.Config()
+	if err != nil {
+		return windowsExporterInstallationState{}, fmt.Errorf(
+			"read Windows Exporter service configuration: %w",
+			err,
+		)
+	}
+
+	// Query the service to determine whether it is currently running.
 	status, err := service.Query()
 	if err != nil {
 		return windowsExporterInstallationState{}, fmt.Errorf(
@@ -73,12 +82,17 @@ func inspectWindowsExporterInstallation(
 		)
 	}
 
-	// The service exists, so we can report its running state and health.
-	state := windowsExporterInstallationState{
-		serviceExists:  true,
-		serviceRunning: status.State == svc.Running,
+	state, err := windowsExporterInstallationStateFromSCM(
+		serviceConfig.StartType,
+		status.State,
+	)
+	if err != nil {
+		return windowsExporterInstallationState{}, fmt.Errorf(
+			"classify Windows Exporter service startup: %w",
+			err,
+		)
 	}
-	if !state.serviceRunning {
+	if !state.serviceEnabled || !state.serviceRunning {
 		return state, nil
 	}
 
@@ -98,4 +112,46 @@ func inspectWindowsExporterInstallation(
 	) == nil
 
 	return state, nil
+}
+
+// windowsExporterStartupState maps the SCM startup configuration to the
+// Agent lifecycle contract.
+func windowsExporterStartupState(
+	startType uint32,
+) (enabled bool, matches bool, err error) {
+	switch startType {
+	case mgr.StartAutomatic:
+		return true, true, nil
+
+	case mgr.StartManual:
+		return true, false, nil
+
+	case mgr.StartDisabled:
+		return false, false, nil
+
+	default:
+		return false, false, fmt.Errorf(
+			"unsupported Windows Exporter service start type %d",
+			startType,
+		)
+	}
+}
+
+// windowsExporterInstallationStateFromSCM maps SCM configuration and runtime
+// state into the Agent-owned Windows Exporter observation.
+func windowsExporterInstallationStateFromSCM(
+	startType uint32,
+	serviceState svc.State,
+) (windowsExporterInstallationState, error) {
+	enabled, startupMatches, err := windowsExporterStartupState(startType)
+	if err != nil {
+		return windowsExporterInstallationState{}, err
+	}
+
+	return windowsExporterInstallationState{
+		serviceExists:  true,
+		serviceEnabled: enabled,
+		serviceRunning: serviceState == svc.Running,
+		startupMatches: startupMatches,
+	}, nil
 }

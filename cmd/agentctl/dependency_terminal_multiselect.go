@@ -10,15 +10,15 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+var errDependencySelectionCancelled = errors.New(
+	"dependency selection cancelled",
+)
+
 // dependencyMultiSelectRunner runs the TUI and returns its final state.
 type dependencyMultiSelectRunner func(
 	dependencyMultiSelectTUI,
 	io.Writer,
 ) (dependencyMultiSelectTUI, error)
-
-var errDependencySelectionCancelled = errors.New(
-	"dependency selection cancelled",
-)
 
 // newTerminalDependencyMultiSelector adapts the multi-select TUI to the CLI
 // dependency-selection contract.

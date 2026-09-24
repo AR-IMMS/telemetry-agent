@@ -26,7 +26,12 @@ type Installer func(context.Context) (InstallResult, error)
 type Integration struct {
 	Definition Definition
 	Install    Installer
+	// Inspect reads the current managed and runtime state without changing it.
+	Inspect Inspector
 }
+
+// Inspector reads the current lifecycle state of one dependency.
+type Inspector func(context.Context) (Inspection, error)
 
 // WindowsExporterInstaller preserves the existing Windows Exporter constructor
 // contract while using the generic installer function type.
@@ -43,4 +48,75 @@ func (d Definition) SupportsOS(osName string) bool {
 	}
 
 	return false
+}
+
+// Availability describes whether the Agent currently manages a dependency as
+// enabled or disabled.
+type Availability string
+
+const (
+	AvailabilityUnknown  Availability = "unknown"
+	AvailabilityDisabled Availability = "disabled"
+	AvailabilityEnabled  Availability = "enabled"
+)
+
+// Health describes the runtime condition of an enabled dependency.
+type Health string
+
+const (
+	HealthUnknown   Health = "unknown"
+	HealthHealthy   Health = "healthy"
+	HealthUnhealthy Health = "unhealthy"
+	HealthDrifted   Health = "drifted"
+)
+
+// Inspection is the normalized read-only state returned by a dependency
+// adapter before it is presented to CLI callers.
+type Inspection struct {
+	Enabled bool
+	Healthy bool
+	Drifted bool
+}
+
+// Status is the user-facing lifecycle state of one dependency.
+type Status struct {
+	Availability Availability
+	Health       Health
+}
+
+// StatusResult pairs one dependency definition with its current lifecycle
+// status while preserving catalog ordering.
+type StatusResult struct {
+	Definition      Definition
+	Status          Status
+	InspectionError error
+}
+
+// Status projects an inspection into the stable lifecycle vocabulary.
+func (i Inspection) Status() Status {
+	if !i.Enabled {
+		return Status{
+			Availability: AvailabilityDisabled,
+			Health:       HealthUnknown,
+		}
+	}
+
+	if i.Drifted {
+		return Status{
+			Availability: AvailabilityEnabled,
+			Health:       HealthDrifted,
+		}
+	}
+
+	if i.Healthy {
+		return Status{
+			Availability: AvailabilityEnabled,
+			Health:       HealthHealthy,
+		}
+	}
+
+	return Status{
+		Availability: AvailabilityEnabled,
+		Health:       HealthUnhealthy,
+	}
 }

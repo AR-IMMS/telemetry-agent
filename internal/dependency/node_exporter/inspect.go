@@ -65,18 +65,19 @@ func inspectNodeExporterInstallation(
 		return installationState{}, nil
 	}
 
-	if err := checkHealth(ctx); err != nil {
-		return installationState{
-			ServiceExists: true,
-		}, nil
-	}
-
 	matches, err := matchUnit(ctx)
 	if err != nil {
 		return installationState{}, fmt.Errorf(
 			"match Node Exporter systemd unit: %w",
 			err,
 		)
+	}
+
+	if err := checkHealth(ctx); err != nil {
+		return installationState{
+			ServiceExists: true,
+			UnitMatches:   matches,
+		}, nil
 	}
 
 	return installationState{

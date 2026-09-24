@@ -97,3 +97,50 @@ func TestOSSystemdRunnerPreservesCommandDiagnostics(t *testing.T) {
 		t.Fatalf("Run() error = %v, want systemd diagnostics", err)
 	}
 }
+
+func TestOSSystemdRunnerReturnsCommandOutput(
+	t *testing.T,
+) {
+	process := &fakeSystemdProcess{
+		output: []byte("enabled\n"),
+	}
+
+	runner := osSystemdRunner{
+		newCommand: func(
+			ctx context.Context,
+			executable string,
+			args ...string,
+		) systemdProcess {
+			if executable != "systemctl" {
+				t.Fatalf(
+					"executable = %q, want systemctl",
+					executable,
+				)
+			}
+
+			return process
+		},
+	}
+
+	output, err := runner.Output(
+		context.Background(),
+		systemdCommand{
+			Executable: "systemctl",
+			Args: []string{
+				"show",
+				"--property=UnitFileState",
+				"--value",
+				"ar-imms-node-exporter.service",
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("Output() error = %v", err)
+	}
+	if !process.called {
+		t.Fatal("CombinedOutput() was not called")
+	}
+	if string(output) != "enabled\n" {
+		t.Fatalf("output = %q, want enabled state", output)
+	}
+}
