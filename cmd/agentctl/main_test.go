@@ -394,30 +394,77 @@ func TestDefaultDependenciesConfigureDependencyInstaller(t *testing.T) {
 	}
 }
 
-func TestDefaultDependencyInstallersIncludeNodeExporter(t *testing.T) {
-	installers := defaultDependencyInstallers()
+func TestDefaultDependencyCatalogIncludesBuiltInIntegrations(
+	t *testing.T,
+) {
+	tests := []struct {
+		name          string
+		supportedOS   string
+		unsupportedOS string
+	}{
+		{
+			name:          "windows-exporter",
+			supportedOS:   "windows",
+			unsupportedOS: "linux",
+		},
+		{
+			name:          "node-exporter",
+			supportedOS:   "linux",
+			unsupportedOS: "windows",
+		},
+		{
+			name:          "libre-hardware-monitor",
+			supportedOS:   "windows",
+			unsupportedOS: "linux",
+		},
+	}
 
-	for _, name := range []string{
-		"windows-exporter",
-		"node-exporter",
-	} {
-		if installers[name] == nil {
-			t.Fatalf("default installer %q is not configured", name)
-		}
+	catalog, err := defaultDependencyCatalog()
+	if err != nil {
+		t.Fatalf("defaultDependencyCatalog() error = %v", err)
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			integration, found := catalog.Find(test.name)
+
+			if !found {
+				t.Fatalf(
+					"defaultDependencyCatalog() does not contain %q",
+					test.name,
+				)
+			}
+			if integration.Install == nil {
+				t.Fatalf("integration %q installer is nil", test.name)
+			}
+			if integration.Definition.DisplayName == "" {
+				t.Fatalf("integration %q display name is empty", test.name)
+			}
+			if integration.Definition.Description == "" {
+				t.Fatalf("integration %q description is empty", test.name)
+			}
+			if !integration.Definition.SupportsOS(test.supportedOS) {
+				t.Fatalf(
+					"integration %q does not support %q",
+					test.name,
+					test.supportedOS,
+				)
+			}
+			if integration.Definition.SupportsOS(test.unsupportedOS) {
+				t.Fatalf(
+					"integration %q unexpectedly supports %q",
+					test.name,
+					test.unsupportedOS,
+				)
+			}
+		})
 	}
 }
 
-func TestDefaultDependencyInstallersIncludeLibreHardwareMonitor(t *testing.T) {
-	installers := defaultDependencyInstallers()
+func TestDefaultDependenciesConfigureDependencySelector(t *testing.T) {
+	deps := defaultDependencies()
 
-	installer, found := installers["libre-hardware-monitor"]
-
-	if !found {
-		t.Fatal(
-			"defaultDependencyInstallers() does not include libre-hardware-monitor",
-		)
-	}
-	if installer == nil {
-		t.Fatal("Libre Hardware Monitor installer is nil")
+	if deps.selectDependencies == nil {
+		t.Fatal("default dependency selector is nil")
 	}
 }

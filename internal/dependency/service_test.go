@@ -8,8 +8,8 @@ import (
 
 func TestServiceRejectsUnknownDependency(t *testing.T) {
 	service := Service{
-		Registry: DefaultRegistry(),
-		OS:       "windows",
+		Catalog: newServiceCatalog(t),
+		OS:      "windows",
 	}
 
 	_, err := service.Install(context.Background(), "not-real")
@@ -23,16 +23,19 @@ func TestServiceRejectsUnsupportedPlatformBeforeInstallation(t *testing.T) {
 	called := false
 
 	service := Service{
-		Registry: DefaultRegistry(),
-		OS:       "linux",
-		Installers: map[string]Installer{
-			"windows-exporter": func(
-				context.Context,
-			) (InstallResult, error) {
-				called = true
-				return InstallResult{}, nil
-			},
-		},
+		Catalog: newServiceCatalog(
+			t,
+			testServiceIntegration(
+				"windows-exporter",
+				"windows",
+				func(context.Context) (InstallResult, error) {
+					called = true
+
+					return InstallResult{}, nil
+				},
+			),
+		),
+		OS: "linux",
 	}
 
 	_, err := service.Install(context.Background(), "windows-exporter")
@@ -49,19 +52,21 @@ func TestServiceInstallsWindowsExporter(t *testing.T) {
 	calls := 0
 
 	service := Service{
-		Registry: DefaultRegistry(),
-		OS:       "windows",
-		Installers: map[string]Installer{
-			"windows-exporter": func(
-				context.Context,
-			) (InstallResult, error) {
-				calls++
+		Catalog: newServiceCatalog(
+			t,
+			testServiceIntegration(
+				"windows-exporter",
+				"windows",
+				func(context.Context) (InstallResult, error) {
+					calls++
 
-				return InstallResult{
-					Reused: true,
-				}, nil
-			},
-		},
+					return InstallResult{
+						Reused: true,
+					}, nil
+				},
+			),
+		),
+		OS: "windows",
 	}
 
 	result, err := service.Install(
@@ -86,19 +91,19 @@ func TestServiceInstallsNodeExporter(t *testing.T) {
 	installed := false
 
 	service := Service{
-		Registry: DefaultRegistry(),
-		OS:       "linux",
-		Installers: map[string]Installer{
-			"node-exporter": func(
-				context.Context,
-			) (InstallResult, error) {
-				installed = true
+		Catalog: newServiceCatalog(
+			t,
+			testServiceIntegration(
+				"node-exporter",
+				"linux",
+				func(context.Context) (InstallResult, error) {
+					installed = true
 
-				return InstallResult{
-					Name: "node-exporter",
-				}, nil
-			},
-		},
+					return InstallResult{}, nil
+				},
+			),
+		),
+		OS: "linux",
 	}
 
 	result, err := service.Install(
@@ -112,11 +117,40 @@ func TestServiceInstallsNodeExporter(t *testing.T) {
 	if !installed {
 		t.Fatal("node-exporter installer was not called")
 	}
-
 	if result.Name != "node-exporter" {
 		t.Fatalf(
 			"install result name = %q, want node-exporter",
 			result.Name,
 		)
+	}
+}
+
+func newServiceCatalog(
+	t *testing.T,
+	integrations ...Integration,
+) Catalog {
+	t.Helper()
+
+	catalog, err := NewCatalog(integrations)
+	if err != nil {
+		t.Fatalf("NewCatalog() error = %v", err)
+	}
+
+	return catalog
+}
+
+func testServiceIntegration(
+	name string,
+	osName string,
+	install Installer,
+) Integration {
+	return Integration{
+		Definition: Definition{
+			Name:        name,
+			DisplayName: name,
+			Description: "Test dependency.",
+			SupportedOS: []string{osName},
+		},
+		Install: install,
 	}
 }

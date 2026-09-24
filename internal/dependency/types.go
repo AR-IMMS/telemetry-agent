@@ -8,6 +8,8 @@ import (
 // Definition describes one built-in external dependency supported by agentctl.
 type Definition struct {
 	Name        string
+	DisplayName string
+	Description string
 	SupportedOS []string
 }
 
@@ -19,6 +21,12 @@ type InstallResult struct {
 
 // Installer installs or reconciles one dependency.
 type Installer func(context.Context) (InstallResult, error)
+
+// Integration binds one dependency definition to its concrete behavior.
+type Integration struct {
+	Definition Definition
+	Install    Installer
+}
 
 // WindowsExporterInstaller preserves the existing Windows Exporter constructor
 // contract while using the generic installer function type.
