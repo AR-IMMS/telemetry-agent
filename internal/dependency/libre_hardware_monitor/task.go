@@ -5,12 +5,15 @@ import (
 	"encoding/binary"
 	"encoding/xml"
 	"fmt"
-	"path/filepath"
+	"strings"
 	"unicode/utf16"
 )
 
-// RenderTaskXML creates the LocalSystem startup task that keeps LHM running.
-func RenderTaskXML(options Options) ([]byte, error) {
+// RenderTaskXML creates an interactive-user logon task that keeps LHM running.
+func RenderTaskXML(
+	options Options,
+	interactiveUserSID string,
+) ([]byte, error) {
 	if err := options.Validate(); err != nil {
 		return nil, fmt.Errorf(
 			"validate Libre Hardware Monitor task options: %w",
@@ -18,13 +21,27 @@ func RenderTaskXML(options Options) ([]byte, error) {
 		)
 	}
 
-	executablePath := filepath.Join(
-		options.InstallDir,
-		"LibreHardwareMonitor.exe",
-	)
+	interactiveUserSID = strings.TrimSpace(interactiveUserSID)
+	if interactiveUserSID == "" {
+		return nil, fmt.Errorf(
+			"Libre Hardware Monitor interactive user SID is required",
+		)
+	}
+
+	executablePath := windowsExecutablePath(options.InstallDir)
+
+	var escapedUserSID bytes.Buffer
+	if err := xml.EscapeText(
+		&escapedUserSID,
+		[]byte(interactiveUserSID),
+	); err != nil {
+		return nil, fmt.Errorf(
+			"escape Libre Hardware Monitor interactive user SID: %w",
+			err,
+		)
+	}
 
 	var escapedCommand bytes.Buffer
-
 	if err := xml.EscapeText(
 		&escapedCommand,
 		[]byte(executablePath),
@@ -38,13 +55,15 @@ func RenderTaskXML(options Options) ([]byte, error) {
 	taskXML := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <Triggers>
-    <BootTrigger>
+    <LogonTrigger>
+      <UserId>%s</UserId>
       <Enabled>true</Enabled>
-    </BootTrigger>
+    </LogonTrigger>
   </Triggers>
   <Principals>
     <Principal id="Author">
-      <UserId>S-1-5-18</UserId>
+      <UserId>%s</UserId>
+      <LogonType>InteractiveToken</LogonType>
       <RunLevel>HighestAvailable</RunLevel>
     </Principal>
   </Principals>
@@ -68,7 +87,11 @@ func RenderTaskXML(options Options) ([]byte, error) {
     </Exec>
   </Actions>
 </Task>
-`, escapedCommand.String())
+`,
+		escapedUserSID.String(),
+		escapedUserSID.String(),
+		escapedCommand.String(),
+	)
 
 	return encodeUTF16LE(taskXML), nil
 }
@@ -89,4 +112,13 @@ func encodeUTF16LE(content string) []byte {
 	}
 
 	return result
+}
+
+// windowsExecutablePath builds the executable path written into a Windows
+// scheduled-task definition, independent of the host running the renderer.
+func windowsExecutablePath(installDir string) string {
+	return strings.TrimRight(
+		strings.TrimSpace(installDir),
+		`\/`,
+	) + `\LibreHardwareMonitor.exe`
 }

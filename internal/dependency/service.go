@@ -8,14 +8,11 @@ import (
 
 // Service coordinates dependency lookup, platform checks, and installation.
 type Service struct {
-	// Registry lists the dependencies that this Agent release supports.
-	Registry Registry
+	// Catalog is the single source of dependency definitions and installers.
+	Catalog Catalog
 
 	// OS is the normalized host operating system, for example "windows".
 	OS string
-
-	// Installers maps a stable dependency name to its concrete installer.
-	Installers map[string]Installer
 }
 
 // Install validates and installs one named dependency for the current platform.
@@ -23,10 +20,9 @@ func (s Service) Install(
 	ctx context.Context,
 	name string,
 ) (InstallResult, error) {
-	// Normalize once so CLI input such as " Windows-Exporter " remains predictable.
 	normalizedName := strings.ToLower(strings.TrimSpace(name))
 
-	definition, found := s.Registry.Find(normalizedName)
+	integration, found := s.Catalog.Find(normalizedName)
 	if !found {
 		return InstallResult{}, fmt.Errorf(
 			"unknown dependency %q",
@@ -34,7 +30,9 @@ func (s Service) Install(
 		)
 	}
 
+	definition := integration.Definition
 	normalizedOS := strings.ToLower(strings.TrimSpace(s.OS))
+
 	if !definition.SupportsOS(normalizedOS) {
 		return InstallResult{}, fmt.Errorf(
 			"dependency %q does not support operating system %q",
@@ -43,15 +41,14 @@ func (s Service) Install(
 		)
 	}
 
-	installer := s.Installers[definition.Name]
-	if installer == nil {
+	if integration.Install == nil {
 		return InstallResult{}, fmt.Errorf(
 			"dependency %q installer is not configured",
 			definition.Name,
 		)
 	}
 
-	result, err := installer(ctx)
+	result, err := integration.Install(ctx)
 	if err != nil {
 		return InstallResult{}, fmt.Errorf(
 			"install dependency %q: %w",
@@ -60,8 +57,86 @@ func (s Service) Install(
 		)
 	}
 
-	// The dependency catalog owns the canonical result name.
+	// The catalog owns the canonical result name.
 	result.Name = definition.Name
 
 	return result, nil
+}
+
+// Status reads one dependency's lifecycle status for the current platform.
+func (s Service) Status(
+	ctx context.Context,
+	name string,
+) (Status, error) {
+	normalizedName := strings.ToLower(strings.TrimSpace(name))
+
+	integration, found := s.Catalog.Find(normalizedName)
+	if !found {
+		return Status{}, fmt.Errorf(
+			"unknown dependency %q",
+			normalizedName,
+		)
+	}
+
+	definition := integration.Definition
+	normalizedOS := strings.ToLower(strings.TrimSpace(s.OS))
+
+	if !definition.SupportsOS(normalizedOS) {
+		return Status{}, fmt.Errorf(
+			"dependency %q does not support operating system %q",
+			definition.Name,
+			normalizedOS,
+		)
+	}
+
+	if integration.Inspect == nil {
+		return Status{}, fmt.Errorf(
+			"dependency %q inspector is not configured",
+			definition.Name,
+		)
+	}
+
+	inspection, err := integration.Inspect(ctx)
+	if err != nil {
+		return Status{}, fmt.Errorf(
+			"inspect dependency %q: %w",
+			definition.Name,
+			err,
+		)
+	}
+
+	return inspection.Status(), nil
+}
+
+// ListStatus reads lifecycle statuses for all dependencies supported by the
+// current operating system, ordered by the catalog.
+func (s Service) ListStatus(
+	ctx context.Context,
+) ([]StatusResult, error) {
+	definitions := s.Catalog.List(s.OS)
+
+	results := make([]StatusResult, 0, len(definitions))
+
+	for _, definition := range definitions {
+		status, err := s.Status(ctx, definition.Name)
+		if err != nil {
+			results = append(results, StatusResult{
+				Definition: definition,
+				Status: Status{
+					Availability: AvailabilityUnknown,
+					Health:       HealthUnknown,
+				},
+				InspectionError: err,
+			})
+
+			continue
+		}
+
+		results = append(results, StatusResult{
+			Definition: definition,
+			Status:     status,
+		})
+	}
+
+	return results, nil
 }

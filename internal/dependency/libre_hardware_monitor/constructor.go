@@ -23,6 +23,22 @@ type installerDependencies struct {
 	startupTimeout time.Duration
 }
 
+// NewInspector creates the production lifecycle inspector for the
+// Agent-owned Libre Hardware Monitor installation.
+func NewInspector(
+	options Options,
+) dependency.Inspector {
+	return newDependencyInspector(
+		newInstallationInspector(
+			options,
+			http.DefaultClient,
+			defaultHealthPoll,
+			runOSProcessOutput,
+			currentWindowsUserSID,
+		),
+	)
+}
+
 // newInstaller composes privilege policy, reconciliation, fresh installation,
 // and managed-resource updates into the public dependency installer contract.
 func newInstaller(
@@ -76,6 +92,7 @@ func NewInstaller(
 				http.DefaultClient,
 				defaultHealthPoll,
 				runOSProcessOutput,
+				currentWindowsUserSID,
 			),
 			stageArchive: func(
 				ctx context.Context,
@@ -94,7 +111,17 @@ func NewInstaller(
 				ctx context.Context,
 				options Options,
 			) error {
-				return RegisterTask(ctx, options, runOSProcess)
+				userSID, err := currentWindowsUserSID()
+				if err != nil {
+					return err
+				}
+
+				return RegisterTask(
+					ctx,
+					options,
+					userSID,
+					runOSProcess,
+				)
 			},
 			waitForHealth: func(
 				ctx context.Context,

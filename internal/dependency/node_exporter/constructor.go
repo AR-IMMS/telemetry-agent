@@ -128,3 +128,27 @@ func NewInstaller(
 		},
 	)
 }
+
+// NewInspector creates the production Node Exporter status inspector.
+func NewInspector(options Options) dependency.Inspector {
+	runSystemd := newOSSystemdOutputRunner()
+
+	return newDependencyInspector(
+		options,
+		newInstallationInspector(
+			options,
+			http.DefaultClient,
+			defaultHealthPoll,
+		),
+		func(
+			ctx context.Context,
+			serviceName string,
+		) (bool, error) {
+			return systemdUnitEnabled(
+				ctx,
+				serviceName,
+				runSystemd,
+			)
+		},
+	)
+}

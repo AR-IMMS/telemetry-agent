@@ -30,11 +30,16 @@ type firewallInspector func(context.Context, Options) (bool, error)
 // healthInspector checks the local LHM metrics endpoint.
 type healthInspector func(context.Context) error
 
+// interactiveUserSIDResolver resolves the logged-in Windows user that owns
+// the interactive Libre Hardware Monitor process.
+type interactiveUserSIDResolver func() (string, error)
+
 // inspectInstallation reads the Agent-owned LHM state without changing Windows.
 func inspectInstallation(
 	ctx context.Context,
 	options Options,
 	inspectTask scheduledTaskInspector,
+	inspectTaskEnabled scheduledTaskInspector,
 	matchTask scheduledTaskMatcher,
 	inspectConfig configurationInspector,
 	inspectFirewall firewallInspector,
@@ -49,6 +54,11 @@ func inspectInstallation(
 	if inspectTask == nil {
 		return installationState{}, fmt.Errorf(
 			"Libre Hardware Monitor task inspector is required",
+		)
+	}
+	if inspectTaskEnabled == nil {
+		return installationState{}, fmt.Errorf(
+			"Libre Hardware Monitor task enabled inspector is required",
 		)
 	}
 	if matchTask == nil {
@@ -84,6 +94,20 @@ func inspectInstallation(
 		return installationState{}, nil
 	}
 
+	taskEnabled, err := inspectTaskEnabled(ctx, options.TaskName)
+	if err != nil {
+		return installationState{}, fmt.Errorf(
+			"inspect Libre Hardware Monitor task state: %w",
+			err,
+		)
+	}
+
+	if !taskEnabled {
+		return installationState{
+			TaskExists: true,
+		}, nil
+	}
+
 	taskMatches, err := matchTask(ctx, options)
 	if err != nil {
 		return installationState{}, fmt.Errorf(
@@ -110,6 +134,7 @@ func inspectInstallation(
 
 	state := installationState{
 		TaskExists:      true,
+		TaskEnabled:     true,
 		ConfigMatches:   configMatches,
 		FirewallMatches: firewallMatches,
 
@@ -132,11 +157,18 @@ func newInstallationInspector(
 	client *http.Client,
 	healthPollInterval time.Duration,
 	run processOutputRunner,
+	resolveInteractiveUserSID interactiveUserSIDResolver,
 ) installationInspector {
 	return func(ctx context.Context) (installationState, error) {
 		healthEndpoint := "http://127.0.0.1:" +
 			strconv.Itoa(options.ListenPort) +
 			"/metrics"
+
+		if resolveInteractiveUserSID == nil {
+			return installationState{}, fmt.Errorf(
+				"Libre Hardware Monitor interactive user SID resolver is required",
+			)
+		}
 
 		return inspectInstallation(
 			ctx,
@@ -149,9 +181,28 @@ func newInstallationInspector(
 			},
 			func(
 				ctx context.Context,
+				taskName string,
+			) (bool, error) {
+				return scheduledTaskEnabled(ctx, taskName, run)
+			},
+			func(
+				ctx context.Context,
 				options Options,
 			) (bool, error) {
-				return scheduledTaskMatches(ctx, options, run)
+				userSID, err := resolveInteractiveUserSID()
+				if err != nil {
+					return false, fmt.Errorf(
+						"resolve Libre Hardware Monitor interactive user SID: %w",
+						err,
+					)
+				}
+
+				return scheduledTaskMatches(
+					ctx,
+					options,
+					userSID,
+					run,
+				)
 			},
 			ConfigMatches,
 			func(

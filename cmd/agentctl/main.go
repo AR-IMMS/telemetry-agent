@@ -29,18 +29,35 @@ const (
 )
 
 type dependencies struct {
-	collectPlatform   func() (identity.PlatformInfo, error)
-	runBootstrap      bootstrapRunFunc
-	downloader        bootstrap.Downloader
-	runner            bootstrap.CommandRunner
-	runSupervisor     supervisorRunFunc
-	installDependency dependencyInstallFunc
+	collectPlatform        func() (identity.PlatformInfo, error)
+	runBootstrap           bootstrapRunFunc
+	downloader             bootstrap.Downloader
+	runner                 bootstrap.CommandRunner
+	runSupervisor          supervisorRunFunc
+	installDependency      dependencyInstallFunc
+	listDependencies       dependencyListFunc
+	selectDependencies     dependencySelectionFunc
+	listDependencyStatuses dependencyStatusListFunc
 }
+
+type dependencyStatusListFunc func(
+	context.Context,
+) ([]dependency.StatusResult, error)
+
+type dependencySelectionFunc func(
+	context.Context,
+	[]dependency.Definition,
+	io.Writer,
+) ([]string, error)
 
 type dependencyInstallFunc func(
 	context.Context,
 	string,
 ) (dependency.InstallResult, error)
+
+type dependencyListFunc func(
+	context.Context,
+) ([]dependency.Definition, error)
 
 type bootstrapRunFunc func(
 	context.Context,
@@ -78,26 +95,121 @@ func defaultDependencies() dependencies {
 		runner:            bootstrap.OSCommandRunner{},
 		runSupervisor:     supervisor.Run,
 		installDependency: defaultInstallDependency,
+		listDependencies:  defaultListDependencies,
+		selectDependencies: newTerminalDependencyMultiSelector(
+			func() bool {
+				inputInfo, inputErr := os.Stdin.Stat()
+				outputInfo, outputErr := os.Stdout.Stat()
+
+				return inputErr == nil &&
+					outputErr == nil &&
+					inputInfo.Mode()&os.ModeCharDevice != 0 &&
+					outputInfo.Mode()&os.ModeCharDevice != 0
+			},
+			runDependencyMultiSelectProgram(os.Stdin),
+		),
+		listDependencyStatuses: defaultListDependencyStatuses,
 	}
 }
 
-// defaultDependencyInstallers creates the platform-specific installers bundled
-// with this agentctl release.
-func defaultDependencyInstallers() map[string]dependency.Installer {
-	return map[string]dependency.Installer{
-		"windows-exporter": dependency.NewWindowsExporterInstaller(
-			dependency.DefaultWindowsExporterOptions(),
-			bootstrap.HTTPDownloader{},
-		),
-		"node-exporter": nodeexporter.NewInstaller(
-			nodeexporter.DefaultOptions(),
-			bootstrap.HTTPDownloader{},
-		),
-		"libre-hardware-monitor": librehardwaremonitor.NewInstaller(
-			librehardwaremonitor.DefaultOptions(),
-			bootstrap.HTTPDownloader{},
-		),
+func defaultListDependencyStatuses(
+	ctx context.Context,
+) ([]dependency.StatusResult, error) {
+	platform, err := identity.CollectPlatformInfo()
+	if err != nil {
+		return nil, fmt.Errorf(
+			"collect platform information: %w",
+			err,
+		)
 	}
+
+	catalog, err := defaultDependencyCatalog()
+	if err != nil {
+		return nil, fmt.Errorf(
+			"build dependency catalog: %w",
+			err,
+		)
+	}
+
+	return (dependency.Service{
+		Catalog: catalog,
+		OS:      platform.OS,
+	}).ListStatus(ctx)
+}
+
+// defaultListDependencies returns integrations supported by the local platform.
+func defaultListDependencies(
+	context.Context,
+) ([]dependency.Definition, error) {
+	platform, err := identity.CollectPlatformInfo()
+	if err != nil {
+		return nil, fmt.Errorf(
+			"collect platform information: %w",
+			err,
+		)
+	}
+
+	catalog, err := defaultDependencyCatalog()
+	if err != nil {
+		return nil, fmt.Errorf(
+			"build dependency catalog: %w",
+			err,
+		)
+	}
+
+	return catalog.List(platform.OS), nil
+}
+
+// defaultDependencyCatalog creates the built-in integrations bundled with this
+// agentctl release.
+func defaultDependencyCatalog() (dependency.Catalog, error) {
+	return dependency.NewCatalog([]dependency.Integration{
+		{
+			Definition: dependency.Definition{
+				Name:        "windows-exporter",
+				DisplayName: "Windows Exporter",
+				Description: "Collects Windows host metrics.",
+				SupportedOS: []string{"windows"},
+			},
+			Install: dependency.NewWindowsExporterInstaller(
+				dependency.DefaultWindowsExporterOptions(),
+				bootstrap.HTTPDownloader{},
+			),
+			Inspect: dependency.NewWindowsExporterInspector(
+				dependency.DefaultWindowsExporterOptions(),
+			),
+		},
+		{
+			Definition: dependency.Definition{
+				Name:        "node-exporter",
+				DisplayName: "Node Exporter",
+				Description: "Collects Linux host metrics.",
+				SupportedOS: []string{"linux"},
+			},
+			Install: nodeexporter.NewInstaller(
+				nodeexporter.DefaultOptions(),
+				bootstrap.HTTPDownloader{},
+			),
+			Inspect: nodeexporter.NewInspector(
+				nodeexporter.DefaultOptions(),
+			),
+		},
+		{
+			Definition: dependency.Definition{
+				Name:        "libre-hardware-monitor",
+				DisplayName: "Libre Hardware Monitor",
+				Description: "Collects Windows hardware metrics.",
+				SupportedOS: []string{"windows"},
+			},
+			Install: librehardwaremonitor.NewInstaller(
+				librehardwaremonitor.DefaultOptions(),
+				bootstrap.HTTPDownloader{},
+			),
+			Inspect: librehardwaremonitor.NewInspector(
+				librehardwaremonitor.DefaultOptions(),
+			),
+		},
+	})
 }
 
 // defaultInstallDependency selects the platform-safe dependency installer for
@@ -114,13 +226,32 @@ func defaultInstallDependency(
 		)
 	}
 
+	catalog, err := defaultDependencyCatalog()
+	if err != nil {
+		return dependency.InstallResult{}, fmt.Errorf(
+			"build dependency catalog: %w",
+			err,
+		)
+	}
+
 	service := dependency.Service{
-		Registry:   dependency.DefaultRegistry(),
-		OS:         platform.OS,
-		Installers: defaultDependencyInstallers(),
+		Catalog: catalog,
+		OS:      platform.OS,
 	}
 
 	return service.Install(ctx, name)
+}
+
+func writeRootHelp(output io.Writer) {
+	fmt.Fprint(output, `Usage:
+  agentctl <command> [options]
+
+Commands:
+  bootstrap   Bootstrap the OpenTelemetry Collector.
+  dependency  Manage telemetry dependencies.
+  run         Run the OpenTelemetry Collector under supervision.
+  help        Show this help.
+`)
 }
 
 func run(
@@ -133,10 +264,10 @@ func run(
 	// Keep command dispatch separate from command-specific flag validation and effects.
 	// usage: agentctl <bootstrap|run|dependency> [command options]
 	if len(args) == 0 {
-		fmt.Fprintln(
-			stderr,
-			"usage: agentctl <bootstrap|run> [command options]",
-		)
+		fmt.Fprintln(stderr, "usage error: command is required")
+		fmt.Fprintln(stderr)
+		writeRootHelp(stderr)
+
 		return 2
 	}
 
@@ -150,11 +281,18 @@ func run(
 	case "dependency":
 		return runDependency(ctx, args[1:], stdout, stderr, deps)
 
+	case "help":
+		writeRootHelp(stdout)
+		return 0
+
 	default:
-		fmt.Fprintln(
+		fmt.Fprintf(
 			stderr,
-			"usage: agentctl <bootstrap|run> [command options]",
+			"usage error: unknown command %q\n\n",
+			args[0],
 		)
+		writeRootHelp(stderr)
+
 		return 2
 	}
 }

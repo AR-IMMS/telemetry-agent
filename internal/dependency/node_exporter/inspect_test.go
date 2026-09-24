@@ -2,6 +2,7 @@ package nodeexporter
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -172,6 +173,50 @@ func TestNewInstallationInspectorReadsUnitAndMetricsEndpoint(t *testing.T) {
 		t.Fatalf(
 			"installation state = %+v, want existing healthy matching service",
 			state,
+		)
+	}
+}
+
+func TestInspectNodeExporterInstallationReportsUnhealthyMatchingUnit(
+	t *testing.T,
+) {
+	unitMatchCalls := 0
+
+	state, err := inspectNodeExporterInstallation(
+		context.Background(),
+		"ar-imms-node-exporter.service",
+		func(
+			ctx context.Context,
+			serviceName string,
+		) (bool, error) {
+			return true, nil
+		},
+		func(ctx context.Context) error {
+			return errors.New("metrics endpoint is unavailable")
+		},
+		func(ctx context.Context) (bool, error) {
+			unitMatchCalls++
+
+			return true, nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("inspectNodeExporterInstallation() error = %v", err)
+	}
+
+	if !state.ServiceExists {
+		t.Fatal("ServiceExists = false, want true")
+	}
+	if state.Healthy {
+		t.Fatal("Healthy = true, want false")
+	}
+	if !state.UnitMatches {
+		t.Fatal("UnitMatches = false, want true")
+	}
+	if unitMatchCalls != 1 {
+		t.Fatalf(
+			"unit match calls = %d, want 1",
+			unitMatchCalls,
 		)
 	}
 }

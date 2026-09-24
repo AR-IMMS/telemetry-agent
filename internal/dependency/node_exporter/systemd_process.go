@@ -39,16 +39,45 @@ func newOSSystemdRunner() systemdRunner {
 	return runner.Run
 }
 
+// newOSSystemdOutputRunner creates the production systemd output runner.
+func newOSSystemdOutputRunner() systemdOutputRunner {
+	runner := osSystemdRunner{
+		newCommand: func(
+			ctx context.Context,
+			executable string,
+			args ...string,
+		) systemdProcess {
+			return exec.CommandContext(ctx, executable, args...)
+		},
+	}
+
+	return runner.Output
+}
+
 // Run executes one systemd command and preserves its bounded diagnostics.
 func (r osSystemdRunner) Run(
 	ctx context.Context,
 	command systemdCommand,
 ) error {
+	_, err := r.Output(ctx, command)
+
+	return err
+}
+
+// Output executes one systemd command and returns its standard output.
+func (r osSystemdRunner) Output(
+	ctx context.Context,
+	command systemdCommand,
+) ([]byte, error) {
 	if strings.TrimSpace(command.Executable) == "" {
-		return fmt.Errorf("systemd command executable is required")
+		return nil, fmt.Errorf(
+			"systemd command executable is required",
+		)
 	}
 	if r.newCommand == nil {
-		return fmt.Errorf("systemd command factory is required")
+		return nil, fmt.Errorf(
+			"systemd command factory is required",
+		)
 	}
 
 	output, err := r.newCommand(
@@ -56,15 +85,14 @@ func (r osSystemdRunner) Run(
 		command.Executable,
 		command.Args...,
 	).CombinedOutput()
-
 	if err == nil {
-		return nil
+		return output, nil
 	}
 
 	diagnostics := strings.TrimSpace(string(output))
 
 	if diagnostics == "" {
-		return fmt.Errorf(
+		return nil, fmt.Errorf(
 			"run systemd command %q with arguments %#v: %w",
 			command.Executable,
 			command.Args,
@@ -72,7 +100,7 @@ func (r osSystemdRunner) Run(
 		)
 	}
 
-	return fmt.Errorf(
+	return nil, fmt.Errorf(
 		"run systemd command %q with arguments %#v: %w: %s",
 		command.Executable,
 		command.Args,

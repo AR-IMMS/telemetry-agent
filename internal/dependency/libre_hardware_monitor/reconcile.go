@@ -9,8 +9,10 @@ import (
 
 // installationState describes the current Agent-owned LHM installation.
 type installationState struct {
-	TaskExists      bool
-	Healthy         bool
+	TaskExists  bool
+	Healthy     bool
+	TaskEnabled bool
+
 	ConfigMatches   bool
 	FirewallMatches bool
 	TaskMatches     bool

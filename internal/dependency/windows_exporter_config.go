@@ -1,7 +1,9 @@
 package dependency
 
 import (
+	"bytes"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/ar-imms/telemetry-agent/internal/config"
@@ -43,4 +45,28 @@ func WriteWindowsExporterConfig(
 	}
 
 	return nil
+}
+
+// WindowsExporterConfigMatches reports whether the Agent-owned configuration
+// file exactly matches the configuration rendered from the supplied options.
+func WindowsExporterConfigMatches(
+	options WindowsExporterOptions,
+) (bool, error) {
+	expected, err := RenderWindowsExporterConfig(options)
+	if err != nil {
+		return false, err
+	}
+
+	actual, err := os.ReadFile(options.ConfigPath)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf(
+			"read Windows Exporter configuration: %w",
+			err,
+		)
+	}
+
+	return bytes.Equal(actual, expected), nil
 }
