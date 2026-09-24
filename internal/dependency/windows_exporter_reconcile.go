@@ -12,6 +12,7 @@ type windowsExporterInstallationState struct {
 	serviceRunning bool
 	healthReady    bool
 	startupMatches bool
+	configMatches  bool
 }
 
 // windowsExporterStateInspector reads current service and health state.
@@ -19,19 +20,21 @@ type windowsExporterStateInspector func(
 	context.Context,
 ) (windowsExporterInstallationState, error)
 
-// windowsExporterInstallFunc performs a fresh MSI installation when needed.
+// windowsExporterInstallFunc performs a fresh installation or reconfigures a
+// healthy Windows Exporter installation with Agent-owned settings.
 type windowsExporterInstallFunc func(
 	context.Context,
 ) (InstallResult, error)
 
 // windowsExporterReconciler decides whether an existing installation is safe
-// to reuse or whether a fresh installation is required.
+// to reuse or whether Agent-owned configuration must be applied.
 type windowsExporterReconciler struct {
 	inspect windowsExporterStateInspector
 	install windowsExporterInstallFunc
 }
 
-// Install reuses a known-healthy service and avoids MSI work in that case.
+// Install reuses a healthy matching service, reconfigures healthy drift, and
+// refuses to overwrite an unhealthy existing service.
 func (r windowsExporterReconciler) Install(
 	ctx context.Context,
 ) (InstallResult, error) {
@@ -62,16 +65,21 @@ func (r windowsExporterReconciler) Install(
 	if state.serviceExists &&
 		state.serviceRunning &&
 		state.healthReady {
-		return InstallResult{
-			Name:   windowsExporterDefinition.Name,
-			Reused: true,
-		}, nil
+		if state.startupMatches && state.configMatches {
+			return InstallResult{
+				Name:   windowsExporterDefinition.Name,
+				Reused: true,
+			}, nil
+		}
+
+		return r.install(ctx)
 	}
 
-	// A partially working existing service is deliberately not reinstalled yet.
-	// Reconciliation must first learn version and config ownership before it can
-	// safely repair or replace a machine-wide Windows service.
 	if state.serviceExists {
+		if !state.configMatches {
+			return r.install(ctx)
+		}
+
 		return InstallResult{}, fmt.Errorf(
 			"Windows Exporter service exists but is not healthy",
 		)

@@ -64,10 +64,22 @@ func NewWindowsExporterInstaller(
 		inspect: func(
 			ctx context.Context,
 		) (windowsExporterInstallationState, error) {
-			return inspectWindowsExporterInstallation(
+			state, err := inspectWindowsExporterInstallation(
 				ctx,
 				windowsExporterHealthEndpoint(options.ListenAddress),
 			)
+			if err != nil {
+				return windowsExporterInstallationState{}, err
+			}
+
+			matches, err := WindowsExporterConfigMatches(options)
+			if err != nil {
+				return windowsExporterInstallationState{}, err
+			}
+
+			state.configMatches = matches
+
+			return state, nil
 		},
 		install: freshInstaller.Install,
 	}

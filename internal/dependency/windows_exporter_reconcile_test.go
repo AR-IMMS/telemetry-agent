@@ -16,8 +16,11 @@ func TestWindowsExporterReconcilerReusesHealthyExistingService(
 		) (windowsExporterInstallationState, error) {
 			return windowsExporterInstallationState{
 				serviceExists:  true,
+				serviceEnabled: true,
 				serviceRunning: true,
 				healthReady:    true,
+				startupMatches: true,
+				configMatches:  true,
 			}, nil
 		},
 		install: func(context.Context) (InstallResult, error) {
@@ -86,6 +89,7 @@ func TestWindowsExporterReconcilerDoesNotOverwriteUnhealthyService(
 				serviceExists:  true,
 				serviceRunning: true,
 				healthReady:    false,
+				configMatches:  true,
 			}, nil
 		},
 		install: func(context.Context) (InstallResult, error) {
@@ -101,5 +105,85 @@ func TestWindowsExporterReconcilerDoesNotOverwriteUnhealthyService(
 	}
 	if installCalls != 0 {
 		t.Fatalf("fresh installer calls = %d, want 0", installCalls)
+	}
+}
+
+func TestWindowsExporterReconcilerReconfiguresHealthyServiceWithConfigDrift(
+	t *testing.T,
+) {
+	installCalls := 0
+
+	reconciler := windowsExporterReconciler{
+		inspect: func(
+			context.Context,
+		) (windowsExporterInstallationState, error) {
+			return windowsExporterInstallationState{
+				serviceExists:  true,
+				serviceEnabled: true,
+				serviceRunning: true,
+				healthReady:    true,
+				startupMatches: true,
+				configMatches:  false,
+			}, nil
+		},
+		install: func(context.Context) (InstallResult, error) {
+			installCalls++
+
+			return InstallResult{
+				Name: "windows-exporter",
+			}, nil
+		},
+	}
+
+	result, err := reconciler.Install(context.Background())
+
+	if err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+	if installCalls != 1 {
+		t.Fatalf("installer calls = %d, want 1", installCalls)
+	}
+	if result.Reused {
+		t.Fatal("result Reused = true, want false")
+	}
+}
+
+func TestWindowsExporterReconcilerReconfiguresUnhealthyServiceWithConfigDrift(
+	t *testing.T,
+) {
+	installCalls := 0
+
+	reconciler := windowsExporterReconciler{
+		inspect: func(
+			context.Context,
+		) (windowsExporterInstallationState, error) {
+			return windowsExporterInstallationState{
+				serviceExists:  true,
+				serviceEnabled: true,
+				serviceRunning: false,
+				healthReady:    false,
+				startupMatches: true,
+				configMatches:  false,
+			}, nil
+		},
+		install: func(context.Context) (InstallResult, error) {
+			installCalls++
+
+			return InstallResult{
+				Name: "windows-exporter",
+			}, nil
+		},
+	}
+
+	result, err := reconciler.Install(context.Background())
+
+	if err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+	if installCalls != 1 {
+		t.Fatalf("installer calls = %d, want 1", installCalls)
+	}
+	if result.Reused {
+		t.Fatal("result Reused = true, want false")
 	}
 }
