@@ -14,6 +14,7 @@ func writeDependencyHelp(output io.Writer) {
 Commands:
   list                       List dependencies available on this operating system.
   install [dependency-name]  Install by name or select in a terminal.
+  status                     Show lifecycle status of managed dependencies.
   help                       Show this help.
 `)
 }
@@ -135,12 +136,17 @@ func runDependency(
 				continue
 			}
 
+			condition := string(result.Status.Health)
+			if result.Status.Drifted {
+				condition += ", drifted"
+			}
+
 			fmt.Fprintf(
 				stdout,
 				"- %s: %s (%s)\n",
 				result.Definition.Name,
 				result.Status.Availability,
-				result.Status.Health,
+				condition,
 			)
 		}
 

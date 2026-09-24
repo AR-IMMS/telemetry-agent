@@ -40,6 +40,18 @@ func NewCatalog(integrations []Integration) (Catalog, error) {
 				name,
 			)
 		}
+		if integration.Inspect == nil {
+			return Catalog{}, fmt.Errorf(
+				"dependency catalog integration %q inspector is required",
+				name,
+			)
+		}
+		if _, exists := catalog.integrations[name]; exists {
+			return Catalog{}, fmt.Errorf(
+				"dependency catalog integration %q is registered more than once",
+				name,
+			)
+		}
 		if _, exists := catalog.integrations[name]; exists {
 			return Catalog{}, fmt.Errorf(
 				"dependency catalog integration %q is registered more than once",

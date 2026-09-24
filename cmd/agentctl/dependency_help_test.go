@@ -6,6 +6,16 @@ import (
 	"testing"
 )
 
+const dependencyHelpText = `Usage:
+  agentctl dependency <command>
+
+Commands:
+  list                       List dependencies available on this operating system.
+  install [dependency-name]  Install by name or select in a terminal.
+  status                     Show lifecycle status of managed dependencies.
+  help                       Show this help.
+`
+
 func TestRunDependencyHelpWritesCommandSummary(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -21,24 +31,13 @@ func TestRunDependencyHelpWritesCommandSummary(t *testing.T) {
 	if exitCode != 0 {
 		t.Fatalf("runDependency(help) exit code = %d, want 0", exitCode)
 	}
-
-	const wantStdout = `Usage:
-  agentctl dependency <command>
-
-Commands:
-  list                       List dependencies available on this operating system.
-  install [dependency-name]  Install by name or select in a terminal.
-  help                       Show this help.
-`
-
-	if stdout.String() != wantStdout {
+	if stdout.String() != dependencyHelpText {
 		t.Fatalf(
 			"dependency help stdout = %q, want %q",
 			stdout.String(),
-			wantStdout,
+			dependencyHelpText,
 		)
 	}
-
 	if stderr.Len() != 0 {
 		t.Fatalf(
 			"dependency help stderr = %q, want empty",
@@ -62,29 +61,14 @@ func TestRunDependencyWithoutCommandWritesHelpToStandardError(
 	)
 
 	if exitCode != 2 {
-		t.Fatalf(
-			"runDependency() exit code = %d, want 2",
-			exitCode,
-		)
+		t.Fatalf("runDependency() exit code = %d, want 2", exitCode)
 	}
-
 	if stdout.Len() != 0 {
-		t.Fatalf(
-			"runDependency() stdout = %q, want empty",
-			stdout.String(),
-		)
+		t.Fatalf("runDependency() stdout = %q, want empty", stdout.String())
 	}
 
-	const wantStderr = `usage error: dependency command is required
-
-Usage:
-  agentctl dependency <command>
-
-Commands:
-  list                       List dependencies available on this operating system.
-  install [dependency-name]  Install by name or select in a terminal.
-  help                       Show this help.
-`
+	wantStderr := "usage error: dependency command is required\n\n" +
+		dependencyHelpText
 
 	if stderr.String() != wantStderr {
 		t.Fatalf(
@@ -110,12 +94,8 @@ func TestRunDependencyWithUnknownCommandWritesHelpToStandardError(
 	)
 
 	if exitCode != 2 {
-		t.Fatalf(
-			"runDependency(remove) exit code = %d, want 2",
-			exitCode,
-		)
+		t.Fatalf("runDependency(remove) exit code = %d, want 2", exitCode)
 	}
-
 	if stdout.Len() != 0 {
 		t.Fatalf(
 			"runDependency(remove) stdout = %q, want empty",
@@ -123,16 +103,8 @@ func TestRunDependencyWithUnknownCommandWritesHelpToStandardError(
 		)
 	}
 
-	const wantStderr = `usage error: unknown dependency command "remove"
-
-Usage:
-  agentctl dependency <command>
-
-Commands:
-  list                       List dependencies available on this operating system.
-  install [dependency-name]  Install by name or select in a terminal.
-  help                       Show this help.
-`
+	wantStderr := "usage error: unknown dependency command \"remove\"\n\n" +
+		dependencyHelpText
 
 	if stderr.String() != wantStderr {
 		t.Fatalf(
@@ -163,7 +135,6 @@ func TestRunDependencyInstallWithExtraArgumentsWritesHelpToStandardError(
 			exitCode,
 		)
 	}
-
 	if stdout.Len() != 0 {
 		t.Fatalf(
 			"runDependency(install extra) stdout = %q, want empty",
@@ -171,16 +142,8 @@ func TestRunDependencyInstallWithExtraArgumentsWritesHelpToStandardError(
 		)
 	}
 
-	const wantStderr = `usage error: dependency install accepts exactly one dependency name
-
-Usage:
-  agentctl dependency <command>
-
-Commands:
-  list                       List dependencies available on this operating system.
-  install [dependency-name]  Install by name or select in a terminal.
-  help                       Show this help.
-`
+	wantStderr := "usage error: dependency install accepts exactly one dependency name\n\n" +
+		dependencyHelpText
 
 	if stderr.String() != wantStderr {
 		t.Fatalf(
@@ -206,12 +169,8 @@ func TestRunDependencyListWithArgumentsWritesHelpToStandardError(
 	)
 
 	if exitCode != 2 {
-		t.Fatalf(
-			"runDependency(list extra) exit code = %d, want 2",
-			exitCode,
-		)
+		t.Fatalf("runDependency(list extra) exit code = %d, want 2", exitCode)
 	}
-
 	if stdout.Len() != 0 {
 		t.Fatalf(
 			"runDependency(list extra) stdout = %q, want empty",
@@ -219,22 +178,42 @@ func TestRunDependencyListWithArgumentsWritesHelpToStandardError(
 		)
 	}
 
-	const wantStderr = `usage error: dependency list does not accept arguments
-
-Usage:
-  agentctl dependency <command>
-
-Commands:
-  list                       List dependencies available on this operating system.
-  install [dependency-name]  Install by name or select in a terminal.
-  help                       Show this help.
-`
+	wantStderr := "usage error: dependency list does not accept arguments\n\n" +
+		dependencyHelpText
 
 	if stderr.String() != wantStderr {
 		t.Fatalf(
 			"runDependency(list extra) stderr = %q, want %q",
 			stderr.String(),
 			wantStderr,
+		)
+	}
+}
+
+func TestRunDependencyHelpListsStatusCommand(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runDependency(
+		context.Background(),
+		[]string{"help"},
+		&stdout,
+		&stderr,
+		dependencies{},
+	)
+
+	if exitCode != 0 {
+		t.Fatalf("runDependency(help) exit code = %d, want 0", exitCode)
+	}
+	if !bytes.Contains(
+		stdout.Bytes(),
+		[]byte(
+			"status                     Show lifecycle status of managed dependencies.",
+		),
+	) {
+		t.Fatalf(
+			"dependency help = %q, want status command",
+			stdout.String(),
 		)
 	}
 }

@@ -93,11 +93,42 @@ func TestInspectionStatusReportsEnabledDrifted(
 		)
 	}
 
-	if status.Health != HealthDrifted {
+	if status.Health != HealthHealthy {
 		t.Fatalf(
 			"health = %q, want %q",
 			status.Health,
-			HealthDrifted,
+			HealthHealthy,
 		)
+	}
+	if !status.Drifted {
+		t.Fatal("Drifted = false, want true")
+	}
+}
+
+func TestInspectionStatusReportsEnabledUnhealthyDrifted(
+	t *testing.T,
+) {
+	status := Inspection{
+		Enabled: true,
+		Healthy: false,
+		Drifted: true,
+	}.Status()
+
+	if status.Availability != AvailabilityEnabled {
+		t.Fatalf(
+			"availability = %q, want %q",
+			status.Availability,
+			AvailabilityEnabled,
+		)
+	}
+	if status.Health != HealthUnhealthy {
+		t.Fatalf(
+			"health = %q, want %q",
+			status.Health,
+			HealthUnhealthy,
+		)
+	}
+	if !status.Drifted {
+		t.Fatal("Drifted = false, want true")
 	}
 }

@@ -153,6 +153,7 @@ func testServiceIntegration(
 			SupportedOS: []string{osName},
 		},
 		Install: install,
+		Inspect: testCatalogInspector,
 	}
 }
 
