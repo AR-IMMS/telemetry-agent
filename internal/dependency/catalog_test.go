@@ -3,6 +3,7 @@ package dependency
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -18,6 +19,7 @@ func TestCatalogListReturnsSupportedDefinitionsSortedByDisplayName(
 				SupportedOS: []string{"windows"},
 			},
 			Install: testCatalogInstaller,
+			Inspect: testCatalogInspector,
 		},
 		{
 			Definition: Definition{
@@ -27,6 +29,7 @@ func TestCatalogListReturnsSupportedDefinitionsSortedByDisplayName(
 				SupportedOS: []string{"linux"},
 			},
 			Install: testCatalogInstaller,
+			Inspect: testCatalogInspector,
 		},
 		{
 			Definition: Definition{
@@ -36,6 +39,7 @@ func TestCatalogListReturnsSupportedDefinitionsSortedByDisplayName(
 				SupportedOS: []string{"windows"},
 			},
 			Install: testCatalogInstaller,
+			Inspect: testCatalogInspector,
 		},
 	})
 	if err != nil {
@@ -62,6 +66,12 @@ func TestCatalogListReturnsSupportedDefinitionsSortedByDisplayName(
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Catalog.List() = %#v, want %#v", got, want)
 	}
+}
+
+func testCatalogInspector(
+	context.Context,
+) (Inspection, error) {
+	return Inspection{}, nil
 }
 
 func testCatalogInstaller(
@@ -149,6 +159,7 @@ func TestCatalogFindNormalizesDependencyName(t *testing.T) {
 				SupportedOS: []string{"linux"},
 			},
 			Install: testCatalogInstaller,
+			Inspect: testCatalogInspector,
 		},
 	})
 	if err != nil {
@@ -177,5 +188,33 @@ func TestCatalogFindNormalizesDependencyName(t *testing.T) {
 	}
 	if integration.Install == nil {
 		t.Fatal("Catalog.Find() integration installer = nil")
+	}
+}
+
+func TestNewCatalogRejectsIntegrationWithoutInspector(
+	t *testing.T,
+) {
+	_, err := NewCatalog([]Integration{
+		{
+			Definition: Definition{
+				Name:        "windows-exporter",
+				SupportedOS: []string{"windows"},
+			},
+			Install: func(
+				context.Context,
+			) (InstallResult, error) {
+				return InstallResult{}, nil
+			},
+		},
+	})
+
+	if err == nil {
+		t.Fatal("NewCatalog() error = nil, want missing-inspector error")
+	}
+	if !strings.Contains(err.Error(), "inspector is required") {
+		t.Fatalf(
+			"NewCatalog() error = %v, want missing-inspector error",
+			err,
+		)
 	}
 }

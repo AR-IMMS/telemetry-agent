@@ -67,7 +67,6 @@ const (
 	HealthUnknown   Health = "unknown"
 	HealthHealthy   Health = "healthy"
 	HealthUnhealthy Health = "unhealthy"
-	HealthDrifted   Health = "drifted"
 )
 
 // Inspection is the normalized read-only state returned by a dependency
@@ -82,6 +81,7 @@ type Inspection struct {
 type Status struct {
 	Availability Availability
 	Health       Health
+	Drifted      bool
 }
 
 // StatusResult pairs one dependency definition with its current lifecycle
@@ -101,22 +101,14 @@ func (i Inspection) Status() Status {
 		}
 	}
 
-	if i.Drifted {
-		return Status{
-			Availability: AvailabilityEnabled,
-			Health:       HealthDrifted,
-		}
-	}
-
+	health := HealthUnhealthy
 	if i.Healthy {
-		return Status{
-			Availability: AvailabilityEnabled,
-			Health:       HealthHealthy,
-		}
+		health = HealthHealthy
 	}
 
 	return Status{
 		Availability: AvailabilityEnabled,
-		Health:       HealthUnhealthy,
+		Health:       health,
+		Drifted:      i.Drifted,
 	}
 }
