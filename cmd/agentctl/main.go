@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/config"
 	"github.com/ar-imms/telemetry-agent/internal/dependency"
@@ -171,6 +172,7 @@ func defaultDependencyCatalog() (dependency.Catalog, error) {
 				Description: "Collects Windows host metrics.",
 				SupportedOS: []string{"windows"},
 			},
+			CollectorReceiver: "prometheus/windows_exporter",
 			Install: dependency.NewWindowsExporterInstaller(
 				dependency.DefaultWindowsExporterOptions(),
 				bootstrap.HTTPDownloader{},
@@ -186,6 +188,7 @@ func defaultDependencyCatalog() (dependency.Catalog, error) {
 				Description: "Collects Linux host metrics.",
 				SupportedOS: []string{"linux"},
 			},
+			CollectorReceiver: "prometheus/node_exporter",
 			Install: nodeexporter.NewInstaller(
 				nodeexporter.DefaultOptions(),
 				bootstrap.HTTPDownloader{},
@@ -201,6 +204,7 @@ func defaultDependencyCatalog() (dependency.Catalog, error) {
 				Description: "Collects Windows hardware metrics.",
 				SupportedOS: []string{"windows"},
 			},
+			CollectorReceiver: "prometheus/libre_hardware_monitor",
 			Install: librehardwaremonitor.NewInstaller(
 				librehardwaremonitor.DefaultOptions(),
 				bootstrap.HTTPDownloader{},
@@ -512,4 +516,22 @@ func configurationLayers(configRoot string, osName string) ([]config.Layer, erro
 		{Name: "profile", Path: filepath.Join(configRoot, "profiles", "laptop.yaml")},
 		{Name: "os", Path: filepath.Join(configRoot, "os", osName, "otel.yaml")},
 	}, nil
+}
+
+func dependencyMetricsReceiverLayer(
+	catalog dependency.Catalog,
+	osName string,
+	state agentstate.State,
+) (config.InlineLayer, error) {
+	managedReceivers, err := catalog.CollectorReceivers(osName, state)
+	if err != nil {
+		return config.InlineLayer{}, err
+	}
+
+	receivers := append(
+		[]string{"otlp", "hostmetrics"},
+		managedReceivers...,
+	)
+
+	return config.MetricsReceiverLayer(receivers), nil
 }

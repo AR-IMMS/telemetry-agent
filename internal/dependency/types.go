@@ -23,11 +23,17 @@ type InstallResult struct {
 type Installer func(context.Context) (InstallResult, error)
 
 // Integration binds one dependency definition to its concrete behavior.
+// Integration binds one dependency definition to its concrete behavior.
 type Integration struct {
 	Definition Definition
 	Install    Installer
+
 	// Inspect reads the current managed and runtime state without changing it.
 	Inspect Inspector
+
+	// CollectorReceiver is the receiver name already defined in the relevant
+	// OS configuration fragment, for example "prometheus/node_exporter".
+	CollectorReceiver string
 }
 
 // Inspector reads the current lifecycle state of one dependency.

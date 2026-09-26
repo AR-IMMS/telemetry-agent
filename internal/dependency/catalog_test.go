@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 )
 
 func TestCatalogListReturnsSupportedDefinitionsSortedByDisplayName(
@@ -216,5 +218,58 @@ func TestNewCatalogRejectsIntegrationWithoutInspector(
 			"NewCatalog() error = %v, want missing-inspector error",
 			err,
 		)
+	}
+}
+
+func TestCatalogReturnsReceiverForEnabledCurrentPlatformDependency(
+	t *testing.T,
+) {
+	catalog, err := NewCatalog([]Integration{
+		{
+			Definition: Definition{
+				Name:        "node-exporter",
+				DisplayName: "Node Exporter",
+				SupportedOS: []string{"linux"},
+			},
+			CollectorReceiver: "prometheus/node_exporter",
+			Install:           testCatalogInstaller,
+			Inspect:           testCatalogInspector,
+		},
+		{
+			Definition: Definition{
+				Name:        "windows-exporter",
+				DisplayName: "Windows Exporter",
+				SupportedOS: []string{"windows"},
+			},
+			CollectorReceiver: "prometheus/windows_exporter",
+			Install:           testCatalogInstaller,
+			Inspect:           testCatalogInspector,
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewCatalog() error = %v", err)
+	}
+
+	got, err := catalog.CollectorReceivers(
+		"linux",
+		agentstate.State{
+			Dependencies: map[string]agentstate.DependencyState{
+				"node-exporter": {
+					Enabled: true,
+				},
+				"windows-exporter": {
+					Enabled: true,
+				},
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("CollectorReceivers() error = %v", err)
+	}
+
+	want := []string{"prometheus/node_exporter"}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("CollectorReceivers() = %#v, want %#v", got, want)
 	}
 }

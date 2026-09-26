@@ -10,7 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
+	"github.com/ar-imms/telemetry-agent/internal/config"
 	"github.com/ar-imms/telemetry-agent/internal/dependency"
 	"github.com/ar-imms/telemetry-agent/internal/identity"
 	"github.com/ar-imms/telemetry-agent/internal/supervisor"
@@ -517,5 +519,75 @@ func TestDefaultDependencyCatalogConfiguresLibreHardwareMonitorInspector(
 	}
 	if integration.Inspect == nil {
 		t.Fatal("libre-hardware-monitor inspector is nil")
+	}
+}
+
+func TestDefaultDependencyCatalogConfiguresCollectorReceivers(t *testing.T) {
+	catalog, err := defaultDependencyCatalog()
+	if err != nil {
+		t.Fatalf("defaultDependencyCatalog() error = %v", err)
+	}
+
+	for name, want := range map[string]string{
+		"windows-exporter":       "prometheus/windows_exporter",
+		"node-exporter":          "prometheus/node_exporter",
+		"libre-hardware-monitor": "prometheus/libre_hardware_monitor",
+	} {
+		integration, found := catalog.Find(name)
+		if !found {
+			t.Fatalf("catalog does not contain %q", name)
+		}
+		if integration.CollectorReceiver != want {
+			t.Fatalf(
+				"%s CollectorReceiver = %q, want %q",
+				name,
+				integration.CollectorReceiver,
+				want,
+			)
+		}
+	}
+}
+
+func TestDependencyMetricsReceiverLayerIncludesOnlyEnabledCurrentPlatform(
+	t *testing.T,
+) {
+	catalog, err := defaultDependencyCatalog()
+	if err != nil {
+		t.Fatalf("defaultDependencyCatalog() error = %v", err)
+	}
+
+	layer, err := dependencyMetricsReceiverLayer(
+		catalog,
+		"windows",
+		agentstate.State{
+			Dependencies: map[string]agentstate.DependencyState{
+				"windows-exporter": {
+					Enabled: true,
+				},
+				"libre-hardware-monitor": {
+					Enabled: false,
+				},
+				"node-exporter": {
+					Enabled: true,
+				},
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("dependencyMetricsReceiverLayer() error = %v", err)
+	}
+
+	want := config.MetricsReceiverLayer([]string{
+		"otlp",
+		"hostmetrics",
+		"prometheus/windows_exporter",
+	})
+
+	if !reflect.DeepEqual(layer, want) {
+		t.Fatalf(
+			"dependencyMetricsReceiverLayer() = %#v, want %#v",
+			layer,
+			want,
+		)
 	}
 }

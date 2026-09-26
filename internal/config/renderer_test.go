@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -842,4 +843,103 @@ func TestRenderRepositoryWindowsConfigScrapesLibreHardwareMonitor(
 			"prometheus/libre_hardware_monitor",
 		},
 	)
+}
+
+func TestRenderAppliesInlineLayerAfterFileLayers(t *testing.T) {
+	basePath := filepath.Join(t.TempDir(), "base.yaml")
+
+	base := []byte(`
+receivers:
+  otlp: {}
+processors:
+  batch: {}
+exporters:
+  debug: {}
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp, hostmetrics, prometheus/node_exporter]
+      processors: [batch]
+      exporters: [debug]
+`)
+
+	if err := os.WriteFile(basePath, base, 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	rendered, err := Render(RenderInput{
+		Layers: []Layer{
+			{
+				Name: "base",
+				Path: basePath,
+			},
+		},
+		InlineLayers: []InlineLayer{
+			{
+				Name: "enabled dependency receivers",
+				Document: map[string]any{
+					"service": map[string]any{
+						"pipelines": map[string]any{
+							"metrics": map[string]any{
+								"receivers": []any{
+									"otlp",
+									"hostmetrics",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	var document map[string]any
+	if err := yaml.Unmarshal(rendered, &document); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+
+	service := document["service"].(map[string]any)
+	pipelines := service["pipelines"].(map[string]any)
+	metrics := pipelines["metrics"].(map[string]any)
+	receivers := metrics["receivers"].([]any)
+
+	want := []any{"otlp", "hostmetrics"}
+
+	if !reflect.DeepEqual(receivers, want) {
+		t.Fatalf("metrics receivers = %#v, want %#v", receivers, want)
+	}
+}
+
+func TestMetricsReceiverLayerReplacesOnlyMetricsReceiverList(t *testing.T) {
+	receivers := []string{
+		"otlp",
+		"hostmetrics",
+		"prometheus/node_exporter",
+	}
+
+	got := MetricsReceiverLayer(receivers)
+
+	want := InlineLayer{
+		Name: "managed dependency receivers",
+		Document: map[string]any{
+			"service": map[string]any{
+				"pipelines": map[string]any{
+					"metrics": map[string]any{
+						"receivers": []any{
+							"otlp",
+							"hostmetrics",
+							"prometheus/node_exporter",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("MetricsReceiverLayer() = %#v, want %#v", got, want)
+	}
 }
