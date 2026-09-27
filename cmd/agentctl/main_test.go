@@ -188,7 +188,13 @@ func TestBootstrapFailurePreservesErrorAndSuppressesSuccessOutput(t *testing.T) 
 		return bootstrap.Result{}, errors.New("render Collector configuration: invalid profile")
 	}
 
-	code, stdout, stderr := runForTest(t, validBootstrapArguments(), deps)
+	args := append(
+		validBootstrapArguments(),
+		"--state-path",
+		filepath.Join(t.TempDir(), "state.json"),
+	)
+
+	code, stdout, stderr := runForTest(t, args, deps)
 
 	if code == 0 {
 		t.Fatal("exit code = 0, want bootstrap failure")

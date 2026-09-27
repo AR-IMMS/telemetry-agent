@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/dependency"
+	"github.com/ar-imms/telemetry-agent/internal/identity"
 )
 
 func TestRunDependencyDisablePassesExplicitStatePathToManagedLifecycle(
@@ -209,6 +212,59 @@ func TestRunDependencyPendingListsScheduledTeardowns(
 			"runDependency(pending) stdout = %q, want %q",
 			stdout.String(),
 			want,
+		)
+	}
+}
+
+func TestRunDependencyStatusMarksAbsentDependencyNotInstalled(
+	t *testing.T,
+) {
+	deps := testDependencies(
+		identity.PlatformInfo{OS: "windows", Architecture: "amd64"},
+	)
+	deps.listDependencyStatuses = func(
+		context.Context,
+	) ([]dependency.StatusResult, error) {
+		return []dependency.StatusResult{
+			{
+				Definition: dependency.Definition{
+					Name: "windows-exporter",
+				},
+				Status: dependency.Status{
+					Availability: dependency.AvailabilityDisabled,
+					Health:       dependency.HealthUnknown,
+				},
+			},
+		}, nil
+	}
+
+	statePath := filepath.Join(t.TempDir(), "state.json")
+
+	code, stdout, stderr := runForTest(
+		t,
+		[]string{
+			"dependency",
+			"status",
+			"--state-path",
+			statePath,
+		},
+		deps,
+	)
+
+	if code != 0 {
+		t.Fatalf(
+			"run(dependency status) exit code = %d, want 0; stderr = %q",
+			code,
+			stderr,
+		)
+	}
+	if !strings.Contains(
+		stdout,
+		"- windows-exporter: not installed",
+	) {
+		t.Fatalf(
+			"status stdout = %q, want not-installed dependency",
+			stdout,
 		)
 	}
 }

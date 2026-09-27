@@ -288,7 +288,6 @@ Commands:
   dependency  Manage telemetry dependencies.
   run         Run the OpenTelemetry Collector under supervision.
   help        Show this help.
-	uninstall <dependency-name>  Uninstall safely after Collector readiness.
 `)
 }
 

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/dependency"
 )
 
 func writeDependencyHelp(output io.Writer) {
@@ -17,10 +18,15 @@ func writeDependencyHelp(output io.Writer) {
   agentctl dependency <command>
 
 Commands:
-  list                       List dependencies available on this operating system.
-  install [dependency-name]  Install by name or select in a terminal.
-  status                     Show lifecycle status of managed dependencies.
-  help                       Show this help.
+  list                               List dependencies available on this operating system.
+  install [dependency-name]          Install by name or select in a terminal.
+  status [--state-path <path>]       Show lifecycle status of managed dependencies.
+  pending [--state-path <path>]      List scheduled dependency teardowns.
+  disable <dependency-name> [--state-path <path>]
+                                    Disable safely after Collector readiness.
+  uninstall <dependency-name> [--state-path <path>]
+                                    Uninstall safely after Collector readiness.
+  help                              Show this help.
 `)
 }
 
@@ -146,10 +152,17 @@ func runDependency(
 	}
 
 	if args[0] == "status" {
-		if len(args) != 1 {
+		names, statePath, err := parseDependencyInstallArguments(args[1:])
+		if err != nil {
+			fmt.Fprintf(stderr, "usage error: %v\n\n", err)
+			writeDependencyHelp(stderr)
+
+			return 2
+		}
+		if len(names) != 0 {
 			fmt.Fprintln(
 				stderr,
-				"usage error: dependency status does not accept arguments",
+				"usage error: dependency status does not accept a dependency name",
 			)
 			fmt.Fprintln(stderr)
 			writeDependencyHelp(stderr)
@@ -164,6 +177,25 @@ func runDependency(
 			)
 
 			return 1
+		}
+
+		state := agentstate.State{
+			Dependencies: make(map[string]agentstate.DependencyState),
+		}
+
+		loadedState, err := agentstate.NewFileStore(statePath).Load()
+		if err != nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				fmt.Fprintf(
+					stderr,
+					"load dependency lifecycle state: %v\n",
+					err,
+				)
+
+				return 1
+			}
+		} else {
+			state = loadedState
 		}
 
 		results, err := deps.listDependencyStatuses(ctx)
@@ -182,6 +214,22 @@ func runDependency(
 					"- %s: unknown (%v)\n",
 					result.Definition.Name,
 					result.InspectionError,
+				)
+
+				continue
+			}
+
+			name := strings.ToLower(
+				strings.TrimSpace(result.Definition.Name),
+			)
+			_, managed := state.Dependencies[name]
+
+			if result.Status.Availability == dependency.AvailabilityDisabled &&
+				!managed {
+				fmt.Fprintf(
+					stdout,
+					"- %s: not installed\n",
+					result.Definition.Name,
 				)
 
 				continue

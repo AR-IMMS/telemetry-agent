@@ -10,10 +10,15 @@ const dependencyHelpText = `Usage:
   agentctl dependency <command>
 
 Commands:
-  list                       List dependencies available on this operating system.
-  install [dependency-name]  Install by name or select in a terminal.
-  status                     Show lifecycle status of managed dependencies.
-  help                       Show this help.
+  list                               List dependencies available on this operating system.
+  install [dependency-name]          Install by name or select in a terminal.
+  status [--state-path <path>]       Show lifecycle status of managed dependencies.
+  pending [--state-path <path>]      List scheduled dependency teardowns.
+  disable <dependency-name> [--state-path <path>]
+                                    Disable safely after Collector readiness.
+  uninstall <dependency-name> [--state-path <path>]
+                                    Uninstall safely after Collector readiness.
+  help                              Show this help.
 `
 
 func TestRunDependencyHelpWritesCommandSummary(t *testing.T) {
@@ -208,7 +213,7 @@ func TestRunDependencyHelpListsStatusCommand(t *testing.T) {
 	if !bytes.Contains(
 		stdout.Bytes(),
 		[]byte(
-			"status                     Show lifecycle status of managed dependencies.",
+			"status [--state-path <path>]       Show lifecycle status of managed dependencies.",
 		),
 	) {
 		t.Fatalf(

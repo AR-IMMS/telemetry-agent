@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"path/filepath"
 	"testing"
 
 	"github.com/ar-imms/telemetry-agent/internal/dependency"
@@ -14,10 +15,11 @@ func TestRunDependencyStatusWritesLifecycleResults(
 ) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
+	statePath := filepath.Join(t.TempDir(), "state.json")
 
 	exitCode := runDependency(
 		context.Background(),
-		[]string{"status"},
+		[]string{"status", "--state-path", statePath},
 		&stdout,
 		&stderr,
 		dependencies{
@@ -78,10 +80,11 @@ func TestRunDependencyStatusWritesUnhealthyDriftedResult(
 ) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
+	statePath := filepath.Join(t.TempDir(), "state.json")
 
 	exitCode := runDependency(
 		context.Background(),
-		[]string{"status"},
+		[]string{"status", "--state-path", statePath},
 		&stdout,
 		&stderr,
 		dependencies{

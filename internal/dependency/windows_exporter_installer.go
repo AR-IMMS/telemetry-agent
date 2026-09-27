@@ -105,6 +105,10 @@ func (i windowsExporterInstaller) Install(
 				Kind:       "config-file",
 				Identifier: i.options.ConfigPath,
 			},
+			{
+				Kind:       "directory",
+				Identifier: i.options.InstallDir,
+			},
 		},
 	}, nil
 }

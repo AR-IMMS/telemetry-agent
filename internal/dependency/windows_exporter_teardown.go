@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 )
@@ -12,10 +13,11 @@ import (
 // windowsExporterTeardown disables or uninstalls Agent-owned Windows Exporter
 // resources. The process runner is injected so teardown remains unit-testable.
 type windowsExporterTeardown struct {
-	options       WindowsExporterOptions
-	administrator administratorProbe
-	runProcess    func(context.Context, processCommand) error
-	removeFile    func(string) error
+	options         WindowsExporterOptions
+	administrator   administratorProbe
+	runProcess      func(context.Context, processCommand) error
+	removeFile      func(string) error
+	removeDirectory func(string) error
 }
 
 // Teardown applies one safe lifecycle action to resources recorded in state.
@@ -115,6 +117,11 @@ func (t windowsExporterTeardown) uninstallOwnedResources(
 	if t.removeFile == nil {
 		return fmt.Errorf("Windows Exporter teardown file remover is required")
 	}
+	if t.removeDirectory == nil {
+		return fmt.Errorf(
+			"Windows Exporter teardown directory remover is required",
+		)
+	}
 	if !ownsWindowsExporterResource(
 		resources,
 		"msi-product",
@@ -134,10 +141,26 @@ func (t windowsExporterTeardown) uninstallOwnedResources(
 			t.options.ConfigPath,
 		)
 	}
+	if !ownsWindowsExporterResource(
+		resources,
+		"directory",
+		t.options.InstallDir,
+	) {
+		return fmt.Errorf(
+			"Windows Exporter uninstall requires owned installation directory %q",
+			t.options.InstallDir,
+		)
+	}
 
 	if err := t.disableOwnedService(ctx, resources); err != nil {
 		return err
 	}
+
+	installDirectory := strings.ReplaceAll(
+		t.options.InstallDir,
+		"'",
+		"''",
+	)
 
 	uninstallCommand := processCommand{
 		Executable: "powershell.exe",
@@ -145,7 +168,16 @@ func (t windowsExporterTeardown) uninstallOwnedResources(
 			"-NoProfile",
 			"-NonInteractive",
 			"-Command",
-			`$roots = @(
+			fmt.Sprintf(
+				`$installDirectory = '%s'
+$sentinelPath = Join-Path $installDirectory '.agentctl-uninstall-sentinel'
+
+New-Item -ItemType Directory -Path $installDirectory -Force |
+  Out-Null
+
+Set-Content -LiteralPath $sentinelPath -Value 'agentctl MSI uninstall sentinel' -NoNewline
+
+$roots = @(
   'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
   'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
 )
@@ -171,6 +203,8 @@ $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList @('/x', $products
 if ($process.ExitCode -ne 0) {
   throw "Windows Exporter MSI uninstall failed with exit code $($process.ExitCode)"
 }`,
+				installDirectory,
+			),
 		},
 	}
 
@@ -185,6 +219,13 @@ if ($process.ExitCode -ne 0) {
 		)
 	}
 
+	if err := t.removeDirectory(t.options.InstallDir); err != nil {
+		return fmt.Errorf(
+			"remove Windows Exporter installation directory: %w",
+			err,
+		)
+	}
+
 	return nil
 }
 
@@ -193,10 +234,11 @@ func NewWindowsExporterTeardown(
 	options WindowsExporterOptions,
 ) Teardown {
 	return windowsExporterTeardown{
-		options:       options,
-		administrator: isWindowsAdministrator,
-		runProcess:    runOSProcess,
-		removeFile:    removeWindowsExporterFile,
+		options:         options,
+		administrator:   isWindowsAdministrator,
+		runProcess:      runOSProcess,
+		removeFile:      removeWindowsExporterFile,
+		removeDirectory: removeWindowsExporterDirectory,
 	}.Teardown
 }
 
@@ -207,4 +249,8 @@ func removeWindowsExporterFile(path string) error {
 	}
 
 	return err
+}
+
+func removeWindowsExporterDirectory(path string) error {
+	return os.RemoveAll(path)
 }

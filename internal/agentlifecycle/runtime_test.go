@@ -418,3 +418,109 @@ func TestRuntimeWatcherCancelsLaunchBeforeReturningReadinessError(
 		t.Fatalf("Run() error = %v, want readiness error", err)
 	}
 }
+
+func TestRuntimeWatcherCompletesPendingUninstallAfterCollectorReady(
+	t *testing.T,
+) {
+	store := agentstate.NewFileStore(
+		filepath.Join(t.TempDir(), "state.json"),
+	)
+
+	if err := store.Save(agentstate.State{
+		DesiredGeneration:   3,
+		ActivatedGeneration: 3,
+		AppliedGeneration:   2,
+		Dependencies: map[string]agentstate.DependencyState{
+			"windows-exporter": {
+				Enabled: false,
+				Ownership: &agentstate.OwnershipRecord{
+					Resources: []agentstate.OwnedResource{
+						{
+							Kind:       "windows-service",
+							Identifier: "windows_exporter",
+						},
+					},
+				},
+				PendingTeardown: &agentstate.PendingTeardown{
+					Action:     agentstate.TeardownActionUninstall,
+					Generation: 3,
+				},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	teardownCalls := 0
+
+	coordinator := teardownCoordinator{
+		store: store,
+		teardown: func(
+			ctx context.Context,
+			name string,
+			action agentstate.TeardownAction,
+			resources []agentstate.OwnedResource,
+		) error {
+			teardownCalls++
+
+			if name != "windows-exporter" {
+				t.Fatalf("teardown name = %q, want windows-exporter", name)
+			}
+			if action != agentstate.TeardownActionUninstall {
+				t.Fatalf(
+					"teardown action = %q, want %q",
+					action,
+					agentstate.TeardownActionUninstall,
+				)
+			}
+			if len(resources) != 1 ||
+				resources[0].Kind != "windows-service" ||
+				resources[0].Identifier != "windows_exporter" {
+				t.Fatalf("teardown resources = %#v", resources)
+			}
+
+			return nil
+		},
+	}
+
+	watcher := runtimeWatcher{
+		store: store,
+		run: func(
+			ctx context.Context,
+			options supervisor.Options,
+		) error {
+			return options.OnReady()
+		},
+		options: supervisor.Options{
+			BinaryPath:      "otelcol-contrib",
+			ConfigPath:      "otel.yaml",
+			GatewayEndpoint: "gateway.example:4317",
+			HealthEndpoint:  "http://127.0.0.1:13133",
+			StartupTimeout:  time.Second,
+			ShutdownTimeout: time.Second,
+		},
+		pollInterval:   time.Hour,
+		applyTeardowns: coordinator.Apply,
+	}
+
+	if err := watcher.Run(context.Background()); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if teardownCalls != 1 {
+		t.Fatalf("teardown calls = %d, want 1", teardownCalls)
+	}
+
+	state, err := store.Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if state.AppliedGeneration != 3 {
+		t.Fatalf(
+			"AppliedGeneration = %d, want 3",
+			state.AppliedGeneration,
+		)
+	}
+	if _, exists := state.Dependencies["windows-exporter"]; exists {
+		t.Fatal("windows-exporter still exists after uninstall teardown")
+	}
+}

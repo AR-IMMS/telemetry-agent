@@ -458,6 +458,10 @@ func TestWindowsExporterInstallerStagesAndRunsVerifiedMSI(
 			Kind:       "config-file",
 			Identifier: installer.options.ConfigPath,
 		},
+		{
+			Kind:       "directory",
+			Identifier: installer.options.InstallDir,
+		},
 	}
 
 	if !reflect.DeepEqual(result.OwnedResources, wantOwnedResources) {
