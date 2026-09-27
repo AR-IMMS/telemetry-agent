@@ -100,7 +100,7 @@ func Run(
 	)
 	defer cancel()
 
-	if err := validateAndActivateConfig(
+	if err := ActivateRenderedConfig(
 		validationContext,
 		runner,
 		binaryPath,

@@ -105,6 +105,8 @@ func (s *State) EnableDependency(name string) (bool, error) {
 	}
 
 	dependency.Enabled = true
+	dependency.PendingTeardown = nil
+
 	s.Dependencies[normalizedName] = dependency
 	s.DesiredGeneration++
 

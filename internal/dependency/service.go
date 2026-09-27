@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 )
 
 // Service coordinates dependency lookup, platform checks, and installation.
@@ -139,4 +141,48 @@ func (s Service) ListStatus(
 	}
 
 	return results, nil
+}
+
+// Teardown routes an approved Agent-owned resource action to one supported
+// dependency integration.
+func (s Service) Teardown(
+	ctx context.Context,
+	name string,
+	action agentstate.TeardownAction,
+	resources []agentstate.OwnedResource,
+) error {
+	normalizedName := strings.ToLower(strings.TrimSpace(name))
+
+	integration, found := s.Catalog.Find(normalizedName)
+	if !found {
+		return fmt.Errorf("unknown dependency %q", normalizedName)
+	}
+
+	definition := integration.Definition
+	normalizedOS := strings.ToLower(strings.TrimSpace(s.OS))
+
+	if !definition.SupportsOS(normalizedOS) {
+		return fmt.Errorf(
+			"dependency %q does not support operating system %q",
+			definition.Name,
+			normalizedOS,
+		)
+	}
+
+	if integration.Teardown == nil {
+		return fmt.Errorf(
+			"dependency %q teardown is not configured",
+			definition.Name,
+		)
+	}
+
+	if err := integration.Teardown(ctx, action, resources); err != nil {
+		return fmt.Errorf(
+			"teardown dependency %q: %w",
+			definition.Name,
+			err,
+		)
+	}
+
+	return nil
 }

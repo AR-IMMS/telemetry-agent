@@ -1,8 +1,10 @@
 package agentstate
 
 import (
+	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestFileStorePersistsDesiredState(t *testing.T) {
@@ -65,5 +67,84 @@ func TestFileStoreUpdateCreatesMissingState(t *testing.T) {
 	}
 	if !reflect.DeepEqual(persisted, got) {
 		t.Fatalf("persisted state = %#v, want %#v", persisted, got)
+	}
+}
+
+func TestLoadWaitsForUpdateToReleaseStateLock(t *testing.T) {
+	store := NewFileStore(filepath.Join(t.TempDir(), "state.json"))
+
+	if err := store.Save(State{
+		DesiredGeneration:   1,
+		ActivatedGeneration: 1,
+		Dependencies:        map[string]DependencyState{},
+	}); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	mutationStarted := make(chan struct{})
+	releaseMutation := make(chan struct{})
+
+	defer func() {
+		select {
+		case <-releaseMutation:
+		default:
+			close(releaseMutation)
+		}
+	}()
+
+	updateDone := make(chan error, 1)
+
+	go func() {
+		_, err := store.Update(func(state *State) error {
+			close(mutationStarted)
+			<-releaseMutation
+
+			state.DesiredGeneration = 2
+
+			return nil
+		})
+		updateDone <- err
+	}()
+
+	select {
+	case <-mutationStarted:
+	case <-time.After(time.Second):
+		t.Fatal("Update() did not begin mutation")
+	}
+
+	loadDone := make(chan error, 1)
+
+	go func() {
+		_, err := store.Load()
+		loadDone <- err
+	}()
+
+	select {
+	case err := <-loadDone:
+		t.Fatalf(
+			"Load() returned before Update() released its state lock: %v",
+			err,
+		)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(releaseMutation)
+
+	select {
+	case err := <-updateDone:
+		if err != nil {
+			t.Fatalf("Update() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Update() did not finish after mutation release")
+	}
+
+	select {
+	case err := <-loadDone:
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Load() did not finish after Update() released its state lock")
 	}
 }

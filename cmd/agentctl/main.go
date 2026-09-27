@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ar-imms/telemetry-agent/internal/agentlifecycle"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/config"
@@ -37,8 +39,11 @@ type dependencies struct {
 	runSupervisor          supervisorRunFunc
 	installDependency      dependencyInstallFunc
 	listDependencies       dependencyListFunc
+	manageDependency       managedDependencyInstallFunc
 	selectDependencies     dependencySelectionFunc
 	listDependencyStatuses dependencyStatusListFunc
+	runCollectorRuntime    collectorRuntimeRunFunc
+	teardownDependency     dependencyTeardownFunc
 }
 
 type dependencyStatusListFunc func(
@@ -72,6 +77,14 @@ type supervisorRunFunc func(
 	supervisor.Options,
 ) error
 
+type dependencyTeardownFunc = agentlifecycle.DependencyTeardownFunc
+
+type collectorRuntimeRunFunc func(
+	context.Context,
+	string,
+	dependencyTeardownFunc,
+) error
+
 func main() {
 	// Convert termination signals into cancellation for graceful shutdown.
 	deps := defaultDependencies()
@@ -96,7 +109,12 @@ func defaultDependencies() dependencies {
 		runner:            bootstrap.OSCommandRunner{},
 		runSupervisor:     supervisor.Run,
 		installDependency: defaultInstallDependency,
-		listDependencies:  defaultListDependencies,
+		manageDependency: newManagedDependencyInstaller(
+			identity.CollectPlatformInfo,
+			defaultInstallDependency,
+			bootstrap.OSCommandRunner{},
+		),
+		listDependencies: defaultListDependencies,
 		selectDependencies: newTerminalDependencyMultiSelector(
 			func() bool {
 				inputInfo, inputErr := os.Stdin.Stat()
@@ -110,6 +128,7 @@ func defaultDependencies() dependencies {
 			runDependencyMultiSelectProgram(os.Stdin),
 		),
 		listDependencyStatuses: defaultListDependencyStatuses,
+		runCollectorRuntime:    agentlifecycle.RunCollectorRuntime,
 	}
 }
 
@@ -180,6 +199,9 @@ func defaultDependencyCatalog() (dependency.Catalog, error) {
 			Inspect: dependency.NewWindowsExporterInspector(
 				dependency.DefaultWindowsExporterOptions(),
 			),
+			Teardown: dependency.NewWindowsExporterTeardown(
+				dependency.DefaultWindowsExporterOptions(),
+			),
 		},
 		{
 			Definition: dependency.Definition{
@@ -196,6 +218,9 @@ func defaultDependencyCatalog() (dependency.Catalog, error) {
 			Inspect: nodeexporter.NewInspector(
 				nodeexporter.DefaultOptions(),
 			),
+			Teardown: nodeexporter.NewTeardown(
+				nodeexporter.DefaultOptions(),
+			),
 		},
 		{
 			Definition: dependency.Definition{
@@ -210,6 +235,9 @@ func defaultDependencyCatalog() (dependency.Catalog, error) {
 				bootstrap.HTTPDownloader{},
 			),
 			Inspect: librehardwaremonitor.NewInspector(
+				librehardwaremonitor.DefaultOptions(),
+			),
+			Teardown: librehardwaremonitor.NewTeardown(
 				librehardwaremonitor.DefaultOptions(),
 			),
 		},
@@ -311,12 +339,20 @@ func runBootstrap(
 	flags := flag.NewFlagSet("bootstrap", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "usage: agentctl bootstrap --config-root <path> --install-dir <path> --config-path <path> [--validation-endpoint <host:port>] [--timeout <duration>]")
+		fmt.Fprintln(
+			stderr,
+			"usage: agentctl bootstrap --config-root <path> --install-dir <path> --config-path <path> [--state-path <path>] [--validation-endpoint <host:port>] [--timeout <duration>]",
+		)
 	}
 
 	configRoot := flags.String("config-root", "", "root directory containing configuration fragments")
 	installDir := flags.String("install-dir", "", "Collector installation root")
 	configPath := flags.String("config-path", "", "final rendered Collector configuration path")
+	statePath := flags.String(
+		"state-path",
+		agentstate.DefaultPath(),
+		"Agent lifecycle state path",
+	)
 	validationEndpoint := flags.String("validation-endpoint", defaultValidationEndpoint, "endpoint supplied only to Collector validation")
 	validationTimeout := flags.Duration("timeout", defaultValidationTimeout, "Collector validation timeout")
 
@@ -365,6 +401,43 @@ func runBootstrap(
 		return 1
 	}
 
+	stateStore := agentstate.NewFileStore(*statePath)
+
+	state, err := stateStore.Load()
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			fmt.Fprintf(stderr, "load Agent state: %v\n", err)
+
+			return 1
+		}
+
+		state = agentstate.State{
+			Dependencies: make(map[string]agentstate.DependencyState),
+		}
+	}
+
+	catalog, err := defaultDependencyCatalog()
+	if err != nil {
+		fmt.Fprintf(stderr, "build dependency catalog: %v\n", err)
+
+		return 1
+	}
+
+	receiverLayer, err := dependencyMetricsReceiverLayer(
+		catalog,
+		platform.OS,
+		state,
+	)
+	if err != nil {
+		fmt.Fprintf(
+			stderr,
+			"configure managed dependency receivers: %v\n",
+			err,
+		)
+
+		return 1
+	}
+
 	layers, err := configurationLayers(*configRoot, platform.OS)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -382,6 +455,9 @@ func runBootstrap(
 		ConfigInput: config.RenderInput{
 			Platform: platform,
 			Layers:   layers,
+			InlineLayers: []config.InlineLayer{
+				receiverLayer,
+			},
 		},
 		ValidationEnvironment: []string{
 			"OTEL_GATEWAY_ENDPOINT=" + *validationEndpoint,
@@ -390,6 +466,23 @@ func runBootstrap(
 	}, deps.downloader, deps.runner)
 	if err != nil {
 		fmt.Fprintf(stderr, "bootstrap Collector: %v\n", err)
+		return 1
+	}
+
+	_, err = stateStore.Update(func(state *agentstate.State) error {
+		state.Collector = agentstate.CollectorContext{
+			ConfigRoot:      *configRoot,
+			BinaryPath:      result.BinaryPath,
+			ConfigPath:      result.ConfigPath,
+			GatewayEndpoint: *validationEndpoint,
+			HealthEndpoint:  defaultHealthEndpoint,
+		}
+
+		return nil
+	})
+	if err != nil {
+		fmt.Fprintf(stderr, "persist Agent state: %v\n", err)
+
 		return 1
 	}
 
@@ -408,94 +501,61 @@ func runCollector(
 	stderr io.Writer,
 	deps dependencies,
 ) int {
-	// Runtime receives only already-validated paths and endpoint values from the CLI.
 	flags := flag.NewFlagSet("run", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.Usage = func() {
 		fmt.Fprintln(
 			stderr,
-			"usage: agentctl run --collector-path <path> --config-path <path> --gateway-endpoint <host:port> [--health-endpoint <url>] [--startup-timeout <duration>] [--shutdown-timeout <duration>]",
+			"usage: agentctl run [--state-path <path>]",
 		)
 	}
 
-	collectorPath := flags.String(
-		"collector-path",
-		"",
-		"verified Collector binary path",
-	)
-	configPath := flags.String(
-		"config-path",
-		"",
-		"validated final Collector configuration path",
-	)
-	gatewayEndpoint := flags.String(
-		"gateway-endpoint",
-		"",
-		"OTLP gateway endpoint supplied to Collector at runtime",
-	)
-	healthEndpoint := flags.String(
-		"health-endpoint",
-		defaultHealthEndpoint,
-		"Collector health endpoint URL",
-	)
-	startupTimeout := flags.Duration(
-		"startup-timeout",
-		defaultStartupTimeout,
-		"maximum time to wait for Collector readiness",
-	)
-	shutdownTimeout := flags.Duration(
-		"shutdown-timeout",
-		defaultShutdownTimeout,
-		"maximum graceful Collector shutdown time",
+	statePath := flags.String(
+		"state-path",
+		agentstate.DefaultPath(),
+		"persistent Agent state path",
 	)
 
 	if err := flags.Parse(args); err != nil {
 		flags.Usage()
+
 		return 2
 	}
 	if flags.NArg() != 0 {
-		fmt.Fprintln(stderr, "usage error: run does not accept positional arguments")
+		fmt.Fprintln(
+			stderr,
+			"usage error: run does not accept positional arguments",
+		)
 		flags.Usage()
+
 		return 2
 	}
-	if *collectorPath == "" {
-		return usageError(stderr, flags, "--collector-path is required")
-	}
-	if *configPath == "" {
-		return usageError(stderr, flags, "--config-path is required")
-	}
-	if *gatewayEndpoint == "" {
-		return usageError(stderr, flags, "--gateway-endpoint is required")
-	}
-	if *healthEndpoint == "" {
-		return usageError(stderr, flags, "--health-endpoint must not be empty")
-	}
-	if *startupTimeout <= 0 {
-		return usageError(stderr, flags, "--startup-timeout must be greater than zero")
-	}
-	if *shutdownTimeout <= 0 {
-		return usageError(stderr, flags, "--shutdown-timeout must be greater than zero")
+	if strings.TrimSpace(*statePath) == "" {
+		return usageError(
+			stderr,
+			flags,
+			"--state-path must not be empty",
+		)
 	}
 
-	runSupervisor := deps.runSupervisor
-	if runSupervisor == nil {
-		runSupervisor = supervisor.Run
+	runRuntime := deps.runCollectorRuntime
+	if runRuntime == nil {
+		runRuntime = agentlifecycle.RunCollectorRuntime
 	}
 
-	err := runSupervisor(ctx, supervisor.Options{
-		BinaryPath:      *collectorPath,
-		ConfigPath:      *configPath,
-		GatewayEndpoint: *gatewayEndpoint,
-		HealthEndpoint:  *healthEndpoint,
-		StartupTimeout:  *startupTimeout,
-		ShutdownTimeout: *shutdownTimeout,
-	})
-	if err != nil {
+	teardown := deps.teardownDependency
+	if teardown == nil {
+		teardown = defaultDependencyTeardown
+	}
+
+	if err := runRuntime(ctx, *statePath, teardown); err != nil {
 		fmt.Fprintf(stderr, "run Collector: %v\n", err)
+
 		return 1
 	}
 
 	fmt.Fprintln(stdout, "Collector stopped")
+
 	return 0
 }
 
@@ -534,4 +594,32 @@ func dependencyMetricsReceiverLayer(
 	)
 
 	return config.MetricsReceiverLayer(receivers), nil
+}
+
+func defaultDependencyTeardown(
+	ctx context.Context,
+	name string,
+	action agentstate.TeardownAction,
+	resources []agentstate.OwnedResource,
+) error {
+	platform, err := identity.CollectPlatformInfo()
+	if err != nil {
+		return fmt.Errorf(
+			"collect platform information: %w",
+			err,
+		)
+	}
+
+	catalog, err := defaultDependencyCatalog()
+	if err != nil {
+		return fmt.Errorf(
+			"build dependency catalog: %w",
+			err,
+		)
+	}
+
+	return (dependency.Service{
+		Catalog: catalog,
+		OS:      platform.OS,
+	}).Teardown(ctx, name, action, resources)
 }

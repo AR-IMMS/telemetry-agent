@@ -27,8 +27,7 @@ func acquireStateLock(path string) (stateLock, error) {
 
 	err = windows.LockFileEx(
 		windows.Handle(file.Fd()),
-		windows.LOCKFILE_EXCLUSIVE_LOCK|
-			windows.LOCKFILE_FAIL_IMMEDIATELY,
+		windows.LOCKFILE_EXCLUSIVE_LOCK,
 		0,
 		1,
 		0,

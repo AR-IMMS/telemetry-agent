@@ -3,7 +3,6 @@
 package agentstate
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"syscall"
@@ -21,12 +20,14 @@ func acquireStateLock(path string) (stateLock, error) {
 
 	if err := syscall.Flock(
 		int(file.Fd()),
-		syscall.LOCK_EX|syscall.LOCK_NB,
+		syscall.LOCK_EX,
 	); err != nil {
 		file.Close()
 
-		if errors.Is(err, syscall.EWOULDBLOCK) {
-			return nil, ErrStateLocked
+		if err != nil {
+			file.Close()
+
+			return nil, fmt.Errorf("lock Agent state: %w", err)
 		}
 
 		return nil, fmt.Errorf("lock Agent state: %w", err)

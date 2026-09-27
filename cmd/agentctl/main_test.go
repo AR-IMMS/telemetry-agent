@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/ar-imms/telemetry-agent/internal/agentlifecycle"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/config"
@@ -20,6 +22,7 @@ import (
 
 func TestBootstrapPassesOrderedLinuxLayersAndValidationOptions(t *testing.T) {
 	var gotOptions bootstrap.Options
+	statePath := filepath.Join(t.TempDir(), "state.json")
 
 	deps := testDependencies(identity.PlatformInfo{OS: "linux", Architecture: "amd64"})
 	deps.runBootstrap = func(
@@ -37,6 +40,7 @@ func TestBootstrapPassesOrderedLinuxLayersAndValidationOptions(t *testing.T) {
 		"--config-root", "test-configs",
 		"--install-dir", "test-install",
 		"--config-path", "test-output/otel.yaml",
+		"--state-path", statePath,
 		"--validation-endpoint", "gateway.test:4317",
 		"--timeout", "45s",
 	}, deps)
@@ -89,7 +93,17 @@ func TestBootstrapUsesWindowsConfigurationLayer(t *testing.T) {
 		return bootstrap.Result{Artifact: bootstrap.Artifact{Version: "0.160.0"}}, nil
 	}
 
-	code, _, stderr := runForTest(t, validBootstrapArguments(), deps)
+	statePath := filepath.Join(t.TempDir(), "state.json")
+
+	code, _, stderr := runForTest(
+		t,
+		append(
+			validBootstrapArguments(),
+			"--state-path",
+			statePath,
+		),
+		deps,
+	)
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr = %s", code, stderr)
@@ -104,6 +118,7 @@ func TestBootstrapUsesWindowsConfigurationLayer(t *testing.T) {
 func TestBootstrapDefaultsValidationEndpointAndTimeout(t *testing.T) {
 	deps := testDependencies(identity.PlatformInfo{OS: "linux", Architecture: "amd64"})
 	var gotOptions bootstrap.Options
+	statePath := filepath.Join(t.TempDir(), "state.json")
 	deps.runBootstrap = func(
 		_ context.Context,
 		options bootstrap.Options,
@@ -114,8 +129,15 @@ func TestBootstrapDefaultsValidationEndpointAndTimeout(t *testing.T) {
 		return bootstrap.Result{Artifact: bootstrap.Artifact{Version: "0.160.0"}}, nil
 	}
 
-	code, _, stderr := runForTest(t, validBootstrapArguments(), deps)
-
+	code, _, stderr := runForTest(
+		t,
+		append(
+			validBootstrapArguments(),
+			"--state-path",
+			statePath,
+		),
+		deps,
+	)
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr = %s", code, stderr)
 	}
@@ -180,7 +202,9 @@ func TestBootstrapFailurePreservesErrorAndSuppressesSuccessOutput(t *testing.T) 
 }
 
 func TestBootstrapSuccessPrintsInstallationResult(t *testing.T) {
-	deps := testDependencies(identity.PlatformInfo{OS: "linux", Architecture: "amd64"})
+	deps := testDependencies(
+		identity.PlatformInfo{OS: "linux", Architecture: "amd64"},
+	)
 	deps.runBootstrap = func(
 		_ context.Context,
 		_ bootstrap.Options,
@@ -195,7 +219,17 @@ func TestBootstrapSuccessPrintsInstallationResult(t *testing.T) {
 		}, nil
 	}
 
-	code, stdout, stderr := runForTest(t, validBootstrapArguments(), deps)
+	statePath := filepath.Join(t.TempDir(), "state.json")
+
+	code, stdout, stderr := runForTest(
+		t,
+		append(
+			validBootstrapArguments(),
+			"--state-path",
+			statePath,
+		),
+		deps,
+	)
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr = %s", code, stderr)
@@ -239,36 +273,30 @@ func testDependencies(platform identity.PlatformInfo) dependencies {
 	}
 }
 
-func TestRunInvokesSupervisorWithExplicitRuntimeOptions(t *testing.T) {
+func TestRunPassesExplicitStatePathToRuntime(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	var gotOptions supervisor.Options
+
+	wantStatePath := filepath.Join(t.TempDir(), "state.json")
+	var gotStatePath string
 
 	exitCode := run(
 		context.Background(),
 		[]string{
 			"run",
-			"--collector-path",
-			"C:/agent/bin/otelcol-contrib.exe",
-			"--config-path",
-			"C:/agent/config/otel.yaml",
-			"--gateway-endpoint",
-			"gateway.example:4317",
-			"--health-endpoint",
-			"http://127.0.0.1:13133",
-			"--startup-timeout",
-			"45s",
-			"--shutdown-timeout",
-			"12s",
+			"--state-path",
+			wantStatePath,
 		},
 		&stdout,
 		&stderr,
 		dependencies{
-			runSupervisor: func(
+			runCollectorRuntime: func(
 				ctx context.Context,
-				options supervisor.Options,
+				statePath string,
+				_ agentlifecycle.DependencyTeardownFunc,
 			) error {
-				gotOptions = options
+				gotStatePath = statePath
+
 				return nil
 			},
 		},
@@ -281,21 +309,17 @@ func TestRunInvokesSupervisorWithExplicitRuntimeOptions(t *testing.T) {
 			stderr.String(),
 		)
 	}
-
-	wantOptions := supervisor.Options{
-		BinaryPath:      "C:/agent/bin/otelcol-contrib.exe",
-		ConfigPath:      "C:/agent/config/otel.yaml",
-		GatewayEndpoint: "gateway.example:4317",
-		HealthEndpoint:  "http://127.0.0.1:13133",
-		StartupTimeout:  45 * time.Second,
-		ShutdownTimeout: 12 * time.Second,
-	}
-
-	if !reflect.DeepEqual(gotOptions, wantOptions) {
+	if gotStatePath != wantStatePath {
 		t.Fatalf(
-			"supervisor options = %#v, want %#v",
-			gotOptions,
-			wantOptions,
+			"runtime state path = %q, want %q",
+			gotStatePath,
+			wantStatePath,
+		)
+	}
+	if stdout.String() != "Collector stopped\n" {
+		t.Fatalf(
+			"stdout = %q, want Collector stopped message",
+			stdout.String(),
 		)
 	}
 }
@@ -589,5 +613,261 @@ func TestDependencyMetricsReceiverLayerIncludesOnlyEnabledCurrentPlatform(
 			layer,
 			want,
 		)
+	}
+}
+
+func TestRunBootstrapPersistsCollectorContextAndManagedReceiverLayer(
+	t *testing.T,
+) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	var gotOptions bootstrap.Options
+
+	configRoot := t.TempDir()
+	installDir := t.TempDir()
+	configPath := filepath.Join(t.TempDir(), "otel.yaml")
+	statePath := filepath.Join(t.TempDir(), "state.json")
+
+	exitCode := runBootstrap(
+		context.Background(),
+		[]string{
+			"--config-root", configRoot,
+			"--install-dir", installDir,
+			"--config-path", configPath,
+			"--validation-endpoint", "gateway.example:4317",
+			"--state-path", statePath,
+		},
+		&stdout,
+		&stderr,
+		dependencies{
+			collectPlatform: func() (identity.PlatformInfo, error) {
+				return identity.PlatformInfo{
+					OS: "windows",
+				}, nil
+			},
+			runBootstrap: func(
+				ctx context.Context,
+				options bootstrap.Options,
+				downloader bootstrap.Downloader,
+				runner bootstrap.CommandRunner,
+			) (bootstrap.Result, error) {
+				gotOptions = options
+
+				return bootstrap.Result{
+					BinaryPath: `C:\AR-IMMS\otelcol-contrib.exe`,
+					ConfigPath: configPath,
+				}, nil
+			},
+		},
+	)
+
+	if exitCode != 0 {
+		t.Fatalf(
+			"runBootstrap() exit code = %d, want 0; stderr = %q",
+			exitCode,
+			stderr.String(),
+		)
+	}
+
+	wantLayer := config.MetricsReceiverLayer([]string{
+		"otlp",
+		"hostmetrics",
+	})
+
+	if !reflect.DeepEqual(gotOptions.ConfigInput.InlineLayers, []config.InlineLayer{
+		wantLayer,
+	}) {
+		t.Fatalf(
+			"bootstrap InlineLayers = %#v, want %#v",
+			gotOptions.ConfigInput.InlineLayers,
+			[]config.InlineLayer{wantLayer},
+		)
+	}
+
+	state, err := agentstate.NewFileStore(statePath).Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	wantContext := agentstate.CollectorContext{
+		ConfigRoot:      configRoot,
+		BinaryPath:      `C:\AR-IMMS\otelcol-contrib.exe`,
+		ConfigPath:      configPath,
+		GatewayEndpoint: "gateway.example:4317",
+		HealthEndpoint:  defaultHealthEndpoint,
+	}
+
+	if !reflect.DeepEqual(state.Collector, wantContext) {
+		t.Fatalf(
+			"persisted Collector = %#v, want %#v",
+			state.Collector,
+			wantContext,
+		)
+	}
+}
+
+func TestRunBootstrapDoesNotPersistCollectorContextWhenBootstrapFails(
+	t *testing.T,
+) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	statePath := filepath.Join(t.TempDir(), "state.json")
+
+	exitCode := runBootstrap(
+		context.Background(),
+		[]string{
+			"--config-root", t.TempDir(),
+			"--install-dir", t.TempDir(),
+			"--config-path", filepath.Join(t.TempDir(), "otel.yaml"),
+			"--state-path", statePath,
+		},
+		&stdout,
+		&stderr,
+		dependencies{
+			collectPlatform: func() (identity.PlatformInfo, error) {
+				return identity.PlatformInfo{
+					OS: "windows",
+				}, nil
+			},
+			runBootstrap: func(
+				context.Context,
+				bootstrap.Options,
+				bootstrap.Downloader,
+				bootstrap.CommandRunner,
+			) (bootstrap.Result, error) {
+				return bootstrap.Result{}, errors.New("validation failed")
+			},
+		},
+	)
+
+	if exitCode != 1 {
+		t.Fatalf(
+			"runBootstrap() exit code = %d, want 1; stderr = %q",
+			exitCode,
+			stderr.String(),
+		)
+	}
+
+	_, err := agentstate.NewFileStore(statePath).Load()
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("state Load() error = %v, want not-exist error", err)
+	}
+}
+
+func TestRunCollectorPassesExplicitStatePath(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	wantStatePath := filepath.Join(t.TempDir(), "state.json")
+	var gotStatePath string
+
+	exitCode := runCollector(
+		context.Background(),
+		[]string{"--state-path", wantStatePath},
+		&stdout,
+		&stderr,
+		dependencies{
+			runCollectorRuntime: func(
+				ctx context.Context,
+				statePath string,
+				_ agentlifecycle.DependencyTeardownFunc,
+			) error {
+				gotStatePath = statePath
+
+				return nil
+			},
+		},
+	)
+
+	if exitCode != 0 {
+		t.Fatalf(
+			"runCollector() exit code = %d, want 0; stderr = %q",
+			exitCode,
+			stderr.String(),
+		)
+	}
+	if gotStatePath != wantStatePath {
+		t.Fatalf(
+			"state path = %q, want %q",
+			gotStatePath,
+			wantStatePath,
+		)
+	}
+}
+
+func TestRunCollectorRejectsEmptyStatePath(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runCollector(
+		context.Background(),
+		[]string{"--state-path", "   "},
+		&stdout,
+		&stderr,
+		dependencies{},
+	)
+
+	if exitCode != 2 {
+		t.Fatalf("runCollector() exit code = %d, want 2", exitCode)
+	}
+	if !strings.Contains(
+		stderr.String(),
+		"--state-path must not be empty",
+	) {
+		t.Fatalf(
+			"stderr = %q, want empty-state-path error",
+			stderr.String(),
+		)
+	}
+}
+
+func TestDefaultDependencyCatalogConfiguresNodeExporterTeardown(
+	t *testing.T,
+) {
+	catalog, err := defaultDependencyCatalog()
+	if err != nil {
+		t.Fatalf("defaultDependencyCatalog() error = %v", err)
+	}
+
+	integration, found := catalog.Find("node-exporter")
+	if !found {
+		t.Fatal("node-exporter integration was not found")
+	}
+	if integration.Teardown == nil {
+		t.Fatal("node-exporter Teardown = nil")
+	}
+}
+
+func TestDefaultDependencyCatalogConfiguresWindowsExporterTeardown(
+	t *testing.T,
+) {
+	catalog, err := defaultDependencyCatalog()
+	if err != nil {
+		t.Fatalf("defaultDependencyCatalog() error = %v", err)
+	}
+
+	integration, found := catalog.Find("windows-exporter")
+	if !found {
+		t.Fatal("windows-exporter integration was not found")
+	}
+	if integration.Teardown == nil {
+		t.Fatal("windows-exporter Teardown = nil")
+	}
+}
+
+func TestDefaultDependencyCatalogConfiguresLHMTeardown(t *testing.T) {
+	catalog, err := defaultDependencyCatalog()
+	if err != nil {
+		t.Fatalf("defaultDependencyCatalog() error = %v", err)
+	}
+
+	integration, found := catalog.Find("libre-hardware-monitor")
+	if !found {
+		t.Fatal("LHM integration not found")
+	}
+
+	if integration.Teardown == nil {
+		t.Fatal("LHM teardown = nil, want configured teardown")
 	}
 }

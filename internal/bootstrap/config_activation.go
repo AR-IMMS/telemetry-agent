@@ -11,12 +11,12 @@ import (
 
 const renderedConfigPermission = 0640
 
-// validateAndActivateConfig validates rendered config in a temporary directory
+// ActivateRenderedConfig validates rendered config in a temporary directory
 // before atomically replacing targetPath.
 //
 // A validation failure leaves the currently active target configuration
 // unchanged.
-func validateAndActivateConfig(
+func ActivateRenderedConfig(
 	ctx context.Context,
 	runner CommandRunner,
 	binaryPath string,
@@ -60,7 +60,7 @@ func validateAndActivateConfig(
 	defer os.RemoveAll(stagingDir)
 
 	// After this point we have another path
-	// example: 
+	// example:
 	// 	- candidate: /path/to/config/.bootstrap-config-123456789/otelcol.yaml
 	// 	- target: /path/to/config/otelcol.yaml
 	stagedConfigPath := filepath.Join(

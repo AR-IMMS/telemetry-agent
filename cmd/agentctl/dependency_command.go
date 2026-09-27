@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
+
+	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 )
 
 func writeDependencyHelp(output io.Writer) {
@@ -17,6 +20,52 @@ Commands:
   status                     Show lifecycle status of managed dependencies.
   help                       Show this help.
 `)
+}
+
+func parseDependencyInstallArguments(
+	args []string,
+) ([]string, string, error) {
+	statePath := agentstate.DefaultPath()
+	names := make([]string, 0, 1)
+
+	for index := 0; index < len(args); index++ {
+		argument := args[index]
+
+		switch {
+		case argument == "--state-path":
+			if index+1 == len(args) {
+				return nil, "", fmt.Errorf(
+					"--state-path requires a value",
+				)
+			}
+
+			index++
+			statePath = args[index]
+
+		case strings.HasPrefix(argument, "--state-path="):
+			statePath = strings.TrimPrefix(
+				argument,
+				"--state-path=",
+			)
+
+		case strings.HasPrefix(argument, "-"):
+			return nil, "", fmt.Errorf(
+				"unknown dependency install option %q",
+				argument,
+			)
+
+		default:
+			names = append(names, argument)
+		}
+	}
+
+	if strings.TrimSpace(statePath) == "" {
+		return nil, "", fmt.Errorf(
+			"--state-path must not be empty",
+		)
+	}
+
+	return names, statePath, nil
 }
 
 func runDependency(
@@ -164,9 +213,17 @@ func runDependency(
 		return 2
 	}
 
-	var names []string
+	names, statePath, err := parseDependencyInstallArguments(
+		args[1:],
+	)
+	if err != nil {
+		fmt.Fprintf(stderr, "usage error: %v\n\n", err)
+		writeDependencyHelp(stderr)
 
-	if len(args) == 1 {
+		return 2
+	}
+
+	if len(names) == 0 {
 		if deps.listDependencies == nil {
 			fmt.Fprintln(
 				stderr,
@@ -207,9 +264,7 @@ func runDependency(
 
 			return 1
 		}
-	} else if len(args) == 2 {
-		names = []string{args[1]}
-	} else {
+	} else if len(names) != 1 {
 		fmt.Fprintln(
 			stderr,
 			"usage error: dependency install accepts exactly one dependency name",
@@ -220,13 +275,38 @@ func runDependency(
 		return 2
 	}
 
-	if deps.installDependency == nil {
-		fmt.Fprintln(stderr, "install dependency: installer is not configured")
+	if deps.manageDependency == nil &&
+		deps.installDependency == nil {
+		fmt.Fprintln(
+			stderr,
+			"install dependency: installer is not configured",
+		)
 
 		return 1
 	}
 
 	for _, name := range names {
+		if deps.manageDependency != nil {
+			result, err := deps.manageDependency(
+				ctx,
+				name,
+				statePath,
+			)
+			if err != nil {
+				fmt.Fprintf(stderr, "install dependency: %v\n", err)
+
+				return 1
+			}
+
+			fmt.Fprintf(
+				stdout,
+				"Dependency installed: %s\n",
+				result.Name,
+			)
+
+			continue
+		}
+
 		result, err := deps.installDependency(ctx, name)
 		if err != nil {
 			fmt.Fprintf(stderr, "install dependency: %v\n", err)

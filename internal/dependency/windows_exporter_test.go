@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 )
 
 func TestWindowsExporterOptionsValidateRejectsMissingRequiredValues(
@@ -442,6 +444,30 @@ func TestWindowsExporterInstallerStagesAndRunsVerifiedMSI(
 	if result.Reused {
 		t.Fatal("result Reused = true, want false")
 	}
+
+	wantOwnedResources := []agentstate.OwnedResource{
+		{
+			Kind:       "windows-service",
+			Identifier: windowsExporterServiceName,
+		},
+		{
+			Kind:       "msi-product",
+			Identifier: "windows_exporter",
+		},
+		{
+			Kind:       "config-file",
+			Identifier: installer.options.ConfigPath,
+		},
+	}
+
+	if !reflect.DeepEqual(result.OwnedResources, wantOwnedResources) {
+		t.Fatalf(
+			"result owned resources = %#v, want %#v",
+			result.OwnedResources,
+			wantOwnedResources,
+		)
+	}
+
 	if gotCommand.Executable != "msiexec.exe" {
 		t.Fatalf(
 			"process executable = %q, want msiexec.exe",

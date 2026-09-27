@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/dependency"
 )
 
@@ -78,7 +79,22 @@ func TestNewInstallerComposesAdminReconcileAndFreshInstall(t *testing.T) {
 
 	wantResult := dependency.InstallResult{
 		Name: "libre-hardware-monitor",
+		OwnedResources: []agentstate.OwnedResource{
+			{
+				Kind:       "scheduled-task",
+				Identifier: DefaultOptions().TaskName,
+			},
+			{
+				Kind:       "firewall-rule",
+				Identifier: DefaultOptions().FirewallName,
+			},
+			{
+				Kind:       "directory",
+				Identifier: DefaultOptions().InstallDir,
+			},
+		},
 	}
+
 	if !reflect.DeepEqual(result, wantResult) {
 		t.Fatalf("result = %#v, want %#v", result, wantResult)
 	}

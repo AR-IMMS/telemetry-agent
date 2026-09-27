@@ -390,3 +390,45 @@ func TestStateMarkGenerationActivatedAcknowledgesCurrentDesiredGeneration(
 		)
 	}
 }
+
+func TestStateEnableDependencyCancelsPendingTeardown(t *testing.T) {
+	state := State{
+		DesiredGeneration: 7,
+		Dependencies: map[string]DependencyState{
+			"node-exporter": {
+				Enabled: false,
+				PendingTeardown: &PendingTeardown{
+					Action:     TeardownActionDisable,
+					Generation: 7,
+				},
+			},
+		},
+	}
+
+	changed, err := state.EnableDependency("node-exporter")
+
+	if err != nil {
+		t.Fatalf("EnableDependency() error = %v", err)
+	}
+	if !changed {
+		t.Fatal("EnableDependency() changed = false, want true")
+	}
+
+	dependency := state.Dependencies["node-exporter"]
+
+	if !dependency.Enabled {
+		t.Fatal("node-exporter Enabled = false, want true")
+	}
+	if dependency.PendingTeardown != nil {
+		t.Fatalf(
+			"PendingTeardown = %#v, want nil after re-enable",
+			dependency.PendingTeardown,
+		)
+	}
+	if state.DesiredGeneration != 8 {
+		t.Fatalf(
+			"DesiredGeneration = %d, want 8",
+			state.DesiredGeneration,
+		)
+	}
+}

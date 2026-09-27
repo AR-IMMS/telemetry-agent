@@ -3,6 +3,8 @@ package dependency
 import (
 	"context"
 	"strings"
+
+	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 )
 
 // Definition describes one built-in external dependency supported by agentctl.
@@ -15,12 +17,20 @@ type Definition struct {
 
 // InstallResult reports the outcome of a dependency installation attempt.
 type InstallResult struct {
-	Name   string
-	Reused bool
+	Name           string
+	Reused         bool
+	OwnedResources []agentstate.OwnedResource
 }
 
 // Installer installs or reconciles one dependency.
 type Installer func(context.Context) (InstallResult, error)
+
+// Teardown disables or removes only resources recorded as Agent-owned.
+type Teardown func(
+	context.Context,
+	agentstate.TeardownAction,
+	[]agentstate.OwnedResource,
+) error
 
 // Integration binds one dependency definition to its concrete behavior.
 // Integration binds one dependency definition to its concrete behavior.
@@ -34,6 +44,9 @@ type Integration struct {
 	// CollectorReceiver is the receiver name already defined in the relevant
 	// OS configuration fragment, for example "prometheus/node_exporter".
 	CollectorReceiver string
+
+	// Teardown applies an approved lifecycle action to Agent-owned resources.
+	Teardown Teardown
 }
 
 // Inspector reads the current lifecycle state of one dependency.

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/dependency"
 )
 
@@ -121,6 +122,20 @@ func (i freshInstaller) Install(
 
 	return dependency.InstallResult{
 		Name: "libre-hardware-monitor",
+		OwnedResources: []agentstate.OwnedResource{
+			{
+				Kind:       "scheduled-task",
+				Identifier: i.options.TaskName,
+			},
+			{
+				Kind:       "firewall-rule",
+				Identifier: i.options.FirewallName,
+			},
+			{
+				Kind:       "directory",
+				Identifier: i.options.InstallDir,
+			},
+		},
 	}, nil
 }
 

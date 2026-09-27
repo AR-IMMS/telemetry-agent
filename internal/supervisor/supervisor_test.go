@@ -487,3 +487,82 @@ func (c *stopRequestFailureChild) Kill() error {
 
 	return nil
 }
+
+func TestRunWithCallsOnReadyAfterCollectorPassesReadiness(
+	t *testing.T,
+) {
+	server := httptest.NewServer(
+		http.HandlerFunc(func(
+			writer http.ResponseWriter,
+			request *http.Request,
+		) {
+			writer.WriteHeader(http.StatusOK)
+		}),
+	)
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	child := &fakeChild{
+		exited:        make(chan ExitResult, 1),
+		stopRequested: make(chan struct{}),
+	}
+
+	onReadyCalls := 0
+	readyCalled := make(chan struct{})
+
+	runDone := make(chan error, 1)
+
+	go func() {
+		runDone <- runWith(
+			ctx,
+			Options{
+				BinaryPath:      "C:/agent/bin/otelcol-contrib.exe",
+				ConfigPath:      "C:/agent/config/otel.yaml",
+				HealthEndpoint:  server.URL,
+				GatewayEndpoint: "gateway.example:4317",
+				StartupTimeout:  time.Second,
+				ShutdownTimeout: time.Second,
+				OnReady: func() error {
+					onReadyCalls++
+					close(readyCalled)
+
+					return nil
+				},
+			},
+			fakeStarter{child: child},
+			server.Client(),
+		)
+	}()
+
+	select {
+	case <-readyCalled:
+	case <-time.After(time.Second):
+		t.Fatal("OnReady was not called after Collector became ready")
+	}
+
+	if onReadyCalls != 1 {
+		t.Fatalf("OnReady calls = %d, want 1", onReadyCalls)
+	}
+
+	cancel()
+
+	select {
+	case <-child.stopRequested:
+		child.exited <- ExitResult{Code: 0}
+
+	case <-time.After(time.Second):
+		t.Fatal("supervisor did not request Collector shutdown")
+	}
+
+	select {
+	case err := <-runDone:
+		if err != nil {
+			t.Fatalf("runWith() error = %v", err)
+		}
+
+	case <-time.After(time.Second):
+		t.Fatal("supervisor did not finish after cancellation")
+	}
+}

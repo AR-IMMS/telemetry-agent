@@ -20,6 +20,10 @@ type Options struct {
 	GatewayEndpoint string
 	StartupTimeout  time.Duration
 	ShutdownTimeout time.Duration
+
+	// OnReady runs once after the Collector passes its readiness check.
+	// Returning an error stops the Collector through the normal shutdown path.
+	OnReady func() error
 }
 
 // Run starts and supervises one Collector process until it exits or ctx is
@@ -54,12 +58,25 @@ func runWith(
 		)
 		defer cancel()
 
-		return waitForReadiness(
+		if err := waitForReadiness(
 			startupCtx,
 			client,
 			options.HealthEndpoint,
 			defaultReadinessPollInterval,
-		)
+		); err != nil {
+			return err
+		}
+
+		if options.OnReady != nil {
+			if err := options.OnReady(); err != nil {
+				return fmt.Errorf(
+					"run Collector ready callback: %w",
+					err,
+				)
+			}
+		}
+
+		return nil
 	}
 
 	return newSupervisor(

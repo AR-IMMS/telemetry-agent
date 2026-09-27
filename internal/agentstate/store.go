@@ -30,11 +30,20 @@ func (s FileStore) Save(state State) error {
 		return fmt.Errorf("Agent state path is required")
 	}
 
-	content, err := json.MarshalIndent(state, "", "  ")
-	if err != nil {
-		return fmt.Errorf("encode Agent state: %w", err)
+	if err := s.ensureDirectory(); err != nil {
+		return err
 	}
 
+	lock, err := acquireStateLock(s.path + ".lock")
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+
+	return s.saveUnlocked(state)
+}
+
+func (s FileStore) ensureDirectory() error {
 	directory := filepath.Dir(s.path)
 
 	if err := os.MkdirAll(directory, 0o750); err != nil {
@@ -44,6 +53,17 @@ func (s FileStore) Save(state State) error {
 			err,
 		)
 	}
+
+	return nil
+}
+
+func (s FileStore) saveUnlocked(state State) error {
+	content, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode Agent state: %w", err)
+	}
+
+	directory := filepath.Dir(s.path)
 
 	temporaryFile, err := os.CreateTemp(directory, ".agent-state-*")
 	if err != nil {
@@ -88,6 +108,16 @@ func (s FileStore) Load() (State, error) {
 		return State{}, fmt.Errorf("Agent state path is required")
 	}
 
+	lock, err := acquireStateLock(s.path + ".lock")
+	if err != nil {
+		return State{}, err
+	}
+	defer lock.Close()
+
+	return s.loadUnlocked()
+}
+
+func (s FileStore) loadUnlocked() (State, error) {
 	file, err := os.Open(s.path)
 	if err != nil {
 		return State{}, fmt.Errorf("open Agent state: %w", err)
@@ -135,7 +165,7 @@ func (s FileStore) Update(mutate StateMutation) (State, error) {
 	}
 	defer lock.Close()
 
-	state, err := s.Load()
+	state, err := s.loadUnlocked()
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
 			return State{}, err
@@ -150,7 +180,7 @@ func (s FileStore) Update(mutate StateMutation) (State, error) {
 		return State{}, err
 	}
 
-	if err := s.Save(state); err != nil {
+	if err := s.saveUnlocked(state); err != nil {
 		return State{}, err
 	}
 
