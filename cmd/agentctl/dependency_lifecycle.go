@@ -22,6 +22,13 @@ type managedDependencyInstallFunc func(
 	string,
 ) (dependency.InstallResult, error)
 
+type managedDependencyLifecycleFunc func(
+	context.Context,
+	string,
+	string,
+	agentstate.TeardownAction,
+) error
+
 type managedDependencyInstaller struct {
 	collectPlatform func() (identity.PlatformInfo, error)
 	install         dependencyInstallFunc
@@ -40,6 +47,136 @@ func newManagedDependencyInstaller(
 	}
 
 	return installer.Install
+}
+
+type managedDependencyLifecycle struct {
+	collectPlatform func() (identity.PlatformInfo, error)
+	runner          bootstrap.CommandRunner
+}
+
+func newManagedDependencyLifecycle(
+	collectPlatform func() (identity.PlatformInfo, error),
+	runner bootstrap.CommandRunner,
+) managedDependencyLifecycleFunc {
+	lifecycle := managedDependencyLifecycle{
+		collectPlatform: collectPlatform,
+		runner:          runner,
+	}
+
+	return lifecycle.Apply
+}
+
+func (l managedDependencyLifecycle) Apply(
+	ctx context.Context,
+	name string,
+	statePath string,
+	action agentstate.TeardownAction,
+) error {
+	statePath = strings.TrimSpace(statePath)
+	if statePath == "" {
+		return fmt.Errorf("Agent lifecycle state path is required")
+	}
+
+	store := agentstate.NewFileStore(statePath)
+
+	state, err := store.Load()
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf(
+				"bootstrap the Collector before managing dependencies",
+			)
+		}
+
+		return fmt.Errorf("load Agent lifecycle state: %w", err)
+	}
+
+	if strings.TrimSpace(state.Collector.ConfigRoot) == "" ||
+		strings.TrimSpace(state.Collector.BinaryPath) == "" ||
+		strings.TrimSpace(state.Collector.ConfigPath) == "" ||
+		strings.TrimSpace(state.Collector.GatewayEndpoint) == "" {
+		return fmt.Errorf(
+			"bootstrap the Collector before managing dependencies",
+		)
+	}
+
+	updatedState, err := store.Update(func(state *agentstate.State) error {
+		switch action {
+		case agentstate.TeardownActionDisable:
+			_, err := state.DisableDependency(name)
+
+			return err
+
+		case agentstate.TeardownActionUninstall:
+			_, err := state.RequestUninstall(name)
+
+			return err
+
+		default:
+			return fmt.Errorf(
+				"unsupported dependency lifecycle action %q",
+				action,
+			)
+		}
+	})
+	if err != nil {
+		return fmt.Errorf(
+			"update dependency %q lifecycle state: %w",
+			name,
+			err,
+		)
+	}
+
+	if updatedState.DesiredGeneration ==
+		updatedState.ActivatedGeneration {
+		return nil
+	}
+
+	collectPlatform := l.collectPlatform
+	if collectPlatform == nil {
+		collectPlatform = identity.CollectPlatformInfo
+	}
+
+	platform, err := collectPlatform()
+	if err != nil {
+		return fmt.Errorf("collect platform information: %w", err)
+	}
+
+	catalog, err := defaultDependencyCatalog()
+	if err != nil {
+		return fmt.Errorf("build dependency catalog: %w", err)
+	}
+
+	layers, err := configurationLayers(
+		updatedState.Collector.ConfigRoot,
+		platform.OS,
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := agentlifecycle.ApplyDesiredConfiguration(
+		ctx,
+		store,
+		agentlifecycle.CollectorConfigurationOptions{
+			Platform:   platform,
+			Catalog:    catalog,
+			Layers:     layers,
+			BinaryPath: updatedState.Collector.BinaryPath,
+			ConfigPath: updatedState.Collector.ConfigPath,
+			ValidationEnvironment: []string{
+				"OTEL_GATEWAY_ENDPOINT=" +
+					updatedState.Collector.GatewayEndpoint,
+			},
+			Runner: l.runner,
+		},
+	); err != nil {
+		return fmt.Errorf(
+			"activate dependency lifecycle configuration: %w",
+			err,
+		)
+	}
+
+	return nil
 }
 
 // Install refuses to create machine resources until bootstrap has persisted

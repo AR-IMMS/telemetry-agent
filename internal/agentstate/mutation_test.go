@@ -432,3 +432,50 @@ func TestStateEnableDependencyCancelsPendingTeardown(t *testing.T) {
 		)
 	}
 }
+
+func TestRequestUninstallFromDisabledDependencyAdvancesGeneration(
+	t *testing.T,
+) {
+	state := State{
+		DesiredGeneration:   6,
+		ActivatedGeneration: 6,
+		AppliedGeneration:   6,
+		Dependencies: map[string]DependencyState{
+			"windows-exporter": {
+				Enabled: false,
+			},
+		},
+	}
+
+	changed, err := state.RequestUninstall("windows-exporter")
+	if err != nil {
+		t.Fatalf("RequestUninstall() error = %v", err)
+	}
+	if !changed {
+		t.Fatal("RequestUninstall() changed = false, want true")
+	}
+	if state.DesiredGeneration != 7 {
+		t.Fatalf(
+			"DesiredGeneration = %d, want 7",
+			state.DesiredGeneration,
+		)
+	}
+
+	dependency := state.Dependencies["windows-exporter"]
+	if dependency.PendingTeardown == nil {
+		t.Fatal("PendingTeardown = nil, want uninstall teardown")
+	}
+	if dependency.PendingTeardown.Action != TeardownActionUninstall {
+		t.Fatalf(
+			"PendingTeardown.Action = %q, want %q",
+			dependency.PendingTeardown.Action,
+			TeardownActionUninstall,
+		)
+	}
+	if dependency.PendingTeardown.Generation != 7 {
+		t.Fatalf(
+			"PendingTeardown.Generation = %d, want 7",
+			dependency.PendingTeardown.Generation,
+		)
+	}
+}

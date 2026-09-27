@@ -32,18 +32,19 @@ const (
 )
 
 type dependencies struct {
-	collectPlatform        func() (identity.PlatformInfo, error)
-	runBootstrap           bootstrapRunFunc
-	downloader             bootstrap.Downloader
-	runner                 bootstrap.CommandRunner
-	runSupervisor          supervisorRunFunc
-	installDependency      dependencyInstallFunc
-	listDependencies       dependencyListFunc
-	manageDependency       managedDependencyInstallFunc
-	selectDependencies     dependencySelectionFunc
-	listDependencyStatuses dependencyStatusListFunc
-	runCollectorRuntime    collectorRuntimeRunFunc
-	teardownDependency     dependencyTeardownFunc
+	collectPlatform           func() (identity.PlatformInfo, error)
+	runBootstrap              bootstrapRunFunc
+	downloader                bootstrap.Downloader
+	runner                    bootstrap.CommandRunner
+	runSupervisor             supervisorRunFunc
+	installDependency         dependencyInstallFunc
+	listDependencies          dependencyListFunc
+	manageDependency          managedDependencyInstallFunc
+	manageDependencyLifecycle managedDependencyLifecycleFunc
+	selectDependencies        dependencySelectionFunc
+	listDependencyStatuses    dependencyStatusListFunc
+	runCollectorRuntime       collectorRuntimeRunFunc
+	teardownDependency        dependencyTeardownFunc
 }
 
 type dependencyStatusListFunc func(
@@ -112,6 +113,10 @@ func defaultDependencies() dependencies {
 		manageDependency: newManagedDependencyInstaller(
 			identity.CollectPlatformInfo,
 			defaultInstallDependency,
+			bootstrap.OSCommandRunner{},
+		),
+		manageDependencyLifecycle: newManagedDependencyLifecycle(
+			identity.CollectPlatformInfo,
 			bootstrap.OSCommandRunner{},
 		),
 		listDependencies: defaultListDependencies,
@@ -283,6 +288,7 @@ Commands:
   dependency  Manage telemetry dependencies.
   run         Run the OpenTelemetry Collector under supervision.
   help        Show this help.
+	uninstall <dependency-name>  Uninstall safely after Collector readiness.
 `)
 }
 

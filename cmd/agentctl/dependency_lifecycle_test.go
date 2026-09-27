@@ -334,3 +334,175 @@ func TestDefaultDependenciesConfigureManagedDependencyInstaller(
 		)
 	}
 }
+
+func TestManagedDependencyLifecycleRequiresBootstrapBeforeChangingState(
+	t *testing.T,
+) {
+	lifecycle := newManagedDependencyLifecycle(
+		nil,
+		nil,
+	)
+
+	err := lifecycle(
+		context.Background(),
+		"windows-exporter",
+		filepath.Join(t.TempDir(), "missing-state.json"),
+		agentstate.TeardownActionDisable,
+	)
+
+	if err == nil || !strings.Contains(
+		err.Error(),
+		"bootstrap the Collector before managing dependencies",
+	) {
+		t.Fatalf("lifecycle() error = %v, want bootstrap-required error", err)
+	}
+}
+
+func TestManagedDependencyLifecycleDisablesDependencyAndActivatesConfiguration(
+	t *testing.T,
+) {
+	configRoot := t.TempDir()
+	targetPath := filepath.Join(t.TempDir(), "otel.yaml")
+
+	writeConfig := func(relativePath string, content string) {
+		path := filepath.Join(configRoot, relativePath)
+
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatalf("create config directory: %v", err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+			t.Fatalf("write config %q: %v", relativePath, err)
+		}
+	}
+
+	writeConfig("base/otel.yaml", `
+receivers:
+  otlp: {}
+processors:
+  batch: {}
+exporters:
+  debug: {}
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+`)
+
+	writeConfig("profiles/laptop.yaml", "{}\n")
+
+	writeConfig("os/windows/otel.yaml", `
+receivers:
+  hostmetrics: {}
+  prometheus/windows_exporter: {}
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp, hostmetrics]
+      processors: [batch]
+      exporters: [debug]
+`)
+
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	store := agentstate.NewFileStore(statePath)
+
+	_, err := store.Update(func(state *agentstate.State) error {
+		state.Collector = agentstate.CollectorContext{
+			ConfigRoot:      configRoot,
+			BinaryPath:      "otelcol-contrib",
+			ConfigPath:      targetPath,
+			GatewayEndpoint: "127.0.0.1:4317",
+		}
+		state.DesiredGeneration = 1
+		state.ActivatedGeneration = 1
+		state.AppliedGeneration = 1
+		state.Dependencies = map[string]agentstate.DependencyState{
+			"windows-exporter": {
+				Enabled: true,
+			},
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("initialize state: %v", err)
+	}
+
+	lifecycle := newManagedDependencyLifecycle(
+		func() (identity.PlatformInfo, error) {
+			return identity.PlatformInfo{
+				OS: "windows",
+			}, nil
+		},
+		successfulBootstrapRunner{},
+	)
+
+	err = lifecycle(
+		context.Background(),
+		"windows-exporter",
+		statePath,
+		agentstate.TeardownActionDisable,
+	)
+	if err != nil {
+		t.Fatalf("lifecycle(disable) error = %v", err)
+	}
+
+	state, err := store.Load()
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+
+	dependency := state.Dependencies["windows-exporter"]
+	if dependency.Enabled {
+		t.Fatal("windows-exporter Enabled = true, want false")
+	}
+	if dependency.PendingTeardown == nil {
+		t.Fatal("PendingTeardown = nil, want disable teardown")
+	}
+	if dependency.PendingTeardown.Action != agentstate.TeardownActionDisable {
+		t.Fatalf(
+			"PendingTeardown.Action = %q, want %q",
+			dependency.PendingTeardown.Action,
+			agentstate.TeardownActionDisable,
+		)
+	}
+	if dependency.PendingTeardown.Generation != 2 {
+		t.Fatalf(
+			"PendingTeardown.Generation = %d, want 2",
+			dependency.PendingTeardown.Generation,
+		)
+	}
+	if state.ActivatedGeneration != 2 {
+		t.Fatalf(
+			"ActivatedGeneration = %d, want 2",
+			state.ActivatedGeneration,
+		)
+	}
+
+	rendered, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatalf("read activated config: %v", err)
+	}
+	if strings.Contains(
+		string(rendered),
+		"- prometheus/windows_exporter",
+	) {
+		t.Fatalf(
+			"activated metrics pipeline still uses Windows Exporter:\n%s",
+			rendered,
+		)
+	}
+}
+
+func TestDefaultDependenciesConfigureManagedDependencyLifecycle(
+	t *testing.T,
+) {
+	deps := defaultDependencies()
+
+	if deps.manageDependencyLifecycle == nil {
+		t.Fatal(
+			"default dependencies managed lifecycle manager is nil",
+		)
+	}
+}

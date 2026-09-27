@@ -153,28 +153,24 @@ func (s *State) RequestUninstall(name string) (bool, error) {
 		)
 	}
 
-	changed := false
+	if dependency.PendingTeardown != nil &&
+		dependency.PendingTeardown.Action == TeardownActionUninstall {
+		return false, nil
+	}
 
 	if dependency.Enabled {
 		dependency.Enabled = false
-		s.DesiredGeneration++
-		changed = true
 	}
 
-	generation := s.DesiredGeneration
-	if dependency.PendingTeardown == nil ||
-		dependency.PendingTeardown.Action != TeardownActionUninstall ||
-		dependency.PendingTeardown.Generation != generation {
-		dependency.PendingTeardown = &PendingTeardown{
-			Action:     TeardownActionUninstall,
-			Generation: generation,
-		}
-		changed = true
-	}
+	s.DesiredGeneration++
 
+	dependency.PendingTeardown = &PendingTeardown{
+		Action:     TeardownActionUninstall,
+		Generation: s.DesiredGeneration,
+	}
 	s.Dependencies[normalizedName] = dependency
 
-	return changed, nil
+	return true, nil
 }
 
 // CompleteTeardown records successful platform teardown after the Collector has
