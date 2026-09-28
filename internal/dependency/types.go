@@ -26,6 +26,12 @@ type InstallResult struct {
 // Installer installs or reconciles one dependency.
 type Installer func(context.Context) (InstallResult, error)
 
+// Enabler starts resources that are already recorded as Agent-owned.
+type Enabler func(
+	context.Context,
+	[]agentstate.OwnedResource,
+) error
+
 // Teardown disables or removes only resources recorded as Agent-owned.
 type Teardown func(
 	context.Context,
@@ -48,6 +54,9 @@ type Integration struct {
 
 	// Teardown applies an approved lifecycle action to Agent-owned resources.
 	Teardown Teardown
+
+	// Enable starts previously disabled resources recorded as Agent-owned.
+	Enable Enabler
 }
 
 // Inspector reads the current lifecycle state of one dependency.
