@@ -9,10 +9,11 @@ import (
 
 // Definition describes one built-in external dependency supported by agentctl.
 type Definition struct {
-	Name        string
-	DisplayName string
-	Description string
-	SupportedOS []string
+	Name            string
+	DisplayName     string
+	Description     string
+	MetricsEndpoint string
+	SupportedOS     []string
 }
 
 // InstallResult reports the outcome of a dependency installation attempt.

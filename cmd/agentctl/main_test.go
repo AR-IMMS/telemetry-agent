@@ -641,6 +641,7 @@ func TestRunBootstrapPersistsCollectorContextAndManagedReceiverLayer(
 			"--install-dir", installDir,
 			"--config-path", configPath,
 			"--validation-endpoint", "gateway.example:4317",
+			"--gateway-endpoint", "runtime.example:4317",
 			"--state-path", statePath,
 		},
 		&stdout,
@@ -690,6 +691,14 @@ func TestRunBootstrapPersistsCollectorContextAndManagedReceiverLayer(
 		)
 	}
 
+	if got := strings.Join(gotOptions.ValidationEnvironment, ","); got !=
+		"OTEL_GATEWAY_ENDPOINT=gateway.example:4317" {
+		t.Fatalf(
+			"validation environment = %q, want validation-only endpoint",
+			got,
+		)
+	}
+
 	state, err := agentstate.NewFileStore(statePath).Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -699,7 +708,7 @@ func TestRunBootstrapPersistsCollectorContextAndManagedReceiverLayer(
 		ConfigRoot:      configRoot,
 		BinaryPath:      `C:\AR-IMMS\otelcol-contrib.exe`,
 		ConfigPath:      configPath,
-		GatewayEndpoint: "gateway.example:4317",
+		GatewayEndpoint: "runtime.example:4317",
 		HealthEndpoint:  defaultHealthEndpoint,
 	}
 

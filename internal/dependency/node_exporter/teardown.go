@@ -28,6 +28,12 @@ func (t nodeExporterTeardown) Teardown(
 	action agentstate.TeardownAction,
 	resources []agentstate.OwnedResource,
 ) error {
+	if ctx == nil {
+		return fmt.Errorf(
+			"Node Exporter teardown context is required",
+		)
+	}
+
 	if err := t.options.Validate(); err != nil {
 		return fmt.Errorf(
 			"validate Node Exporter teardown options: %w",

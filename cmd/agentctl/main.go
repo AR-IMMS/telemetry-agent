@@ -25,6 +25,7 @@ import (
 
 const (
 	defaultValidationEndpoint = "127.0.0.1:4317"
+	defaultGatewayEndpoint    = "127.0.0.1:4317"
 	defaultValidationTimeout  = 2 * time.Minute
 	defaultHealthEndpoint     = "http://127.0.0.1:13133"
 	defaultStartupTimeout     = 30 * time.Second
@@ -188,24 +189,31 @@ func defaultListDependencies(
 // defaultDependencyCatalog creates the built-in integrations bundled with this
 // agentctl release.
 func defaultDependencyCatalog() (dependency.Catalog, error) {
+	windowsExporterOptions := dependency.DefaultWindowsExporterOptions()
+	nodeExporterOptions := nodeexporter.DefaultOptions()
+	lhmOptions := librehardwaremonitor.DefaultOptions()
+
 	return dependency.NewCatalog([]dependency.Integration{
 		{
 			Definition: dependency.Definition{
 				Name:        "windows-exporter",
 				DisplayName: "Windows Exporter",
 				Description: "Collects Windows host metrics.",
+				MetricsEndpoint: "http://" +
+					windowsExporterOptions.ListenAddress +
+					"/metrics",
 				SupportedOS: []string{"windows"},
 			},
 			CollectorReceiver: "prometheus/windows_exporter",
 			Install: dependency.NewWindowsExporterInstaller(
-				dependency.DefaultWindowsExporterOptions(),
+				windowsExporterOptions,
 				bootstrap.HTTPDownloader{},
 			),
 			Inspect: dependency.NewWindowsExporterInspector(
-				dependency.DefaultWindowsExporterOptions(),
+				windowsExporterOptions,
 			),
 			Teardown: dependency.NewWindowsExporterTeardown(
-				dependency.DefaultWindowsExporterOptions(),
+				windowsExporterOptions,
 			),
 		},
 		{
@@ -213,18 +221,21 @@ func defaultDependencyCatalog() (dependency.Catalog, error) {
 				Name:        "node-exporter",
 				DisplayName: "Node Exporter",
 				Description: "Collects Linux host metrics.",
+				MetricsEndpoint: "http://" +
+					nodeExporterOptions.ListenAddress +
+					"/metrics",
 				SupportedOS: []string{"linux"},
 			},
 			CollectorReceiver: "prometheus/node_exporter",
 			Install: nodeexporter.NewInstaller(
-				nodeexporter.DefaultOptions(),
+				nodeExporterOptions,
 				bootstrap.HTTPDownloader{},
 			),
 			Inspect: nodeexporter.NewInspector(
-				nodeexporter.DefaultOptions(),
+				nodeExporterOptions,
 			),
 			Teardown: nodeexporter.NewTeardown(
-				nodeexporter.DefaultOptions(),
+				nodeExporterOptions,
 			),
 		},
 		{
@@ -232,18 +243,22 @@ func defaultDependencyCatalog() (dependency.Catalog, error) {
 				Name:        "libre-hardware-monitor",
 				DisplayName: "Libre Hardware Monitor",
 				Description: "Collects Windows hardware metrics.",
+				MetricsEndpoint: fmt.Sprintf(
+					"http://127.0.0.1:%d/metrics",
+					lhmOptions.ListenPort,
+				),
 				SupportedOS: []string{"windows"},
 			},
 			CollectorReceiver: "prometheus/libre_hardware_monitor",
 			Install: librehardwaremonitor.NewInstaller(
-				librehardwaremonitor.DefaultOptions(),
+				lhmOptions,
 				bootstrap.HTTPDownloader{},
 			),
 			Inspect: librehardwaremonitor.NewInspector(
-				librehardwaremonitor.DefaultOptions(),
+				lhmOptions,
 			),
 			Teardown: librehardwaremonitor.NewTeardown(
-				librehardwaremonitor.DefaultOptions(),
+				lhmOptions,
 			),
 		},
 	})
@@ -346,7 +361,7 @@ func runBootstrap(
 	flags.Usage = func() {
 		fmt.Fprintln(
 			stderr,
-			"usage: agentctl bootstrap --config-root <path> --install-dir <path> --config-path <path> [--state-path <path>] [--validation-endpoint <host:port>] [--timeout <duration>]",
+			"usage: agentctl bootstrap --config-root <path> --install-dir <path> --config-path <path> [--state-path <path>] [--gateway-endpoint <host:port>] [--validation-endpoint <host:port>] [--timeout <duration>]",
 		)
 	}
 
@@ -359,6 +374,11 @@ func runBootstrap(
 		"Agent lifecycle state path",
 	)
 	validationEndpoint := flags.String("validation-endpoint", defaultValidationEndpoint, "endpoint supplied only to Collector validation")
+	gatewayEndpoint := flags.String(
+		"gateway-endpoint",
+		defaultGatewayEndpoint,
+		"runtime OpenTelemetry Gateway endpoint",
+	)
 	validationTimeout := flags.Duration("timeout", defaultValidationTimeout, "Collector validation timeout")
 
 	if err := flags.Parse(args); err != nil {
@@ -378,6 +398,14 @@ func runBootstrap(
 	}
 	if *configPath == "" {
 		return usageError(stderr, flags, "--config-path is required")
+	}
+
+	if *gatewayEndpoint == "" {
+		return usageError(
+			stderr,
+			flags,
+			"--gateway-endpoint must not be empty",
+		)
 	}
 
 	if *validationEndpoint == "" {
@@ -479,7 +507,7 @@ func runBootstrap(
 			ConfigRoot:      *configRoot,
 			BinaryPath:      result.BinaryPath,
 			ConfigPath:      result.ConfigPath,
-			GatewayEndpoint: *validationEndpoint,
+			GatewayEndpoint: *gatewayEndpoint,
 			HealthEndpoint:  defaultHealthEndpoint,
 		}
 

@@ -72,12 +72,12 @@ func (r windowsExporterReconciler) Install(
 			}, nil
 		}
 
-		return r.install(ctx)
+		return r.reconfigureExistingService(ctx)
 	}
 
 	if state.serviceExists {
 		if !state.configMatches {
-			return r.install(ctx)
+			return r.reconfigureExistingService(ctx)
 		}
 
 		return InstallResult{}, fmt.Errorf(
@@ -86,4 +86,19 @@ func (r windowsExporterReconciler) Install(
 	}
 
 	return r.install(ctx)
+}
+
+func (r windowsExporterReconciler) reconfigureExistingService(
+	ctx context.Context,
+) (InstallResult, error) {
+	result, err := r.install(ctx)
+	if err != nil {
+		return InstallResult{}, err
+	}
+
+	// A pre-existing service was not created by this invocation. Its repair
+	// must never turn it into an Agent-owned installation.
+	result.OwnedResources = nil
+
+	return result, nil
 }

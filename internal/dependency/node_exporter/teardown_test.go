@@ -137,3 +137,46 @@ func TestNodeExporterTeardownUninstallsOwnedResources(
 		t.Fatalf("teardown steps = %#v, want %#v", steps, want)
 	}
 }
+
+func TestNodeExporterTeardownRejectsNilContext(
+	t *testing.T,
+) {
+	options := DefaultOptions()
+	runCalls := 0
+
+	teardown := nodeExporterTeardown{
+		options: options,
+		runSystemd: func(
+			_ context.Context,
+			_ systemdCommand,
+		) error {
+			runCalls++
+
+			return nil
+		},
+	}
+
+	err := teardown.Teardown(
+		nil,
+		agentstate.TeardownActionDisable,
+		[]agentstate.OwnedResource{
+			{
+				Kind:       "systemd-unit",
+				Identifier: options.ServicePath,
+			},
+		},
+	)
+
+	if err == nil {
+		t.Fatal("Teardown() error = nil, want nil-context error")
+	}
+	if !strings.Contains(
+		err.Error(),
+		"Node Exporter teardown context is required",
+	) {
+		t.Fatalf("Teardown() error = %v, want context error", err)
+	}
+	if runCalls != 0 {
+		t.Fatalf("systemd runner calls = %d, want 0", runCalls)
+	}
+}

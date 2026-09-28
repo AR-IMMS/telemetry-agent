@@ -240,12 +240,28 @@ func runDependency(
 				condition += ", drifted"
 			}
 
+			metricsEndpoint := strings.TrimSpace(
+				result.Definition.MetricsEndpoint,
+			)
+			if metricsEndpoint == "" {
+				fmt.Fprintf(
+					stdout,
+					"- %s: %s (%s)\n",
+					result.Definition.Name,
+					result.Status.Availability,
+					condition,
+				)
+
+				continue
+			}
+
 			fmt.Fprintf(
 				stdout,
-				"- %s: %s (%s)\n",
+				"- %s: %s (%s) — metrics: %s\n",
 				result.Definition.Name,
 				result.Status.Availability,
 				condition,
+				metricsEndpoint,
 			)
 		}
 

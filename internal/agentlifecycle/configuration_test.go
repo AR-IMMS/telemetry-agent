@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 )
@@ -64,7 +65,7 @@ func TestConfigurationCoordinatorMarksSnapshotGenerationActivated(
 	}
 }
 
-func TestConfigurationCoordinatorDoesNotAcknowledgeLaterDesiredGeneration(
+func TestConfigurationCoordinatorSerializesActivationWithStateMutation(
 	t *testing.T,
 ) {
 	store := agentstate.NewFileStore(
@@ -72,7 +73,7 @@ func TestConfigurationCoordinatorDoesNotAcknowledgeLaterDesiredGeneration(
 	)
 
 	_, err := store.Update(func(state *agentstate.State) error {
-		state.DesiredGeneration = 3
+		state.DesiredGeneration = 1
 
 		return nil
 	})
@@ -80,37 +81,104 @@ func TestConfigurationCoordinatorDoesNotAcknowledgeLaterDesiredGeneration(
 		t.Fatalf("initialize state: %v", err)
 	}
 
+	activationStarted := make(chan struct{})
+	releaseActivation := make(chan struct{})
+	activatedGenerations := make([]uint64, 0, 2)
+
 	coordinator := configurationCoordinator{
 		store: store,
 		activate: func(
-			ctx context.Context,
+			_ context.Context,
 			state agentstate.State,
 		) error {
-			_, err := store.Update(func(state *agentstate.State) error {
-				state.DesiredGeneration = 4
+			activatedGenerations = append(
+				activatedGenerations,
+				state.DesiredGeneration,
+			)
 
-				return nil
-			})
+			if state.DesiredGeneration == 1 {
+				close(activationStarted)
+				<-releaseActivation
+			}
 
-			return err
+			return nil
 		},
 	}
 
-	err = coordinator.Apply(context.Background())
-	if err == nil {
-		t.Fatal(
-			"Apply() error = nil, want stale desired-generation error",
+	firstApplyDone := make(chan error, 1)
+
+	go func() {
+		firstApplyDone <- coordinator.Apply(context.Background())
+	}()
+
+	select {
+	case <-activationStarted:
+	case <-time.After(time.Second):
+		t.Fatal("first configuration activation did not start")
+	}
+
+	mutationDone := make(chan error, 1)
+
+	go func() {
+		_, err := store.Update(func(state *agentstate.State) error {
+			state.DesiredGeneration = 2
+
+			return nil
+		})
+		mutationDone <- err
+	}()
+
+	select {
+	case err := <-mutationDone:
+		t.Fatalf(
+			"desired-state mutation completed during activation: %v",
+			err,
 		)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(releaseActivation)
+
+	select {
+	case err := <-firstApplyDone:
+		if err != nil {
+			t.Fatalf("first Apply() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("first configuration activation did not finish")
+	}
+
+	select {
+	case err := <-mutationDone:
+		if err != nil {
+			t.Fatalf("update desired generation: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("desired-state mutation did not finish after activation")
+	}
+
+	if err := coordinator.Apply(context.Background()); err != nil {
+		t.Fatalf("second Apply() error = %v", err)
 	}
 
 	state, err := store.Load()
 	if err != nil {
 		t.Fatalf("load state: %v", err)
 	}
-	if state.ActivatedGeneration != 0 {
+	if state.ActivatedGeneration != 2 {
 		t.Fatalf(
-			"ActivatedGeneration = %d, want 0",
+			"ActivatedGeneration = %d, want 2",
 			state.ActivatedGeneration,
+		)
+	}
+
+	if got, want := len(activatedGenerations), 2; got != want {
+		t.Fatalf("activation count = %d, want %d", got, want)
+	}
+	if activatedGenerations[0] != 1 || activatedGenerations[1] != 2 {
+		t.Fatalf(
+			"activated generations = %v, want [1 2]",
+			activatedGenerations,
 		)
 	}
 }
