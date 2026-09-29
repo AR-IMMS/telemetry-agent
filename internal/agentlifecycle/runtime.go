@@ -50,7 +50,7 @@ func (w runtimeWatcher) Run(ctx context.Context) error {
 		launchGeneration := snapshot.ActivatedGeneration
 		options := w.options
 		previousOnReady := options.OnReady
-
+		
 		launchContext, cancelLaunch := context.WithCancel(ctx)
 
 		options.OnReady = func() error {

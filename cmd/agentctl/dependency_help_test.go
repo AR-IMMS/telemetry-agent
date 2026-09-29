@@ -14,6 +14,7 @@ Commands:
   install [dependency-name]          Install by name or select in a terminal.
   status [--state-path <path>]       Show lifecycle status of managed dependencies.
   pending [--state-path <path>]      List scheduled dependency teardowns.
+  configure [--state-path <path>]     Configure enabled managed dependencies in a terminal.
   disable <dependency-name> [--state-path <path>]
                                     Disable safely after Collector readiness.
   uninstall <dependency-name> [--state-path <path>]

@@ -46,6 +46,7 @@ type dependencies struct {
 	listDependencyStatuses    dependencyStatusListFunc
 	runCollectorRuntime       collectorRuntimeRunFunc
 	teardownDependency        dependencyTeardownFunc
+	configureDependencies     dependencyConfigureFunc
 }
 
 type dependencyStatusListFunc func(
@@ -135,6 +136,18 @@ func defaultDependencies() dependencies {
 		),
 		listDependencyStatuses: defaultListDependencyStatuses,
 		runCollectorRuntime:    agentlifecycle.RunCollectorRuntime,
+		configureDependencies: newTerminalDependencyConfigurer(
+			func() bool {
+				inputInfo, inputErr := os.Stdin.Stat()
+				outputInfo, outputErr := os.Stdout.Stat()
+
+				return inputErr == nil &&
+					outputErr == nil &&
+					inputInfo.Mode()&os.ModeCharDevice != 0 &&
+					outputInfo.Mode()&os.ModeCharDevice != 0
+			},
+			runDependencyConfigureProgram(os.Stdin),
+		),
 	}
 }
 
@@ -301,6 +314,33 @@ func defaultInstallDependency(
 	}
 
 	return service.Install(ctx, name)
+}
+
+func defaultEnableDependency(
+	ctx context.Context,
+	name string,
+	resources []agentstate.OwnedResource,
+) error {
+	platform, err := identity.CollectPlatformInfo()
+	if err != nil {
+		return fmt.Errorf(
+			"collect platform information: %w",
+			err,
+		)
+	}
+
+	catalog, err := defaultDependencyCatalog()
+	if err != nil {
+		return fmt.Errorf(
+			"build dependency catalog: %w",
+			err,
+		)
+	}
+
+	return (dependency.Service{
+		Catalog: catalog,
+		OS:      platform.OS,
+	}).Enable(ctx, name, resources)
 }
 
 func writeRootHelp(output io.Writer) {

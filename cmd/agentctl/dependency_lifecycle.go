@@ -22,13 +22,26 @@ type managedDependencyInstallFunc func(
 	string,
 ) (dependency.InstallResult, error)
 
+type dependencyLifecycleAction string
+
+const (
+	dependencyLifecycleEnable    dependencyLifecycleAction = "enable"
+	dependencyLifecycleDisable   dependencyLifecycleAction = "disable"
+	dependencyLifecycleUninstall dependencyLifecycleAction = "uninstall"
+)
+
+type dependencyEnableFunc func(
+	context.Context,
+	string,
+	[]agentstate.OwnedResource,
+) error
+
 type managedDependencyLifecycleFunc func(
 	context.Context,
 	string,
 	string,
-	agentstate.TeardownAction,
+	dependencyLifecycleAction,
 ) error
-
 type managedDependencyInstaller struct {
 	collectPlatform func() (identity.PlatformInfo, error)
 	install         dependencyInstallFunc
@@ -52,15 +65,24 @@ func newManagedDependencyInstaller(
 type managedDependencyLifecycle struct {
 	collectPlatform func() (identity.PlatformInfo, error)
 	runner          bootstrap.CommandRunner
+	enable          dependencyEnableFunc
 }
 
 func newManagedDependencyLifecycle(
 	collectPlatform func() (identity.PlatformInfo, error),
 	runner bootstrap.CommandRunner,
+	enablers ...dependencyEnableFunc,
 ) managedDependencyLifecycleFunc {
+	enable := defaultEnableDependency
+
+	if len(enablers) == 1 {
+		enable = enablers[0]
+	}
+
 	lifecycle := managedDependencyLifecycle{
 		collectPlatform: collectPlatform,
 		runner:          runner,
+		enable:          enable,
 	}
 
 	return lifecycle.Apply
@@ -70,7 +92,7 @@ func (l managedDependencyLifecycle) Apply(
 	ctx context.Context,
 	name string,
 	statePath string,
-	action agentstate.TeardownAction,
+	action dependencyLifecycleAction,
 ) error {
 	statePath = strings.TrimSpace(statePath)
 	if statePath == "" {
@@ -99,25 +121,81 @@ func (l managedDependencyLifecycle) Apply(
 		)
 	}
 
-	updatedState, err := store.Update(func(state *agentstate.State) error {
-		switch action {
-		case agentstate.TeardownActionDisable:
-			_, err := state.DisableDependency(name)
+	var updatedState agentstate.State
 
-			return err
+	switch action {
+	case dependencyLifecycleEnable:
+		normalizedName := strings.ToLower(strings.TrimSpace(name))
+		dependencyState, exists := state.Dependencies[normalizedName]
 
-		case agentstate.TeardownActionUninstall:
-			_, err := state.RequestUninstall(name)
-
-			return err
-
-		default:
+		if !exists {
 			return fmt.Errorf(
-				"unsupported dependency lifecycle action %q",
-				action,
+				"dependency %q has no persisted Agent state",
+				name,
 			)
 		}
-	})
+
+		if !dependencyState.Enabled {
+			if dependencyState.Ownership == nil ||
+				len(dependencyState.Ownership.Resources) == 0 {
+				return fmt.Errorf(
+					"dependency %q is disabled without Agent-owned resources; install it again",
+					name,
+				)
+			}
+
+			if l.enable == nil {
+				return fmt.Errorf(
+					"dependency lifecycle enable executor is required",
+				)
+			}
+
+			if err := l.enable(
+				ctx,
+				name,
+				dependencyState.Ownership.Resources,
+			); err != nil {
+				return fmt.Errorf(
+					"enable dependency %q: %w",
+					name,
+					err,
+				)
+			}
+		}
+
+		updatedState, err = store.Update(
+			func(state *agentstate.State) error {
+				_, err := state.EnableDependency(name)
+
+				return err
+			},
+		)
+
+	case dependencyLifecycleDisable:
+		updatedState, err = store.Update(
+			func(state *agentstate.State) error {
+				_, err := state.DisableDependency(name)
+
+				return err
+			},
+		)
+
+	case dependencyLifecycleUninstall:
+		updatedState, err = store.Update(
+			func(state *agentstate.State) error {
+				_, err := state.RequestUninstall(name)
+
+				return err
+			},
+		)
+
+	default:
+		return fmt.Errorf(
+			"unsupported dependency lifecycle action %q",
+			action,
+		)
+	}
+
 	if err != nil {
 		return fmt.Errorf(
 			"update dependency %q lifecycle state: %w",

@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -347,7 +348,7 @@ func TestManagedDependencyLifecycleRequiresBootstrapBeforeChangingState(
 		context.Background(),
 		"windows-exporter",
 		filepath.Join(t.TempDir(), "missing-state.json"),
-		agentstate.TeardownActionDisable,
+		dependencyLifecycleDisable,
 	)
 
 	if err == nil || !strings.Contains(
@@ -442,7 +443,7 @@ service:
 		context.Background(),
 		"windows-exporter",
 		statePath,
-		agentstate.TeardownActionDisable,
+		dependencyLifecycleDisable,
 	)
 	if err != nil {
 		t.Fatalf("lifecycle(disable) error = %v", err)
@@ -464,7 +465,7 @@ service:
 		t.Fatalf(
 			"PendingTeardown.Action = %q, want %q",
 			dependency.PendingTeardown.Action,
-			agentstate.TeardownActionDisable,
+			dependencyLifecycleDisable,
 		)
 	}
 	if dependency.PendingTeardown.Generation != 2 {
@@ -495,6 +496,174 @@ service:
 	}
 }
 
+func TestManagedDependencyLifecycleEnablesOwnedDependencyAndActivatesConfiguration(
+	t *testing.T,
+) {
+	configRoot := t.TempDir()
+	targetPath := filepath.Join(t.TempDir(), "otel.yaml")
+
+	writeConfig := func(relativePath string, content string) {
+		path := filepath.Join(configRoot, relativePath)
+
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatalf("create config directory: %v", err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+			t.Fatalf("write config %q: %v", relativePath, err)
+		}
+	}
+
+	writeConfig("base/otel.yaml", `
+receivers:
+  otlp: {}
+processors:
+  batch: {}
+exporters:
+  debug: {}
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+`)
+
+	writeConfig("profiles/laptop.yaml", "{}\n")
+
+	writeConfig("os/windows/otel.yaml", `
+receivers:
+  hostmetrics: {}
+  prometheus/windows_exporter: {}
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp, hostmetrics]
+      processors: [batch]
+      exporters: [debug]
+`)
+
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	store := agentstate.NewFileStore(statePath)
+
+	ownership := []agentstate.OwnedResource{
+		{
+			Kind:       "windows-service",
+			Identifier: "windows_exporter",
+		},
+	}
+
+	_, err := store.Update(func(state *agentstate.State) error {
+		state.Collector = agentstate.CollectorContext{
+			ConfigRoot:      configRoot,
+			BinaryPath:      "otelcol-contrib",
+			ConfigPath:      targetPath,
+			GatewayEndpoint: "127.0.0.1:4317",
+		}
+		state.DesiredGeneration = 1
+		state.ActivatedGeneration = 1
+		state.AppliedGeneration = 1
+		state.Dependencies = map[string]agentstate.DependencyState{
+			"windows-exporter": {
+				Enabled:   false,
+				Ownership: &agentstate.OwnershipRecord{Resources: ownership},
+			},
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("initialize state: %v", err)
+	}
+
+	enableCalls := 0
+
+	lifecycle := newManagedDependencyLifecycle(
+		func() (identity.PlatformInfo, error) {
+			return identity.PlatformInfo{OS: "windows"}, nil
+		},
+		successfulBootstrapRunner{},
+		func(
+			ctx context.Context,
+			name string,
+			resources []agentstate.OwnedResource,
+		) error {
+			enableCalls++
+
+			if ctx == nil {
+				t.Fatal("enable context = nil")
+			}
+			if name != "windows-exporter" {
+				t.Fatalf("enable name = %q, want windows-exporter", name)
+			}
+			if !reflect.DeepEqual(resources, ownership) {
+				t.Fatalf(
+					"enable ownership = %#v, want %#v",
+					resources,
+					ownership,
+				)
+			}
+
+			return nil
+		},
+	)
+
+	err = lifecycle(
+		context.Background(),
+		"windows-exporter",
+		statePath,
+		dependencyLifecycleEnable,
+	)
+	if err != nil {
+		t.Fatalf("lifecycle(enable) error = %v", err)
+	}
+
+	if enableCalls != 1 {
+		t.Fatalf("enable calls = %d, want 1", enableCalls)
+	}
+
+	state, err := store.Load()
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+
+	dependency := state.Dependencies["windows-exporter"]
+	if !dependency.Enabled {
+		t.Fatal("windows-exporter Enabled = false, want true")
+	}
+	if dependency.PendingTeardown != nil {
+		t.Fatalf(
+			"PendingTeardown = %#v, want nil",
+			dependency.PendingTeardown,
+		)
+	}
+	if state.DesiredGeneration != 2 {
+		t.Fatalf(
+			"DesiredGeneration = %d, want 2",
+			state.DesiredGeneration,
+		)
+	}
+	if state.ActivatedGeneration != 2 {
+		t.Fatalf(
+			"ActivatedGeneration = %d, want 2",
+			state.ActivatedGeneration,
+		)
+	}
+
+	rendered, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatalf("read activated config: %v", err)
+	}
+	if !strings.Contains(
+		string(rendered),
+		"- prometheus/windows_exporter",
+	) {
+		t.Fatalf(
+			"activated metrics pipeline does not use Windows Exporter:\n%s",
+			rendered,
+		)
+	}
+}
+
 func TestDefaultDependenciesConfigureManagedDependencyLifecycle(
 	t *testing.T,
 ) {
@@ -503,6 +672,85 @@ func TestDefaultDependenciesConfigureManagedDependencyLifecycle(
 	if deps.manageDependencyLifecycle == nil {
 		t.Fatal(
 			"default dependencies managed lifecycle manager is nil",
+		)
+	}
+}
+
+func TestManagedDependencyLifecycleRejectsEnableWithoutOwnership(
+	t *testing.T,
+) {
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	store := agentstate.NewFileStore(statePath)
+
+	_, err := store.Update(func(state *agentstate.State) error {
+		state.Collector = agentstate.CollectorContext{
+			ConfigRoot:      "configs",
+			BinaryPath:      "otelcol-contrib",
+			ConfigPath:      "otel.yaml",
+			GatewayEndpoint: "127.0.0.1:4317",
+		}
+		state.DesiredGeneration = 1
+		state.ActivatedGeneration = 1
+		state.AppliedGeneration = 1
+		state.Dependencies = map[string]agentstate.DependencyState{
+			"windows-exporter": {
+				Enabled: false,
+			},
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("initialize state: %v", err)
+	}
+
+	enableCalls := 0
+
+	lifecycle := newManagedDependencyLifecycle(
+		nil,
+		nil,
+		func(
+			context.Context,
+			string,
+			[]agentstate.OwnedResource,
+		) error {
+			enableCalls++
+
+			return nil
+		},
+	)
+
+	err = lifecycle(
+		context.Background(),
+		"windows-exporter",
+		statePath,
+		dependencyLifecycleEnable,
+	)
+
+	if err == nil || !strings.Contains(
+		err.Error(),
+		"disabled without Agent-owned resources",
+	) {
+		t.Fatalf(
+			"lifecycle(enable) error = %v, want ownership-required error",
+			err,
+		)
+	}
+	if enableCalls != 0 {
+		t.Fatalf("enable calls = %d, want 0", enableCalls)
+	}
+
+	state, err := store.Load()
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	if state.Dependencies["windows-exporter"].Enabled {
+		t.Fatal("windows-exporter Enabled = true, want false")
+	}
+	if state.DesiredGeneration != 1 {
+		t.Fatalf(
+			"DesiredGeneration = %d, want 1",
+			state.DesiredGeneration,
 		)
 	}
 }
