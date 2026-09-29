@@ -26,8 +26,8 @@ It currently manages:
 
 - **Bootstrap** — installs and validates a pinned OpenTelemetry Collector with
   rendered configuration.
-- **Dependency lifecycle** — lists, installs, reconciles, disables, uninstalls,
-  and inspects supported telemetry dependencies.
+- **Dependency lifecycle** — lists, installs, reconciles, configures,
+  enables, disables, uninstalls, and inspects supported telemetry dependencies.
 
 The lifecycle keeps requested state, active Collector configuration, and
 confirmed runtime state separate. Physical cleanup happens only after the
@@ -54,8 +54,8 @@ go run .\cmd\agentctl dependency install windows-exporter
 # Start the managed Collector runtime after bootstrap.
 go run .\cmd\agentctl run
 
-# Disable or uninstall only after the runtime is active.
-go run .\cmd\agentctl dependency disable windows-exporter
+# In a second Administrator terminal, configure managed dependencies.
+go run .\cmd\agentctl dependency configure
 go run .\cmd\agentctl dependency pending
 ```
 
@@ -66,6 +66,7 @@ Use `agentctl bootstrap --help` for Collector bootstrap options and
 
 - Collector configuration is rendered, validated, and atomically activated.
 - The runtime restarts the Collector when the activated generation changes.
+- Enable is allowed only for dependencies with recorded Agent-owned resources
 - Disable and uninstall first remove the dependency receiver from Collector
   configuration.
 - Host teardown runs only after the matching Collector generation is healthy.
@@ -125,6 +126,7 @@ docs/                  Architecture, runbooks, requirements, and changelog
 - [Windows Exporter runbook](docs/runbooks/windows_exporter.md)
 - [Node Exporter runbook](docs/runbooks/node-exporter.md)
 - [Libre Hardware Monitor runbook](docs/runbooks/libre-hardware-monitor.md)
+- [Managed dependency lifecycle](docs/architecture/managed-dependency-lifecycle.md)
 - [Requirements](docs/requirements/)
 - [Changelog](docs/changelog/)
 

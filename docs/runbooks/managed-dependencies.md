@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Use this runbook to install, inspect, disable, or uninstall telemetry
+Use this runbook to install, inspect, configure, disable, or uninstall telemetry
 dependencies managed by `agentctl`.
 
 Run machine-wide Windows operations from an Administrator terminal.
@@ -11,32 +11,22 @@ Run machine-wide Windows operations from an Administrator terminal.
 
 ```mermaid
 flowchart TD
-    A["Start"] --> B["agentctl dependency status"]
+    A["Inspect dependency status"] --> B{"Managed by Agent?"}
+    B -- "No" --> C["Install or reconcile dependency"]
+    B -- "Yes" --> D{"Desired state?"}
 
-    B --> C{"What is shown?"}
+    C --> E["Start Collector runtime"]
+    E --> F["Configure enabled state"]
 
-    C -- "not installed" --> D["Install if telemetry is needed"]
-    C -- "enabled (healthy)" --> E["No action required"]
-    C -- "enabled (..., drifted)" --> F["Run dependency install to reconcile"]
-    C -- "enabled (unhealthy)" --> G["Inspect dependency-specific runbook"]
-    C -- "disabled (unknown)" --> H["Dependency is tracked as disabled;<br/>install again to enable it"]
-    C -- "unknown (error)" --> I["Resolve permission or host inspection error"]
+    D -- "Enable or disable" --> F
+    D -- "Remove permanently" --> G["Schedule uninstall"]
 
-    D --> J["agentctl dependency install <name>"]
-    F --> J
-
-    J --> K["Check status and state"]
-    K --> L{"Remove dependency?"}
-
-    L -- "Temporarily" --> M["dependency disable <name>"]
-    L -- "Permanently" --> N["dependency uninstall <name>"]
-
-    M --> O["Keep agentctl run active"]
-    N --> O
-    O --> P["dependency pending"]
-    P --> Q{"Pending cleared?"}
-    Q -- "Yes" --> R["Verify host resources"]
-    Q -- "No" --> S["Inspect Collector runtime and keep resources intact"]
+    F --> H["Keep agentctl run active"]
+    G --> H
+    H --> I["Inspect pending teardowns"]
+    I --> J{"Pending cleared?"}
+    J -- "Yes" --> K["Verify host state"]
+    J -- "No" --> L["Inspect Collector runtime and health"]
 ```
 
 ## Prerequisites
@@ -48,34 +38,18 @@ flowchart TD
 - Do not manually remove Agent-managed services, tasks, firewall rules, or
   configuration files while a teardown is pending.
 
-## List Supported Dependencies
-
-```powershell
-agentctl dependency list
-```
-
-The result is filtered for the local operating system.
-
 ## Inspect Status
 
 ```powershell
 agentctl dependency status
+agentctl dependency pending
 ```
 
-With a custom state path:
+Use the custom state path consistently when applicable:
 
 ```powershell
 agentctl dependency status --state-path C:\ProgramData\AR-IMMS\agent\state.json
 ```
-
-| Result                       | Meaning                                                                         | Operator action                                              |
-| ---------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `not installed`              | The dependency is not recorded in Agent state and is not active on the host.    | Install it if required.                                      |
-| `enabled (healthy)`          | The dependency is active and its managed configuration matches.                 | No action required.                                          |
-| `enabled (healthy, drifted)` | The dependency is healthy, but managed configuration differs.                   | Run `dependency install <name>` to reconcile.                |
-| `enabled (unhealthy)`        | The dependency is enabled but not healthy.                                      | Inspect the dependency-specific runbook.                     |
-| `disabled (unknown)`         | The dependency is recorded as disabled; no running health endpoint is expected. | Run install to enable it again, or uninstall it permanently. |
-| `unknown (...)`              | Host inspection could not complete.                                             | Resolve the reported permission, platform, or system error.  |
 
 ## Install or Reconcile
 
@@ -91,33 +65,58 @@ Select supported dependencies interactively:
 agentctl dependency install
 ```
 
-After installation, verify:
+A fresh Agent installation records ownership of the resources it creates.
+
+## Configure Enabled State
+
+Use the interactive selector to enable or disable dependencies already recorded
+in Agent state:
+
+```powershell
+agentctl dependency configure
+```
+
+With a custom state path:
+
+```powershell
+agentctl dependency configure --state-path C:\ProgramData\AR-IMMS\agent\state.json
+```
+
+Controls:
+
+| Key                  | Action                         |
+| -------------------- | ------------------------------ |
+| `Space`              | Toggle the selected dependency |
+| `Enter`              | Apply changed states           |
+| `q`, `Esc`, `Ctrl+C` | Cancel without changes         |
+
+`●` means enabled and `○` means disabled.
+
+The selector does not install new dependencies. Use `dependency install` first.
+Enabling requires recorded Agent ownership; the Agent refuses to enable a
+disabled dependency that it does not own.
+
+After applying changes, check:
 
 ```powershell
 agentctl dependency status
+agentctl dependency pending
 ```
-
-A fresh Agent installation records ownership of the resources it creates.
 
 ## Disable
 
-Disable stops or disables the dependency after the Collector has successfully
-applied a configuration without that dependency receiver.
+Disable removes the dependency receiver from Collector configuration, then
+disables the Agent-owned host resource after the Collector acknowledges that
+configuration generation.
 
 ```powershell
 agentctl dependency disable libre-hardware-monitor
 ```
 
-Then monitor progress:
+For an interactive toggle, use `dependency configure` instead.
 
-```powershell
-agentctl dependency pending
-```
-
-Keep `agentctl run` active. The pending entry clears only after the Collector
-is ready for the matching configuration generation.
-
-Disable preserves the installation so it can be enabled again later.
+Disable preserves the installation and ownership so the dependency can later be
+enabled again.
 
 ## Uninstall
 
@@ -128,14 +127,8 @@ without that dependency receiver.
 agentctl dependency uninstall windows-exporter
 ```
 
-Monitor progress:
-
-```powershell
-agentctl dependency pending
-```
-
-When no entry remains, verify the dependency-specific service, task, firewall
-rule, configuration, or installation directory as appropriate.
+An uninstalled dependency no longer appears in `dependency configure`. Install
+it again to create a new managed record.
 
 ## Pending Teardowns
 
@@ -166,16 +159,22 @@ If a pending entry does not clear:
 The Agent removes only resources recorded in persistent ownership state.
 
 - Fresh installations are eligible for automatic disable or uninstall.
-- Existing installations discovered during reconciliation are not
-  automatically adopted.
-- A dependency without recorded ownership can still be removed from Collector
+- Existing installations discovered during reconciliation are not automatically
+  adopted.
+- A dependency without recorded ownership can be removed from Collector
   configuration, but its physical host resources are preserved.
-
-This prevents the Agent from deleting a manually installed or third-party
-dependency.
 
 ## Dependency-Specific Runbooks
 
 - [Windows Exporter](windows_exporter.md)
 - [Node Exporter](node-exporter.md)
 - [Libre Hardware Monitor](libre-hardware-monitor.md)
+
+## Foundation Checks
+
+```bash
+go test ./... -count=1
+go vet ./...
+go build ./...
+git diff --check
+```
