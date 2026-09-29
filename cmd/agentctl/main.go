@@ -215,6 +215,9 @@ func defaultDependencyCatalog() (dependency.Catalog, error) {
 			Teardown: dependency.NewWindowsExporterTeardown(
 				windowsExporterOptions,
 			),
+			Enable: dependency.NewWindowsExporterEnabler(
+				dependency.DefaultWindowsExporterOptions(),
+			),
 		},
 		{
 			Definition: dependency.Definition{
@@ -236,6 +239,9 @@ func defaultDependencyCatalog() (dependency.Catalog, error) {
 			),
 			Teardown: nodeexporter.NewTeardown(
 				nodeExporterOptions,
+			),
+			Enable: nodeexporter.NewEnabler(
+				nodeexporter.DefaultOptions(),
 			),
 		},
 		{
@@ -259,6 +265,9 @@ func defaultDependencyCatalog() (dependency.Catalog, error) {
 			),
 			Teardown: librehardwaremonitor.NewTeardown(
 				lhmOptions,
+			),
+			Enable: librehardwaremonitor.NewEnabler(
+				librehardwaremonitor.DefaultOptions(),
 			),
 		},
 	})

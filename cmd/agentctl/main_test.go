@@ -886,3 +886,26 @@ func TestDefaultDependencyCatalogConfiguresLHMTeardown(t *testing.T) {
 		t.Fatal("LHM teardown = nil, want configured teardown")
 	}
 }
+
+func TestDefaultDependencyCatalogConfiguresEnablers(
+	t *testing.T,
+) {
+	catalog, err := defaultDependencyCatalog()
+	if err != nil {
+		t.Fatalf("defaultDependencyCatalog() error = %v", err)
+	}
+
+	for _, name := range []string{
+		"windows-exporter",
+		"node-exporter",
+		"libre-hardware-monitor",
+	} {
+		integration, found := catalog.Find(name)
+		if !found {
+			t.Fatalf("catalog does not contain %q", name)
+		}
+		if integration.Enable == nil {
+			t.Fatalf("catalog integration %q enabler is nil", name)
+		}
+	}
+}
