@@ -30,6 +30,7 @@ Commands:
   dependency  Manage telemetry dependencies.
   run         Run the OpenTelemetry Collector under supervision.
   status      Show live Agent health.
+  install     Install and start the Agent as a managed service.
   help        Show this help.
 `
 
@@ -79,6 +80,7 @@ Commands:
   dependency  Manage telemetry dependencies.
   run         Run the OpenTelemetry Collector under supervision.
   status      Show live Agent health.
+  install     Install and start the Agent as a managed service.
   help        Show this help.
 `
 
@@ -124,6 +126,7 @@ Commands:
   dependency  Manage telemetry dependencies.
   run         Run the OpenTelemetry Collector under supervision.
   status      Show live Agent health.
+  install     Install and start the Agent as a managed service.
   help        Show this help.
 `
 

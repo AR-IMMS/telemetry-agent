@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
+	"github.com/ar-imms/telemetry-agent/internal/agentinstallation"
 	"github.com/ar-imms/telemetry-agent/internal/agentlifecycle"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
@@ -57,6 +58,16 @@ type dependencies struct {
 	serveStatus                   statusServerRunFunc
 	runCollectorRuntimeWithHealth collectorRuntimeHealthRunFunc
 	fetchHealthStatus             healthStatusFetchFunc
+	agentInstallationLayout       func(
+		identity.PlatformInfo,
+	) (agentinstallation.Layout, error)
+
+	currentExecutable func() (string, error)
+
+	installAgent func(
+		context.Context,
+		agentinstallation.Options,
+	) (agentinstallation.Layout, error)
 }
 
 type healthStatusFetchFunc func(
@@ -138,12 +149,24 @@ func main() {
 
 // defaultDependencies wires production implementations for the agentctl binary.
 func defaultDependencies() dependencies {
+	downloader := bootstrap.HTTPDownloader{}
+	runner := bootstrap.OSCommandRunner{}
+	agentInstaller := agentinstallation.NewInstaller(
+		downloader,
+		runner,
+	)
+
 	return dependencies{
-		collectPlatform:   identity.CollectPlatformInfo,
-		runBootstrap:      bootstrap.Run,
-		downloader:        bootstrap.HTTPDownloader{},
-		runner:            bootstrap.OSCommandRunner{},
-		runSupervisor:     supervisor.Run,
+		collectPlatform: identity.CollectPlatformInfo,
+		runBootstrap:    bootstrap.Run,
+		downloader:      downloader,
+		runner:          runner,
+		runSupervisor:   supervisor.Run,
+
+		agentInstallationLayout: agentinstallation.DefaultLayout,
+		currentExecutable:       os.Executable,
+		installAgent:            agentInstaller.Install,
+
 		installDependency: defaultInstallDependency,
 		manageDependency: newManagedDependencyInstaller(
 			identity.CollectPlatformInfo,
@@ -402,6 +425,7 @@ Commands:
   dependency  Manage telemetry dependencies.
   run         Run the OpenTelemetry Collector under supervision.
   status      Show live Agent health.
+  install     Install and start the Agent as a managed service.
   help        Show this help.
 `)
 }
@@ -436,6 +460,12 @@ func run(
 	case "status":
 		return runStatus(ctx, args[1:], stdout, stderr, deps)
 
+	case "service":
+		return runService(ctx, args[1:], stdout, stderr, deps)
+
+	case "install":
+		return runInstall(ctx, args[1:], stdout, stderr, deps)
+
 	case "help":
 		writeRootHelp(stdout)
 		return 0
@@ -450,6 +480,201 @@ func run(
 
 		return 2
 	}
+}
+
+func runInstall(
+	ctx context.Context,
+	args []string,
+	stdout io.Writer,
+	stderr io.Writer,
+	deps dependencies,
+) int {
+	flags := flag.NewFlagSet("install", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	flags.Usage = func() {
+		fmt.Fprintln(
+			stderr,
+			"usage: agentctl install --config-root <path> [--gateway-endpoint <host:port>] [--validation-endpoint <host:port>] [--timeout <duration>]",
+		)
+	}
+
+	configRoot := flags.String(
+		"config-root",
+		"",
+		"root directory containing configuration fragments",
+	)
+	gatewayEndpoint := flags.String(
+		"gateway-endpoint",
+		defaultGatewayEndpoint,
+		"runtime OpenTelemetry Gateway endpoint",
+	)
+	validationEndpoint := flags.String(
+		"validation-endpoint",
+		defaultValidationEndpoint,
+		"endpoint supplied only to Collector validation",
+	)
+	validationTimeout := flags.Duration(
+		"timeout",
+		defaultValidationTimeout,
+		"Collector validation timeout",
+	)
+
+	if err := flags.Parse(args); err != nil {
+		flags.Usage()
+
+		return 2
+	}
+	if flags.NArg() != 0 {
+		return usageError(
+			stderr,
+			flags,
+			"install does not accept positional arguments",
+		)
+	}
+	if strings.TrimSpace(*configRoot) == "" {
+		return usageError(stderr, flags, "--config-root is required")
+	}
+	if strings.TrimSpace(*gatewayEndpoint) == "" {
+		return usageError(
+			stderr,
+			flags,
+			"--gateway-endpoint must not be empty",
+		)
+	}
+	if strings.TrimSpace(*validationEndpoint) == "" {
+		return usageError(
+			stderr,
+			flags,
+			"--validation-endpoint must not be empty",
+		)
+	}
+	if *validationTimeout <= 0 {
+		return usageError(
+			stderr,
+			flags,
+			"--timeout must be greater than zero",
+		)
+	}
+
+	collectPlatform := deps.collectPlatform
+	if collectPlatform == nil {
+		collectPlatform = identity.CollectPlatformInfo
+	}
+
+	platform, err := collectPlatform()
+	if err != nil {
+		fmt.Fprintf(stderr, "collect platform information: %v\n", err)
+
+		return 1
+	}
+
+	layoutFor := deps.agentInstallationLayout
+	if layoutFor == nil {
+		layoutFor = agentinstallation.DefaultLayout
+	}
+
+	layout, err := layoutFor(platform)
+	if err != nil {
+		fmt.Fprintf(stderr, "resolve Agent installation layout: %v\n", err)
+
+		return 1
+	}
+
+	stateStore := agentstate.NewFileStore(layout.StatePath)
+	state, err := stateStore.Load()
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			fmt.Fprintf(stderr, "load Agent state: %v\n", err)
+
+			return 1
+		}
+
+		state = agentstate.State{
+			Dependencies: make(map[string]agentstate.DependencyState),
+		}
+	}
+
+	catalog, err := defaultDependencyCatalog()
+	if err != nil {
+		fmt.Fprintf(stderr, "build dependency catalog: %v\n", err)
+
+		return 1
+	}
+
+	receiverLayer, err := dependencyMetricsReceiverLayer(
+		catalog,
+		platform.OS,
+		state,
+	)
+	if err != nil {
+		fmt.Fprintf(
+			stderr,
+			"configure managed dependency receivers: %v\n",
+			err,
+		)
+
+		return 1
+	}
+
+	layers, err := configurationLayers(*configRoot, platform.OS)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+
+		return 1
+	}
+
+	currentExecutable := deps.currentExecutable
+	if currentExecutable == nil {
+		currentExecutable = os.Executable
+	}
+
+	sourceBinaryPath, err := currentExecutable()
+	if err != nil {
+		fmt.Fprintf(stderr, "resolve current Agent executable: %v\n", err)
+
+		return 1
+	}
+
+	installAgent := deps.installAgent
+	if installAgent == nil {
+		installAgent = agentinstallation.NewInstaller(
+			deps.downloader,
+			deps.runner,
+		).Install
+	}
+
+	result, err := installAgent(ctx, agentinstallation.Options{
+		Platform:         platform,
+		SourceBinaryPath: sourceBinaryPath,
+		ConfigRoot:       *configRoot,
+		GatewayEndpoint:  *gatewayEndpoint,
+		HealthEndpoint:   defaultHealthEndpoint,
+		ConfigInput: config.RenderInput{
+			Platform: platform,
+			Layers:   layers,
+			InlineLayers: []config.InlineLayer{
+				receiverLayer,
+			},
+		},
+		ValidationEnvironment: []string{
+			"OTEL_GATEWAY_ENDPOINT=" + *validationEndpoint,
+		},
+		ValidationTimeout: *validationTimeout,
+	})
+	if err != nil {
+		fmt.Fprintf(stderr, "install Agent: %v\n", err)
+
+		return 1
+	}
+
+	fmt.Fprintf(
+		stdout,
+		"Agent installation complete: %s\n",
+		result.ServiceName,
+	)
+	fmt.Fprintf(stdout, "Agent state path: %s\n", result.StatePath)
+
+	return 0
 }
 
 func runBootstrap(
@@ -673,7 +898,22 @@ func runCollector(
 			"--state-path must not be empty",
 		)
 	}
+	if err := runCollectorRuntime(ctx, *statePath, deps); err != nil {
+		fmt.Fprintf(stderr, "run Collector: %v\n", err)
 
+		return 1
+	}
+
+	fmt.Fprintln(stdout, "Collector stopped")
+
+	return 0
+}
+
+func runCollectorRuntime(
+	ctx context.Context,
+	statePath string,
+	deps dependencies,
+) error {
 	teardown := deps.teardownDependency
 	if teardown == nil {
 		teardown = defaultDependencyTeardown
@@ -706,13 +946,7 @@ func runCollector(
 		defaultStatusListenAddress,
 	)
 	if err != nil {
-		fmt.Fprintf(
-			stderr,
-			"listen Agent status endpoint: %v\n",
-			err,
-		)
-
-		return 1
+		return fmt.Errorf("listen Agent status endpoint: %w", err)
 	}
 	defer listener.Close()
 
@@ -742,7 +976,7 @@ func runCollector(
 
 	runtimeErr := runRuntimeWithHealth(
 		runContext,
-		*statePath,
+		statePath,
 		teardown,
 		reporter,
 	)
@@ -751,23 +985,13 @@ func runCollector(
 	statusErr := <-statusDone
 
 	if runtimeErr != nil {
-		fmt.Fprintf(stderr, "run Collector: %v\n", runtimeErr)
-
-		return 1
+		return runtimeErr
 	}
 	if statusErr != nil {
-		fmt.Fprintf(
-			stderr,
-			"run Agent status endpoint: %v\n",
-			statusErr,
-		)
-
-		return 1
+		return fmt.Errorf("run Agent status endpoint: %w", statusErr)
 	}
 
-	fmt.Fprintln(stdout, "Collector stopped")
-
-	return 0
+	return nil
 }
 
 func usageError(stderr io.Writer, flags *flag.FlagSet, message string) int {

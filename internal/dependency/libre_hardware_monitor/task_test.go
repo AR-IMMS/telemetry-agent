@@ -2,7 +2,6 @@ package librehardwaremonitor
 
 import (
 	"encoding/binary"
-	"path/filepath"
 	"strings"
 	"testing"
 	"unicode/utf16"
@@ -30,9 +29,8 @@ func TestRenderTaskXMLRunsLHMForInteractiveUserAtLogon(t *testing.T) {
 		"<RestartOnFailure>",
 		"<Interval>PT1M</Interval>",
 		"<Count>3</Count>",
-		"<Command>" + filepath.Join(
+		"<Command>" + windowsExecutablePath(
 			options.InstallDir,
-			"LibreHardwareMonitor.exe",
 		) + "</Command>",
 	} {
 		if !strings.Contains(taskXML, want) {
