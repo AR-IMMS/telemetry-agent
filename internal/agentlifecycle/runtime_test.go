@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/supervisor"
 )
@@ -522,5 +523,142 @@ func TestRuntimeWatcherCompletesPendingUninstallAfterCollectorReady(
 	}
 	if _, exists := state.Dependencies["windows-exporter"]; exists {
 		t.Fatal("windows-exporter still exists after uninstall teardown")
+	}
+}
+
+func TestRuntimeWatcherReportsHealthySnapshotAfterCollectorReady(
+	t *testing.T,
+) {
+	store := agentstate.NewFileStore(
+		filepath.Join(t.TempDir(), "state.json"),
+	)
+
+	if err := store.Save(agentstate.State{
+		DesiredGeneration:   3,
+		ActivatedGeneration: 3,
+		AppliedGeneration:   2,
+		Dependencies:        map[string]agentstate.DependencyState{},
+	}); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	reporter := agenthealth.NewReporter(
+		agenthealth.RuntimeObservation{
+			CollectorState:      agenthealth.CollectorStateStarting,
+			DesiredGeneration:   3,
+			ActivatedGeneration: 3,
+			AppliedGeneration:   2,
+		},
+	)
+
+	watcher := runtimeWatcher{
+		store: store,
+		run: func(
+			ctx context.Context,
+			options supervisor.Options,
+		) error {
+			if options.OnReady == nil {
+				t.Fatal("OnReady is nil")
+			}
+
+			return options.OnReady()
+		},
+		options: supervisor.Options{
+			OnReady: func() error {
+				return nil
+			},
+		},
+		pollInterval:   time.Hour,
+		healthReporter: reporter,
+	}
+
+	if err := watcher.Run(context.Background()); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	snapshot := reporter.Snapshot()
+	t.Logf("health snapshot = %#v", snapshot)
+
+	if snapshot.Status != agenthealth.StatusHealthy {
+		t.Fatalf(
+			"health status = %q, want %q",
+			snapshot.Status,
+			agenthealth.StatusHealthy,
+		)
+	}
+
+	if snapshot.AppliedGeneration != 3 {
+		t.Fatalf(
+			"applied generation = %d, want 3",
+			snapshot.AppliedGeneration,
+		)
+	}
+}
+
+func TestRuntimeWatcherReportsFailedSnapshotWhenCollectorExitsWithError(
+	t *testing.T,
+) {
+	store := agentstate.NewFileStore(
+		filepath.Join(t.TempDir(), "state.json"),
+	)
+
+	if err := store.Save(agentstate.State{
+		DesiredGeneration:   3,
+		ActivatedGeneration: 3,
+		AppliedGeneration:   3,
+		Dependencies:        map[string]agentstate.DependencyState{},
+	}); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	reporter := agenthealth.NewReporter(
+		agenthealth.RuntimeObservation{
+			CollectorState:      agenthealth.CollectorStateStarting,
+			DesiredGeneration:   3,
+			ActivatedGeneration: 3,
+			AppliedGeneration:   3,
+		},
+	)
+	wantError := errors.New("Collector exited unexpectedly")
+
+	watcher := runtimeWatcher{
+		store: store,
+		run: func(
+			context.Context,
+			supervisor.Options,
+		) error {
+			return wantError
+		},
+		pollInterval:   time.Hour,
+		healthReporter: reporter,
+	}
+
+	err := watcher.Run(context.Background())
+	if !errors.Is(err, wantError) {
+		t.Fatalf("Run() error = %v, want %v", err, wantError)
+	}
+
+	snapshot := reporter.Snapshot()
+
+	if snapshot.Status != agenthealth.StatusDegraded {
+		t.Fatalf(
+			"health status = %q, want %q",
+			snapshot.Status,
+			agenthealth.StatusDegraded,
+		)
+	}
+	if snapshot.CollectorState != agenthealth.CollectorStateFailed {
+		t.Fatalf(
+			"Collector state = %q, want %q",
+			snapshot.CollectorState,
+			agenthealth.CollectorStateFailed,
+		)
+	}
+	if snapshot.LastError != wantError.Error() {
+		t.Fatalf(
+			"last error = %q, want %q",
+			snapshot.LastError,
+			wantError.Error(),
+		)
 	}
 }

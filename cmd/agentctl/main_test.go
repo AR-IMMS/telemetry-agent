@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
 	"github.com/ar-imms/telemetry-agent/internal/agentlifecycle"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
@@ -154,7 +156,10 @@ func TestBootstrapRejectsUsageErrors(t *testing.T) {
 		name string
 		args []string
 	}{
-		{name: "unsupported subcommand", args: []string{"status"}},
+		{
+			name: "unsupported root command",
+			args: []string{"not-a-command"},
+		},
 		{name: "missing config root", args: []string{"bootstrap", "--install-dir", "test-install", "--config-path", "test-output/otel.yaml"}},
 		{name: "missing install dir", args: []string{"bootstrap", "--config-root", "test-configs", "--config-path", "test-output/otel.yaml"}},
 		{name: "missing config path", args: []string{"bootstrap", "--config-root", "test-configs", "--install-dir", "test-install"}},
@@ -907,5 +912,252 @@ func TestDefaultDependencyCatalogConfiguresEnablers(
 		if integration.Enable == nil {
 			t.Fatalf("catalog integration %q enabler is nil", name)
 		}
+	}
+}
+
+func TestRunCollectorServesRuntimeHealthSnapshot(
+	t *testing.T,
+) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen() error = %v", err)
+	}
+	defer listener.Close()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	var gotListenAddress string
+	var servedSnapshot agenthealth.Snapshot
+
+	exitCode := runCollector(
+		context.Background(),
+		nil,
+		&stdout,
+		&stderr,
+		dependencies{
+			listenStatus: func(
+				network string,
+				address string,
+			) (net.Listener, error) {
+				if network != "tcp" {
+					t.Fatalf("status network = %q, want tcp", network)
+				}
+
+				gotListenAddress = address
+
+				return listener, nil
+			},
+			serveStatus: func(
+				ctx context.Context,
+				_ net.Listener,
+				provider agenthealth.Provider,
+			) error {
+				<-ctx.Done()
+				servedSnapshot = provider.Snapshot()
+
+				return nil
+			},
+			runCollectorRuntimeWithHealth: func(
+				context.Context,
+				string,
+				dependencyTeardownFunc,
+				agenthealth.ObservationReporter,
+			) error {
+				return nil
+			},
+		},
+	)
+
+	if exitCode != 0 {
+		t.Fatalf(
+			"runCollector() exit code = %d, want 0; stderr = %q",
+			exitCode,
+			stderr.String(),
+		)
+	}
+
+	if gotListenAddress != defaultStatusListenAddress {
+		t.Fatalf(
+			"status listen address = %q, want %q",
+			gotListenAddress,
+			defaultStatusListenAddress,
+		)
+	}
+
+	if servedSnapshot.CollectorState != agenthealth.CollectorStateStarting {
+		t.Fatalf(
+			"served Collector state = %q, want %q",
+			servedSnapshot.CollectorState,
+			agenthealth.CollectorStateStarting,
+		)
+	}
+
+	if stdout.String() != "Collector stopped\n" {
+		t.Fatalf("runCollector() stdout = %q", stdout.String())
+	}
+}
+
+func TestRunStatusRendersLiveAgentHealth(
+	t *testing.T,
+) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	var gotEndpoint string
+
+	exitCode := run(
+		context.Background(),
+		[]string{"status"},
+		&stdout,
+		&stderr,
+		dependencies{
+			fetchHealthStatus: func(
+				ctx context.Context,
+				endpoint string,
+			) (agenthealth.Snapshot, error) {
+				gotEndpoint = endpoint
+
+				return agenthealth.Snapshot{
+					Status:              agenthealth.StatusHealthy,
+					CollectorState:      agenthealth.CollectorStateReady,
+					DesiredGeneration:   4,
+					ActivatedGeneration: 4,
+					AppliedGeneration:   4,
+					PendingTeardowns:    0,
+				}, nil
+			},
+		},
+	)
+
+	if exitCode != 0 {
+		t.Fatalf(
+			"run(status) exit code = %d, want 0; stderr = %q",
+			exitCode,
+			stderr.String(),
+		)
+	}
+
+	if gotEndpoint != defaultStatusEndpoint {
+		t.Fatalf(
+			"status endpoint = %q, want %q",
+			gotEndpoint,
+			defaultStatusEndpoint,
+		)
+	}
+
+	want := "" +
+		"Agent health: healthy\n" +
+		"Collector state: ready\n" +
+		"Configuration generations: desired=4 activated=4 applied=4\n" +
+		"Pending dependency teardowns: 0\n"
+
+	if stdout.String() != want {
+		t.Fatalf(
+			"status stdout = %q, want %q",
+			stdout.String(),
+			want,
+		)
+	}
+}
+
+func TestRunStatusReportsUnavailableAgent(
+	t *testing.T,
+) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := run(
+		context.Background(),
+		[]string{"status"},
+		&stdout,
+		&stderr,
+		dependencies{
+			fetchHealthStatus: func(
+				context.Context,
+				string,
+			) (agenthealth.Snapshot, error) {
+				return agenthealth.Snapshot{}, errors.New(
+					"connect: connection refused",
+				)
+			},
+		},
+	)
+
+	if exitCode != 1 {
+		t.Fatalf(
+			"run(status) exit code = %d, want 1; stderr = %q",
+			exitCode,
+			stderr.String(),
+		)
+	}
+
+	if stdout.Len() != 0 {
+		t.Fatalf("status stdout = %q, want empty", stdout.String())
+	}
+
+	want := "" +
+		"Agent is not running or status endpoint is unreachable: " +
+		"connect: connection refused\n"
+
+	if stderr.String() != want {
+		t.Fatalf(
+			"status stderr = %q, want %q",
+			stderr.String(),
+			want,
+		)
+	}
+}
+
+func TestRunStatusRendersLastError(
+	t *testing.T,
+) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := run(
+		context.Background(),
+		[]string{"status"},
+		&stdout,
+		&stderr,
+		dependencies{
+			fetchHealthStatus: func(
+				context.Context,
+				string,
+			) (agenthealth.Snapshot, error) {
+				return agenthealth.Snapshot{
+					Status:              agenthealth.StatusDegraded,
+					CollectorState:      agenthealth.CollectorStateFailed,
+					DesiredGeneration:   4,
+					ActivatedGeneration: 4,
+					AppliedGeneration:   3,
+					PendingTeardowns:    1,
+					LastError:           "Collector exited unexpectedly",
+				}, nil
+			},
+		},
+	)
+
+	if exitCode != 0 {
+		t.Fatalf(
+			"run(status) exit code = %d, want 0; stderr = %q",
+			exitCode,
+			stderr.String(),
+		)
+	}
+
+	want := "" +
+		"Agent health: degraded\n" +
+		"Collector state: failed\n" +
+		"Configuration generations: desired=4 activated=4 applied=3\n" +
+		"Pending dependency teardowns: 1\n" +
+		"Last error: Collector exited unexpectedly\n"
+
+	if stdout.String() != want {
+		t.Fatalf(
+			"status stdout = %q, want %q",
+			stdout.String(),
+			want,
+		)
 	}
 }

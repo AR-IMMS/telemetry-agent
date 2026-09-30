@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/supervisor"
 )
@@ -27,6 +28,8 @@ type runtimeWatcher struct {
 	pollInterval time.Duration
 
 	applyTeardowns teardownApplicator
+
+	healthReporter agenthealth.ObservationReporter
 }
 
 // Run launches the Collector for the currently activated configuration.
@@ -47,16 +50,22 @@ func (w runtimeWatcher) Run(ctx context.Context) error {
 			return fmt.Errorf("load Agent state: %w", err)
 		}
 
+		w.reportHealth(agenthealth.CollectorStateStarting, "")
+
 		launchGeneration := snapshot.ActivatedGeneration
 		options := w.options
 		previousOnReady := options.OnReady
-		
+
 		launchContext, cancelLaunch := context.WithCancel(ctx)
 
 		options.OnReady = func() error {
 			if previousOnReady != nil {
 				if err := previousOnReady(); err != nil {
 					cancelLaunch()
+					w.reportHealth(
+						agenthealth.CollectorStateFailed,
+						err.Error(),
+					)
 
 					return err
 				}
@@ -68,23 +77,37 @@ func (w runtimeWatcher) Run(ctx context.Context) error {
 			if err != nil {
 				cancelLaunch()
 
-				return fmt.Errorf(
+				wrapped := fmt.Errorf(
 					"mark Collector generation %d applied: %w",
 					launchGeneration,
 					err,
 				)
+				w.reportHealth(
+					agenthealth.CollectorStateFailed,
+					wrapped.Error(),
+				)
+
+				return wrapped
 			}
 
 			if w.applyTeardowns != nil {
 				if err := w.applyTeardowns(ctx); err != nil {
 					cancelLaunch()
 
-					return fmt.Errorf(
+					wrapped := fmt.Errorf(
 						"apply pending dependency teardowns: %w",
 						err,
 					)
+					w.reportHealth(
+						agenthealth.CollectorStateFailed,
+						wrapped.Error(),
+					)
+
+					return wrapped
 				}
 			}
+
+			w.reportHealth(agenthealth.CollectorStateReady, "")
 
 			return nil
 		}
@@ -103,6 +126,13 @@ func (w runtimeWatcher) Run(ctx context.Context) error {
 				ticker.Stop()
 				cancelLaunch()
 
+				if err != nil {
+					w.reportHealth(
+						agenthealth.CollectorStateFailed,
+						err.Error(),
+					)
+				}
+
 				return err
 
 			case <-ctx.Done():
@@ -118,7 +148,16 @@ func (w runtimeWatcher) Run(ctx context.Context) error {
 					cancelLaunch()
 					<-runDone
 
-					return fmt.Errorf("reload Agent state: %w", err)
+					wrapped := fmt.Errorf(
+						"reload Agent state: %w",
+						err,
+					)
+					w.reportHealth(
+						agenthealth.CollectorStateFailed,
+						wrapped.Error(),
+					)
+
+					return wrapped
 				}
 
 				if current.ActivatedGeneration <= launchGeneration {
@@ -129,16 +168,60 @@ func (w runtimeWatcher) Run(ctx context.Context) error {
 				cancelLaunch()
 
 				if err := <-runDone; err != nil {
-					return fmt.Errorf(
+					wrapped := fmt.Errorf(
 						"stop Collector before configuration restart: %w",
 						err,
 					)
+					w.reportHealth(
+						agenthealth.CollectorStateFailed,
+						wrapped.Error(),
+					)
+
+					return wrapped
 				}
 
 				restart = true
 			}
 		}
 	}
+}
+
+func (w runtimeWatcher) reportHealth(
+	collectorState agenthealth.CollectorState,
+	lastError string,
+) {
+	if w.healthReporter == nil {
+		return
+	}
+
+	state, err := w.store.Load()
+	if err != nil {
+		w.healthReporter.Report(agenthealth.RuntimeObservation{
+			CollectorState: agenthealth.CollectorStateFailed,
+			LastError: fmt.Sprintf(
+				"load Agent state for health: %v",
+				err,
+			),
+		})
+
+		return
+	}
+
+	pendingTeardowns := 0
+	for _, dependency := range state.Dependencies {
+		if dependency.PendingTeardown != nil {
+			pendingTeardowns++
+		}
+	}
+
+	w.healthReporter.Report(agenthealth.RuntimeObservation{
+		CollectorState:      collectorState,
+		DesiredGeneration:   state.DesiredGeneration,
+		ActivatedGeneration: state.ActivatedGeneration,
+		AppliedGeneration:   state.AppliedGeneration,
+		PendingTeardowns:    pendingTeardowns,
+		LastError:           lastError,
+	})
 }
 
 const (
@@ -153,6 +236,22 @@ func RunCollectorRuntime(
 	ctx context.Context,
 	statePath string,
 	teardown DependencyTeardownFunc,
+) error {
+	return RunCollectorRuntimeWithHealth(
+		ctx,
+		statePath,
+		teardown,
+		nil,
+	)
+}
+
+// RunCollectorRuntimeWithHealth supervises the Collector and reports its
+// transient runtime health to healthReporter.
+func RunCollectorRuntimeWithHealth(
+	ctx context.Context,
+	statePath string,
+	teardown DependencyTeardownFunc,
+	healthReporter agenthealth.ObservationReporter,
 ) error {
 	statePath = strings.TrimSpace(statePath)
 	if statePath == "" {
@@ -203,5 +302,6 @@ func RunCollectorRuntime(
 		},
 		pollInterval:   defaultRuntimePollInterval,
 		applyTeardowns: coordinator.Apply,
+		healthReporter: healthReporter,
 	}.Run(ctx)
 }
