@@ -29,6 +29,7 @@ Commands:
   bootstrap   Bootstrap the OpenTelemetry Collector.
   dependency  Manage telemetry dependencies.
   run         Run the OpenTelemetry Collector under supervision.
+  status      Show live Agent health.
   help        Show this help.
 `
 
@@ -77,6 +78,7 @@ Commands:
   bootstrap   Bootstrap the OpenTelemetry Collector.
   dependency  Manage telemetry dependencies.
   run         Run the OpenTelemetry Collector under supervision.
+  status      Show live Agent health.
   help        Show this help.
 `
 
@@ -121,6 +123,7 @@ Commands:
   bootstrap   Bootstrap the OpenTelemetry Collector.
   dependency  Manage telemetry dependencies.
   run         Run the OpenTelemetry Collector under supervision.
+  status      Show live Agent health.
   help        Show this help.
 `
 
