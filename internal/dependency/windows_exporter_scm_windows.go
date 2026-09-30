@@ -16,8 +16,6 @@ import (
 )
 
 const (
-	windowsExporterServiceName = "windows_exporter"
-
 	windowsExporterHealthInspectionTimeout = time.Second
 	windowsExporterHealthPollInterval      = 100 * time.Millisecond
 

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/dependency"
 )
 
@@ -115,6 +116,16 @@ func (i freshInstaller) Install(
 
 	return dependency.InstallResult{
 		Name: "node-exporter",
+		OwnedResources: []agentstate.OwnedResource{
+			{
+				Kind:       "systemd-unit",
+				Identifier: i.options.ServicePath,
+			},
+			{
+				Kind:       "directory",
+				Identifier: i.options.InstallDir,
+			},
+		},
 	}, nil
 }
 

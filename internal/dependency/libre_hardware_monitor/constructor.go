@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/dependency"
 )
 
@@ -57,9 +58,9 @@ func newInstaller(
 	}
 
 	reconciler := reconciler{
-		inspect: dependencies.inspect,
-		install: fresh.Install,
-		update:  fresh.Update,
+		inspect:        dependencies.inspect,
+		install:        fresh.Install,
+		update:         fresh.Update,
 	}
 
 	managed := managedInstaller{
@@ -74,6 +75,23 @@ const (
 	defaultStartupTimeout = 30 * time.Second
 	defaultHealthPoll     = 500 * time.Millisecond
 )
+
+func ownedResources(options Options) []agentstate.OwnedResource {
+	return []agentstate.OwnedResource{
+		{
+			Kind:       "scheduled-task",
+			Identifier: options.TaskName,
+		},
+		{
+			Kind:       "firewall-rule",
+			Identifier: options.FirewallName,
+		},
+		{
+			Kind:       "directory",
+			Identifier: options.InstallDir,
+		},
+	}
+}
 
 // NewInstaller creates the production Windows LHM dependency installer.
 func NewInstaller(

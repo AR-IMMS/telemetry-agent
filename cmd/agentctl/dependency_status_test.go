@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"path/filepath"
 	"testing"
 
 	"github.com/ar-imms/telemetry-agent/internal/dependency"
@@ -14,10 +15,11 @@ func TestRunDependencyStatusWritesLifecycleResults(
 ) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
+	statePath := filepath.Join(t.TempDir(), "state.json")
 
 	exitCode := runDependency(
 		context.Background(),
-		[]string{"status"},
+		[]string{"status", "--state-path", statePath},
 		&stdout,
 		&stderr,
 		dependencies{
@@ -27,7 +29,8 @@ func TestRunDependencyStatusWritesLifecycleResults(
 				return []dependency.StatusResult{
 					{
 						Definition: dependency.Definition{
-							Name: "node-exporter",
+							Name:            "node-exporter",
+							MetricsEndpoint: "http://127.0.0.1:9100/metrics",
 						},
 						Status: dependency.Status{
 							Availability: dependency.AvailabilityEnabled,
@@ -55,7 +58,7 @@ func TestRunDependencyStatusWritesLifecycleResults(
 
 	want := "" +
 		"Dependency status:\n" +
-		"- node-exporter: enabled (healthy)\n" +
+		"- node-exporter: enabled (healthy) — metrics: http://127.0.0.1:9100/metrics\n" +
 		"- windows-exporter: unknown (permission denied)\n"
 
 	if stdout.String() != want {
@@ -78,10 +81,11 @@ func TestRunDependencyStatusWritesUnhealthyDriftedResult(
 ) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
+	statePath := filepath.Join(t.TempDir(), "state.json")
 
 	exitCode := runDependency(
 		context.Background(),
-		[]string{"status"},
+		[]string{"status", "--state-path", statePath},
 		&stdout,
 		&stderr,
 		dependencies{

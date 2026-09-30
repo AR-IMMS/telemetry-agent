@@ -40,6 +40,8 @@ func (o WindowsExporterOptions) Validate() error {
 	return nil
 }
 
+const windowsExporterServiceName = "windows_exporter"
+
 var windowsExporterDefinition = Definition{
 	Name:        "windows-exporter",
 	SupportedOS: []string{"windows"},

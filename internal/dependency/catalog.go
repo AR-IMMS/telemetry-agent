@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 )
 
 // Catalog provides one source of truth for built-in dependency definitions
@@ -92,4 +94,41 @@ func (c Catalog) List(osName string) []Definition {
 	})
 
 	return definitions
+}
+
+// CollectorReceivers returns configured Collector receiver names for enabled
+// dependencies supported by the supplied operating system.
+func (c Catalog) CollectorReceivers(
+	osName string,
+	state agentstate.State,
+) ([]string, error) {
+	definitions := c.List(osName)
+	receivers := make([]string, 0, len(definitions))
+
+	for _, definition := range definitions {
+		dependencyState, enabled := state.Dependencies[definition.Name]
+		if !enabled || !dependencyState.Enabled {
+			continue
+		}
+
+		integration, found := c.Find(definition.Name)
+		if !found {
+			return nil, fmt.Errorf(
+				"dependency catalog integration %q is missing",
+				definition.Name,
+			)
+		}
+
+		receiver := strings.TrimSpace(integration.CollectorReceiver)
+		if receiver == "" {
+			return nil, fmt.Errorf(
+				"dependency %q Collector receiver is required",
+				definition.Name,
+			)
+		}
+
+		receivers = append(receivers, receiver)
+	}
+
+	return receivers, nil
 }

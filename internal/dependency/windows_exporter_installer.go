@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 )
 
 // windowsExporterHealthWaiter waits until the local exporter is ready.
@@ -90,6 +92,24 @@ func (i windowsExporterInstaller) Install(
 
 	return InstallResult{
 		Name: windowsExporterDefinition.Name,
+		OwnedResources: []agentstate.OwnedResource{
+			{
+				Kind:       "windows-service",
+				Identifier: windowsExporterServiceName,
+			},
+			{
+				Kind:       "msi-product",
+				Identifier: "windows_exporter",
+			},
+			{
+				Kind:       "config-file",
+				Identifier: i.options.ConfigPath,
+			},
+			{
+				Kind:       "directory",
+				Identifier: i.options.InstallDir,
+			},
+		},
 	}, nil
 }
 

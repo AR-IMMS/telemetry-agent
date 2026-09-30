@@ -16,12 +16,18 @@ The initial integrations are:
 ```text
 agentctl dependency list
 agentctl dependency status
-agentctl dependency install <dependency-name>
-agentctl dependency install
+agentctl dependency install [dependency-name]
+agentctl dependency configure [--state-path <path>]
+agentctl dependency pending [--state-path <path>]
+agentctl dependency disable <dependency-name> [--state-path <path>]
+agentctl dependency uninstall <dependency-name> [--state-path <path>]
 ```
 
-`dependency install` without a name opens an interactive terminal picker. The
-user can select multiple dependencies, then confirm the installation.
+`dependency install` without a name opens an interactive terminal picker.
+
+`dependency configure` opens an interactive terminal selector for dependencies
+recorded in Agent state. It toggles their desired enabled state; it does not
+install previously unmanaged dependencies.
 
 ## Required Behaviour
 
@@ -33,6 +39,17 @@ user can select multiple dependencies, then confirm the installation.
 - Keep catalog ordering deterministic.
 - Require every catalog integration to provide both an installer and an
   inspector.
+- Require a bootstrapped Collector before changing managed dependency state.
+- Enable a disabled dependency only when Agent-owned resources are recorded.
+- Render, validate, and activate Collector configuration for every lifecycle
+  state change.
+- Execute physical disable or uninstall only after the Collector acknowledges
+  the activated configuration generation.
+- Preserve dependency state and ownership after disable.
+- Remove the dependency record only after uninstall teardown completes.
+- Make `dependency configure` a no-op for entries whose desired state did not
+  change.
+- Make terminal cancellation leave lifecycle state and host resources unchanged.
 
 ## Lifecycle Status
 
@@ -60,12 +77,15 @@ An inspection failure is reported as `unknown` with its diagnostic message.
   safety is unknown.
 - Validate Administrator privileges before machine-wide Windows changes.
 - Keep inspection read-only.
+- Do not physically remove an unowned or third-party dependency.
+- Do not stop the Collector runtime while dependency teardown is pending.
 
 ## Non-Goals
 
 This increment does not provide:
 
-- Dependency uninstall or disable commands
+- Agent-wide uninstall or local data purge
 - Remote fleet management
 - A central Operations Controller
 - Automatic repair of arbitrary third-party installations
+- Automatic ownership adoption for existing dependencies

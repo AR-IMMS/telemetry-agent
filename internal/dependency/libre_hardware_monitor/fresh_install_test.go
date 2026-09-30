@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/dependency"
 )
 
@@ -70,6 +71,20 @@ func TestFreshInstallerStagesConfiguresStartsAndChecksLHM(t *testing.T) {
 	wantResult := dependency.InstallResult{
 		Name:   "libre-hardware-monitor",
 		Reused: false,
+		OwnedResources: []agentstate.OwnedResource{
+			{
+				Kind:       "scheduled-task",
+				Identifier: installer.options.TaskName,
+			},
+			{
+				Kind:       "firewall-rule",
+				Identifier: installer.options.FirewallName,
+			},
+			{
+				Kind:       "directory",
+				Identifier: installer.options.InstallDir,
+			},
+		},
 	}
 
 	if !reflect.DeepEqual(result, wantResult) {

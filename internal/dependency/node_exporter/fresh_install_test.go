@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/dependency"
 )
 
@@ -76,7 +77,18 @@ func TestFreshInstallerPublishesStartsAndChecksNodeExporter(
 	wantResult := dependency.InstallResult{
 		Name:   "node-exporter",
 		Reused: false,
+		OwnedResources: []agentstate.OwnedResource{
+			{
+				Kind:       "systemd-unit",
+				Identifier: "/etc/systemd/system/ar-imms-node-exporter.service",
+			},
+			{
+				Kind:       "directory",
+				Identifier: "/opt/ar-imms/node-exporter",
+			},
+		},
 	}
+
 	if !reflect.DeepEqual(result, wantResult) {
 		t.Fatalf("install result = %#v, want %#v", result, wantResult)
 	}

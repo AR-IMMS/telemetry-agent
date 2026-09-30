@@ -8,9 +8,16 @@ type Layer struct {
 	Path string
 }
 
+// InlineLayer identifies an in-memory document merged after file-backed layers.
+type InlineLayer struct {
+	Name     string
+	Document map[string]any
+}
+
 // RenderInput supplies configuration layers and explicit substitution values.
 type RenderInput struct {
-	Platform identity.PlatformInfo
-	Layers   []Layer
-	Values   map[string]string
+	Platform     identity.PlatformInfo
+	Layers       []Layer
+	InlineLayers []InlineLayer
+	Values       map[string]string
 }

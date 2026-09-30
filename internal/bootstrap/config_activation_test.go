@@ -18,10 +18,11 @@ func (r *activationRunner) Run(
 	command Command,
 ) CommandResult {
 	r.command = command
+
 	return r.result
 }
 
-func TestValidateAndActivateConfigPreservesExistingConfigWhenValidationFails(
+func TestActivateRenderedConfigPreservesExistingConfigWhenValidationFails(
 	t *testing.T,
 ) {
 	targetPath := filepath.Join(
@@ -30,14 +31,14 @@ func TestValidateAndActivateConfigPreservesExistingConfigWhenValidationFails(
 		"otel.yaml",
 	)
 
-	if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
 
 	if err := os.WriteFile(
 		targetPath,
 		[]byte("old configuration"),
-		0640,
+		0o640,
 	); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
@@ -50,7 +51,7 @@ func TestValidateAndActivateConfigPreservesExistingConfigWhenValidationFails(
 		},
 	}
 
-	err := validateAndActivateConfig(
+	err := ActivateRenderedConfig(
 		context.Background(),
 		runner,
 		"/fake/otelcol-contrib",
@@ -59,7 +60,7 @@ func TestValidateAndActivateConfigPreservesExistingConfigWhenValidationFails(
 		nil,
 	)
 	if err == nil {
-		t.Fatal("validateAndActivateConfig() error = nil, want error")
+		t.Fatal("ActivateRenderedConfig() error = nil, want error")
 	}
 
 	got, err := os.ReadFile(targetPath)
@@ -76,7 +77,7 @@ func TestValidateAndActivateConfigPreservesExistingConfigWhenValidationFails(
 	}
 }
 
-func TestValidateAndActivateConfigReplacesExistingConfigAfterValidation(
+func TestActivateRenderedConfigReplacesExistingConfigAfterValidation(
 	t *testing.T,
 ) {
 	targetPath := filepath.Join(
@@ -85,14 +86,14 @@ func TestValidateAndActivateConfigReplacesExistingConfigAfterValidation(
 		"otel.yaml",
 	)
 
-	if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
 
 	if err := os.WriteFile(
 		targetPath,
 		[]byte("old configuration"),
-		0640,
+		0o640,
 	); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
@@ -103,7 +104,7 @@ func TestValidateAndActivateConfigReplacesExistingConfigAfterValidation(
 		},
 	}
 
-	if err := validateAndActivateConfig(
+	if err := ActivateRenderedConfig(
 		context.Background(),
 		runner,
 		"/fake/otelcol-contrib",
@@ -111,7 +112,7 @@ func TestValidateAndActivateConfigReplacesExistingConfigAfterValidation(
 		[]byte("new configuration"),
 		[]string{"OTEL_GATEWAY_ENDPOINT=127.0.0.1:4317"},
 	); err != nil {
-		t.Fatalf("validateAndActivateConfig() error = %v", err)
+		t.Fatalf("ActivateRenderedConfig() error = %v", err)
 	}
 
 	got, err := os.ReadFile(targetPath)

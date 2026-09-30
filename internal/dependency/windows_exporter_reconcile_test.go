@@ -3,6 +3,8 @@ package dependency
 import (
 	"context"
 	"testing"
+
+	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 )
 
 func TestWindowsExporterReconcilerReusesHealthyExistingService(
@@ -185,5 +187,53 @@ func TestWindowsExporterReconcilerReconfiguresUnhealthyServiceWithConfigDrift(
 	}
 	if result.Reused {
 		t.Fatal("result Reused = true, want false")
+	}
+}
+
+func TestWindowsExporterReconcilerDoesNotClaimOwnershipWhenRepairingExistingService(
+	t *testing.T,
+) {
+	installCalls := 0
+
+	reconciler := windowsExporterReconciler{
+		inspect: func(
+			context.Context,
+		) (windowsExporterInstallationState, error) {
+			return windowsExporterInstallationState{
+				serviceExists:  true,
+				serviceEnabled: true,
+				serviceRunning: true,
+				healthReady:    true,
+				startupMatches: true,
+				configMatches:  false,
+			}, nil
+		},
+		install: func(context.Context) (InstallResult, error) {
+			installCalls++
+
+			return InstallResult{
+				Name: "windows-exporter",
+				OwnedResources: []agentstate.OwnedResource{
+					{
+						Kind:       "windows-service",
+						Identifier: windowsExporterServiceName,
+					},
+				},
+			}, nil
+		},
+	}
+
+	result, err := reconciler.Install(context.Background())
+	if err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+	if installCalls != 1 {
+		t.Fatalf("installer calls = %d, want 1", installCalls)
+	}
+	if len(result.OwnedResources) != 0 {
+		t.Fatalf(
+			"owned resources = %#v, want no ownership for existing service",
+			result.OwnedResources,
+		)
 	}
 }

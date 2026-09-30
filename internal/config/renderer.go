@@ -49,6 +49,11 @@ func Render(input RenderInput) ([]byte, error) {
 		}
 		merged = mergeDocument(merged, document)
 	}
+
+	for _, layer := range input.InlineLayers {
+		merged = mergeDocument(merged, layer.Document)
+	}
+
 	if err := ValidateDocument(merged); err != nil {
 		return nil, fmt.Errorf("validate rendered configuration: %w", err)
 	}
