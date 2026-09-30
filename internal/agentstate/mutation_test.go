@@ -406,7 +406,6 @@ func TestStateEnableDependencyCancelsPendingTeardown(t *testing.T) {
 	}
 
 	changed, err := state.EnableDependency("node-exporter")
-
 	if err != nil {
 		t.Fatalf("EnableDependency() error = %v", err)
 	}
@@ -476,6 +475,59 @@ func TestRequestUninstallFromDisabledDependencyAdvancesGeneration(
 		t.Fatalf(
 			"PendingTeardown.Generation = %d, want 7",
 			dependency.PendingTeardown.Generation,
+		)
+	}
+}
+
+func TestRecordAgentInstallationStoresConcreteOwnership(
+	t *testing.T,
+) {
+	state := State{}
+
+	installation := AgentInstallation{
+		Platform:    "windows",
+		ServiceName: "ar-imms-telemetry-agent",
+		Ownership: OwnershipRecord{
+			Resources: []OwnedResource{
+				{
+					Kind:       "windows-service",
+					Identifier: "ar-imms-telemetry-agent",
+				},
+				{
+					Kind:       "file",
+					Identifier: `C:\Program Files\AR-IMMS\Telemetry Agent\agentctl.exe`,
+				},
+				{
+					Kind:       "directory",
+					Identifier: `C:\ProgramData\AR-IMMS\Telemetry Agent`,
+				},
+			},
+		},
+	}
+
+	if err := state.RecordAgentInstallation(installation); err != nil {
+		t.Fatalf("RecordAgentInstallation() error = %v", err)
+	}
+
+	if state.Installation == nil {
+		t.Fatal("Installation = nil")
+	}
+	if state.Installation.Platform != "windows" {
+		t.Fatalf(
+			"installation platform = %q, want windows",
+			state.Installation.Platform,
+		)
+	}
+	if state.Installation.ServiceName != "ar-imms-telemetry-agent" {
+		t.Fatalf(
+			"service name = %q, want ar-imms-telemetry-agent",
+			state.Installation.ServiceName,
+		)
+	}
+	if len(state.Installation.Ownership.Resources) != 3 {
+		t.Fatalf(
+			"owned resources = %d, want 3",
+			len(state.Installation.Ownership.Resources),
 		)
 	}
 }

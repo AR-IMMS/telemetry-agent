@@ -1,20 +1,9 @@
-## Foundation Checks
-
-```bash
-go test ./... -count=1
-go vet ./...
-go build ./...
-git diff --check
-```
-
-Thay toàn bộ `README.md` root bằng:
-
 # Telemetry Agent
 
-A small Go agent for bootstrapping an OpenTelemetry Collector and managing
-host-level telemetry dependencies safely.
+Telemetry Agent is a small Go application that runs an OpenTelemetry Collector
+and safely manages host-level telemetry dependencies on one machine.
 
-It currently manages:
+Supported managed dependencies:
 
 - Windows Exporter for Windows host metrics
 - Node Exporter for Linux host metrics
@@ -22,56 +11,74 @@ It currently manages:
 
 ## What It Does
 
-`agentctl` provides two operational areas:
+`agentctl` manages three operational concerns:
 
-- **Bootstrap** — installs and validates a pinned OpenTelemetry Collector with
-  rendered configuration.
-- **Dependency lifecycle** — lists, installs, reconciles, configures,
-  enables, disables, uninstalls, and inspects supported telemetry dependencies.
+- **Agent installation** — installs a durable Agent binary, bootstraps a pinned
+  OpenTelemetry Collector, records ownership, and starts an OS service.
+- **Collector runtime and health** — supervises the Collector, applies validated
+  configuration changes, and exposes local Agent health through `agentctl status`.
+- **Dependency lifecycle** — lists, installs, reconciles, configures, enables,
+  disables, uninstalls, and inspects supported telemetry dependencies.
 
-The lifecycle keeps requested state, active Collector configuration, and
-confirmed runtime state separate. Physical cleanup happens only after the
-Collector is ready with a configuration that no longer references the
-dependency.
+The Agent keeps desired state, activated Collector configuration, and confirmed
+runtime state separate. This prevents host resources from being removed before
+the Collector is healthy with a configuration that no longer references them.
 
 ## Quick Start
 
 Requirements:
 
-- Go 1.25.5 or later
-- Administrator privileges for machine-wide Windows dependency operations
-- Internet access when an installer needs to download a pinned artifact
+- Go 1.25.5 or later for development builds
+- Internet access when a pinned Collector artifact must be downloaded
+- `sudo` on Linux or an Administrator terminal on Windows for machine-wide
+  installation and dependency operations
 
-```powershell
-go run .\cmd\agentctl help
+Build a local binary:
 
-go run .\cmd\agentctl dependency list
-go run .\cmd\agentctl dependency status
-
-# Install one dependency.
-go run .\cmd\agentctl dependency install windows-exporter
-
-# Start the managed Collector runtime after bootstrap.
-go run .\cmd\agentctl run
-
-# In a second Administrator terminal, configure managed dependencies.
-go run .\cmd\agentctl dependency configure
-go run .\cmd\agentctl dependency pending
+```bash
+go build -o agentctl ./cmd/agentctl
+./agentctl help
 ```
 
-Use `agentctl bootstrap --help` for Collector bootstrap options and
-`agentctl dependency help` for dependency lifecycle commands.
+Install the Agent as a Linux systemd service. The configuration root is supplied
+and owned by the operator:
 
-## Lifecycle Safety
+```bash
+sudo ./agentctl install \
+  --config-root /etc/ar-imms/telemetry-agent/config
+```
+
+Verify that the service and Collector are healthy:
+
+```bash
+./agentctl status
+sudo systemctl status ar-imms-telemetry-agent
+```
+
+Once the Agent is running, manage dependencies:
+
+```bash
+./agentctl dependency list
+./agentctl dependency status
+./agentctl dependency install node-exporter
+./agentctl dependency configure
+```
+
+On Windows, run `agentctl.exe install` and dependency commands from an
+Administrator PowerShell. See the installation runbook for platform-specific
+commands and recovery steps.
+
+## Safety and Ownership
 
 - Collector configuration is rendered, validated, and atomically activated.
-- The runtime restarts the Collector when the activated generation changes.
-- Enable is allowed only for dependencies with recorded Agent-owned resources
+- The runtime restarts the Collector when its activated generation changes.
+- Enable requires a recorded Agent-owned dependency installation.
 - Disable and uninstall first remove the dependency receiver from Collector
   configuration.
 - Host teardown runs only after the matching Collector generation is healthy.
-- The Agent removes only resources recorded as Agent-owned during a fresh
-  installation.
+- The Agent removes only resources recorded as Agent-owned during installation.
+- The operator-provided Collector configuration root is never adopted or removed
+  by the Agent.
 
 Existing or manually installed dependencies are not automatically adopted for
 physical removal.
@@ -80,32 +87,35 @@ physical removal.
 
 ```mermaid
 flowchart TD
-    CLI["agentctl"] --> Bootstrap["Collector bootstrap"]
-    CLI --> Lifecycle["Dependency lifecycle"]
+    CLI["agentctl"] --> Install["Install Agent service"]
+    CLI --> Runtime["Run and report health"]
+    CLI --> Lifecycle["Manage dependencies"]
 
-    Bootstrap --> State["Persistent lifecycle state"]
+    Install --> State["Persistent state and ownership"]
+    Install --> Service["systemd or Windows Service"]
+    Service --> Runtime
+
     Lifecycle --> State
-
     State --> Config["Validated Collector configuration"]
     Config --> Collector["OpenTelemetry Collector"]
-    Lifecycle --> Sources["Managed exporters and hardware monitor"]
+    Lifecycle --> Sources["Managed telemetry sources"]
     Sources --> Collector
 ```
 
-The lifecycle layer uses a catalog of integrations. Each integration provides:
+Each dependency integration provides:
 
 - A definition: name, description, and supported operating systems
 - An installer: install or safely reconcile managed state
-- An inspector: report host lifecycle status without changing the machine
+- An inspector: report lifecycle status without changing the host
 - A teardown adapter: disable or uninstall recorded Agent-owned resources
-
-Read the detailed lifecycle design in
-[desired-state configuration lifecycle](docs/architecture/desired-state-configuration-lifecycle.md).
 
 ## Repository Layout
 
 ```text
 cmd/agentctl/          CLI entry point and command handlers
+internal/agenthealth/  Local Agent health model, server, and client
+internal/agentinstallation/
+                       OS service installation and Agent-owned layout
 internal/agentstate/   Persistent lifecycle state and ownership records
 internal/agentlifecycle/
                        Configuration activation and Collector runtime watcher
@@ -121,42 +131,32 @@ docs/                  Architecture, runbooks, requirements, and changelog
 
 - [Product overview](docs/PRODUCT.md)
 - [Architecture](docs/ARCHITECTURE.md)
+- [Agent installation runbook](docs/runbooks/agent-installation.md)
+- [Managed dependencies runbook](docs/runbooks/managed-dependencies.md)
 - [Desired-state configuration lifecycle](docs/architecture/desired-state-configuration-lifecycle.md)
-- [Dependency runbook](docs/runbooks/managed-dependencies.md)
+- [Managed dependency lifecycle](docs/architecture/managed-dependency-lifecycle.md)
 - [Windows Exporter runbook](docs/runbooks/windows_exporter.md)
 - [Node Exporter runbook](docs/runbooks/node-exporter.md)
 - [Libre Hardware Monitor runbook](docs/runbooks/libre-hardware-monitor.md)
-- [Managed dependency lifecycle](docs/architecture/managed-dependency-lifecycle.md)
 - [Requirements](docs/requirements/)
 - [Changelog](docs/changelog/)
 
 ## Development
 
-```powershell
+```bash
 go test ./... -count=1
 go vet ./...
+go build ./...
 git diff --check
 ```
 
 Keep tests deterministic and inject operating-system effects behind small
-interfaces. Do not run real installers or mutate host services in unit tests.
-
-## Releases
-
-Release artifacts contain prebuilt `agentctl` binaries for Windows and Linux,
-plus a `checksums.txt` file.
-
-Verify downloaded artifacts before use:
-
-```powershell
-Get-FileHash .\telemetry-agent_<version>_windows_amd64.zip -Algorithm SHA256
-```
+interfaces. Unit tests must not run real installers or mutate host services.
 
 ## Current Scope
 
-This project manages local telemetry dependencies and Collector bootstrap on
-one machine.
+This project manages local Collector bootstrap, runtime health, and telemetry
+dependencies on one machine.
 
-It does not provide remote fleet orchestration, a central Operations
-Controller, or automatic ownership adoption for dependencies installed outside
-the Agent.
+It does not provide remote fleet orchestration, a central Operations Controller,
+automatic ownership adoption, or whole-Agent clean uninstall yet.

@@ -5,6 +5,12 @@ import (
 	"strings"
 )
 
+type AgentInstallation struct {
+	Platform    string          `json:"platform"`
+	ServiceName string          `json:"serviceName"`
+	Ownership   OwnershipRecord `json:"ownership"`
+}
+
 // CollectorContext is the persisted runtime context required to render and
 // supervise the local OpenTelemetry Collector.
 type CollectorContext struct {
@@ -45,6 +51,7 @@ type State struct {
 	ActivatedGeneration uint64                     `json:"activatedGeneration"`
 	AppliedGeneration   uint64                     `json:"appliedGeneration"`
 	Dependencies        map[string]DependencyState `json:"dependencies"`
+	Installation        *AgentInstallation         `json:"installation,omitempty"`
 }
 
 // OwnedResource identifies one host resource created and managed by the Agent.
@@ -302,6 +309,58 @@ func (s *State) MarkGenerationActivated(generation uint64) error {
 	}
 
 	s.ActivatedGeneration = generation
+
+	return nil
+}
+
+func (s *State) RecordAgentInstallation(
+	installation AgentInstallation,
+) error {
+	platform := strings.ToLower(strings.TrimSpace(installation.Platform))
+	if platform == "" {
+		return fmt.Errorf("Agent installation platform is required")
+	}
+
+	serviceName := strings.TrimSpace(installation.ServiceName)
+	if serviceName == "" {
+		return fmt.Errorf("Agent installation service name is required")
+	}
+
+	if len(installation.Ownership.Resources) == 0 {
+		return fmt.Errorf("Agent installation ownership is required")
+	}
+
+	resources := make(
+		[]OwnedResource,
+		0,
+		len(installation.Ownership.Resources),
+	)
+
+	for _, resource := range installation.Ownership.Resources {
+		resource.Kind = strings.TrimSpace(resource.Kind)
+		resource.Identifier = strings.TrimSpace(resource.Identifier)
+
+		if resource.Kind == "" {
+			return fmt.Errorf(
+				"Agent installation owned resource kind is required",
+			)
+		}
+		if resource.Identifier == "" {
+			return fmt.Errorf(
+				"Agent installation owned resource identifier is required",
+			)
+		}
+
+		resources = append(resources, resource)
+	}
+
+	s.Installation = &AgentInstallation{
+		Platform:    platform,
+		ServiceName: serviceName,
+		Ownership: OwnershipRecord{
+			Resources: resources,
+		},
+	}
 
 	return nil
 }
