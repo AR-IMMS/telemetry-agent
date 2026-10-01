@@ -75,3 +75,37 @@ func TestWindowsServiceInstallerEnsuresAndRestartsAgentService(
 		t.Fatalf("calls = %v, want %v", got, want)
 	}
 }
+
+func TestWindowsServiceRemoverRemovesAgentService(
+	t *testing.T,
+) {
+	var calls []string
+
+	remover := windowsServiceRemover{
+		manager: windowsServiceManagerFunc{
+			remove: func(
+				_ context.Context,
+				serviceName string,
+			) error {
+				calls = append(calls, "remove")
+
+				if serviceName != "ar-imms-telemetry-agent" {
+					t.Fatalf("service name = %q", serviceName)
+				}
+
+				return nil
+			},
+		},
+	}
+
+	if err := remover.Remove(
+		context.Background(),
+		"ar-imms-telemetry-agent",
+	); err != nil {
+		t.Fatalf("Remove() error = %v", err)
+	}
+
+	if got, want := calls, []string{"remove"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("calls = %v, want %v", got, want)
+	}
+}

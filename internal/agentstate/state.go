@@ -2,12 +2,14 @@ package agentstate
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
 type AgentInstallation struct {
 	Platform    string          `json:"platform"`
 	ServiceName string          `json:"serviceName"`
+	BinaryPath  string          `json:"binaryPath"`
 	Ownership   OwnershipRecord `json:"ownership"`
 }
 
@@ -357,10 +359,82 @@ func (s *State) RecordAgentInstallation(
 	s.Installation = &AgentInstallation{
 		Platform:    platform,
 		ServiceName: serviceName,
+		BinaryPath:  installation.BinaryPath,
 		Ownership: OwnershipRecord{
 			Resources: resources,
 		},
 	}
 
 	return nil
+}
+
+// RequestUninstalls removes multiple dependencies from desired configuration
+// and schedules their host-resource deletion for one shared generation.
+func (s *State) RequestUninstalls(
+	names []string,
+) ([]string, error) {
+	if len(names) == 0 {
+		return nil, fmt.Errorf("at least one dependency is required")
+	}
+
+	normalizedNames := make([]string, 0, len(names))
+	seen := make(map[string]struct{}, len(names))
+
+	for _, name := range names {
+		normalizedName := strings.ToLower(strings.TrimSpace(name))
+		if normalizedName == "" {
+			return nil, fmt.Errorf("dependency name is required")
+		}
+		if _, exists := seen[normalizedName]; exists {
+			continue
+		}
+
+		seen[normalizedName] = struct{}{}
+		normalizedNames = append(normalizedNames, normalizedName)
+	}
+
+	sort.Strings(normalizedNames)
+
+	// Validate all requested dependencies before changing any desired state.
+	for _, name := range normalizedNames {
+		if _, exists := s.Dependencies[name]; !exists {
+			return nil, fmt.Errorf(
+				"dependency %q has no persisted Agent state",
+				name,
+			)
+		}
+	}
+
+	changedNames := make([]string, 0, len(normalizedNames))
+
+	for _, name := range normalizedNames {
+		dependency := s.Dependencies[name]
+
+		if dependency.PendingTeardown != nil &&
+			dependency.PendingTeardown.Action ==
+				TeardownActionUninstall {
+			continue
+		}
+
+		changedNames = append(changedNames, name)
+	}
+
+	if len(changedNames) == 0 {
+		return nil, nil
+	}
+
+	// Every changed dependency shares this one desired configuration generation.
+	s.DesiredGeneration++
+
+	for _, name := range changedNames {
+		dependency := s.Dependencies[name]
+		dependency.Enabled = false
+		dependency.PendingTeardown = &PendingTeardown{
+			Action:     TeardownActionUninstall,
+			Generation: s.DesiredGeneration,
+		}
+		s.Dependencies[name] = dependency
+	}
+
+	return changedNames, nil
 }

@@ -68,28 +68,38 @@ func (l Layout) Installation() agentstate.AgentInstallation {
 		serviceKind = "windows-service"
 	}
 
+	resources := []agentstate.OwnedResource{
+		{
+			Kind:       serviceKind,
+			Identifier: l.ServiceName,
+		},
+		{
+			Kind:       "file",
+			Identifier: l.AgentBinaryPath,
+		},
+		{
+			Kind:       "directory",
+			Identifier: l.InstallDirectory,
+		},
+		{
+			Kind:       "directory",
+			Identifier: l.DataDirectory,
+		},
+	}
+
+	if strings.EqualFold(l.Platform, "linux") {
+		resources = append(resources, agentstate.OwnedResource{
+			Kind:       "file",
+			Identifier: "/etc/systemd/system/" + l.ServiceName + ".service",
+		})
+	}
+
 	return agentstate.AgentInstallation{
 		Platform:    l.Platform,
 		ServiceName: l.ServiceName,
+		BinaryPath:  l.AgentBinaryPath,
 		Ownership: agentstate.OwnershipRecord{
-			Resources: []agentstate.OwnedResource{
-				{
-					Kind:       serviceKind,
-					Identifier: l.ServiceName,
-				},
-				{
-					Kind:       "file",
-					Identifier: l.AgentBinaryPath,
-				},
-				{
-					Kind:       "directory",
-					Identifier: l.InstallDirectory,
-				},
-				{
-					Kind:       "directory",
-					Identifier: l.DataDirectory,
-				},
-			},
+			Resources: resources,
 		},
 	}
 }
