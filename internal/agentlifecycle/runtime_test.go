@@ -109,7 +109,7 @@ func TestRuntimeWatcherMarksLaunchGenerationAppliedAfterCollectorReady(
 	}
 }
 
-func TestRuntimeWatcherAcknowledgesLaunchGenerationWhenActivationAdvances(
+func TestRuntimeWatcherRestartsWhenActivationAdvancesBeforeReadinessAcknowledgement(
 	t *testing.T,
 ) {
 	store := agentstate.NewFileStore(
@@ -127,25 +127,52 @@ func TestRuntimeWatcherAcknowledgesLaunchGenerationWhenActivationAdvances(
 		t.Fatalf("initialize state: %v", err)
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	secondReady := make(chan struct{})
+	launches := 0
+
 	watcher := runtimeWatcher{
 		store: store,
 		run: func(
 			ctx context.Context,
 			options supervisor.Options,
 		) error {
-			_, err := store.Update(
-				func(state *agentstate.State) error {
+			launches++
+
+			switch launches {
+			case 1:
+				_, err := store.Update(func(state *agentstate.State) error {
 					state.DesiredGeneration = 4
 					state.ActivatedGeneration = 4
 
 					return nil
-				},
-			)
-			if err != nil {
-				return err
-			}
+				})
+				if err != nil {
+					return err
+				}
 
-			return options.OnReady()
+				// Generation 4 arrives before generation 3 acknowledges readiness.
+				// The watcher must still restart and apply generation 4.
+				return options.OnReady()
+
+			case 2:
+				if err := options.OnReady(); err != nil {
+					return err
+				}
+
+				close(secondReady)
+				<-ctx.Done()
+
+				return nil
+
+			default:
+				return fmt.Errorf(
+					"Collector launches = %d, want at most 2",
+					launches,
+				)
+			}
 		},
 		options: supervisor.Options{
 			BinaryPath:      "otelcol-contrib",
@@ -155,23 +182,43 @@ func TestRuntimeWatcherAcknowledgesLaunchGenerationWhenActivationAdvances(
 			StartupTimeout:  time.Second,
 			ShutdownTimeout: time.Second,
 		},
-
-		// Keep the watcher from restarting; this test isolates OnReady's
-		// launch-generation acknowledgement.
 		pollInterval: time.Hour,
 	}
 
-	if err := watcher.Run(context.Background()); err != nil {
-		t.Fatalf("Run() error = %v", err)
+	runDone := make(chan error, 1)
+	go func() {
+		runDone <- watcher.Run(ctx)
+	}()
+
+	select {
+	case <-secondReady:
+	case err := <-runDone:
+		t.Fatalf(
+			"runtime watcher stopped before launching generation 4: %v",
+			err,
+		)
+	case <-time.After(time.Second):
+		t.Fatal("generation 4 Collector launch did not become ready")
+	}
+
+	cancel()
+
+	select {
+	case err := <-runDone:
+		if err != nil {
+			t.Fatalf("Run() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("runtime watcher did not stop after cancellation")
 	}
 
 	state, err := store.Load()
 	if err != nil {
 		t.Fatalf("load state: %v", err)
 	}
-	if state.AppliedGeneration != 3 {
+	if state.AppliedGeneration != 4 {
 		t.Fatalf(
-			"AppliedGeneration = %d, want launch generation 3",
+			"AppliedGeneration = %d, want 4",
 			state.AppliedGeneration,
 		)
 	}
@@ -660,5 +707,123 @@ func TestRuntimeWatcherReportsFailedSnapshotWhenCollectorExitsWithError(
 			snapshot.LastError,
 			wantError.Error(),
 		)
+	}
+}
+
+func TestRuntimeWatcherRestartsWhenCollectorStopsCleanlyAfterNewGenerationActivates(
+	t *testing.T,
+) {
+	store := agentstate.NewFileStore(
+		filepath.Join(t.TempDir(), "state.json"),
+	)
+
+	if err := store.Save(agentstate.State{
+		DesiredGeneration:   1,
+		ActivatedGeneration: 1,
+		Dependencies:        map[string]agentstate.DependencyState{},
+	}); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	firstReady := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	secondReady := make(chan struct{})
+	launches := 0
+
+	watcher := runtimeWatcher{
+		store:        store,
+		pollInterval: time.Hour, // force the clean-exit path before polling
+		run: func(
+			ctx context.Context,
+			options supervisor.Options,
+		) error {
+			launches++
+
+			if err := options.OnReady(); err != nil {
+				return err
+			}
+
+			switch launches {
+			case 1:
+				close(firstReady)
+				<-releaseFirst
+
+				// Reproduces a Collector that exits cleanly just after a
+				// newer generation has been activated.
+				return nil
+
+			case 2:
+				close(secondReady)
+				<-ctx.Done()
+
+				return nil
+
+			default:
+				t.Fatalf("Collector launches = %d, want at most 2", launches)
+
+				return nil
+			}
+		},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	runDone := make(chan error, 1)
+	go func() {
+		runDone <- watcher.Run(ctx)
+	}()
+
+	select {
+	case <-firstReady:
+	case <-time.After(time.Second):
+		t.Fatal("first Collector launch did not become ready")
+	}
+
+	_, err := store.Update(func(state *agentstate.State) error {
+		state.DesiredGeneration = 2
+		state.ActivatedGeneration = 2
+
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("activate replacement generation: %v", err)
+	}
+
+	close(releaseFirst)
+
+	select {
+	case err := <-runDone:
+		t.Fatalf(
+			"runtime watcher stopped after clean Collector exit: %v",
+			err,
+		)
+
+	case <-secondReady:
+	case <-time.After(time.Second):
+		t.Fatal("replacement Collector launch did not become ready")
+	}
+
+	state, err := store.Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if state.AppliedGeneration != 2 {
+		t.Fatalf(
+			"AppliedGeneration = %d, want 2",
+			state.AppliedGeneration,
+		)
+	}
+
+	cancel()
+
+	select {
+	case err := <-runDone:
+		if err != nil {
+			t.Fatalf("Run() error = %v", err)
+		}
+
+	case <-time.After(time.Second):
+		t.Fatal("runtime watcher did not stop after cancellation")
 	}
 }

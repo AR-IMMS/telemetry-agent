@@ -3,6 +3,7 @@ package agentinstallation
 import (
 	"context"
 	"fmt"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -49,7 +50,7 @@ func (r linuxAgentRemover) Remove(
 		return fmt.Errorf("Agent directory remover is required")
 	}
 
-	unitPath := filepath.Join(
+	unitPath := path.Join(
 		"/etc/systemd/system",
 		installation.ServiceName+".service",
 	)

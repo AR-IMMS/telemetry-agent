@@ -33,6 +33,8 @@ type runtimeWatcher struct {
 }
 
 // Run launches the Collector for the currently activated configuration.
+// Run launches the Collector for the currently activated configuration.
+// Run launches the Collector for the currently activated configuration.
 func (w runtimeWatcher) Run(ctx context.Context) error {
 	if ctx == nil {
 		return fmt.Errorf("runtime watcher context is required")
@@ -55,7 +57,6 @@ func (w runtimeWatcher) Run(ctx context.Context) error {
 		launchGeneration := snapshot.ActivatedGeneration
 		options := w.options
 		previousOnReady := options.OnReady
-
 		launchContext, cancelLaunch := context.WithCancel(ctx)
 
 		options.OnReady = func() error {
@@ -111,6 +112,7 @@ func (w runtimeWatcher) Run(ctx context.Context) error {
 
 			return nil
 		}
+
 		runDone := make(chan error, 1)
 
 		go func() {
@@ -131,9 +133,38 @@ func (w runtimeWatcher) Run(ctx context.Context) error {
 						agenthealth.CollectorStateFailed,
 						err.Error(),
 					)
+
+					return err
 				}
 
-				return err
+				// Collector có thể kết thúc cleanly đúng lúc một generation
+				// mới đã được activate. Luôn kiểm tra lại state trước khi
+				// kết thúc Agent service.
+				if ctx.Err() != nil {
+					return nil
+				}
+
+				current, loadErr := w.store.Load()
+				if loadErr != nil {
+					wrapped := fmt.Errorf(
+						"reload Agent state after Collector exit: %w",
+						loadErr,
+					)
+					w.reportHealth(
+						agenthealth.CollectorStateFailed,
+						wrapped.Error(),
+					)
+
+					return wrapped
+				}
+
+				if current.ActivatedGeneration > launchGeneration {
+					restart = true
+
+					continue
+				}
+
+				return nil
 
 			case <-ctx.Done():
 				ticker.Stop()

@@ -433,20 +433,31 @@ func TestSupervisorForceKillsChildWhenReadinessStopRequestFails(t *testing.T) {
 	}
 }
 
-func TestSupervisorShutdownForceKillsChildWhenStopRequestFails(t *testing.T) {
+func TestSupervisorShutdownCompletesAfterForcedKillWhenStopRequestFails(
+	t *testing.T,
+) {
 	child := newStopRequestFailureChild(
 		errors.New("graceful shutdown request failed"),
 	)
+	child.forcedExit = ExitResult{
+		Code: 1,
+		Err:  errors.New("exit status 1"),
+	}
 
 	supervisor := newSupervisor(nil, nil, time.Second)
+	lifecycle := newLifecycle()
 
-	err := supervisor.shutdown(newLifecycle(), child)
-	if err == nil {
-		t.Fatal("shutdown() error = nil, want stop-request error")
+	err := supervisor.shutdown(lifecycle, child)
+	if err != nil {
+		t.Fatalf("shutdown() error = %v, want nil", err)
 	}
 
 	if child.killCalls != 1 {
 		t.Fatalf("Kill() calls = %d, want 1", child.killCalls)
+	}
+
+	if got := lifecycle.State(); got != StateStopped {
+		t.Fatalf("lifecycle state = %q, want %q", got, StateStopped)
 	}
 }
 
@@ -459,9 +470,10 @@ func (s stopRequestFailureStarter) Start(LaunchOptions) (Child, error) {
 }
 
 type stopRequestFailureChild struct {
-	exited    chan ExitResult
-	stopErr   error
-	killCalls int
+	exited     chan ExitResult
+	stopErr    error
+	forcedExit ExitResult
+	killCalls  int
 }
 
 func newStopRequestFailureChild(stopErr error) *stopRequestFailureChild {
@@ -482,7 +494,7 @@ func (c *stopRequestFailureChild) RequestStop() error {
 func (c *stopRequestFailureChild) Kill() error {
 	c.killCalls++
 
-	c.exited <- ExitResult{}
+	c.exited <- c.forcedExit
 	close(c.exited)
 
 	return nil
