@@ -1,73 +1,72 @@
 # Metrics Spine
 
-## Purpose
-
-The first observability data path collects host metrics from Windows and Linux
-nodes and makes them queryable through Prometheus and Grafana.
+The Windows proof of concept sends hardware and operating-system telemetry through the local Agent and central Gateway.
 
 ```mermaid
 flowchart TD
-    Agent["OTel Agent<br/>Windows or Linux"] -->|"OTLP/gRPC"| Gateway["OTel Gateway"]
-    Gateway -->|"Prometheus endpoint<br/>:8889"| Prometheus["Prometheus"]
-    Prometheus -->|"PromQL"| Grafana["Grafana"]
-
-    Agent -. "hostmetrics + identity" .-> Gateway
+    WE[Windows Exporter :9182] --> AC[Agent Collector]
+    LHM[Libre Hardware Monitor :9190] --> AC
+    AC -->|OTLP gRPC :14317| GW[OTel Gateway]
+    GW --> P[Prometheus]
+    P --> G[Grafana :13000]
 ```
 
-## Components
+## Endpoint roles
 
-| Component    | Responsibility                                                    |
-| ------------ | ----------------------------------------------------------------- |
-| Node Agent   | Collect host metrics, attach node identity, and export OTLP/gRPC. |
-| OTel Gateway | Receive OTLP metrics and expose them in Prometheus format.        |
-| Prometheus   | Scrape, retain, and query metrics from the Gateway.               |
-| Grafana      | Provide the PromQL query and visualization interface.             |
+| Endpoint                    | Role                            |
+| --------------------------- | ------------------------------- |
+| `127.0.0.1:9182`            | Windows Exporter metrics        |
+| `127.0.0.1:9190`            | Libre Hardware Monitor metrics  |
+| `127.0.0.1:13133`           | Agent Collector health          |
+| `127.0.0.1:13134/v1/status` | Agent lifecycle status API      |
+| `127.0.0.1:14317`           | Central Gateway OTLP gRPC       |
+| `127.0.0.1:14133`           | Gateway health in the local PoC |
+| `127.0.0.1:13000`           | Grafana                         |
 
-## Identity contract
+`127.0.0.1:4317` is the local Agent Collector receiver. It must not be configured as the central Gateway endpoint because that creates a local loop.
 
-Every metric emitted by the Agent carries these resource attributes:
+## Grafana verification
 
-| Attribute                | Meaning                                                      |
-| ------------------------ | ------------------------------------------------------------ |
-| `host.name`              | Current human-readable hostname.                             |
-| `host.id`                | Stable OS-derived, hashed machine identifier with OS prefix. |
-| `service.name`           | `ar-imms-node-agent`.                                        |
-| `asset.type`             | Profile-owned classification, currently `laptop`.            |
-| `deployment.environment` | Profile-owned environment, currently `homelab`.              |
+Windows operating-system telemetry:
 
-The Gateway Prometheus exporter converts these attributes to labels such as
-`host_id`, `host_name`, and `service_name`.
+```promql
+windows_os_info
+```
 
-## Port contract
+Libre Hardware Monitor temperatures:
 
-| Context                              | Address           | Purpose                                                   |
-| ------------------------------------ | ----------------- | --------------------------------------------------------- |
-| Agent local OTLP/gRPC receiver       | `127.0.0.1:4317`  | Local applications send OTLP to the Agent.                |
-| Agent local health endpoint          | `127.0.0.1:13133` | Supervisor readiness and local health checks.             |
-| Gateway container OTLP/gRPC receiver | `:4317`           | Gateway ingress inside Docker.                            |
-| Gateway Prometheus exporter          | `:8889`           | Docker-internal Prometheus scrape endpoint.               |
-| Gateway health endpoint              | `127.0.0.1:13134` | Local operational health check in all-in-one development. |
-| Grafana                              | `127.0.0.1:13000` | Local Grafana UI.                                         |
+```promql
+{__name__=~"lhm_.*_temperature_celsius"}
+```
 
-For the all-in-one Windows development setup, Docker maps host port `14317` to
-Gateway container port `4317`. This prevents collision with the Agent's local
-receiver on host port `4317`.
+LHM metric labels identify sensors without the Node Exporter `hwmon` join:
 
-For the intended multi-node deployment, the Gateway runs on a separate Ubuntu
-host and Agents export to `<gateway-lan-ip>:4317`.
+```text
+hardwareName
+hardwareId
+sensorName
+sensorId
+host
+```
 
-## Current scope
+## Disable semantics
 
-Included:
+Disabling a dependency stops new samples. Prometheus keeps samples already ingested, so historical charts remain visible until their time range ends.
 
-- Cross-platform host metrics: CPU, memory, disk, filesystem, network, paging.
-- Agent-to-Gateway OTLP/gRPC metrics delivery.
-- Gateway-to-Prometheus pull-based collection.
-- Grafana Prometheus datasource provisioning.
+An instant PromQL query can still return the last sample during Prometheus lookback. Confirm it is stale with:
 
-Not included:
+```promql
+time() - timestamp(<metric>)
+```
 
-- TLS, mTLS, node registration, or certificate rotation.
-- Loki, Tempo, alerts, dashboards, or analytics fan-out.
-- Windows exporter and LibreHardwareMonitor installation.
-- High availability, durable queueing, or remote storage.
+The value must increase after disable. Grafana panels should use `Connect null values = Never` so a line ends at the final sample.
+
+## Current Agent health limitation
+
+The Agent status API is authoritative:
+
+```powershell
+Invoke-RestMethod 'http://127.0.0.1:13134/v1/status'
+```
+
+The current Metrics Spine does not yet export a dedicated Agent heartbeat metric. Therefore LHM or Windows Exporter metrics must not be used as Agent health: dependencies can be disabled while the Agent remains healthy.
