@@ -18,7 +18,7 @@ func DefaultPath() string {
 	return filepath.Join(
 		programData,
 		"AR-IMMS",
-		"agent",
+		"Telemetry Agent",
 		"state.json",
 	)
 }

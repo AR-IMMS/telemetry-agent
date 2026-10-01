@@ -531,3 +531,71 @@ func TestRecordAgentInstallationStoresConcreteOwnership(
 		)
 	}
 }
+
+func TestStateRequestUninstallsSchedulesBatchForOneGeneration(
+	t *testing.T,
+) {
+	state := State{
+		DesiredGeneration: 12,
+		Dependencies: map[string]DependencyState{
+			"node-exporter": {
+				Enabled: true,
+			},
+			"windows-exporter": {
+				Enabled: false,
+			},
+		},
+	}
+
+	changed, err := state.RequestUninstalls([]string{
+		" WINDOWS-EXPORTER ",
+		"node-exporter",
+	})
+	if err != nil {
+		t.Fatalf("RequestUninstalls() error = %v", err)
+	}
+
+	if got, want := changed,
+		[]string{"node-exporter", "windows-exporter"}; !reflect.DeepEqual(
+		got,
+		want,
+	) {
+		t.Fatalf("changed dependencies = %v, want %v", got, want)
+	}
+
+	if state.DesiredGeneration != 13 {
+		t.Fatalf(
+			"DesiredGeneration = %d, want 13",
+			state.DesiredGeneration,
+		)
+	}
+
+	for _, name := range []string{
+		"node-exporter",
+		"windows-exporter",
+	} {
+		dependency := state.Dependencies[name]
+
+		if dependency.Enabled {
+			t.Fatalf("%s Enabled = true, want false", name)
+		}
+		if dependency.PendingTeardown == nil {
+			t.Fatalf("%s PendingTeardown = nil", name)
+		}
+		if dependency.PendingTeardown.Action != TeardownActionUninstall {
+			t.Fatalf(
+				"%s PendingTeardown.Action = %q, want %q",
+				name,
+				dependency.PendingTeardown.Action,
+				TeardownActionUninstall,
+			)
+		}
+		if dependency.PendingTeardown.Generation != 13 {
+			t.Fatalf(
+				"%s PendingTeardown.Generation = %d, want 13",
+				name,
+				dependency.PendingTeardown.Generation,
+			)
+		}
+	}
+}

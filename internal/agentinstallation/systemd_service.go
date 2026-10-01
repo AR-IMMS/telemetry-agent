@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 )
@@ -74,7 +75,7 @@ func (i systemdServiceInstaller) Install(
 	}
 
 	unitName := serviceName + ".service"
-	unitPath := filepath.Join(i.unitDirectory, unitName)
+	unitPath := path.Join(i.unitDirectory, unitName)
 
 	if err := i.writeFile(unitPath, []byte(unit), 0o644); err != nil {
 		return fmt.Errorf("write systemd unit %q: %w", unitPath, err)

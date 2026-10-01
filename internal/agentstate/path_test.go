@@ -15,7 +15,7 @@ func TestDefaultPathUsesPlatformOwnedStateLocation(t *testing.T) {
 		want := filepath.Join(
 			programData,
 			"AR-IMMS",
-			"agent",
+			"Telemetry Agent",
 			"state.json",
 		)
 
@@ -24,7 +24,7 @@ func TestDefaultPathUsesPlatformOwnedStateLocation(t *testing.T) {
 		}
 
 	case "linux":
-		const want = "/var/lib/ar-imms/agent/state.json"
+		const want = "/var/lib/ar-imms/telemetry-agent/state.json"
 
 		if got := DefaultPath(); got != want {
 			t.Fatalf("DefaultPath() = %q, want %q", got, want)

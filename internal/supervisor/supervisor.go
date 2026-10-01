@@ -295,15 +295,18 @@ func (s *supervisor) shutdown(
 	lifecycle *lifecycle,
 	child Child,
 ) error {
-	// Cancellation follows the same graceful-then-forced policy as readiness failure.
+	// Cancellation follows the same graceful-then-forced policy as readiness
+	// failure.
 	if err := lifecycle.Transition(StateStopping); err != nil {
 		return err
 	}
 
 	if err := child.RequestStop(); err != nil {
-		_ = lifecycle.Transition(StateFailed)
-
+		// A graceful request can be unavailable on a platform even though a
+		// forced shutdown can still safely reap the Collector process.
 		if killErr := s.forceKillAndWait(child); killErr != nil {
+			_ = lifecycle.Transition(StateFailed)
+
 			return fmt.Errorf(
 				"request Collector shutdown: %w; %v",
 				err,
@@ -311,7 +314,11 @@ func (s *supervisor) shutdown(
 			)
 		}
 
-		return fmt.Errorf("request Collector shutdown: %w", err)
+		if transitionErr := lifecycle.Transition(StateStopped); transitionErr != nil {
+			return transitionErr
+		}
+
+		return nil
 	}
 
 	timer := time.NewTimer(s.shutdownTimeout)
@@ -336,12 +343,15 @@ func (s *supervisor) shutdown(
 		return nil
 
 	case <-timer.C:
-		// A second escalation is intentionally terminal: the caller must see that the
-		// Collector did not honor its shutdown contract.
+		// A second escalation is intentionally terminal: the caller must see
+		// that the Collector did not honor its graceful shutdown contract.
 		if err := child.Kill(); err != nil {
 			_ = lifecycle.Transition(StateFailed)
 
-			return fmt.Errorf("force-kill Collector after shutdown timeout: %w", err)
+			return fmt.Errorf(
+				"force-kill Collector after shutdown timeout: %w",
+				err,
+			)
 		}
 
 		_ = lifecycle.Transition(StateFailed)
@@ -362,15 +372,9 @@ func (s *supervisor) forceKillAndWait(child Child) error {
 	defer timer.Stop()
 
 	select {
-	case result := <-child.Wait():
-		if result.Err != nil {
-			return fmt.Errorf(
-				"Collector exited with code %d after force-kill: %w",
-				result.Code,
-				result.Err,
-			)
-		}
-
+	case <-child.Wait():
+		// The supervisor deliberately killed this process. A non-zero exit
+		// status is expected on Windows and confirms it was reaped.
 		return nil
 
 	case <-timer.C:

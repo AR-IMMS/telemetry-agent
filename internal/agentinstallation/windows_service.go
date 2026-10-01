@@ -16,11 +16,17 @@ type windowsServiceDefinition struct {
 type windowsServiceManager interface {
 	Ensure(context.Context, windowsServiceDefinition) error
 	Restart(context.Context, string) error
+	Remove(context.Context, string) error
 }
 
 type windowsServiceManagerFunc struct {
 	ensure  func(context.Context, windowsServiceDefinition) error
 	restart func(context.Context, string) error
+	remove  func(context.Context, string) error
+}
+
+type windowsServiceRemover struct {
+	manager windowsServiceManager
 }
 
 func (f windowsServiceManagerFunc) Ensure(
@@ -47,6 +53,17 @@ func (f windowsServiceManagerFunc) Restart(
 
 type windowsServiceInstaller struct {
 	manager windowsServiceManager
+}
+
+func (f windowsServiceManagerFunc) Remove(
+	ctx context.Context,
+	serviceName string,
+) error {
+	if f.remove == nil {
+		return fmt.Errorf("Windows service remove function is required")
+	}
+
+	return f.remove(ctx, serviceName)
 }
 
 // Install ensures the Windows service points to the staged Agent binary, then
@@ -157,4 +174,29 @@ func quoteWindowsArgument(argument string) string {
 	builder.WriteByte('"')
 
 	return builder.String()
+}
+
+func (r windowsServiceRemover) Remove(
+	ctx context.Context,
+	serviceName string,
+) error {
+	if ctx == nil {
+		return fmt.Errorf("Windows service removal context is required")
+	}
+	if r.manager == nil {
+		return fmt.Errorf("Windows service manager is required")
+	}
+	if strings.TrimSpace(serviceName) == "" {
+		return fmt.Errorf("Windows service name is required")
+	}
+
+	if err := r.manager.Remove(ctx, serviceName); err != nil {
+		return fmt.Errorf(
+			"remove Windows service %q: %w",
+			serviceName,
+			err,
+		)
+	}
+
+	return nil
 }

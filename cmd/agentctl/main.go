@@ -37,6 +37,7 @@ const (
 	defaultShutdownTimeout      = 10 * time.Second
 	defaultStatusEndpoint       = "http://" + defaultStatusListenAddress + "/v1/status"
 	defaultStatusRequestTimeout = 5 * time.Second
+	defaultUninstallTimeout     = 5 * time.Minute
 )
 
 type dependencies struct {
@@ -68,7 +69,14 @@ type dependencies struct {
 		context.Context,
 		agentinstallation.Options,
 	) (agentinstallation.Layout, error)
+	uninstallAgent agentUninstallFunc
 }
+
+type agentUninstallFunc func(
+	context.Context,
+	string,
+	time.Duration,
+) error
 
 type healthStatusFetchFunc func(
 	context.Context,
@@ -156,6 +164,12 @@ func defaultDependencies() dependencies {
 		runner,
 	)
 
+	agentUninstaller := newManagedAgentUninstaller(
+		identity.CollectPlatformInfo,
+		os.Executable,
+		runner,
+	)
+
 	return dependencies{
 		collectPlatform: identity.CollectPlatformInfo,
 		runBootstrap:    bootstrap.Run,
@@ -164,6 +178,7 @@ func defaultDependencies() dependencies {
 		runSupervisor:   supervisor.Run,
 
 		agentInstallationLayout: agentinstallation.DefaultLayout,
+		uninstallAgent:          agentUninstaller,
 		currentExecutable:       os.Executable,
 		installAgent:            agentInstaller.Install,
 
@@ -426,6 +441,7 @@ Commands:
   run         Run the OpenTelemetry Collector under supervision.
   status      Show live Agent health.
   install     Install and start the Agent as a managed service.
+  uninstall   Safely remove the Agent and its managed dependencies.
   help        Show this help.
 `)
 }
@@ -465,6 +481,9 @@ func run(
 
 	case "install":
 		return runInstall(ctx, args[1:], stdout, stderr, deps)
+
+	case "uninstall":
+		return runUninstall(ctx, args[1:], stdout, stderr, deps)
 
 	case "help":
 		writeRootHelp(stdout)
@@ -673,6 +692,78 @@ func runInstall(
 		result.ServiceName,
 	)
 	fmt.Fprintf(stdout, "Agent state path: %s\n", result.StatePath)
+
+	return 0
+}
+
+func runUninstall(
+	ctx context.Context,
+	args []string,
+	stdout io.Writer,
+	stderr io.Writer,
+	deps dependencies,
+) int {
+	flags := flag.NewFlagSet("uninstall", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	flags.Usage = func() {
+		fmt.Fprintln(
+			stderr,
+			"usage: agentctl uninstall [--state-path <path>] [--timeout <duration>]",
+		)
+	}
+
+	statePath := flags.String(
+		"state-path",
+		agentstate.DefaultPath(),
+		"Agent lifecycle state path",
+	)
+	timeout := flags.Duration(
+		"timeout",
+		defaultUninstallTimeout,
+		"maximum time to wait for safe dependency teardown",
+	)
+
+	if err := flags.Parse(args); err != nil {
+		flags.Usage()
+
+		return 2
+	}
+	if flags.NArg() != 0 {
+		return usageError(
+			stderr,
+			flags,
+			"uninstall does not accept positional arguments",
+		)
+	}
+	if strings.TrimSpace(*statePath) == "" {
+		return usageError(
+			stderr,
+			flags,
+			"--state-path must not be empty",
+		)
+	}
+	if *timeout <= 0 {
+		return usageError(
+			stderr,
+			flags,
+			"--timeout must be greater than zero",
+		)
+	}
+
+	uninstallAgent := deps.uninstallAgent
+	if uninstallAgent == nil {
+		fmt.Fprintln(stderr, "Agent uninstaller is not configured")
+
+		return 1
+	}
+
+	if err := uninstallAgent(ctx, *statePath, *timeout); err != nil {
+		fmt.Fprintf(stderr, "uninstall Agent: %v\n", err)
+
+		return 1
+	}
+
+	fmt.Fprintln(stdout, "Agent uninstall complete")
 
 	return 0
 }

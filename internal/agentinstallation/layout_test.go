@@ -75,6 +75,7 @@ func TestLayoutInstallationReturnsConcreteOwnedResources(t *testing.T) {
 	want := agentstate.AgentInstallation{
 		Platform:    "linux",
 		ServiceName: "ar-imms-telemetry-agent",
+		BinaryPath:  "/opt/ar-imms/telemetry-agent/agentctl",
 		Ownership: agentstate.OwnershipRecord{
 			Resources: []agentstate.OwnedResource{
 				{
@@ -93,11 +94,59 @@ func TestLayoutInstallationReturnsConcreteOwnedResources(t *testing.T) {
 					Kind:       "directory",
 					Identifier: "/var/lib/ar-imms/telemetry-agent",
 				},
+				{
+					Kind:       "file",
+					Identifier: "/etc/systemd/system/ar-imms-telemetry-agent.service",
+				},
 			},
 		},
 	}
 
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Installation() = %#v, want %#v", got, want)
+	}
+}
+
+func TestLayoutInstallationRecordsAgentBinaryPath(t *testing.T) {
+	testCases := []struct {
+		name     string
+		platform identity.PlatformInfo
+		wantPath string
+	}{
+		{
+			name: "linux",
+			platform: identity.PlatformInfo{
+				OS:           "linux",
+				Architecture: "amd64",
+			},
+			wantPath: "/opt/ar-imms/telemetry-agent/agentctl",
+		},
+		{
+			name: "windows",
+			platform: identity.PlatformInfo{
+				OS:           "windows",
+				Architecture: "amd64",
+			},
+			wantPath: `C:\Program Files\AR-IMMS\Telemetry Agent\agentctl.exe`,
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			layout, err := DefaultLayout(test.platform)
+			if err != nil {
+				t.Fatalf("DefaultLayout() error = %v", err)
+			}
+
+			installation := layout.Installation()
+
+			if installation.BinaryPath != test.wantPath {
+				t.Fatalf(
+					"installation binary path = %q, want %q",
+					installation.BinaryPath,
+					test.wantPath,
+				)
+			}
+		})
 	}
 }

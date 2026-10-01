@@ -31,6 +31,7 @@ Commands:
   run         Run the OpenTelemetry Collector under supervision.
   status      Show live Agent health.
   install     Install and start the Agent as a managed service.
+  uninstall   Safely remove the Agent and its managed dependencies.
   help        Show this help.
 `
 
@@ -81,6 +82,7 @@ Commands:
   run         Run the OpenTelemetry Collector under supervision.
   status      Show live Agent health.
   install     Install and start the Agent as a managed service.
+  uninstall   Safely remove the Agent and its managed dependencies.
   help        Show this help.
 `
 
@@ -127,6 +129,7 @@ Commands:
   run         Run the OpenTelemetry Collector under supervision.
   status      Show live Agent health.
   install     Install and start the Agent as a managed service.
+  uninstall   Safely remove the Agent and its managed dependencies.
   help        Show this help.
 `
 
