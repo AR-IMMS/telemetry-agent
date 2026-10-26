@@ -48,7 +48,7 @@ agentctl dependency pending
 Use the custom state path consistently when applicable:
 
 ```powershell
-agentctl dependency status --state-path C:\ProgramData\AR-IMMS\agent\state.json
+agentctl dependency status --state-path C:\ProgramData\AR-IMMS\Telemetry Agent\state.db
 ```
 
 ## Install or Reconcile
@@ -79,7 +79,7 @@ agentctl dependency configure
 With a custom state path:
 
 ```powershell
-agentctl dependency configure --state-path C:\ProgramData\AR-IMMS\agent\state.json
+agentctl dependency configure --state-path C:\ProgramData\AR-IMMS\Telemetry Agent\state.db
 ```
 
 Controls:

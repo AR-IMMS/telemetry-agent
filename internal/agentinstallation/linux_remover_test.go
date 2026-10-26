@@ -75,7 +75,7 @@ func TestLinuxAgentRemoverRemovesOwnedResourcesWithDataLast(
 				},
 			},
 		},
-		"/var/lib/ar-imms/telemetry-agent/state.json",
+		"/var/lib/ar-imms/telemetry-agent/state.db",
 	)
 	if err != nil {
 		t.Fatalf("Remove() error = %v", err)
@@ -141,7 +141,7 @@ func TestLinuxAgentRemoverRefusesMissingOwnedDataDirectory(
 				},
 			},
 		},
-		"/var/lib/ar-imms/telemetry-agent/state.json",
+		"/var/lib/ar-imms/telemetry-agent/state.db",
 	)
 	if err == nil {
 		t.Fatal("Remove() error = nil, want missing data directory error")

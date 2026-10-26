@@ -6,11 +6,17 @@ import (
 	"strings"
 )
 
+// AgentInstallation records the service, binary, and owned resources created
+// by one Agent installation so removal never has to infer ownership.
 type AgentInstallation struct {
-	Platform    string          `json:"platform"`
-	ServiceName string          `json:"serviceName"`
-	BinaryPath  string          `json:"binaryPath"`
-	Ownership   OwnershipRecord `json:"ownership"`
+	// Platform identifies the operating system on which this installation runs.
+	Platform string `json:"platform"`
+	// ServiceName is the OS service registered for the Agent process.
+	ServiceName string `json:"serviceName"`
+	// BinaryPath is the durable Agent executable path.
+	BinaryPath string `json:"binaryPath"`
+	// Ownership lists resources this installation may safely remove.
+	Ownership OwnershipRecord `json:"ownership"`
 }
 
 // CollectorContext is the persisted runtime context required to render and
@@ -28,7 +34,9 @@ type CollectorContext struct {
 type TeardownAction string
 
 const (
-	TeardownActionDisable   TeardownAction = "disable"
+	// TeardownActionDisable stops a dependency after its receiver is removed.
+	TeardownActionDisable TeardownAction = "disable"
+	// TeardownActionUninstall removes a dependency after its receiver is removed.
 	TeardownActionUninstall TeardownAction = "uninstall"
 )
 
@@ -48,12 +56,14 @@ type DependencyState struct {
 
 // State is the Agent-owned desired state persisted on the local machine.
 type State struct {
-	Collector           CollectorContext           `json:"collector"`
-	DesiredGeneration   uint64                     `json:"desiredGeneration"`
-	ActivatedGeneration uint64                     `json:"activatedGeneration"`
-	AppliedGeneration   uint64                     `json:"appliedGeneration"`
-	Dependencies        map[string]DependencyState `json:"dependencies"`
-	Installation        *AgentInstallation         `json:"installation,omitempty"`
+	Collector           CollectorContext `json:"collector"`
+	DesiredGeneration   uint64           `json:"desiredGeneration"`
+	ActivatedGeneration uint64           `json:"activatedGeneration"`
+	AppliedGeneration   uint64           `json:"appliedGeneration"`
+	// PendingActivation supports recovery between config promotion and commit.
+	PendingActivation *PendingActivation         `json:"pendingActivation,omitempty"`
+	Dependencies      map[string]DependencyState `json:"dependencies"`
+	Installation      *AgentInstallation         `json:"installation,omitempty"`
 }
 
 // OwnedResource identifies one host resource created and managed by the Agent.
@@ -299,22 +309,7 @@ func (s State) OwnsDependency(name string) bool {
 		len(dependency.Ownership.Resources) > 0
 }
 
-// MarkGenerationActivated records that the desired configuration generation
-// was rendered, validated, and atomically activated.
-func (s *State) MarkGenerationActivated(generation uint64) error {
-	if generation != s.DesiredGeneration {
-		return fmt.Errorf(
-			"activated generation %d does not match desired generation %d",
-			generation,
-			s.DesiredGeneration,
-		)
-	}
-
-	s.ActivatedGeneration = generation
-
-	return nil
-}
-
+// RecordAgentInstallation persists validated platform and ownership metadata.
 func (s *State) RecordAgentInstallation(
 	installation AgentInstallation,
 ) error {

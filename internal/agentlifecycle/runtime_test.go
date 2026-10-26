@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -106,6 +107,85 @@ func TestRuntimeWatcherMarksLaunchGenerationAppliedAfterCollectorReady(
 
 	case <-time.After(time.Second):
 		t.Fatal("runtime watcher did not stop after cancellation")
+	}
+}
+
+func TestRuntimeLaunchSnapshotWaitsForConfigActivationLock(t *testing.T) {
+	root := t.TempDir()
+	configPath := filepath.Join(root, "otel.yaml")
+	statePath := filepath.Join(root, "state.json")
+	store := agentstate.NewFileStore(statePath)
+	if err := os.WriteFile(configPath, []byte("revision-one"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Save(agentstate.State{
+		Collector:           agentstate.CollectorContext{ConfigPath: configPath},
+		ActivatedGeneration: 1,
+		Dependencies:        map[string]agentstate.DependencyState{},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	lock, err := agentstate.AcquireLifecycleLock(configPath + ".lifecycle")
+	if err != nil {
+		t.Fatal(err)
+	}
+	watcher := runtimeWatcher{
+		store:    store,
+		options:  supervisor.Options{ConfigPath: configPath},
+		lockPath: configPath + ".lifecycle",
+		snapshotConfig: func(path string, _ uint64) (string, func(), error) {
+			content, err := os.ReadFile(path)
+			if err != nil {
+				return "", nil, err
+			}
+			snapshotPath := filepath.Join(root, "launch.yaml")
+			if err := os.WriteFile(snapshotPath, content, 0o600); err != nil {
+				return "", nil, err
+			}
+			return snapshotPath, func() {}, nil
+		},
+	}
+	type launchResult struct {
+		state agentstate.State
+		path  string
+		err   error
+	}
+	done := make(chan launchResult, 1)
+	go func() {
+		state, options, cleanup, err := watcher.prepareLaunch()
+		cleanup()
+		done <- launchResult{state: state, path: options.ConfigPath, err: err}
+	}()
+	select {
+	case <-done:
+		t.Fatal("launch snapshot passed an activation that still held the lock")
+	case <-time.After(40 * time.Millisecond):
+	}
+	if _, err := store.Update(func(state *agentstate.State) error {
+		state.ActivatedGeneration = 2
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte("revision-two"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := lock.Close(); err != nil {
+		t.Fatal(err)
+	}
+	result := <-done
+	if result.err != nil {
+		t.Fatal(result.err)
+	}
+	if result.state.ActivatedGeneration != 2 {
+		t.Fatalf("launch revision = %d, want 2", result.state.ActivatedGeneration)
+	}
+	content, err := os.ReadFile(result.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "revision-two" {
+		t.Fatalf("launch config = %q, want revision-two", content)
 	}
 }
 

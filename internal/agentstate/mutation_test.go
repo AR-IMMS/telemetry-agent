@@ -391,6 +391,23 @@ func TestStateMarkGenerationActivatedAcknowledgesCurrentDesiredGeneration(
 	}
 }
 
+func TestStateRollsBackUnappliedActivationToAppliedGeneration(t *testing.T) {
+	state := State{
+		DesiredGeneration:   5,
+		ActivatedGeneration: 5,
+		AppliedGeneration:   3,
+	}
+	if err := state.RollbackUnappliedActivation(5); err != nil {
+		t.Fatalf("RollbackUnappliedActivation() error = %v", err)
+	}
+	if state.ActivatedGeneration != 3 || state.AppliedGeneration != 3 {
+		t.Fatalf("generations after rollback = activated %d, applied %d", state.ActivatedGeneration, state.AppliedGeneration)
+	}
+	if state.DesiredGeneration != 5 {
+		t.Fatalf("DesiredGeneration = %d, want 5", state.DesiredGeneration)
+	}
+}
+
 func TestStateEnableDependencyCancelsPendingTeardown(t *testing.T) {
 	state := State{
 		DesiredGeneration: 7,

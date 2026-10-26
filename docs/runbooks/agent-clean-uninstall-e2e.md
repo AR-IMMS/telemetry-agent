@@ -21,13 +21,15 @@ This procedure verifies:
 - Run commands from the telemetry-agent repository root.
 - Build the external E2E binary beforehand at `.e2e/bin/agentctl`.
 - Use `sudo` for lifecycle commands.
-- Use the explicit state path below for every lifecycle command.
+- The installed default state path is shown below. Explicitly passing it is
+  optional when every command uses the installed defaults.
 
 ```text
-/var/lib/ar-imms/telemetry-agent/state.json
+/var/lib/ar-imms/telemetry-agent/state.db
 ```
 
-> The explicit state path is required until all `agentctl` commands share one canonical default. See [Agentctl Command and State Consistency Gaps](../architecture/agentctl-command-state-consistency.md).
+> The SQLite store imports a sibling legacy `state.json` when upgrading an
+> existing installation. See [Agentctl Command and State Consistency Gaps](../architecture/agentctl-command-state-consistency.md).
 
 ## 1. Install Agent
 
@@ -39,7 +41,7 @@ Expected output includes:
 
 ```text
 Agent installation complete: ar-imms-telemetry-agent
-Agent state path: /var/lib/ar-imms/telemetry-agent/state.json
+Agent state path: /var/lib/ar-imms/telemetry-agent/state.db
 ```
 
 ## 2. Bootstrap Collector
@@ -49,7 +51,7 @@ sudo /opt/ar-imms/telemetry-agent/agentctl bootstrap \
   --config-root "$PWD/configs" \
   --install-dir /opt/ar-imms/telemetry-agent/collector \
   --config-path /var/lib/ar-imms/telemetry-agent/collector.yaml \
-  --state-path /var/lib/ar-imms/telemetry-agent/state.json
+  --state-path /var/lib/ar-imms/telemetry-agent/state.db
 ```
 
 Expected output includes the Collector version, binary path, final configuration path, and whether the Collector installation was reused.
@@ -58,7 +60,7 @@ Expected output includes the Collector version, binary path, final configuration
 
 ```bash
 sudo /opt/ar-imms/telemetry-agent/agentctl dependency install node-exporter \
-  --state-path /var/lib/ar-imms/telemetry-agent/state.json
+  --state-path /var/lib/ar-imms/telemetry-agent/state.db
 ```
 
 Verify that the endpoint is reachable:
@@ -71,7 +73,7 @@ curl -fsS http://127.0.0.1:9100/metrics >/dev/null && echo "node-exporter reacha
 
 ```bash
 sudo /opt/ar-imms/telemetry-agent/agentctl dependency disable node-exporter \
-  --state-path /var/lib/ar-imms/telemetry-agent/state.json
+  --state-path /var/lib/ar-imms/telemetry-agent/state.db
 ```
 
 Verify that port `9100` is closed:
@@ -90,13 +92,13 @@ curl: (7) Failed to connect to 127.0.0.1 port 9100
 
 ```bash
 sudo /opt/ar-imms/telemetry-agent/agentctl dependency uninstall node-exporter \
-  --state-path /var/lib/ar-imms/telemetry-agent/state.json
+  --state-path /var/lib/ar-imms/telemetry-agent/state.db
 ```
 
 Verify dependency cleanup:
 
 ```bash
-sudo sed -n '1,180p' /var/lib/ar-imms/telemetry-agent/state.json
+sudo sed -n '1,180p' /var/lib/ar-imms/telemetry-agent/state.db
 sudo systemctl status ar-imms-node-exporter.service --no-pager
 sudo ls -ld /opt/ar-imms/node-exporter
 curl http://127.0.0.1:9100/metrics
@@ -116,7 +118,7 @@ Agent uninstall must be run from an external binary. Do not run it from `/opt/ar
 
 ```bash
 sudo ./.e2e/bin/agentctl uninstall \
-  --state-path /var/lib/ar-imms/telemetry-agent/state.json
+  --state-path /var/lib/ar-imms/telemetry-agent/state.db
 ```
 
 Verify Agent cleanup:

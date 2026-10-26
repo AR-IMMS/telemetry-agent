@@ -94,17 +94,15 @@ func TestManagedAgentUninstallerRemovesAgentAfterDependenciesAreGone(
 		BinaryPath:  "/opt/ar-imms/telemetry-agent/agentctl",
 	}
 
-	store := agentstate.NewFileStore(statePath)
-	if err := store.Save(agentstate.State{
+	store := agentstate.NewStore(statePath)
+	saveTestState(t, store, agentstate.State{
 		Installation: &installation,
 		Dependencies: map[string]agentstate.DependencyState{
 			"node-exporter": {
 				Enabled: false,
 			},
 		},
-	}); err != nil {
-		t.Fatalf("Save() error = %v", err)
-	}
+	})
 
 	var steps []string
 
@@ -236,16 +234,14 @@ func TestManagedAgentUninstallerRejectsInstalledBinaryBeforeRequestingTeardown(
 	statePath := filepath.Join(t.TempDir(), "state.json")
 	installedBinary := "/opt/ar-imms/telemetry-agent/agentctl"
 
-	store := agentstate.NewFileStore(statePath)
-	if err := store.Save(agentstate.State{
+	store := agentstate.NewStore(statePath)
+	saveTestState(t, store, agentstate.State{
 		Installation: &agentstate.AgentInstallation{
 			Platform:   "linux",
 			BinaryPath: installedBinary,
 		},
 		Dependencies: map[string]agentstate.DependencyState{},
-	}); err != nil {
-		t.Fatalf("Save() error = %v", err)
-	}
+	})
 
 	requested := false
 	waited := false
@@ -309,8 +305,8 @@ func TestManagedAgentUninstallerDoesNotRemoveAgentWhenTeardownWaitFails(
 	statePath := filepath.Join(t.TempDir(), "state.json")
 	waitError := errors.New("Collector did not apply teardown generation")
 
-	store := agentstate.NewFileStore(statePath)
-	if err := store.Save(agentstate.State{
+	store := agentstate.NewStore(statePath)
+	saveTestState(t, store, agentstate.State{
 		Installation: &agentstate.AgentInstallation{
 			Platform:   "linux",
 			BinaryPath: "/opt/ar-imms/telemetry-agent/agentctl",
@@ -318,9 +314,7 @@ func TestManagedAgentUninstallerDoesNotRemoveAgentWhenTeardownWaitFails(
 		Dependencies: map[string]agentstate.DependencyState{
 			"node-exporter": {Enabled: false},
 		},
-	}); err != nil {
-		t.Fatalf("Save() error = %v", err)
-	}
+	})
 
 	removerResolved := false
 

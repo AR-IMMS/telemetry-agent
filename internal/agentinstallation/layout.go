@@ -8,6 +8,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/identity"
 )
 
+// DefaultAgentServiceName is the OS service identity used by default layouts.
 const DefaultAgentServiceName = "ar-imms-telemetry-agent"
 
 // Layout defines the concrete paths and service identity owned by a packaged
@@ -36,7 +37,7 @@ func DefaultLayout(platform identity.PlatformInfo) (Layout, error) {
 			AgentBinaryPath:            "/opt/ar-imms/telemetry-agent/agentctl",
 			CollectorInstallDirectory:  "/opt/ar-imms/telemetry-agent/collector",
 			CollectorConfigurationPath: "/var/lib/ar-imms/telemetry-agent/collector.yaml",
-			StatePath:                  "/var/lib/ar-imms/telemetry-agent/state.json",
+			StatePath:                  "/var/lib/ar-imms/telemetry-agent/state.db",
 			ServiceName:                DefaultAgentServiceName,
 		}, nil
 
@@ -48,7 +49,7 @@ func DefaultLayout(platform identity.PlatformInfo) (Layout, error) {
 			AgentBinaryPath:            `C:\Program Files\AR-IMMS\Telemetry Agent\agentctl.exe`,
 			CollectorInstallDirectory:  `C:\Program Files\AR-IMMS\Telemetry Agent\collector`,
 			CollectorConfigurationPath: `C:\ProgramData\AR-IMMS\Telemetry Agent\collector.yaml`,
-			StatePath:                  `C:\ProgramData\AR-IMMS\Telemetry Agent\state.json`,
+			StatePath:                  `C:\ProgramData\AR-IMMS\Telemetry Agent\state.db`,
 			ServiceName:                DefaultAgentServiceName,
 		}, nil
 

@@ -704,7 +704,7 @@ func TestRunBootstrapPersistsCollectorContextAndManagedReceiverLayer(
 		)
 	}
 
-	state, err := agentstate.NewFileStore(statePath).Load()
+	state, err := agentstate.NewStore(statePath).Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
@@ -769,7 +769,7 @@ func TestRunBootstrapDoesNotPersistCollectorContextWhenBootstrapFails(
 		)
 	}
 
-	_, err := agentstate.NewFileStore(statePath).Load()
+	_, err := agentstate.NewStore(statePath).Load()
 	if !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("state Load() error = %v, want not-exist error", err)
 	}

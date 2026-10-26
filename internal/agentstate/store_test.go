@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+var _ Repository = FileStore{}
+
 func TestFileStorePersistsDesiredState(t *testing.T) {
 	statePath := t.TempDir() + "/state.json"
 
@@ -67,6 +69,31 @@ func TestFileStoreUpdateCreatesMissingState(t *testing.T) {
 	}
 	if !reflect.DeepEqual(persisted, got) {
 		t.Fatalf("persisted state = %#v, want %#v", persisted, got)
+	}
+}
+
+func TestFileStoreUpdateCreatesMissingParentDirectory(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "nested", "state.json")
+	store := NewFileStore(statePath)
+
+	got, err := store.Update(func(state *State) error {
+		state.DesiredGeneration = 1
+
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+	if got.DesiredGeneration != 1 {
+		t.Fatalf("DesiredGeneration = %d, want 1", got.DesiredGeneration)
+	}
+
+	persisted, err := store.Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if persisted.DesiredGeneration != 1 {
+		t.Fatalf("persisted DesiredGeneration = %d, want 1", persisted.DesiredGeneration)
 	}
 }
 

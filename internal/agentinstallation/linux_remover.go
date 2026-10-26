@@ -17,6 +17,7 @@ type linuxAgentRemover struct {
 	removeDirectory func(string) error
 }
 
+// Remove stops the Agent service and deletes only paths recorded as Agent-owned.
 func (r linuxAgentRemover) Remove(
 	ctx context.Context,
 	installation agentstate.AgentInstallation,
@@ -129,7 +130,7 @@ func (r linuxAgentRemover) Remove(
 		}
 	}
 
-	// The data directory contains state.json, so it is removed last.
+	// The data directory contains state.db and recovery artifacts, so it is removed last.
 	if err := r.removeDirectory(dataDirectories[0]); err != nil {
 		return fmt.Errorf(
 			"remove Agent-owned data directory %q: %w",

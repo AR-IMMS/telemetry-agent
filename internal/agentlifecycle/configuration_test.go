@@ -2,6 +2,7 @@ package agentlifecycle
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -65,7 +66,7 @@ func TestConfigurationCoordinatorMarksSnapshotGenerationActivated(
 	}
 }
 
-func TestConfigurationCoordinatorSerializesActivationWithStateMutation(
+func TestConfigurationCoordinatorRejectsStaleActivationWithoutBlockingUpdates(
 	t *testing.T,
 ) {
 	store := agentstate.NewFileStore(
@@ -130,31 +131,22 @@ func TestConfigurationCoordinatorSerializesActivationWithStateMutation(
 
 	select {
 	case err := <-mutationDone:
-		t.Fatalf(
-			"desired-state mutation completed during activation: %v",
-			err,
-		)
-	case <-time.After(50 * time.Millisecond):
+		if err != nil {
+			t.Fatalf("update desired generation during activation: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("desired-state mutation blocked during configuration activation")
 	}
 
 	close(releaseActivation)
 
 	select {
 	case err := <-firstApplyDone:
-		if err != nil {
-			t.Fatalf("first Apply() error = %v", err)
+		if !errors.Is(err, ErrStaleConfiguration) {
+			t.Fatalf("first Apply() error = %v, want stale configuration", err)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("first configuration activation did not finish")
-	}
-
-	select {
-	case err := <-mutationDone:
-		if err != nil {
-			t.Fatalf("update desired generation: %v", err)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("desired-state mutation did not finish after activation")
 	}
 
 	if err := coordinator.Apply(context.Background()); err != nil {
@@ -180,5 +172,60 @@ func TestConfigurationCoordinatorSerializesActivationWithStateMutation(
 			"activated generations = %v, want [1 2]",
 			activatedGenerations,
 		)
+	}
+}
+
+func TestConfigurationCoordinatorSkipsAlreadyActivatedGeneration(
+	t *testing.T,
+) {
+	store := agentstate.NewFileStore(
+		filepath.Join(t.TempDir(), "state.json"),
+	)
+	if err := store.Save(agentstate.State{
+		DesiredGeneration:   4,
+		ActivatedGeneration: 4,
+		Dependencies:        map[string]agentstate.DependencyState{},
+	}); err != nil {
+		t.Fatalf("initialize state: %v", err)
+	}
+
+	activationCalls := 0
+	coordinator := configurationCoordinator{
+		store: store,
+		activate: func(context.Context, agentstate.State) error {
+			activationCalls++
+			return nil
+		},
+	}
+
+	if err := coordinator.Apply(context.Background()); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	if activationCalls != 0 {
+		t.Fatalf("activation calls = %d, want 0", activationCalls)
+	}
+}
+
+func TestConfigurationPlanIsAnImmutableSnapshot(t *testing.T) {
+	original := agentstate.State{
+		DesiredGeneration: 2,
+		Dependencies: map[string]agentstate.DependencyState{
+			"redis": {
+				Enabled: true,
+				PendingTeardown: &agentstate.PendingTeardown{
+					Action: agentstate.TeardownActionDisable, Generation: 1,
+				},
+			},
+		},
+	}
+	plan := newConfigurationPlan(original)
+	original.Dependencies["redis"] = agentstate.DependencyState{Enabled: false}
+
+	planned := plan.snapshot.Dependencies["redis"]
+	if !planned.Enabled || planned.PendingTeardown == nil {
+		t.Fatalf("plan snapshot changed with source state: %#v", planned)
+	}
+	if plan.revision != 2 {
+		t.Fatalf("plan revision = %d, want 2", plan.revision)
 	}
 }
