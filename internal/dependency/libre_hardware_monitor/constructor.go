@@ -58,9 +58,9 @@ func newInstaller(
 	}
 
 	reconciler := reconciler{
-		inspect:        dependencies.inspect,
-		install:        fresh.Install,
-		update:         fresh.Update,
+		inspect: dependencies.inspect,
+		install: fresh.Install,
+		update:  fresh.Update,
 	}
 
 	managed := managedInstaller{

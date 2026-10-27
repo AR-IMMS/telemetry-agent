@@ -14,13 +14,23 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/identity"
 )
 
+func saveTestState(t *testing.T, store agentstate.Repository, state agentstate.State) {
+	t.Helper()
+	if _, err := store.Update(func(current *agentstate.State) error {
+		*current = state
+		return nil
+	}); err != nil {
+		t.Fatalf("persist test state: %v", err)
+	}
+}
+
 func TestManagedAgentUninstallRequesterUsesPersistedCollectorContext(
 	t *testing.T,
 ) {
 	statePath := filepath.Join(t.TempDir(), "state.json")
-	store := agentstate.NewFileStore(statePath)
+	store := agentstate.NewStore(statePath)
 
-	if err := store.Save(agentstate.State{
+	saveTestState(t, store, agentstate.State{
 		Collector: agentstate.CollectorContext{
 			ConfigRoot:      "/srv/ar-imms/config",
 			BinaryPath:      "/opt/ar-imms/collector/otelcol-contrib",
@@ -30,9 +40,7 @@ func TestManagedAgentUninstallRequesterUsesPersistedCollectorContext(
 		Dependencies: map[string]agentstate.DependencyState{
 			"node-exporter": {Enabled: true},
 		},
-	}); err != nil {
-		t.Fatalf("Save() error = %v", err)
-	}
+	})
 
 	platform := identity.PlatformInfo{
 		OS:           "linux",
@@ -73,7 +81,7 @@ func TestManagedAgentUninstallRequesterUsesPersistedCollectorContext(
 		runner: runner,
 		requestAll: func(
 			_ context.Context,
-			gotStore agentstate.FileStore,
+			gotStore agentstate.Repository,
 			options agentlifecycle.CollectorConfigurationOptions,
 		) ([]string, error) {
 			called = true

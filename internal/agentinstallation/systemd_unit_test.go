@@ -26,7 +26,7 @@ After=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/opt/ar-imms/telemetry-agent/agentctl run --state-path /var/lib/ar-imms/telemetry-agent/state.json
+ExecStart=/opt/ar-imms/telemetry-agent/agentctl run --state-path /var/lib/ar-imms/telemetry-agent/state.db
 Restart=on-failure
 RestartSec=5s
 

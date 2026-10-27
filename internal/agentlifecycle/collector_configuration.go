@@ -94,7 +94,7 @@ func (a collectorConfigurationActivator) Activate(
 // the current desired dependency configuration as one generation.
 func ApplyDesiredConfiguration(
 	ctx context.Context,
-	store agentstate.FileStore,
+	store agentstate.Repository,
 	options CollectorConfigurationOptions,
 ) error {
 	activator := collectorConfigurationActivator{
@@ -110,6 +110,19 @@ func ApplyDesiredConfiguration(
 	coordinator := configurationCoordinator{
 		store:    store,
 		activate: activator.Activate,
+		lockPath: options.ConfigPath + ".lifecycle",
+		prepare: func(state agentstate.State) (string, error) {
+			return bootstrap.PrepareConfigRecoveryArtifact(
+				options.ConfigPath,
+				state.DesiredGeneration,
+			)
+		},
+		recover: func(path string) error {
+			return bootstrap.RestoreConfigArtifact(options.ConfigPath, path)
+		},
+		rollback: func() error {
+			return bootstrap.RestoreLastKnownGoodConfig(options.ConfigPath)
+		},
 	}
 
 	return coordinator.Apply(ctx)

@@ -66,7 +66,7 @@ func TestInstallerStagesAgentPersistsStateThenStartsService(
 			}, nil
 		},
 		newStateStore: func(path string) stateStore {
-			if path != "/var/lib/ar-imms/telemetry-agent/state.json" {
+			if path != "/var/lib/ar-imms/telemetry-agent/state.db" {
 				t.Fatalf("state path = %q", path)
 			}
 
@@ -109,7 +109,7 @@ func TestInstallerStagesAgentPersistsStateThenStartsService(
 		t.Fatalf("Install() error = %v", err)
 	}
 
-	if layout.StatePath != "/var/lib/ar-imms/telemetry-agent/state.json" {
+	if layout.StatePath != "/var/lib/ar-imms/telemetry-agent/state.db" {
 		t.Fatalf("layout = %#v", layout)
 	}
 

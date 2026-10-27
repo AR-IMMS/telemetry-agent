@@ -88,6 +88,8 @@ func newManagedDependencyLifecycle(
 	return lifecycle.Apply
 }
 
+// Apply changes one dependency's desired lifecycle state and activates the
+// matching Collector configuration before reporting success.
 func (l managedDependencyLifecycle) Apply(
 	ctx context.Context,
 	name string,
@@ -99,7 +101,7 @@ func (l managedDependencyLifecycle) Apply(
 		return fmt.Errorf("Agent lifecycle state path is required")
 	}
 
-	store := agentstate.NewFileStore(statePath)
+	store := agentstate.NewStore(statePath)
 
 	state, err := store.Load()
 	if err != nil {
@@ -120,6 +122,18 @@ func (l managedDependencyLifecycle) Apply(
 			"bootstrap the Collector before managing dependencies",
 		)
 	}
+	lifecycleLock, err := agentstate.AcquireLifecycleLock(
+		state.Collector.ConfigPath + ".lifecycle",
+	)
+	if err != nil {
+		return fmt.Errorf("acquire Agent lifecycle lock: %w", err)
+	}
+	lockHeld := true
+	defer func() {
+		if lockHeld {
+			_ = lifecycleLock.Close()
+		}
+	}()
 
 	var updatedState agentstate.State
 
@@ -203,6 +217,10 @@ func (l managedDependencyLifecycle) Apply(
 			err,
 		)
 	}
+	if err := lifecycleLock.Close(); err != nil {
+		return fmt.Errorf("release Agent lifecycle lock: %w", err)
+	}
+	lockHeld = false
 
 	if updatedState.DesiredGeneration ==
 		updatedState.ActivatedGeneration {
@@ -271,7 +289,7 @@ func (i managedDependencyInstaller) Install(
 		)
 	}
 
-	store := agentstate.NewFileStore(statePath)
+	store := agentstate.NewStore(statePath)
 
 	state, err := store.Load()
 	if err != nil {
@@ -301,6 +319,18 @@ func (i managedDependencyInstaller) Install(
 			"dependency installer is not configured",
 		)
 	}
+	lifecycleLock, err := agentstate.AcquireLifecycleLock(
+		state.Collector.ConfigPath + ".lifecycle",
+	)
+	if err != nil {
+		return dependency.InstallResult{}, fmt.Errorf("acquire Agent lifecycle lock: %w", err)
+	}
+	lockHeld := true
+	defer func() {
+		if lockHeld {
+			_ = lifecycleLock.Close()
+		}
+	}()
 
 	collectPlatform := i.collectPlatform
 	if collectPlatform == nil {
@@ -359,6 +389,10 @@ func (i managedDependencyInstaller) Install(
 			err,
 		)
 	}
+	if err := lifecycleLock.Close(); err != nil {
+		return dependency.InstallResult{}, fmt.Errorf("release Agent lifecycle lock: %w", err)
+	}
+	lockHeld = false
 
 	if err := agentlifecycle.ApplyDesiredConfiguration(
 		ctx,

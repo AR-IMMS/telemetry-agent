@@ -158,6 +158,9 @@ func (s FileStore) Update(mutate StateMutation) (State, error) {
 	if mutate == nil {
 		return State{}, fmt.Errorf("Agent state mutation is required")
 	}
+	if err := s.ensureDirectory(); err != nil {
+		return State{}, err
+	}
 
 	lock, err := acquireStateLock(s.path + ".lock")
 	if err != nil {

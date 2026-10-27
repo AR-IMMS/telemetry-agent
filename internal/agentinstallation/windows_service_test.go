@@ -58,7 +58,7 @@ func TestWindowsServiceInstallerEnsuresAndRestartsAgentService(
 		Args: []string{
 			"service",
 			"--state-path",
-			`C:\ProgramData\AR-IMMS\Telemetry Agent\state.json`,
+			`C:\ProgramData\AR-IMMS\Telemetry Agent\state.db`,
 		},
 	}
 

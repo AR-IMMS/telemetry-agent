@@ -43,6 +43,8 @@ type managedAgentUninstaller struct {
 	newRemover          agentRemoverFactory
 }
 
+// Uninstall removes managed dependencies only after their Collector changes
+// have been applied, then removes the Agent-owned installation resources.
 func (u managedAgentUninstaller) Uninstall(
 	ctx context.Context,
 	statePath string,
@@ -95,7 +97,7 @@ func (u managedAgentUninstaller) Uninstall(
 		return fmt.Errorf("resolve current Agent executable path: %w", err)
 	}
 
-	store := agentstate.NewFileStore(statePath)
+	store := agentstate.NewStore(statePath)
 	state, err := store.Load()
 	if err != nil {
 		return fmt.Errorf("load Agent state: %w", err)
@@ -169,7 +171,7 @@ func (u managedAgentUninstaller) Uninstall(
 
 type dependencyUninstallAllRequestFunc func(
 	context.Context,
-	agentstate.FileStore,
+	agentstate.Repository,
 	agentlifecycle.CollectorConfigurationOptions,
 ) ([]string, error)
 
@@ -181,6 +183,8 @@ type managedAgentUninstallRequester struct {
 	requestAll      dependencyUninstallAllRequestFunc
 }
 
+// Request persists teardown requests for every dependency in the current
+// catalog; it does not remove host resources directly.
 func (r managedAgentUninstallRequester) Request(
 	ctx context.Context,
 	statePath string,
@@ -194,7 +198,7 @@ func (r managedAgentUninstallRequester) Request(
 		return fmt.Errorf("Agent lifecycle state path is required")
 	}
 
-	store := agentstate.NewFileStore(statePath)
+	store := agentstate.NewStore(statePath)
 	state, err := store.Load()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -299,7 +303,7 @@ func newManagedAgentUninstaller(
 		) (agentstate.State, error) {
 			return agentlifecycle.WaitForDependenciesRemoved(
 				ctx,
-				agentstate.NewFileStore(statePath),
+				agentstate.NewStore(statePath),
 				dependencyTeardownPollInterval,
 			)
 		},

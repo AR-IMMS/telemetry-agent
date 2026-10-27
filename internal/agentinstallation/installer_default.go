@@ -22,7 +22,7 @@ func NewInstaller(
 			return bootstrap.Run(ctx, options, downloader, runner)
 		},
 		newStateStore: func(path string) stateStore {
-			return agentstate.NewFileStore(path)
+			return agentstate.NewStore(path)
 		},
 		serviceFor: newDefaultServiceInstaller,
 	}

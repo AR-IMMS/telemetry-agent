@@ -65,7 +65,7 @@ func TestWindowsAgentRemoverRemovesOwnedResourcesWithDataLast(
 				},
 			},
 		},
-		`C:\ProgramData\AR-IMMS\Telemetry Agent\state.json`,
+		`C:\ProgramData\AR-IMMS\Telemetry Agent\state.db`,
 	)
 	if err != nil {
 		t.Fatalf("Remove() error = %v", err)

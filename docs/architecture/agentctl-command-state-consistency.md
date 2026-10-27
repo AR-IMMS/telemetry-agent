@@ -2,7 +2,11 @@
 
 ## Status
 
-Open follow-up identified during the 2026-10-01 clean-uninstall E2E validation.
+Historical follow-up identified during the 2026-10-01 clean-uninstall E2E validation.
+
+The canonical installed state path is now `state.db`. The SQLite store imports a
+sibling legacy `state.json` on first access and preserves that JSON file as a
+migration backup. The observations below describe the earlier implementation.
 
 This document describes command ergonomics and state-location consistency. It does not change the ownership-based cleanup model or the dependency lifecycle ordering.
 
@@ -11,7 +15,7 @@ This document describes command ergonomics and state-location consistency. It do
 The Agent installation command persists state at:
 
 ```text
-/var/lib/ar-imms/telemetry-agent/state.json
+/var/lib/ar-imms/telemetry-agent/state.db
 ```
 
 However, `bootstrap` and dependency commands use another default state location when `--state-path` is omitted:
@@ -24,7 +28,7 @@ This creates an inconsistent flow:
 
 ```text
 agentctl install
-  → state in /var/lib/ar-imms/telemetry-agent/state.json
+  → state in /var/lib/ar-imms/telemetry-agent/state.db
 
 agentctl bootstrap
   → default lookup in /var/lib/ar-imms/agent/state.json
@@ -58,7 +62,7 @@ It is not available as `agentctl` in a newly opened shell unless the user change
 All lifecycle commands must use the same canonical default state path:
 
 ```text
-/var/lib/ar-imms/telemetry-agent/state.json
+/var/lib/ar-imms/telemetry-agent/state.db
 ```
 
 The expected operator flow is:
@@ -87,7 +91,7 @@ A user should not need to supply any of the following for a standard installatio
 
 ### 1. Canonicalize default state configuration
 
-Define one shared default state path in the command/configuration layer and use it for:
+Use one shared SQLite state path in the command/configuration layer for:
 
 - `install`
 - `bootstrap`
@@ -135,7 +139,7 @@ node-exporter:
 
 - Running `agentctl install --config-root "$PWD/configs"` produces a Collector-ready Agent state.
 - `agentctl dependency install node-exporter` works without `--state-path` after standard installation.
-- Every standard command reads `/var/lib/ar-imms/telemetry-agent/state.json`.
+- Every standard command reads `/var/lib/ar-imms/telemetry-agent/state.db`.
 - `agentctl` is available through a stable installed command path.
 - A disabled dependency is not presented as healthy.
 - Status inspection completes within a defined timeout or returns a clear timeout error.

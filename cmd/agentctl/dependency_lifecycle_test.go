@@ -129,7 +129,7 @@ service:
 
 	statePath := filepath.Join(t.TempDir(), "state.json")
 
-	store := agentstate.NewFileStore(statePath)
+	store := agentstate.NewStore(statePath)
 
 	_, err := store.Update(func(state *agentstate.State) error {
 		state.Collector = agentstate.CollectorContext{
@@ -406,7 +406,7 @@ service:
 `)
 
 	statePath := filepath.Join(t.TempDir(), "state.json")
-	store := agentstate.NewFileStore(statePath)
+	store := agentstate.NewStore(statePath)
 
 	_, err := store.Update(func(state *agentstate.State) error {
 		state.Collector = agentstate.CollectorContext{
@@ -543,7 +543,7 @@ service:
 `)
 
 	statePath := filepath.Join(t.TempDir(), "state.json")
-	store := agentstate.NewFileStore(statePath)
+	store := agentstate.NewStore(statePath)
 
 	ownership := []agentstate.OwnedResource{
 		{
@@ -680,7 +680,7 @@ func TestManagedDependencyLifecycleRejectsEnableWithoutOwnership(
 	t *testing.T,
 ) {
 	statePath := filepath.Join(t.TempDir(), "state.json")
-	store := agentstate.NewFileStore(statePath)
+	store := agentstate.NewStore(statePath)
 
 	_, err := store.Update(func(state *agentstate.State) error {
 		state.Collector = agentstate.CollectorContext{

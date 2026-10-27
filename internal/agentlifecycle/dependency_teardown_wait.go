@@ -12,7 +12,7 @@ import (
 // removed from Agent state by the runtime teardown coordinator.
 func WaitForDependenciesRemoved(
 	ctx context.Context,
-	store agentstate.FileStore,
+	store agentstate.Repository,
 	pollInterval time.Duration,
 ) (agentstate.State, error) {
 	if ctx == nil {

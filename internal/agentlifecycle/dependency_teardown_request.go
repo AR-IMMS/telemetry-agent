@@ -12,7 +12,7 @@ import (
 // desired Collector configuration and activates one shared teardown generation.
 func RequestDependencyUninstalls(
 	ctx context.Context,
-	store agentstate.FileStore,
+	store agentstate.Repository,
 	options CollectorConfigurationOptions,
 	names []string,
 ) ([]string, error) {
@@ -54,7 +54,7 @@ func RequestDependencyUninstalls(
 // currently persisted in Agent state as one desired configuration generation.
 func RequestAllDependencyUninstalls(
 	ctx context.Context,
-	store agentstate.FileStore,
+	store agentstate.Repository,
 	options CollectorConfigurationOptions,
 ) ([]string, error) {
 	if ctx == nil {

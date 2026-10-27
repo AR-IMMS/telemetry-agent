@@ -19,6 +19,6 @@ func DefaultPath() string {
 		programData,
 		"AR-IMMS",
 		"Telemetry Agent",
-		"state.json",
+		"state.db",
 	)
 }
