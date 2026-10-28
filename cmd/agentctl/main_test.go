@@ -301,6 +301,7 @@ func TestRunPassesExplicitStatePathToRuntime(t *testing.T) {
 		&stdout,
 		&stderr,
 		dependencies{
+			prepareInstallationIdentity: skipInstallationIdentityPreparation,
 			runCollectorRuntime: func(
 				ctx context.Context,
 				statePath string,
@@ -788,6 +789,7 @@ func TestRunCollectorPassesExplicitStatePath(t *testing.T) {
 		&stdout,
 		&stderr,
 		dependencies{
+			prepareInstallationIdentity: skipInstallationIdentityPreparation,
 			runCollectorRuntime: func(
 				ctx context.Context,
 				statePath string,
@@ -936,6 +938,7 @@ func TestRunCollectorServesRuntimeHealthSnapshot(
 		&stdout,
 		&stderr,
 		dependencies{
+			prepareInstallationIdentity: skipInstallationIdentityPreparation,
 			listenStatus: func(
 				network string,
 				address string,

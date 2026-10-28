@@ -75,6 +75,14 @@ func runCollectorRuntime(
 	statePath string,
 	deps dependencies,
 ) error {
+	prepareIdentity := deps.prepareInstallationIdentity
+	if prepareIdentity == nil {
+		prepareIdentity = prepareAgentInstallationIdentity
+	}
+	if err := prepareIdentity(statePath); err != nil {
+		return fmt.Errorf("prepare installation identity: %w", err)
+	}
+
 	teardown := deps.teardownDependency
 	if teardown == nil {
 		teardown = defaultDependencyTeardown

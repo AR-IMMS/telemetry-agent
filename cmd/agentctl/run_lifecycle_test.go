@@ -21,6 +21,7 @@ func TestRunCollectorUsesDefaultStatePath(t *testing.T) {
 		&stdout,
 		&stderr,
 		dependencies{
+			prepareInstallationIdentity: skipInstallationIdentityPreparation,
 			runCollectorRuntime: func(
 				ctx context.Context,
 				statePath string,
@@ -87,7 +88,8 @@ func TestRunCollectorPassesDependencyTeardownToRuntime(t *testing.T) {
 		&stdout,
 		&stderr,
 		dependencies{
-			teardownDependency: teardown,
+			prepareInstallationIdentity: skipInstallationIdentityPreparation,
+			teardownDependency:          teardown,
 			runCollectorRuntime: func(
 				ctx context.Context,
 				gotStatePath string,
