@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
 	"github.com/ar-imms/telemetry-agent/internal/identity"
 )
 
@@ -26,6 +27,12 @@ func NewStore(path string) Repository {
 // NewIdentityStore returns the SQLite adapter for installation identity at
 // the same operational database path used by NewStore.
 func NewIdentityStore(path string) identity.InstallationIdentityRepository {
+	return newSQLiteStoreForPath(path)
+}
+
+// NewCoreGatewayStore returns the SQLite adapter for Core Gateway snapshot
+// acceptance at the same operational database path used by NewStore.
+func NewCoreGatewayStore(path string) coreconfig.GatewayRepository {
 	return newSQLiteStoreForPath(path)
 }
 

@@ -33,7 +33,10 @@ func ensureSQLiteSchema(db *sql.DB) error {
 			return fmt.Errorf("initialize Agent SQLite schema: %w", err)
 		}
 	}
-	return migrateInstallationIdentity(db)
+	if err := migrateInstallationIdentity(db); err != nil {
+		return err
+	}
+	return migrateCoreGatewaySnapshot(db)
 }
 
 // migrateInstallationIdentity atomically creates the identity schema and its

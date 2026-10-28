@@ -82,8 +82,15 @@ func TestSQLiteIdentityMigrationSeparatesSchemaAndInitialization(t *testing.T) {
 	if err := db.QueryRow("SELECT MAX(version) FROM schema_migrations").Scan(&schemaVersion); err != nil {
 		t.Fatalf("read schema version: %v", err)
 	}
-	if schemaVersion != 2 {
-		t.Fatalf("schema version = %d, want 2", schemaVersion)
+	if schemaVersion != 3 {
+		t.Fatalf("schema version = %d, want 3", schemaVersion)
+	}
+	var coreSnapshots int
+	if err := db.QueryRow("SELECT COUNT(*) FROM core_gateway_snapshot").Scan(&coreSnapshots); err != nil {
+		t.Fatalf("read Core Gateway ownership row: %v", err)
+	}
+	if coreSnapshots != 0 {
+		t.Fatalf("migration created %d Core Gateway ownership rows, want none", coreSnapshots)
 	}
 	var initialized int
 	var installationID sql.NullString
