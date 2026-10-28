@@ -1,0 +1,37 @@
+version: 1
+default_target: core-backend
+
+targets:
+  core-backend:
+    provider: github
+    repository: AR-IMMS/core-backend
+    project_url: https://github.com/orgs/AR-IMMS/projects/2
+    labels:
+      default: [ready-for-agent]
+      auto:
+        type: one
+        scope: zero_or_more
+        priority: evidence_only
+        blocked: unresolved_dependency
+
+        manual_only:
+          - duplicate
+          - good first issue
+          - help wanted
+          - question
+          - wontfix
+    project:
+      status_field: Status
+      initial_status: Ready
+    dependencies: native_with_body_fallback
+
+  telemetry-agent:
+    provider: github
+    repository: AR-IMMS/telemetry-agent
+    project_url: https://github.com/orgs/AR-IMMS/projects/2
+    labels:
+      default: [feature]
+    project:
+      status_field: Status
+      initial_status: Ready
+    dependencies: native_with_body_fallback

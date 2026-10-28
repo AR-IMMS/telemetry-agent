@@ -1,0 +1,5 @@
+interface:
+  display_name: "Draft Tickets"
+  short_description: "Split into reviewable implementation tickets saved locally before publication"
+policy:
+  allow_implicit_invocation: false
