@@ -102,6 +102,9 @@ func (s *State) MarkGenerationApplied(generation uint64) error {
 	}
 
 	s.AppliedGeneration = generation
+	if s.PendingActivation != nil && s.PendingActivation.Generation <= generation {
+		s.PendingActivation = nil
+	}
 
 	return nil
 }

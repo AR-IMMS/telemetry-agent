@@ -3,10 +3,12 @@ package agentlifecycle
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/config"
+	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
 	"github.com/ar-imms/telemetry-agent/internal/dependency"
 	"github.com/ar-imms/telemetry-agent/internal/identity"
 )
@@ -22,6 +24,7 @@ type collectorConfigurationActivator struct {
 	configPath            string
 	validationEnvironment []string
 	runner                bootstrap.CommandRunner
+	gatewayRepository     coreconfig.GatewayRepository
 }
 
 // CollectorConfigurationOptions supplies the dependencies required to render
@@ -35,6 +38,8 @@ type CollectorConfigurationOptions struct {
 	ConfigPath            string
 	ValidationEnvironment []string
 	Runner                bootstrap.CommandRunner
+	// GatewayRepository resolves Bootstrap/Core ownership for validation.
+	GatewayRepository coreconfig.GatewayRepository
 }
 
 // Activate renders enabled dependency receivers and atomically activates the
@@ -58,12 +63,17 @@ func (a collectorConfigurationActivator) Activate(
 		[]string{"otlp", "hostmetrics"},
 		managedReceivers...,
 	)
+	readinessToken, err := config.NewReadinessToken()
+	if err != nil {
+		return err
+	}
 
 	rendered, err := config.Render(config.RenderInput{
 		Platform: a.platform,
 		Layers:   a.layers,
 		InlineLayers: []config.InlineLayer{
 			config.MetricsReceiverLayer(receivers),
+			config.ReadinessLayer(readinessToken),
 		},
 	})
 	if err != nil {
@@ -73,13 +83,25 @@ func (a collectorConfigurationActivator) Activate(
 		)
 	}
 
+	validationEnvironment := append([]string(nil), a.validationEnvironment...)
+	if a.gatewayRepository != nil {
+		gateway, err := a.gatewayRepository.EffectiveGateway()
+		if err != nil {
+			return fmt.Errorf("resolve effective Gateway endpoint for configuration validation: %w", err)
+		}
+		if err := coreconfig.ValidateGatewayEndpoint(gateway.Endpoint); err != nil {
+			return fmt.Errorf("validate effective Gateway endpoint: %w", err)
+		}
+		validationEnvironment = replaceEnvironmentValue(validationEnvironment, "OTEL_GATEWAY_ENDPOINT", gateway.Endpoint)
+	}
+
 	if err := bootstrap.ActivateRenderedConfig(
 		ctx,
 		a.runner,
 		a.binaryPath,
 		a.configPath,
 		rendered,
-		a.validationEnvironment,
+		validationEnvironment,
 	); err != nil {
 		return fmt.Errorf(
 			"activate desired Collector configuration: %w",
@@ -97,6 +119,10 @@ func ApplyDesiredConfiguration(
 	store agentstate.Repository,
 	options CollectorConfigurationOptions,
 ) error {
+	before, err := store.Load()
+	if err != nil {
+		return fmt.Errorf("load state before configuration activation: %w", err)
+	}
 	activator := collectorConfigurationActivator{
 		platform:              options.Platform,
 		catalog:               options.Catalog,
@@ -105,6 +131,7 @@ func ApplyDesiredConfiguration(
 		configPath:            options.ConfigPath,
 		validationEnvironment: options.ValidationEnvironment,
 		runner:                options.Runner,
+		gatewayRepository:     options.GatewayRepository,
 	}
 
 	coordinator := configurationCoordinator{
@@ -125,5 +152,36 @@ func ApplyDesiredConfiguration(
 		},
 	}
 
-	return coordinator.Apply(ctx)
+	if err := coordinator.Apply(ctx); err != nil {
+		return err
+	}
+	activated, err := store.Load()
+	if err != nil {
+		return fmt.Errorf("load state after configuration activation: %w", err)
+	}
+	if before.ActivatedGeneration == activated.ActivatedGeneration {
+		return nil
+	}
+	if gatewayRuntime, ok := options.GatewayRepository.(coreconfig.GatewayRuntimeRepository); ok {
+		state, err := store.Load()
+		if err != nil {
+			return fmt.Errorf("load activated state for Core Gateway mapping: %w", err)
+		}
+		if err := gatewayRuntime.MarkGatewayActivated(state.ActivatedGeneration); err != nil {
+			return fmt.Errorf("record activated Core Gateway revision: %w", err)
+		}
+	}
+	return nil
+}
+
+func replaceEnvironmentValue(environment []string, key, value string) []string {
+	updated := make([]string, 0, len(environment)+1)
+	prefix := key + "="
+	for _, entry := range environment {
+		if strings.HasPrefix(entry, prefix) {
+			continue
+		}
+		updated = append(updated, entry)
+	}
+	return append(updated, prefix+value)
 }

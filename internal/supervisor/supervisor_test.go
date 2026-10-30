@@ -578,3 +578,28 @@ func TestRunWithCallsOnReadyAfterCollectorPassesReadiness(
 		t.Fatal("supervisor did not finish after cancellation")
 	}
 }
+
+func TestSupervisorDoesNotCallReadyCallbackAfterChildExit(t *testing.T) {
+	child := &fakeChild{exited: make(chan ExitResult, 1)}
+	child.exited <- ExitResult{Code: 19}
+	callbackCalls := 0
+	runtime := newSupervisor(
+		fakeStarter{child: child},
+		func(context.Context) error { return nil },
+		time.Second,
+	)
+	runtime.onReady = func() error {
+		callbackCalls++
+		return nil
+	}
+	err := runtime.Run(context.Background(), LaunchOptions{
+		BinaryPath: "otelcol-contrib",
+		ConfigPath: "otel.yaml",
+	})
+	if err == nil {
+		t.Fatal("Run() error = nil, want exited child error")
+	}
+	if callbackCalls != 0 {
+		t.Fatalf("ready callback calls = %d, want 0", callbackCalls)
+	}
+}

@@ -263,7 +263,8 @@ func (l managedDependencyLifecycle) Apply(
 				"OTEL_GATEWAY_ENDPOINT=" +
 					updatedState.Collector.GatewayEndpoint,
 			},
-			Runner: l.runner,
+			Runner:            l.runner,
+			GatewayRepository: agentstate.NewCoreGatewayStore(statePath),
 		},
 	); err != nil {
 		return fmt.Errorf(
@@ -407,7 +408,8 @@ func (i managedDependencyInstaller) Install(
 				"OTEL_GATEWAY_ENDPOINT=" +
 					state.Collector.GatewayEndpoint,
 			},
-			Runner: i.runner,
+			Runner:            i.runner,
+			GatewayRepository: agentstate.NewCoreGatewayStore(statePath),
 		},
 	); err != nil {
 		return dependency.InstallResult{}, fmt.Errorf(

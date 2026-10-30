@@ -32,7 +32,7 @@ func NewIdentityStore(path string) identity.InstallationIdentityRepository {
 
 // NewCoreGatewayStore returns the SQLite adapter for Core Gateway snapshot
 // acceptance at the same operational database path used by NewStore.
-func NewCoreGatewayStore(path string) coreconfig.GatewayRepository {
+func NewCoreGatewayStore(path string) coreconfig.GatewayRuntimeRepository {
 	return newSQLiteStoreForPath(path)
 }
 

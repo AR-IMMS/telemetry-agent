@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
 )
@@ -42,6 +43,95 @@ func TestCoreGatewayAcceptanceKeepsRevisionsSeparateFromGenerations(t *testing.T
 	state, err := store.Load()
 	if err != nil || state.DesiredGeneration != 6 || state.AppliedGeneration != 3 || state.ActivatedGeneration != 4 {
 		t.Fatalf("M1 generations = %+v, %v", state, err)
+	}
+}
+
+func TestCoreGatewayAcceptanceWaitsForCollectorActivationLock(t *testing.T) {
+	store, id := seededGatewayStore(t)
+	configPath := filepath.Join(t.TempDir(), "collector.yaml")
+	if _, err := store.Update(func(state *State) error {
+		state.Collector.ConfigPath = configPath
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	lock, err := AcquireLifecycleLock(configPath + ".lifecycle")
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := store.AcceptGatewaySnapshot(coreconfig.GatewaySnapshot{
+			InstallationID: id,
+			Revision:       1,
+			Endpoint:       "core.example:4317",
+		})
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		_ = lock.Close()
+		t.Fatalf("snapshot acceptance passed activation lock: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	if err := lock.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("accept after lock release: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("snapshot acceptance did not resume after lock release")
+	}
+}
+
+func TestCoreGatewayRuntimeMigrationPreservesActivatedButUnappliedRevision(t *testing.T) {
+	store, installationID := seededGatewayStore(t)
+	accepted, err := store.AcceptGatewaySnapshot(coreconfig.GatewaySnapshot{
+		InstallationID: installationID,
+		Revision:       7,
+		Endpoint:       "core.example:4317",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Update(func(state *State) error {
+		state.ActivatedGeneration = accepted.Generation
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	db, err := store.open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DROP TABLE core_gateway_runtime`); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DELETE FROM schema_migrations WHERE version = 4`); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	db.Close()
+	if _, err := store.Load(); err != nil {
+		t.Fatal(err)
+	}
+	db, err = store.open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var endpoint string
+	var activatedRevision, activatedGeneration, appliedRevision, appliedGeneration int64
+	if err := db.QueryRow(`SELECT last_good_endpoint, activated_revision, activated_generation, applied_revision, applied_generation FROM core_gateway_runtime WHERE id = 1`).
+		Scan(&endpoint, &activatedRevision, &activatedGeneration, &appliedRevision, &appliedGeneration); err != nil {
+		t.Fatal(err)
+	}
+	if endpoint != "bootstrap:4317" || activatedRevision != 7 || activatedGeneration != int64(accepted.Generation) || appliedRevision != 0 || appliedGeneration != 3 {
+		t.Fatalf("migrated runtime mapping = %q %d/%d %d/%d", endpoint, activatedRevision, activatedGeneration, appliedRevision, appliedGeneration)
 	}
 }
 

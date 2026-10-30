@@ -272,7 +272,8 @@ func (r managedAgentUninstallRequester) Request(
 				"OTEL_GATEWAY_ENDPOINT=" +
 					state.Collector.GatewayEndpoint,
 			},
-			Runner: runner,
+			Runner:            runner,
+			GatewayRepository: agentstate.NewCoreGatewayStore(statePath),
 		},
 	); err != nil {
 		return fmt.Errorf("request all dependency uninstalls: %w", err)

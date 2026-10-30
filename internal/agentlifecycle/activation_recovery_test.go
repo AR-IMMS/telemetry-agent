@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
 )
 
 type failActivatedCommit struct {
@@ -104,5 +105,52 @@ func TestRecoverPendingActivationBeforeRuntime(t *testing.T) {
 	}
 	if state.PendingActivation != nil || state.ActivatedGeneration != 0 {
 		t.Fatalf("recovered state = %#v, want pending cleared and old revision retained", state)
+	}
+}
+
+func TestRecoverInterruptedReadinessRestoresAppliedConfigAndKeepsDesiredState(t *testing.T) {
+	root := t.TempDir()
+	configPath := filepath.Join(root, "otel.yaml")
+	recoveryPath := filepath.Join(root, "previous.yaml")
+	if err := os.WriteFile(configPath, []byte("candidate: new\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(recoveryPath, []byte("candidate: applied\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := bootstrap.CommitLastKnownGoodConfigFrom(configPath, configPath); err != nil {
+		t.Fatal(err)
+	}
+	store := agentstate.NewFileStore(filepath.Join(root, "state.json"))
+	if err := store.Save(agentstate.State{
+		DesiredGeneration:   2,
+		ActivatedGeneration: 2,
+		AppliedGeneration:   1,
+		PendingActivation:   &agentstate.PendingActivation{Generation: 2, RecoveryPath: recoveryPath},
+		Dependencies:        map[string]agentstate.DependencyState{},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	recovery := pendingActivationRecovery{
+		store:                store,
+		lockPath:             filepath.Join(root, "agent.lifecycle"),
+		recover:              func(path string) error { return bootstrap.RestoreConfigArtifact(configPath, path) },
+		restoreLastKnownGood: func(path string) error { return bootstrap.CommitLastKnownGoodConfigFrom(configPath, path) },
+	}
+	if err := recovery.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{configPath, configPath + ".last-known-good"} {
+		content, err := os.ReadFile(path)
+		if err != nil || string(content) != "candidate: applied\n" {
+			t.Fatalf("recovered %s = %q, %v", path, content, err)
+		}
+	}
+	state, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.DesiredGeneration != 2 || state.ActivatedGeneration != 1 || state.AppliedGeneration != 1 || state.PendingActivation != nil {
+		t.Fatalf("state after interrupted readiness recovery = %+v", state)
 	}
 }

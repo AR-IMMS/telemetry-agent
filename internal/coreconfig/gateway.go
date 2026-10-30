@@ -45,6 +45,16 @@ type EffectiveGateway struct {
 	Generation uint64
 }
 
+// RuntimeGateway is the endpoint paired with a local activation generation.
+// Revision is zero while the Bootstrap endpoint is effective.
+type RuntimeGateway struct {
+	Endpoint        string
+	Revision        uint64
+	Generation      uint64
+	AppliedRevision uint64
+	NeedsReadiness  bool
+}
+
 // Acceptance describes the committed revision-to-generation association.
 // Changed indicates whether the effective endpoint changed in this call.
 type Acceptance struct {
@@ -60,6 +70,18 @@ type GatewayRepository interface {
 	AcceptGatewaySnapshot(GatewaySnapshot) (Acceptance, error)
 	// EffectiveGateway reads the Bootstrap or committed Core endpoint.
 	EffectiveGateway() (EffectiveGateway, error)
+}
+
+// GatewayRuntimeRepository resolves the endpoint for a candidate generation
+// and commits the endpoint only after that generation passes readiness.
+type GatewayRuntimeRepository interface {
+	GatewayRepository
+	// GatewayForGeneration returns the candidate endpoint or the last applied endpoint.
+	GatewayForGeneration(uint64) (RuntimeGateway, error)
+	// MarkGatewayActivated associates the accepted Core revision with a validated local generation.
+	MarkGatewayActivated(uint64) error
+	// MarkGatewayApplied atomically records the local applied generation and endpoint.
+	MarkGatewayApplied(uint64, string) error
 }
 
 // ValidateSnapshot rejects malformed identity, revision, or Gateway address.

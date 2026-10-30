@@ -103,12 +103,6 @@ func (c configurationCoordinator) Apply(ctx context.Context) error {
 				err,
 			)
 		}
-		if recoveryPath != "" {
-			if err := state.CompleteActivation(plan.revision); err != nil {
-				return err
-			}
-		}
-
 		return nil
 	})
 	if err != nil {
@@ -132,8 +126,6 @@ func (c configurationCoordinator) Apply(ctx context.Context) error {
 		}
 		return err
 	}
-	_ = os.Remove(recoveryPath)
-
 	return nil
 }
 
