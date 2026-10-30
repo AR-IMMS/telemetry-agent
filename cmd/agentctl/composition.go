@@ -47,6 +47,8 @@ type dependencies struct {
 	listDependencyStatuses        dependencyStatusListFunc
 	runCollectorRuntime           collectorRuntimeRunFunc
 	prepareInstallationIdentity   func(string) error
+	runEnrollment                 enrollmentRunFunc
+	readBootstrapToken            func(io.Writer) (string, error)
 	teardownDependency            dependencyTeardownFunc
 	configureDependencies         dependencyConfigureFunc
 	listenStatus                  statusListenerFunc
@@ -187,6 +189,8 @@ func defaultDependencies() dependencies {
 		listDependencyStatuses:      defaultListDependencyStatuses,
 		runCollectorRuntime:         agentlifecycle.RunCollectorRuntime,
 		prepareInstallationIdentity: prepareAgentInstallationIdentity,
+		runEnrollment:               runAgentEnrollment,
+		readBootstrapToken:          readBootstrapToken,
 		configureDependencies: newTerminalDependencyConfigurer(
 			func() bool {
 				inputInfo, inputErr := os.Stdin.Stat()

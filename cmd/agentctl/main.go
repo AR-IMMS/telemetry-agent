@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/ar-imms/telemetry-agent/internal/enrollment"
 	"io"
 	"os"
 	"os/signal"
@@ -33,6 +34,7 @@ Commands:
   dependency  Manage telemetry dependencies.
   run         Run the OpenTelemetry Collector under supervision.
   status      Show live Agent health.
+  enroll      Bind this Agent installation to an AR-IMMS Core node.
   install     Install and start the Agent as a managed service.
   uninstall   Safely remove the Agent and its managed dependencies.
   help        Show this help.
@@ -69,6 +71,9 @@ func run(
 	case "status":
 		return runStatus(ctx, args[1:], stdout, stderr, deps)
 
+	case "enroll":
+		return runEnrollment(ctx, args[1:], stdout, stderr, deps)
+
 	case "service":
 		return runService(ctx, args[1:], stdout, stderr, deps)
 
@@ -93,6 +98,8 @@ func run(
 		return 2
 	}
 }
+
+type enrollmentRunFunc func(context.Context, string, string, string, bool) (enrollment.EnrollmentResult, error)
 
 func usageError(stderr io.Writer, flags *flag.FlagSet, message string) int {
 	fmt.Fprintln(stderr, "usage error: "+message)
