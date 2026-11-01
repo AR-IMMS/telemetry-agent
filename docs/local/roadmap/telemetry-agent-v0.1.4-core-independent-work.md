@@ -209,12 +209,12 @@ S1–S3 complete; exact Collector capability inventory from S2; approved local d
 
 ## 4. Core-Dependent Work — Deferred
 
-These capabilities require Core-owned contracts or a Core test environment and are not part of S1–S6:
+These capabilities require Core-owned contracts or a Core test environment and are not part of S1–S6. Agent-side enrollment is implemented separately and has one operator-confirmed live success; this does not complete the broader Core lifecycle:
 
-- Registration binding, Agent authentication lifecycle, credential revocation, and authorization against installation/registration.
+- Authenticated Agent operations after enrollment, credential revocation lifecycle, and authorization against installation/registration. Enrollment request/response handling and credential persistence exist; automated real-Core lost-response/revocation verification remains pending.
 - Authenticated Core desired-state snapshot polling and Core/local precedence for overlapping fields.
 - Core status transmission, acknowledgement, retry contract, and server-side reporting retention. S5 prepares only a bounded local latest-status outbox.
-- Lost enrollment-response credential recovery and real enrollment end-to-end validation.
+- Automated lost enrollment-response credential recovery and revocation testing against an isolated Core deployment.
 
 The Core-independent work must leave explicit ports and provenance where needed, but must not invent routes, payloads, authentication behavior, or a conflict-resolution policy.
 
@@ -223,7 +223,7 @@ The Core-independent work must leave explicit ports and provenance where needed,
 | Classification | Capabilities |
 |---|---|
 | Required for v0.1.4 | Minimal integration definitions/instances and contribution seam; Collector capability catalog/compiler; reconciliation and safe activation; basic discovery/inventory; Redis, PostgreSQL, MongoDB and application telemetry; scoped health/diagnostics; Windows/Linux verification and restart/failure recovery. |
-| Core-dependent and deferred | Registration/Auth integration, Core configuration sync, Core status sender/ack, lost-response credential recovery, and any Core/local conflict rule not yet approved. |
+| Core-dependent and deferred | Authenticated Core operations after enrollment, Core configuration sync, Core status sender/ack, automated lost-response/revocation verification, and any Core/local conflict rule not yet approved. |
 | Optional / future | Dynamic Go plugins, marketplace/package loading, fully autonomous discovery activation, additional providers beyond the first necessary set, distributed/multi-Collector reconciliation, guaranteed zero-loss/hot-swap, and automatic health-triggered rollback without proven causality. |
 
 ## 6. Major Risks and Review Gates

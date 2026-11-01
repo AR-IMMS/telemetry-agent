@@ -26,6 +26,8 @@ The work is not divided by module or bounded context, since that can lead to pro
 - Add Core configuration synchronization and status reporting.
 - Support local-first operation while Core is offline.
 
+**Progress (1 November 2026):** Installation identity and Agent-side enrollment are implemented. The operator confirmed a successful enrollment against the running Core. Core configuration synchronization, authenticated reporting, and connectivity lifecycle remain unimplemented, so M2 is still in progress.
+
 **Done when:** Agents on hosts and VMs register independently, receive desired configuration from Core, and continue collecting telemetry when Core is unavailable.
 
 ## M3 — Integration Framework & Telemetry Coverage
