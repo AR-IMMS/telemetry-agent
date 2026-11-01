@@ -3,7 +3,9 @@ package coreapi
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -78,6 +80,10 @@ func (c *HTTPEnrollmentClient) Enroll(
 	httpRequest.Header.Set("Accept", "application/json, application/problem+json")
 	response, err := c.client.Do(httpRequest)
 	if err != nil {
+		var recordHeaderError tls.RecordHeaderError
+		if errors.Is(err, http.ErrSchemeMismatch) || errors.As(err, &recordHeaderError) {
+			return enrollment.EnrollmentResponse{}, &enrollment.RequestNotSentError{Code: "CORE_TLS_REQUIRED"}
+		}
 		return enrollment.EnrollmentResponse{}, fmt.Errorf("perform Core enrollment request: %w", err)
 	}
 	defer response.Body.Close()
@@ -121,7 +127,9 @@ func classifyHTTPError(response *http.Response, body []byte) error {
 	} else if problem.Status != response.StatusCode || !knownEnrollmentProblemCode(code, response.StatusCode) {
 		code = "HTTP_" + strconv.Itoa(response.StatusCode)
 	}
-	if response.StatusCode == http.StatusTooManyRequests || response.StatusCode == http.StatusServiceUnavailable {
+	// A gateway 502 can occur after Core commits but before its response reaches
+	// the Agent. Keep the immutable attempt and retry it like other uncertain outcomes.
+	if response.StatusCode == http.StatusBadGateway || response.StatusCode == http.StatusTooManyRequests || response.StatusCode == http.StatusServiceUnavailable {
 		return &enrollment.RetryableError{Code: code, RetryAfter: parseRetryAfter(response.Header.Get("Retry-After"), time.Now())}
 	}
 	return &enrollment.PermanentError{Code: code}

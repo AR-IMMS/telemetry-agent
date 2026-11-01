@@ -118,12 +118,21 @@ func (s SQLiteStore) ReplaceForReEnrollment(previousID string, attempt enrollmen
 	if err != nil {
 		return err
 	}
-	allowed := previous.Status == enrollment.AttemptRegistered || (previous.Status == enrollment.AttemptFailed && previous.FailureCode == "ENROLLMENT_RECOVERY_REVOKED")
+	allowed := previous.Status == enrollment.AttemptRegistered || (previous.Status == enrollment.AttemptFailed && (previous.FailureCode == "ENROLLMENT_RECOVERY_REVOKED" || previous.FailureCode == "HTTP_502"))
 	if !allowed || previous.Payload.AttemptID != previousID || previous.Payload.Installation.ID != attempt.Payload.Installation.ID {
 		return fmt.Errorf("re-enrollment does not match a completed or recovery-revoked installation")
 	}
+	if previous.Status == enrollment.AttemptRegistered && previous.PreviousAccessCredentialRef != "" {
+		return fmt.Errorf("previous re-enrollment credential cleanup must finish before another re-enrollment")
+	}
 	attempt.PreviousResult = previous.Result
+	if attempt.PreviousResult == nil {
+		attempt.PreviousResult = previous.PreviousResult
+	}
 	attempt.PreviousAccessCredentialRef = previous.AccessCredentialRef
+	if previous.Status == enrollment.AttemptFailed && previous.PreviousAccessCredentialRef != "" {
+		attempt.PreviousAccessCredentialRef = previous.PreviousAccessCredentialRef
+	}
 	if err := saveEnrollmentAttempt(tx, attempt); err != nil {
 		return err
 	}

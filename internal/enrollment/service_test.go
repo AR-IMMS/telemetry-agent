@@ -72,6 +72,30 @@ func TestServiceRetriesLostResponseUsingPersistedAttemptAndPayload(t *testing.T)
 	}
 }
 
+func TestServiceRetriesGateway502WithExactPendingAttempt(t *testing.T) {
+	origin, _ := ParseCoreOrigin("https://core.example.com")
+	repository := &memoryAttemptRepository{}
+	credentials := memoryCredentialStore{}
+	client := &recordingClient{
+		errors:   []error{&RetryableError{Code: "HTTP_502"}},
+		response: validResponse("", "https://core.example.com/api/v1/agent-control"),
+	}
+	service := Service{
+		Repository: repository, Credentials: credentials, Client: client,
+		RetryPolicy: RetryPolicy{MaxAttempts: 2}, Wait: func(context.Context, time.Duration) error { return nil },
+	}
+	result, err := service.Start(context.Background(), origin, validPayload(""), "bootstrap-token")
+	if err != nil || result.InstallationID == "" {
+		t.Fatalf("Start() result=%+v err=%v", result, err)
+	}
+	if len(client.requests) != 2 || !reflect.DeepEqual(client.requests[0], client.requests[1]) {
+		t.Fatalf("retried requests differ or count=%d", len(client.requests))
+	}
+	if repository.attempt.Status != AttemptRegistered {
+		t.Fatalf("attempt status=%q, want registered", repository.attempt.Status)
+	}
+}
+
 func TestServiceRetriesTransientFailureWithExponentialDelay(t *testing.T) {
 	origin, _ := ParseCoreOrigin("https://core.example.com")
 	repository := &memoryAttemptRepository{}
@@ -277,6 +301,85 @@ func TestServiceTreatsRecoveryRevokedAsPermanentAndRequiresExplicitReEnrollment(
 	}
 }
 
+func TestServicePreservesPriorBindingAndCredentialAcrossRepeatedRevokedRecovery(t *testing.T) {
+	origin, _ := ParseCoreOrigin("https://core.example.com")
+	repository := &memoryAttemptRepository{}
+	credentials := memoryCredentialStore{}
+	client := &recordingClient{response: validResponse("", "https://core.example.com/api/v1/agent-control")}
+	service := Service{Repository: repository, Credentials: credentials, Client: client}
+	first, err := service.Start(context.Background(), origin, validPayload(""), "first-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstAttempt := repository.attempt
+	firstCredential, err := credentials.Get(firstAttempt.AccessCredentialRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.errors = []error{&PermanentError{Code: "ENROLLMENT_RECOVERY_REVOKED"}}
+	if _, err := service.ReEnroll(context.Background(), origin, validPayload(""), "second-token"); err == nil {
+		t.Fatal("ReEnroll() accepted revoked recovery")
+	}
+	if _, err := credentials.Get(firstAttempt.AccessCredentialRef); err != nil {
+		t.Fatal("prior credential was deleted before replacement committed")
+	}
+	if _, err := service.ReEnroll(context.Background(), origin, validPayload(""), "third-token"); err != nil {
+		t.Fatalf("second ReEnroll() error=%v", err)
+	}
+	if repository.attempt.PreviousResult == nil || repository.attempt.PreviousResult.Binding.ID != first.Binding.ID {
+		t.Fatalf("prior binding history was lost: %+v", repository.attempt.PreviousResult)
+	}
+	if repository.attempt.PreviousAccessCredentialRef != "" {
+		t.Fatalf("retired credential reference was not cleared: %q", repository.attempt.PreviousAccessCredentialRef)
+	}
+	if _, err := credentials.Get(firstAttempt.AccessCredentialRef); err == nil {
+		t.Fatal("prior credential remains after the replacement was committed")
+	}
+	if len(client.requests) != 3 {
+		t.Fatalf("client requests=%d, want initial plus two re-enrollment attempts", len(client.requests))
+	}
+	if firstCredential == "" {
+		t.Fatal("first Agent credential was empty")
+	}
+}
+
+func TestServiceAllowsNewOriginAfterProvenUnsentRequest(t *testing.T) {
+	oldOrigin, _ := ParseCoreOrigin("https://localhost:8081")
+	newOrigin, _ := ParseCoreOrigin("https://core-tunnel.test")
+	repository := &memoryAttemptRepository{}
+	credentials := memoryCredentialStore{}
+	client := &recordingClient{errors: []error{&RequestNotSentError{Code: "CORE_TLS_REQUIRED"}}, response: validResponse("", "https://core-tunnel.test/api/v1/agent-control")}
+	waits := 0
+	service := Service{
+		Repository: repository, Credentials: credentials, Client: client,
+		RetryPolicy: RetryPolicy{MaxAttempts: 3}, Wait: func(context.Context, time.Duration) error { waits++; return nil },
+	}
+	payload := validPayload("")
+	if _, err := service.Start(context.Background(), oldOrigin, payload, "unused-token"); err == nil {
+		t.Fatal("Start() accepted a request proven not sent")
+	}
+	if len(client.requests) != 1 {
+		t.Fatalf("request-not-sent failure made %d attempts, want 1", len(client.requests))
+	}
+	if waits != 0 {
+		t.Fatalf("request-not-sent failure waited %d times, want no retry", waits)
+	}
+	failed, err := repository.LoadAttempt()
+	if err != nil || failed.Status != AttemptFailed || failed.FailureCode != "CORE_TLS_REQUIRED" {
+		t.Fatalf("unsent attempt state=%+v err=%v", failed, err)
+	}
+	if _, err := credentials.Get(failed.BootstrapCredentialRef); !errors.Is(err, ErrCredentialNotFound) {
+		t.Fatalf("unused bootstrap token was retained: %v", err)
+	}
+	result, err := service.Start(context.Background(), newOrigin, payload, "fresh-token")
+	if err != nil || result.InstallationID != payload.Installation.ID {
+		t.Fatalf("Start() on corrected Core origin result=%+v err=%v", result, err)
+	}
+	if repository.attempt.CoreOrigin != newOrigin.String() || repository.attempt.Payload.AttemptID == failed.Payload.AttemptID {
+		t.Fatal("corrected origin did not create a fresh attempt")
+	}
+}
+
 func validPayload(_ string) EnrollmentPayload {
 	return EnrollmentPayload{
 		Installation: Installation{ID: "10000000-0000-4000-8000-000000000002"},
@@ -331,7 +434,13 @@ func (r *memoryAttemptRepository) ReplaceForReEnrollment(id string, value Attemp
 		return ErrAttemptExists
 	}
 	value.PreviousResult = r.attempt.Result
+	if value.PreviousResult == nil {
+		value.PreviousResult = r.attempt.PreviousResult
+	}
 	value.PreviousAccessCredentialRef = r.attempt.AccessCredentialRef
+	if r.attempt.PreviousAccessCredentialRef != "" {
+		value.PreviousAccessCredentialRef = r.attempt.PreviousAccessCredentialRef
+	}
 	r.attempt = value
 	return nil
 }

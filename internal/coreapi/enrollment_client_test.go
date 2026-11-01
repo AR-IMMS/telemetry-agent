@@ -97,6 +97,19 @@ func TestEnrollmentClientNeverFollowsRedirectWithEnrollmentRequest(t *testing.T)
 	}
 }
 
+func TestEnrollmentClientMarksPlainHTTPResponseAsRequestNotSent(t *testing.T) {
+	transport := roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, http.ErrSchemeMismatch
+	})
+	_, err := newEnrollmentClient(&http.Client{Transport: transport}).Enroll(
+		context.Background(), mustOrigin(t, "https://localhost:8081"), enrollment.EnrollmentRequest{},
+	)
+	var notSent *enrollment.RequestNotSentError
+	if !errors.As(err, &notSent) || notSent.Code != "CORE_TLS_REQUIRED" {
+		t.Fatalf("Enroll() error=%v, want request-not-sent TLS classification", err)
+	}
+}
+
 func TestEnrollmentClientClassifiesRetryableAndPermanentProblems(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -107,6 +120,7 @@ func TestEnrollmentClientClassifiesRetryableAndPermanentProblems(t *testing.T) {
 		body      string
 	}{
 		{name: "rate limited", status: http.StatusTooManyRequests, header: "2", wantRetry: true, wantCode: "TOO_MANY_REQUESTS"},
+		{name: "gateway failure has uncertain outcome", status: http.StatusBadGateway, wantRetry: true, wantCode: "HTTP_502"},
 		{name: "unavailable", status: http.StatusServiceUnavailable, wantRetry: true, wantCode: "ENROLLMENT_UNAVAILABLE"},
 		{name: "undocumented server error is not retried", status: http.StatusInternalServerError, wantCode: "HTTP_500"},
 		{name: "invalid request", status: http.StatusBadRequest, wantCode: "VALIDATION_ERROR"},

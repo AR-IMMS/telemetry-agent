@@ -136,8 +136,13 @@ func TestSQLiteEnrollmentReEnrollmentRetainsPriorBindingUntilReplacementComplete
 	if loaded.PreviousResult == nil || loaded.PreviousResult.Binding.ID != priorResult.Binding.ID || loaded.PreviousAccessCredentialRef != "old-ref" {
 		t.Fatalf("prior enrollment not retained: %+v", loaded)
 	}
-	if err := store.CompleteAttempt(next.Payload.AttemptID, priorResult, "new-ref"); err != nil {
+	secondResult := enrollment.EnrollmentResult{EnrollmentID: "10000000-0000-4000-8000-000000000011", InstallationID: installationID, Binding: enrollment.Binding{ID: "10000000-0000-4000-8000-000000000012", NodeID: priorResult.Binding.NodeID, Status: "active"}}
+	if err := store.CompleteAttempt(next.Payload.AttemptID, secondResult, "new-ref"); err != nil {
 		t.Fatal(err)
+	}
+	unready := pendingEnrollmentAttempt(installationID, "10000000-0000-4000-8000-000000000014")
+	if err := store.ReplaceForReEnrollment(next.Payload.AttemptID, unready); err == nil {
+		t.Fatal("re-enrollment replaced state while prior credential cleanup was pending")
 	}
 	if err := store.ClearPreviousCredential(next.Payload.AttemptID); err != nil {
 		t.Fatal(err)
@@ -145,6 +150,21 @@ func TestSQLiteEnrollmentReEnrollmentRetainsPriorBindingUntilReplacementComplete
 	loaded, err = store.LoadAttempt()
 	if err != nil || loaded.PreviousAccessCredentialRef != "" || loaded.AccessCredentialRef != "new-ref" {
 		t.Fatalf("credential refs after cleanup: %+v err=%v", loaded, err)
+	}
+	third := pendingEnrollmentAttempt(installationID, "10000000-0000-4000-8000-000000000010")
+	if err := store.ReplaceForReEnrollment(next.Payload.AttemptID, third); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.FailAttempt(third.Payload.AttemptID, "ENROLLMENT_RECOVERY_REVOKED"); err != nil {
+		t.Fatal(err)
+	}
+	fourth := pendingEnrollmentAttempt(installationID, "10000000-0000-4000-8000-000000000013")
+	if err := store.ReplaceForReEnrollment(third.Payload.AttemptID, fourth); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err = store.LoadAttempt()
+	if err != nil || loaded.PreviousResult == nil || loaded.PreviousResult.Binding.ID != secondResult.Binding.ID || loaded.PreviousAccessCredentialRef != "new-ref" {
+		t.Fatalf("repeated re-enrollment lost committed binding or credential reference: %+v err=%v", loaded, err)
 	}
 }
 

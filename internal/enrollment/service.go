@@ -27,6 +27,15 @@ var (
 	ErrEnrollmentCommitted = errors.New("enrollment committed; credential cleanup is pending")
 )
 
+// RequestNotSentError identifies a transport failure that proves Core did not
+// receive the HTTP enrollment request, so an operator may safely replace it.
+type RequestNotSentError struct{ Code string }
+
+// Error returns a safe description without request or credential data.
+func (e *RequestNotSentError) Error() string {
+	return "Core enrollment request was not sent: " + e.Code
+}
+
 // PermanentError represents a Core rejection that must not be retried without
 // operator action or a new bootstrap token.
 type PermanentError struct {
@@ -182,10 +191,18 @@ func (s Service) start(ctx context.Context, coreOrigin CoreOrigin, payload Enrol
 			if !reEnroll {
 				return EnrollmentResult{}, ErrAlreadyEnrolled
 			}
+			if existing.PreviousAccessCredentialRef != "" {
+				if err := s.cleanupCompletedAttempt(existing); err != nil {
+					if existing.Result != nil {
+						return *existing.Result, fmt.Errorf("%w: finish prior credential cleanup before re-enrollment: %v", ErrEnrollmentCommitted, err)
+					}
+					return EnrollmentResult{}, fmt.Errorf("finish prior credential cleanup before re-enrollment: %w", err)
+				}
+			}
 			previousAttemptID, previousReEnrollment = existing.Payload.AttemptID, true
 			previousResult, previousCredentialRef = existing.Result, existing.AccessCredentialRef
 		case AttemptFailed:
-			if reEnroll && existing.FailureCode != "ENROLLMENT_RECOVERY_REVOKED" {
+			if reEnroll && existing.FailureCode != "ENROLLMENT_RECOVERY_REVOKED" && existing.FailureCode != "HTTP_502" {
 				return EnrollmentResult{}, ErrAttemptFailed
 			}
 			if !reEnroll && existing.FailureCode == "ENROLLMENT_RECOVERY_REVOKED" {
@@ -197,7 +214,14 @@ func (s Service) start(ctx context.Context, coreOrigin CoreOrigin, payload Enrol
 			previousAttemptID = existing.Payload.AttemptID
 			previousReEnrollment = reEnroll
 			if reEnroll {
-				previousResult, previousCredentialRef = existing.Result, existing.AccessCredentialRef
+				previousResult = existing.Result
+				if previousResult == nil {
+					previousResult = existing.PreviousResult
+				}
+				previousCredentialRef = existing.PreviousAccessCredentialRef
+				if previousCredentialRef == "" {
+					previousCredentialRef = existing.AccessCredentialRef
+				}
 			}
 		default:
 			return EnrollmentResult{}, fmt.Errorf("unknown enrollment attempt status %q", existing.Status)
@@ -305,6 +329,10 @@ func (s Service) sendWithRetry(ctx context.Context, attempt Attempt) (Enrollment
 		if errors.Is(err, ErrEnrollmentCommitted) {
 			return result, err
 		}
+		var notSent *RequestNotSentError
+		if errors.As(err, &notSent) {
+			return EnrollmentResult{}, err
+		}
 		var permanent *PermanentError
 		if errors.As(err, &permanent) || ctx.Err() != nil || requestNumber == policy.MaxAttempts {
 			return EnrollmentResult{}, err
@@ -337,6 +365,15 @@ func (s Service) sendOnce(ctx context.Context, attempt Attempt) (EnrollmentResul
 	request := EnrollmentRequest{BootstrapToken: bootstrapToken, EnrollmentPayload: attempt.Payload}
 	response, err := s.Client.Enroll(ctx, origin, request)
 	if err != nil {
+		var notSent *RequestNotSentError
+		if errors.As(err, &notSent) {
+			if failErr := s.Repository.FailAttempt(attempt.Payload.AttemptID, notSent.Code); failErr != nil {
+				return EnrollmentResult{}, errors.Join(err, fmt.Errorf("persist unsent enrollment failure: %w", failErr))
+			}
+			if deleteErr := s.Credentials.Delete(attempt.BootstrapCredentialRef); deleteErr != nil {
+				return EnrollmentResult{}, errors.Join(err, fmt.Errorf("remove unused bootstrap token: %w", deleteErr))
+			}
+		}
 		var permanent *PermanentError
 		if errors.As(err, &permanent) {
 			if failErr := s.Repository.FailAttempt(attempt.Payload.AttemptID, permanent.Code); failErr != nil {
