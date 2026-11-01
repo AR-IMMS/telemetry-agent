@@ -25,9 +25,11 @@ func runEnrollment(ctx context.Context, args []string, stdout, stderr io.Writer,
 	coreOrigin := flags.String("core-origin", "", "trusted HTTPS AR-IMMS Core origin")
 	statePath := flags.String("state-path", agentstate.DefaultPath(), "Agent operational state database path")
 	resume := flags.Bool("resume", false, "resume the durable pending enrollment attempt")
+	reEnroll := flags.Bool("re-enroll", false, "start a new enrollment after an authorized Core revocation")
 	flags.Usage = func() {
 		fmt.Fprintln(stderr, "Usage: agentctl enroll --core-origin https://core.example [--state-path state.db]")
 		fmt.Fprintln(stderr, "       agentctl enroll --resume [--state-path state.db]")
+		fmt.Fprintln(stderr, "       agentctl enroll --re-enroll --core-origin https://core.example [--state-path state.db]")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {
@@ -38,7 +40,11 @@ func runEnrollment(ctx context.Context, args []string, stdout, stderr io.Writer,
 		flags.Usage()
 		return 2
 	}
-	if !*resume && strings.TrimSpace(*coreOrigin) == "" {
+	if *resume && *reEnroll {
+		fmt.Fprintln(stderr, "usage error: --resume and --re-enroll cannot be combined")
+		return 2
+	}
+	if (!*resume) && strings.TrimSpace(*coreOrigin) == "" {
 		fmt.Fprintln(stderr, "usage error: --core-origin is required for a new enrollment")
 		flags.Usage()
 		return 2
@@ -60,7 +66,7 @@ func runEnrollment(ctx context.Context, args []string, stdout, stderr io.Writer,
 			return 1
 		}
 	}
-	result, err := deps.runEnrollment(ctx, *statePath, strings.TrimSpace(*coreOrigin), token, *resume)
+	result, err := deps.runEnrollment(ctx, *statePath, strings.TrimSpace(*coreOrigin), token, *resume, *reEnroll)
 	if err != nil {
 		fmt.Fprintf(stderr, "enroll: %v\n", err)
 		return 1
@@ -95,6 +101,7 @@ func runAgentEnrollment(
 	coreOriginValue string,
 	bootstrapToken string,
 	resume bool,
+	reEnroll bool,
 ) (enrollment.EnrollmentResult, error) {
 	service := enrollment.Service{
 		Repository:  agentstate.NewEnrollmentStore(statePath),
@@ -116,11 +123,17 @@ func runAgentEnrollment(
 		return enrollment.EnrollmentResult{}, fmt.Errorf("load installation identity: %w", err)
 	}
 	hostname, _ := os.Hostname()
-	result, err := service.Start(ctx, origin, enrollment.EnrollmentPayload{
+	payload := enrollment.EnrollmentPayload{
 		Installation: enrollment.Installation{ID: installationID.String()},
 		Agent:        enrollment.Agent{Version: agentVersion()},
 		Environment:  enrollment.Environment{OS: normalizeOS(runtime.GOOS), Architecture: normalizeArchitecture(runtime.GOARCH), Hostname: hostname},
-	}, bootstrapToken)
+	}
+	var result enrollment.EnrollmentResult
+	if reEnroll {
+		result, err = service.ReEnroll(ctx, origin, payload, bootstrapToken)
+	} else {
+		result, err = service.Start(ctx, origin, payload, bootstrapToken)
+	}
 	if err != nil {
 		return enrollment.EnrollmentResult{}, err
 	}

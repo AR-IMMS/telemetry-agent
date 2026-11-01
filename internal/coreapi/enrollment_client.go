@@ -47,9 +47,8 @@ func newEnrollmentClient(client *http.Client) *HTTPEnrollmentClient {
 	return &HTTPEnrollmentClient{client: &clientCopy}
 }
 
-// Enroll posts one immutable attempt to the trusted Core origin. It returns
-// only a decoded response; the application layer validates identity and URL
-// trust before persisting the binding or issued credential.
+// Enroll posts one immutable attempt to the trusted Core origin and validates
+// the required success envelope and response fields before returning them.
 func (c *HTTPEnrollmentClient) Enroll(
 	ctx context.Context,
 	origin enrollment.CoreOrigin,
@@ -94,39 +93,53 @@ func (c *HTTPEnrollmentClient) Enroll(
 	}
 	var envelope struct {
 		Data enrollment.EnrollmentResponse `json:"data"`
+		Meta struct {
+			RequestID string `json:"request_id"`
+		} `json:"meta"`
 	}
 	if err := json.Unmarshal(content, &envelope); err != nil {
 		return enrollment.EnrollmentResponse{}, fmt.Errorf("decode Core enrollment response: %w", err)
+	}
+	if strings.TrimSpace(envelope.Meta.RequestID) == "" {
+		return enrollment.EnrollmentResponse{}, fmt.Errorf("Core enrollment response is missing meta.request_id")
+	}
+	if err := envelope.Data.Validate(request.Installation.ID, origin); err != nil {
+		return enrollment.EnrollmentResponse{}, fmt.Errorf("validate Core enrollment response: %w", err)
 	}
 	return envelope.Data, nil
 }
 
 func classifyHTTPError(response *http.Response, body []byte) error {
 	var problem struct {
-		Code string `json:"code"`
+		Status int    `json:"status"`
+		Code   string `json:"code"`
 	}
 	_ = json.Unmarshal(body, &problem)
 	code := strings.TrimSpace(problem.Code)
 	if code == "" {
 		code = "HTTP_" + strconv.Itoa(response.StatusCode)
-	} else if !knownEnrollmentProblemCode(code) {
+	} else if problem.Status != response.StatusCode || !knownEnrollmentProblemCode(code, response.StatusCode) {
 		code = "HTTP_" + strconv.Itoa(response.StatusCode)
 	}
-	if response.StatusCode == http.StatusTooManyRequests || response.StatusCode == http.StatusRequestTimeout || response.StatusCode >= 500 {
+	if response.StatusCode == http.StatusTooManyRequests || response.StatusCode == http.StatusServiceUnavailable {
 		return &enrollment.RetryableError{Code: code, RetryAfter: parseRetryAfter(response.Header.Get("Retry-After"), time.Now())}
 	}
 	return &enrollment.PermanentError{Code: code}
 }
 
-func knownEnrollmentProblemCode(code string) bool {
-	switch code {
-	case "INVALID_ENROLLMENT_PAYLOAD", "INVALID_BOOTSTRAP_TOKEN", "BOOTSTRAP_TOKEN_EXPIRED",
-		"BOOTSTRAP_TOKEN_CONSUMED", "NODE_ALREADY_BOUND", "INSTALLATION_ALREADY_BOUND",
-		"ENROLLMENT_ATTEMPT_CONFLICT", "RATE_LIMIT_EXCEEDED", "ENROLLMENT_UNAVAILABLE":
-		return true
-	default:
-		return false
-	}
+func knownEnrollmentProblemCode(code string, status int) bool {
+	wantStatus := map[string]int{
+		"VALIDATION_ERROR": http.StatusBadRequest, "BAD_REQUEST": http.StatusBadRequest,
+		"INVALID_BOOTSTRAP_TOKEN": http.StatusUnauthorized, "BOOTSTRAP_TOKEN_EXPIRED": http.StatusUnauthorized,
+		"BOOTSTRAP_TOKEN_CONSUMED": http.StatusUnauthorized, "UNAUTHORIZED": http.StatusUnauthorized,
+		"FORBIDDEN": http.StatusForbidden, "NOT_FOUND": http.StatusNotFound,
+		"CONFLICT": http.StatusConflict, "NODE_NOT_ELIGIBLE": http.StatusConflict,
+		"NODE_ALREADY_BOUND": http.StatusConflict, "INSTALLATION_ALREADY_BOUND": http.StatusConflict,
+		"ENROLLMENT_ATTEMPT_CONFLICT": http.StatusConflict,
+		"ENROLLMENT_RECOVERY_EXPIRED": http.StatusGone, "ENROLLMENT_RECOVERY_REVOKED": http.StatusGone,
+		"TOO_MANY_REQUESTS": http.StatusTooManyRequests, "ENROLLMENT_UNAVAILABLE": http.StatusServiceUnavailable,
+	}[code]
+	return wantStatus != 0 && wantStatus == status
 }
 
 func parseRetryAfter(value string, now time.Time) time.Duration {

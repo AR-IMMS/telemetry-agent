@@ -96,6 +96,72 @@ func (s SQLiteStore) ReplaceFailedAttempt(previousID string, attempt enrollment.
 	return nil
 }
 
+// ReplaceForReEnrollment atomically retains prior binding metadata while
+// beginning a new attempt after explicit operator authorization.
+func (s SQLiteStore) ReplaceForReEnrollment(previousID string, attempt enrollment.Attempt) error {
+	if err := validateEnrollmentAttempt(attempt); err != nil {
+		return err
+	}
+	sqliteUpdateMutex.Lock()
+	defer sqliteUpdateMutex.Unlock()
+	db, err := s.open()
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin Agent re-enrollment: %w", err)
+	}
+	defer tx.Rollback()
+	previous, err := loadEnrollmentAttempt(tx)
+	if err != nil {
+		return err
+	}
+	allowed := previous.Status == enrollment.AttemptRegistered || (previous.Status == enrollment.AttemptFailed && previous.FailureCode == "ENROLLMENT_RECOVERY_REVOKED")
+	if !allowed || previous.Payload.AttemptID != previousID || previous.Payload.Installation.ID != attempt.Payload.Installation.ID {
+		return fmt.Errorf("re-enrollment does not match a completed or recovery-revoked installation")
+	}
+	attempt.PreviousResult = previous.Result
+	attempt.PreviousAccessCredentialRef = previous.AccessCredentialRef
+	if err := saveEnrollmentAttempt(tx, attempt); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit re-enrollment attempt: %w", err)
+	}
+	return nil
+}
+
+// ClearPreviousCredential removes a retired credential reference after its
+// protected-store deletion has succeeded.
+func (s SQLiteStore) ClearPreviousCredential(id string) error {
+	sqliteUpdateMutex.Lock()
+	defer sqliteUpdateMutex.Unlock()
+	db, err := s.open()
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin retired credential update: %w", err)
+	}
+	defer tx.Rollback()
+	attempt, err := loadEnrollmentAttempt(tx)
+	if err != nil {
+		return err
+	}
+	if attempt.Payload.AttemptID != id || attempt.Status != enrollment.AttemptRegistered {
+		return fmt.Errorf("retired credential update does not match registered attempt")
+	}
+	attempt.PreviousAccessCredentialRef = ""
+	if err := saveEnrollmentAttempt(tx, attempt); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 // CompleteAttempt commits the validated Core binding and the protected-store
 // reference in one SQLite transaction. The credential value is never passed.
 func (s SQLiteStore) CompleteAttempt(id string, result enrollment.EnrollmentResult, credentialRef string) error {

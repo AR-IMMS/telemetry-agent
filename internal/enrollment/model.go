@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/ar-imms/telemetry-agent/internal/identity"
 )
 
 var (
@@ -117,9 +119,15 @@ type ControlPlane struct {
 // Validate checks the Core response against the installation and trusted
 // origin before any binding or credential is persisted.
 func (r EnrollmentResponse) Validate(installationID string, trusted CoreOrigin) error {
-	if strings.TrimSpace(r.EnrollmentID) == "" || strings.TrimSpace(r.Binding.ID) == "" ||
-		strings.TrimSpace(r.Binding.NodeID) == "" {
-		return fmt.Errorf("Core enrollment response is missing an identifier")
+	for name, value := range map[string]string{
+		"enrollment ID":   r.EnrollmentID,
+		"installation ID": r.InstallationID,
+		"binding ID":      r.Binding.ID,
+		"binding Node ID": r.Binding.NodeID,
+	} {
+		if _, err := identity.ParseInstallationID(value); err != nil {
+			return fmt.Errorf("Core enrollment response %s is invalid: %w", name, err)
+		}
 	}
 	if r.InstallationID != installationID {
 		return fmt.Errorf("Core enrollment response installation ID does not match this Agent")
@@ -166,9 +174,17 @@ func effectivePort(value *url.URL) string {
 // Validate checks required request fields and bounds metadata to the server
 // contract's 4 KiB limit. Metadata contents remain the caller's responsibility.
 func (p EnrollmentPayload) Validate() error {
-	if strings.TrimSpace(p.AttemptID) == "" || strings.TrimSpace(p.Installation.ID) == "" ||
-		strings.TrimSpace(p.Agent.Version) == "" {
-		return fmt.Errorf("enrollment attempt, installation ID, and Agent version are required")
+	if _, err := identity.ParseInstallationID(p.AttemptID); err != nil {
+		return fmt.Errorf("enrollment attempt ID is invalid: %w", err)
+	}
+	if _, err := identity.ParseInstallationID(p.Installation.ID); err != nil {
+		return fmt.Errorf("installation ID is invalid: %w", err)
+	}
+	if strings.TrimSpace(p.Agent.Version) == "" || len(p.Agent.Version) > 64 {
+		return fmt.Errorf("Agent version must contain 1 to 64 characters")
+	}
+	if p.Environment.Hostname != "" && (len(p.Environment.Hostname) > 255 || strings.TrimSpace(p.Environment.Hostname) == "") {
+		return fmt.Errorf("hostname must contain 1 to 255 characters when provided")
 	}
 	switch p.Environment.OS {
 	case "linux", "windows", "darwin", "other":

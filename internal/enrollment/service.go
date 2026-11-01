@@ -68,13 +68,15 @@ type EnrollmentResult struct {
 
 // Attempt is the durable, secret-free representation of one operation.
 type Attempt struct {
-	Payload                EnrollmentPayload `json:"payload"`
-	CoreOrigin             string            `json:"core_origin"`
-	BootstrapCredentialRef string            `json:"bootstrap_credential_ref"`
-	AccessCredentialRef    string            `json:"access_credential_ref,omitempty"`
-	Status                 AttemptStatus     `json:"status"`
-	FailureCode            string            `json:"failure_code,omitempty"`
-	Result                 *EnrollmentResult `json:"result,omitempty"`
+	Payload                     EnrollmentPayload `json:"payload"`
+	CoreOrigin                  string            `json:"core_origin"`
+	BootstrapCredentialRef      string            `json:"bootstrap_credential_ref"`
+	AccessCredentialRef         string            `json:"access_credential_ref,omitempty"`
+	Status                      AttemptStatus     `json:"status"`
+	FailureCode                 string            `json:"failure_code,omitempty"`
+	Result                      *EnrollmentResult `json:"result,omitempty"`
+	PreviousResult              *EnrollmentResult `json:"previous_result,omitempty"`
+	PreviousAccessCredentialRef string            `json:"previous_access_credential_ref,omitempty"`
 }
 
 // AttemptRepository stores enrollment state without plaintext credentials.
@@ -87,10 +89,15 @@ type AttemptRepository interface {
 	// ReplaceFailedAttempt atomically starts a new operation after a permanent
 	// rejection, preserving the same installation identity.
 	ReplaceFailedAttempt(string, Attempt) error
+	// ReplaceForReEnrollment starts an explicitly authorized new attempt from a
+	// completed or recovery-revoked attempt, retaining its prior result and secret reference.
+	ReplaceForReEnrollment(string, Attempt) error
 	// CompleteAttempt atomically commits the validated binding and credential reference.
 	CompleteAttempt(string, EnrollmentResult, string) error
 	// FailAttempt records a permanent Core rejection without storing secret data.
 	FailAttempt(string, string) error
+	// ClearPreviousCredential clears a retired credential reference after its deletion.
+	ClearPreviousCredential(string) error
 }
 
 // CredentialStore persists secret values outside SQLite and exposes them only
@@ -143,6 +150,16 @@ func (s Service) Start(
 	payload EnrollmentPayload,
 	bootstrapToken string,
 ) (EnrollmentResult, error) {
+	return s.start(ctx, coreOrigin, payload, bootstrapToken, false)
+}
+
+// ReEnroll starts a new operator-authorized operation using a fresh bootstrap
+// token while preserving the stable installation identity and prior result.
+func (s Service) ReEnroll(ctx context.Context, coreOrigin CoreOrigin, payload EnrollmentPayload, bootstrapToken string) (EnrollmentResult, error) {
+	return s.start(ctx, coreOrigin, payload, bootstrapToken, true)
+}
+
+func (s Service) start(ctx context.Context, coreOrigin CoreOrigin, payload EnrollmentPayload, bootstrapToken string, reEnroll bool) (EnrollmentResult, error) {
 	if err := s.validate(); err != nil {
 		return EnrollmentResult{}, err
 	}
@@ -154,14 +171,34 @@ func (s Service) Start(
 		return EnrollmentResult{}, err
 	}
 	previousAttemptID := ""
+	previousReEnrollment := false
+	var previousResult *EnrollmentResult
+	previousCredentialRef := ""
 	if existing, err := s.Repository.LoadAttempt(); err == nil {
 		switch existing.Status {
 		case AttemptPending:
 			return EnrollmentResult{}, ErrAttemptExists
 		case AttemptRegistered:
-			return EnrollmentResult{}, ErrAlreadyEnrolled
+			if !reEnroll {
+				return EnrollmentResult{}, ErrAlreadyEnrolled
+			}
+			previousAttemptID, previousReEnrollment = existing.Payload.AttemptID, true
+			previousResult, previousCredentialRef = existing.Result, existing.AccessCredentialRef
 		case AttemptFailed:
+			if reEnroll && existing.FailureCode != "ENROLLMENT_RECOVERY_REVOKED" {
+				return EnrollmentResult{}, ErrAttemptFailed
+			}
+			if !reEnroll && existing.FailureCode == "ENROLLMENT_RECOVERY_REVOKED" {
+				return EnrollmentResult{}, ErrAttemptFailed
+			}
+			if err := s.Credentials.Delete(existing.BootstrapCredentialRef); err != nil {
+				return EnrollmentResult{}, fmt.Errorf("remove rejected bootstrap token before replacement: %w", err)
+			}
 			previousAttemptID = existing.Payload.AttemptID
+			previousReEnrollment = reEnroll
+			if reEnroll {
+				previousResult, previousCredentialRef = existing.Result, existing.AccessCredentialRef
+			}
 		default:
 			return EnrollmentResult{}, fmt.Errorf("unknown enrollment attempt status %q", existing.Status)
 		}
@@ -181,11 +218,12 @@ func (s Service) Start(
 		return EnrollmentResult{}, err
 	}
 	tokenRef := "enrollment/bootstrap/" + payload.AttemptID
-	accessRef := "enrollment/agent/" + payload.Installation.ID
+	accessRef := "enrollment/agent/" + payload.Installation.ID + "/" + payload.AttemptID
 	attempt := Attempt{
 		Payload: payload, CoreOrigin: validatedOrigin.String(),
 		BootstrapCredentialRef: tokenRef, AccessCredentialRef: accessRef,
-		Status: AttemptPending,
+		Status: AttemptPending, PreviousResult: previousResult,
+		PreviousAccessCredentialRef: previousCredentialRef,
 	}
 	if err := s.Credentials.Put(tokenRef, bootstrapToken); err != nil {
 		return EnrollmentResult{}, fmt.Errorf("store bootstrap token securely: %w", err)
@@ -193,6 +231,8 @@ func (s Service) Start(
 	var persistErr error
 	if previousAttemptID == "" {
 		persistErr = s.Repository.CreateAttempt(attempt)
+	} else if previousReEnrollment {
+		persistErr = s.Repository.ReplaceForReEnrollment(previousAttemptID, attempt)
 	} else {
 		persistErr = s.Repository.ReplaceFailedAttempt(previousAttemptID, attempt)
 	}
@@ -224,17 +264,33 @@ func (s Service) Resume(ctx context.Context) (EnrollmentResult, error) {
 		if attempt.Result == nil {
 			return EnrollmentResult{}, fmt.Errorf("registered enrollment has no committed result")
 		}
-		if err := s.Credentials.Delete(attempt.BootstrapCredentialRef); err != nil {
+		if err := s.cleanupCompletedAttempt(attempt); err != nil {
 			return *attempt.Result, fmt.Errorf("%w: remove completed bootstrap token: %v", ErrEnrollmentCommitted, err)
 		}
 		return *attempt.Result, nil
 	case AttemptFailed:
+		if err := s.Credentials.Delete(attempt.BootstrapCredentialRef); err != nil {
+			return EnrollmentResult{}, fmt.Errorf("enrollment attempt failed permanently; remove rejected bootstrap token: %w", err)
+		}
 		return EnrollmentResult{}, fmt.Errorf("%w: %s", ErrAttemptFailed, attempt.FailureCode)
 	case AttemptPending:
 		return s.sendWithRetry(ctx, attempt)
 	default:
 		return EnrollmentResult{}, fmt.Errorf("unknown enrollment attempt status %q", attempt.Status)
 	}
+}
+
+func (s Service) cleanupCompletedAttempt(attempt Attempt) error {
+	if err := s.Credentials.Delete(attempt.BootstrapCredentialRef); err != nil {
+		return err
+	}
+	if attempt.PreviousAccessCredentialRef == "" {
+		return nil
+	}
+	if err := s.Credentials.Delete(attempt.PreviousAccessCredentialRef); err != nil {
+		return err
+	}
+	return s.Repository.ClearPreviousCredential(attempt.Payload.AttemptID)
 }
 
 func (s Service) sendWithRetry(ctx context.Context, attempt Attempt) (EnrollmentResult, error) {
@@ -305,7 +361,7 @@ func (s Service) sendOnce(ctx context.Context, attempt Attempt) (EnrollmentResul
 	if err := s.Repository.CompleteAttempt(attempt.Payload.AttemptID, result, attempt.AccessCredentialRef); err != nil {
 		return EnrollmentResult{}, fmt.Errorf("commit Core enrollment binding: %w", err)
 	}
-	if err := s.Credentials.Delete(attempt.BootstrapCredentialRef); err != nil {
+	if err := s.cleanupCompletedAttempt(attempt); err != nil {
 		return result, fmt.Errorf("%w: remove completed bootstrap token: %v", ErrEnrollmentCommitted, err)
 	}
 	return result, nil

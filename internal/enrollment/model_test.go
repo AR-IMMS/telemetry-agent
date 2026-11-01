@@ -2,6 +2,42 @@ package enrollment
 
 import "testing"
 
+func TestEnrollmentPayloadValidateMatchesContractBounds(t *testing.T) {
+	valid := EnrollmentPayload{
+		AttemptID:    "10000000-0000-4000-8000-000000000001",
+		Installation: Installation{ID: "10000000-0000-4000-8000-000000000002"},
+		Agent:        Agent{Version: "0.1.4"},
+		Environment:  Environment{OS: "linux", Architecture: "amd64", Hostname: "node-01"},
+	}
+	tests := []struct {
+		name    string
+		mutate  func(*EnrollmentPayload)
+		wantErr bool
+	}{
+		{name: "valid"},
+		{name: "invalid attempt UUID", mutate: func(p *EnrollmentPayload) { p.AttemptID = "attempt" }, wantErr: true},
+		{name: "invalid installation UUID", mutate: func(p *EnrollmentPayload) { p.Installation.ID = "installation" }, wantErr: true},
+		{name: "unsupported OS", mutate: func(p *EnrollmentPayload) { p.Environment.OS = "plan9" }, wantErr: true},
+		{name: "unsupported architecture", mutate: func(p *EnrollmentPayload) { p.Environment.Architecture = "mips" }, wantErr: true},
+		{name: "version too long", mutate: func(p *EnrollmentPayload) { p.Agent.Version = string(make([]byte, 65)) }, wantErr: true},
+		{name: "empty provided hostname", mutate: func(p *EnrollmentPayload) { p.Environment.Hostname = " " }, wantErr: true},
+		{name: "hostname too long", mutate: func(p *EnrollmentPayload) { p.Environment.Hostname = string(make([]byte, 256)) }, wantErr: true},
+		{name: "metadata too large", mutate: func(p *EnrollmentPayload) { p.Metadata = map[string]any{"x": string(make([]byte, 4097))} }, wantErr: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := valid
+			if test.mutate != nil {
+				test.mutate(&candidate)
+			}
+			err := candidate.Validate()
+			if (err != nil) != test.wantErr {
+				t.Fatalf("Validate() error = %v, wantErr %v", err, test.wantErr)
+			}
+		})
+	}
+}
+
 func TestParseCoreOriginRequiresHTTPSOrigin(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -31,11 +67,11 @@ func TestValidateEnrollmentResponseRequiresMatchingInstallationAndTrustedControl
 		t.Fatal(err)
 	}
 	response := EnrollmentResponse{
-		EnrollmentID:   "enrollment-1",
-		InstallationID: "installation-1",
+		EnrollmentID:   "10000000-0000-4000-8000-000000000001",
+		InstallationID: "10000000-0000-4000-8000-000000000002",
 		Binding: Binding{
-			ID:     "binding-1",
-			NodeID: "node-1",
+			ID:     "10000000-0000-4000-8000-000000000003",
+			NodeID: "10000000-0000-4000-8000-000000000004",
 			Status: "active",
 		},
 		Credential: Credential{Type: "bearer", AccessToken: "secret"},
@@ -45,7 +81,7 @@ func TestValidateEnrollmentResponseRequiresMatchingInstallationAndTrustedControl
 		},
 	}
 
-	if err := response.Validate("installation-1", origin); err != nil {
+	if err := response.Validate("10000000-0000-4000-8000-000000000002", origin); err != nil {
 		t.Fatalf("valid response rejected: %v", err)
 	}
 
@@ -53,7 +89,10 @@ func TestValidateEnrollmentResponseRequiresMatchingInstallationAndTrustedControl
 		name   string
 		mutate func(*EnrollmentResponse)
 	}{
-		{name: "mismatched installation", mutate: func(value *EnrollmentResponse) { value.InstallationID = "other" }},
+		{name: "mismatched installation", mutate: func(value *EnrollmentResponse) { value.InstallationID = "10000000-0000-4000-8000-000000000005" }},
+		{name: "invalid enrollment UUID", mutate: func(value *EnrollmentResponse) { value.EnrollmentID = "bad" }},
+		{name: "invalid binding UUID", mutate: func(value *EnrollmentResponse) { value.Binding.ID = "bad" }},
+		{name: "invalid Node UUID", mutate: func(value *EnrollmentResponse) { value.Binding.NodeID = "bad" }},
 		{name: "inactive binding", mutate: func(value *EnrollmentResponse) { value.Binding.Status = "revoked" }},
 		{name: "unsupported credential", mutate: func(value *EnrollmentResponse) { value.Credential.Type = "basic" }},
 		{name: "empty credential", mutate: func(value *EnrollmentResponse) { value.Credential.AccessToken = "" }},
@@ -65,7 +104,7 @@ func TestValidateEnrollmentResponseRequiresMatchingInstallationAndTrustedControl
 		t.Run(test.name, func(t *testing.T) {
 			candidate := response
 			test.mutate(&candidate)
-			if err := candidate.Validate("installation-1", origin); err == nil {
+			if err := candidate.Validate("10000000-0000-4000-8000-000000000002", origin); err == nil {
 				t.Fatal("Validate() error = nil, want validation error")
 			}
 		})

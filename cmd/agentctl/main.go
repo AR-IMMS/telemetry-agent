@@ -99,7 +99,7 @@ func run(
 	}
 }
 
-type enrollmentRunFunc func(context.Context, string, string, string, bool) (enrollment.EnrollmentResult, error)
+type enrollmentRunFunc func(context.Context, string, string, string, bool, bool) (enrollment.EnrollmentResult, error)
 
 func usageError(stderr io.Writer, flags *flag.FlagSet, message string) int {
 	fmt.Fprintln(stderr, "usage error: "+message)

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -25,21 +26,21 @@ func TestEnrollmentClientPostsContractAndAcceptsRecoveredResult(t *testing.T) {
 		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
 			t.Fatal(err)
 		}
-		if body.BootstrapToken != "do-not-log" || body.AttemptID != "attempt-1" || body.Installation.ID != "installation-1" {
+		if body.BootstrapToken != "do-not-log" || body.AttemptID != "10000000-0000-4000-8000-000000000001" || body.Installation.ID != "10000000-0000-4000-8000-000000000002" {
 			t.Fatalf("request body = %+v", body)
 		}
 		return jsonResponse(http.StatusOK, `{"data":{
-			"enrollment_id":"enrollment-1","installation_id":"installation-1",
-			"binding":{"id":"binding-1","node_id":"node-1","status":"active"},
+			"enrollment_id":"10000000-0000-4000-8000-000000000003","installation_id":"10000000-0000-4000-8000-000000000002",
+			"binding":{"id":"10000000-0000-4000-8000-000000000004","node_id":"10000000-0000-4000-8000-000000000005","status":"active"},
 			"credential":{"type":"bearer","access_token":"agent-token"},
 			"control_plane":{"base_url":"https://core.example.test/api/v1/agent-control","poll_interval_seconds":30}
-		}}`), nil
+		},"meta":{"request_id":"req-1"}}`), nil
 	})
 	client := newEnrollmentClient(&http.Client{Transport: transport})
 	result, err := client.Enroll(context.Background(), mustOrigin(t, "https://core.example.test"), enrollment.EnrollmentRequest{
 		BootstrapToken: "do-not-log",
 		EnrollmentPayload: enrollment.EnrollmentPayload{
-			AttemptID: "attempt-1", Installation: enrollment.Installation{ID: "installation-1"},
+			AttemptID: "10000000-0000-4000-8000-000000000001", Installation: enrollment.Installation{ID: "10000000-0000-4000-8000-000000000002"},
 			Agent:       enrollment.Agent{Version: "0.1.4"},
 			Environment: enrollment.Environment{OS: "linux", Architecture: "amd64"},
 		},
@@ -49,6 +50,26 @@ func TestEnrollmentClientPostsContractAndAcceptsRecoveredResult(t *testing.T) {
 	}
 	if result.Credential.AccessToken != "agent-token" {
 		t.Fatalf("access token = %q", result.Credential.AccessToken)
+	}
+}
+
+func TestEnrollmentClientRejectsSuccessWithoutRequiredResponseEnvelope(t *testing.T) {
+	for _, body := range []string{
+		`{"data":{}}`,
+		`{"data":{},"meta":{}}`,
+		`{"meta":{"request_id":"req-1"}}`,
+	} {
+		t.Run(body, func(t *testing.T) {
+			transport := roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return jsonResponse(http.StatusCreated, body), nil
+			})
+			_, err := newEnrollmentClient(&http.Client{Transport: transport}).Enroll(
+				context.Background(), mustOrigin(t, "https://core.example.test"), enrollment.EnrollmentRequest{},
+			)
+			if err == nil {
+				t.Fatal("Enroll() accepted malformed success envelope")
+			}
+		})
 	}
 }
 
@@ -85,17 +106,25 @@ func TestEnrollmentClientClassifiesRetryableAndPermanentProblems(t *testing.T) {
 		wantCode  string
 		body      string
 	}{
-		{name: "rate limited", status: http.StatusTooManyRequests, header: "2", wantRetry: true, wantCode: "RATE_LIMIT_EXCEEDED"},
+		{name: "rate limited", status: http.StatusTooManyRequests, header: "2", wantRetry: true, wantCode: "TOO_MANY_REQUESTS"},
 		{name: "unavailable", status: http.StatusServiceUnavailable, wantRetry: true, wantCode: "ENROLLMENT_UNAVAILABLE"},
+		{name: "undocumented server error is not retried", status: http.StatusInternalServerError, wantCode: "HTTP_500"},
+		{name: "invalid request", status: http.StatusBadRequest, wantCode: "VALIDATION_ERROR"},
 		{name: "invalid token", status: http.StatusUnauthorized, wantCode: "INVALID_BOOTSTRAP_TOKEN"},
+		{name: "forbidden", status: http.StatusForbidden, wantCode: "FORBIDDEN"},
+		{name: "not found", status: http.StatusNotFound, wantCode: "NOT_FOUND"},
+		{name: "attempt conflict", status: http.StatusConflict, wantCode: "ENROLLMENT_ATTEMPT_CONFLICT"},
+		{name: "recovery expired", status: http.StatusGone, wantCode: "ENROLLMENT_RECOVERY_EXPIRED"},
+		{name: "recovery revoked", status: http.StatusGone, wantCode: "ENROLLMENT_RECOVERY_REVOKED"},
 		{name: "unknown code is not exposed", status: http.StatusBadRequest, wantCode: "HTTP_400", body: `{"code":"bootstrap-secret"}`},
+		{name: "mismatched problem status is not trusted", status: http.StatusBadRequest, wantCode: "HTTP_400", body: `{"status":401,"code":"INVALID_BOOTSTRAP_TOKEN"}`},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
 				body := test.body
 				if body == "" {
-					body = `{"code":"` + test.wantCode + `"}`
+					body = `{"status":` + strconv.Itoa(test.status) + `,"code":"` + test.wantCode + `","detail":"secret-detail"}`
 				}
 				response := jsonResponse(test.status, body)
 				if test.header != "" {
@@ -126,6 +155,9 @@ func TestEnrollmentClientClassifiesRetryableAndPermanentProblems(t *testing.T) {
 			}
 			if strings.Contains(err.Error(), "bootstrap-secret") {
 				t.Fatalf("error exposed server-supplied secret-like code: %q", err)
+			}
+			if strings.Contains(err.Error(), "secret-detail") {
+				t.Fatalf("error exposed untrusted Problem Details text: %q", err)
 			}
 		})
 	}

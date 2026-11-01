@@ -18,7 +18,7 @@ func TestSQLiteEnrollmentAttemptSurvivesRestartWithoutSecrets(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := NewEnrollmentStore(path)
-	attempt := pendingEnrollmentAttempt(identityID.String(), "attempt-1")
+	attempt := pendingEnrollmentAttempt(identityID.String(), "10000000-0000-4000-8000-000000000001")
 	if err := store.CreateAttempt(attempt); err != nil {
 		t.Fatalf("CreateAttempt() error = %v", err)
 	}
@@ -53,8 +53,8 @@ func TestSQLiteEnrollmentAttemptChangesAreScopedAndConcurrentCreateIsSerialized(
 	}
 	storeA, storeB := NewEnrollmentStore(path), NewEnrollmentStore(path)
 	attempts := []enrollment.Attempt{
-		pendingEnrollmentAttempt(identityID.String(), "attempt-a"),
-		pendingEnrollmentAttempt(identityID.String(), "attempt-b"),
+		pendingEnrollmentAttempt(identityID.String(), "10000000-0000-4000-8000-000000000006"),
+		pendingEnrollmentAttempt(identityID.String(), "10000000-0000-4000-8000-000000000007"),
 	}
 	var wait sync.WaitGroup
 	errorsFound := make(chan error, len(attempts))
@@ -86,8 +86,8 @@ func TestSQLiteEnrollmentAttemptChangesAreScopedAndConcurrentCreateIsSerialized(
 		t.Fatal(err)
 	}
 	result := enrollment.EnrollmentResult{
-		EnrollmentID: "enrollment-1", InstallationID: identityID.String(),
-		Binding:      enrollment.Binding{ID: "binding-1", NodeID: "node-1", Status: "active"},
+		EnrollmentID: "10000000-0000-4000-8000-000000000003", InstallationID: identityID.String(),
+		Binding:      enrollment.Binding{ID: "10000000-0000-4000-8000-000000000004", NodeID: "10000000-0000-4000-8000-000000000005", Status: "active"},
 		ControlPlane: enrollment.ControlPlane{BaseURL: "https://core.example/api", PollIntervalSeconds: 30},
 	}
 	if err := storeA.CompleteAttempt(loaded.Payload.AttemptID, result, "credential-ref"); err != nil {
@@ -106,6 +106,45 @@ func TestSQLiteEnrollmentAttemptChangesAreScopedAndConcurrentCreateIsSerialized(
 	}
 	if completed.Status != enrollment.AttemptRegistered || completed.AccessCredentialRef != "credential-ref" {
 		t.Fatalf("completed enrollment = %+v", completed)
+	}
+}
+
+func TestSQLiteEnrollmentReEnrollmentRetainsPriorBindingUntilReplacementCompletes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	installationID := "5baf0cba-cf5a-4d39-a3d4-e76263b70810"
+	parsedID := mustInstallationID(t, installationID)
+	if _, err := NewIdentityStore(path).EnsureInstallationID(parsedID); err != nil {
+		t.Fatal(err)
+	}
+	store := NewEnrollmentStore(path)
+	previous := pendingEnrollmentAttempt(installationID, "10000000-0000-4000-8000-000000000008")
+	if err := store.CreateAttempt(previous); err != nil {
+		t.Fatal(err)
+	}
+	priorResult := enrollment.EnrollmentResult{EnrollmentID: "10000000-0000-4000-8000-000000000003", InstallationID: installationID, Binding: enrollment.Binding{ID: "10000000-0000-4000-8000-000000000004", NodeID: "10000000-0000-4000-8000-000000000005", Status: "active"}}
+	if err := store.CompleteAttempt(previous.Payload.AttemptID, priorResult, "old-ref"); err != nil {
+		t.Fatal(err)
+	}
+	next := pendingEnrollmentAttempt(installationID, "10000000-0000-4000-8000-000000000009")
+	if err := store.ReplaceForReEnrollment(previous.Payload.AttemptID, next); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := store.LoadAttempt()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.PreviousResult == nil || loaded.PreviousResult.Binding.ID != priorResult.Binding.ID || loaded.PreviousAccessCredentialRef != "old-ref" {
+		t.Fatalf("prior enrollment not retained: %+v", loaded)
+	}
+	if err := store.CompleteAttempt(next.Payload.AttemptID, priorResult, "new-ref"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ClearPreviousCredential(next.Payload.AttemptID); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err = store.LoadAttempt()
+	if err != nil || loaded.PreviousAccessCredentialRef != "" || loaded.AccessCredentialRef != "new-ref" {
+		t.Fatalf("credential refs after cleanup: %+v err=%v", loaded, err)
 	}
 }
 
