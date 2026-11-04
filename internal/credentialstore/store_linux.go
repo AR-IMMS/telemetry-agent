@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"syscall"
 
 	"golang.org/x/sys/unix"
 )
@@ -22,7 +23,7 @@ func secureDirectory(directory string) error {
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("credential path is not a real directory")
 	}
-	stat, ok := info.Sys().(*unix.Stat_t)
+	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok || stat.Uid != uint32(os.Geteuid()) {
 		return fmt.Errorf("credential directory is not owned by the current service account")
 	}
@@ -73,7 +74,7 @@ func readSecretFile(directory, path string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	stat, ok := info.Sys().(*unix.Stat_t)
+	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok || !info.Mode().IsRegular() || stat.Uid != uint32(os.Geteuid()) || info.Mode().Perm() != 0o600 {
 		return nil, fmt.Errorf("credential file ownership or permissions are unsafe")
 	}

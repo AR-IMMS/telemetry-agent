@@ -11,6 +11,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/credentialstore"
 	"github.com/ar-imms/telemetry-agent/internal/enrollment"
+	"github.com/ar-imms/telemetry-agent/internal/identity"
 )
 
 func TestSQLiteAndCredentialStoreKeepEnrollmentSecretsSeparated(t *testing.T) {
@@ -27,6 +28,13 @@ func TestSQLiteAndCredentialStoreKeepEnrollmentSecretsSeparated(t *testing.T) {
 		t.Fatal(err)
 	}
 	statePath := filepath.Join(t.TempDir(), "agent-state.db")
+	parsedInstallationID, err := identity.ParseInstallationID(installationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := agentstate.NewIdentityStore(statePath).EnsureInstallationID(parsedInstallationID); err != nil {
+		t.Fatalf("initialize installation identity: %v", err)
+	}
 	repository := agentstate.NewEnrollmentStore(statePath)
 	credentials := credentialstore.New(statePath)
 	service := enrollment.Service{
