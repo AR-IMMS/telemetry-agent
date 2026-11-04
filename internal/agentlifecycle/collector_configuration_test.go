@@ -10,6 +10,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/config"
+	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
 	"github.com/ar-imms/telemetry-agent/internal/dependency"
 	"github.com/ar-imms/telemetry-agent/internal/identity"
 )
@@ -157,6 +158,71 @@ service:
 			configText,
 		)
 	}
+}
+
+func TestCollectorConfigurationUsesCoreGatewayAtActivationTime(t *testing.T) {
+	configRoot := t.TempDir()
+	targetPath := filepath.Join(t.TempDir(), "otel.yaml")
+	basePath := filepath.Join(configRoot, "base.yaml")
+	if err := os.WriteFile(basePath, []byte(`
+receivers:
+  otlp: {}
+processors:
+  batch: {}
+exporters:
+  otlp:
+    endpoint: ${env:OTEL_GATEWAY_ENDPOINT}
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp]
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner := &gatewayValidationRunner{}
+	catalog, err := dependency.NewCatalog(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	activator := collectorConfigurationActivator{
+		platform:              identity.PlatformInfo{OS: "linux"},
+		catalog:               catalog,
+		layers:                []config.Layer{{Name: "base", Path: basePath}},
+		binaryPath:            "otelcol-contrib",
+		configPath:            targetPath,
+		validationEnvironment: []string{"OTEL_GATEWAY_ENDPOINT=bootstrap:4317"},
+		gatewayRepository:     gatewayRepositoryStub{endpoint: "core.example:4317"},
+		runner:                runner,
+	}
+	if err := activator.Activate(context.Background(), agentstate.State{}); err != nil {
+		t.Fatalf("Activate() error = %v", err)
+	}
+	if runner.environment != "core.example:4317" {
+		t.Fatalf("validation endpoint = %q, want Core endpoint", runner.environment)
+	}
+}
+
+type gatewayValidationRunner struct{ environment string }
+
+func (r *gatewayValidationRunner) Run(_ context.Context, command bootstrap.Command) bootstrap.CommandResult {
+	for _, value := range command.Environment {
+		if strings.HasPrefix(value, "OTEL_GATEWAY_ENDPOINT=") {
+			r.environment = strings.TrimPrefix(value, "OTEL_GATEWAY_ENDPOINT=")
+		}
+	}
+	return bootstrap.CommandResult{ExitCode: 0}
+}
+
+type gatewayRepositoryStub struct{ endpoint string }
+
+func (r gatewayRepositoryStub) AcceptGatewaySnapshot(coreconfig.GatewaySnapshot) (coreconfig.Acceptance, error) {
+	return coreconfig.Acceptance{}, nil
+}
+
+func (r gatewayRepositoryStub) EffectiveGateway() (coreconfig.EffectiveGateway, error) {
+	return coreconfig.EffectiveGateway{Owner: coreconfig.CoreOwner, Endpoint: r.endpoint, Generation: 1}, nil
 }
 
 type successfulCollectorRunner struct{}

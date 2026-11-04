@@ -92,6 +92,43 @@ artifact, and Agent lifecycle state.
 The `--config-root` directory belongs to the operator. The Agent reads it but
 does not record ownership of it and must not remove it.
 
+## Enroll with AR-IMMS Core
+
+Run enrollment from an elevated terminal so the interactive command and Agent
+service can use the same protected credential directory. The bootstrap token is
+prompted without terminal echo and must not be placed in command arguments.
+
+Linux (default systemd service runs as root):
+
+```bash
+sudo ./bin/agentctl enroll --core-origin https://core.example.internal
+```
+
+Windows (Administrator PowerShell):
+
+```powershell
+.\agentctl.exe enroll --core-origin https://core.example.internal
+```
+
+The Core URL must be an HTTPS origin. Enrollment records the installation-to-
+node binding and Core credential; it does not change the OTLP Gateway endpoint
+or activate a Collector configuration. Linux credentials are stored in the
+service-owned `credentials/` directory with `0700` directory and `0600` file
+permissions. Windows credentials are DPAPI machine-protected and the directory
+ACL grants access to SYSTEM and Administrators.
+
+If the command exits after transient Core failures, the pending attempt remains
+durable. Resume it with:
+
+```bash
+sudo ./bin/agentctl enroll --resume
+```
+
+The retry reuses the persisted attempt ID and immutable request payload. Core
+must return the committed result and credential when the same attempt is
+retried after a lost response; credential recovery semantics remain a Core-side
+dependency.
+
 ## Health and Delivery
 
 ```bash

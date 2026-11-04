@@ -18,6 +18,9 @@ type Options struct {
 	ConfigPath      string
 	HealthEndpoint  string
 	GatewayEndpoint string
+	// ReadinessBody identifies the exact Collector configuration generation.
+	// When set, readiness requires this body in addition to HTTP 200.
+	ReadinessBody   string
 	StartupTimeout  time.Duration
 	ShutdownTimeout time.Duration
 
@@ -45,10 +48,18 @@ func runWith(
 	if err := options.validate(); err != nil {
 		return err
 	}
+	if ctx == nil {
+		return fmt.Errorf("supervisor context is required")
+	}
 
 	if client == nil {
 		// Readiness is mandatory because process start alone does not prove Collector health.
 		return fmt.Errorf("Collector readiness HTTP client is required")
+	}
+	if options.ReadinessBody != "" {
+		if err := ensureReadinessEndpointVacant(ctx, options.HealthEndpoint); err != nil {
+			return fmt.Errorf("verify Collector readiness endpoint before launch: %w", err)
+		}
 	}
 
 	readiness := func(readinessCtx context.Context) error {
@@ -63,27 +74,21 @@ func runWith(
 			client,
 			options.HealthEndpoint,
 			defaultReadinessPollInterval,
+			options.ReadinessBody,
 		); err != nil {
 			return err
-		}
-
-		if options.OnReady != nil {
-			if err := options.OnReady(); err != nil {
-				return fmt.Errorf(
-					"run Collector ready callback: %w",
-					err,
-				)
-			}
 		}
 
 		return nil
 	}
 
-	return newSupervisor(
+	runtime := newSupervisor(
 		starter,
 		readiness,
 		options.ShutdownTimeout,
-	).Run(ctx, LaunchOptions{
+	)
+	runtime.onReady = options.OnReady
+	return runtime.Run(ctx, LaunchOptions{
 		BinaryPath: options.BinaryPath,
 		ConfigPath: options.ConfigPath,
 		Environment: []string{
@@ -139,6 +144,7 @@ type supervisor struct {
 	starter          Starter
 	waitForReadiness readinessWaiter
 	shutdownTimeout  time.Duration
+	onReady          func() error
 }
 
 func newSupervisor(
@@ -194,74 +200,22 @@ func (s *supervisor) Run(
 
 	select {
 	case err := <-readinessDone:
-		if err != nil {
-			// A Collector that never becomes ready must be stopped before returning the
-			// readiness error; otherwise bootstrap's caller would leak a process.
-			if transitionErr := lifecycle.Transition(StateStopping); transitionErr != nil {
-				return transitionErr
-			}
-
-			if stopErr := child.RequestStop(); stopErr != nil {
-				_ = lifecycle.Transition(StateFailed)
-
-				if killErr := s.forceKillAndWait(child); killErr != nil {
-					return fmt.Errorf(
-						"wait for Collector readiness: %w; request Collector shutdown: %v; %v",
-						err,
-						stopErr,
-						killErr,
-					)
-				}
-
-				return fmt.Errorf(
-					"wait for Collector readiness: %w; request Collector shutdown: %v",
-					err,
-					stopErr,
-				)
-			}
-
-			timer := time.NewTimer(s.shutdownTimeout)
-			defer timer.Stop()
-
+		if err == nil {
 			select {
 			case result := <-child.Wait():
-				if result.Err != nil {
-					_ = lifecycle.Transition(StateFailed)
-
-					return fmt.Errorf(
-						"wait for Collector readiness: %w; Collector exited with code %d: %v",
-						err,
-						result.Code,
-						result.Err,
-					)
-				}
-
-				if transitionErr := lifecycle.Transition(StateStopped); transitionErr != nil {
-					return transitionErr
-				}
-
-				return fmt.Errorf("wait for Collector readiness: %w", err)
-
-			case <-timer.C:
-				// Escalate only after the graceful shutdown deadline has elapsed.
-				if killErr := child.Kill(); killErr != nil {
-					_ = lifecycle.Transition(StateFailed)
-
-					return fmt.Errorf(
-						"wait for Collector readiness: %w; force-kill Collector: %v",
-						err,
-						killErr,
-					)
-				}
-
 				_ = lifecycle.Transition(StateFailed)
-
-				return fmt.Errorf(
-					"wait for Collector readiness: %w; Collector did not stop within %s and was force-killed",
-					err,
-					s.shutdownTimeout,
-				)
+				return unexpectedCollectorExit(result)
+			default:
+				// Readiness must belong to this selected child, which is still running.
 			}
+			if s.onReady != nil {
+				if callbackErr := s.onReady(); callbackErr != nil {
+					err = fmt.Errorf("run Collector ready callback: %w", callbackErr)
+				}
+			}
+		}
+		if err != nil {
+			return s.stopAfterReadinessFailure(lifecycle, child, err)
 		}
 
 		if transitionErr := lifecycle.Transition(StateReady); transitionErr != nil {
@@ -288,6 +242,39 @@ func (s *supervisor) Run(
 		_ = lifecycle.Transition(StateFailed)
 
 		return unexpectedCollectorExit(result)
+	}
+}
+
+func (s *supervisor) stopAfterReadinessFailure(lifecycle *lifecycle, child Child, cause error) error {
+	if err := lifecycle.Transition(StateStopping); err != nil {
+		return err
+	}
+	if err := child.RequestStop(); err != nil {
+		_ = lifecycle.Transition(StateFailed)
+		if killErr := s.forceKillAndWait(child); killErr != nil {
+			return fmt.Errorf("Collector startup failed: %w; request shutdown: %v; %v", cause, err, killErr)
+		}
+		return fmt.Errorf("Collector startup failed: %w; request shutdown: %v", cause, err)
+	}
+	timer := time.NewTimer(s.shutdownTimeout)
+	defer timer.Stop()
+	select {
+	case result := <-child.Wait():
+		if result.Err != nil {
+			_ = lifecycle.Transition(StateFailed)
+			return fmt.Errorf("Collector startup failed: %w; Collector exited with code %d: %v", cause, result.Code, result.Err)
+		}
+		if err := lifecycle.Transition(StateStopped); err != nil {
+			return err
+		}
+		return fmt.Errorf("Collector startup failed: %w", cause)
+	case <-timer.C:
+		if err := child.Kill(); err != nil {
+			_ = lifecycle.Transition(StateFailed)
+			return fmt.Errorf("Collector startup failed: %w; force-kill Collector: %v", cause, err)
+		}
+		_ = lifecycle.Transition(StateFailed)
+		return fmt.Errorf("Collector startup failed: %w; Collector did not stop within %s and was force-killed", cause, s.shutdownTimeout)
 	}
 }
 

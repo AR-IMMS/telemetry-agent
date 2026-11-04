@@ -3,6 +3,10 @@ package agentstate
 import (
 	"path/filepath"
 	"strings"
+
+	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
+	"github.com/ar-imms/telemetry-agent/internal/enrollment"
+	"github.com/ar-imms/telemetry-agent/internal/identity"
 )
 
 // Repository loads and atomically updates Agent-owned state. Update serializes
@@ -18,6 +22,28 @@ type Repository interface {
 // NewStore creates SQLite operational storage. An explicit legacy .json path is
 // imported into a sibling .db file and preserved as migration backup.
 func NewStore(path string) Repository {
+	return newSQLiteStoreForPath(path)
+}
+
+// NewIdentityStore returns the SQLite adapter for installation identity at
+// the same operational database path used by NewStore.
+func NewIdentityStore(path string) identity.InstallationIdentityRepository {
+	return newSQLiteStoreForPath(path)
+}
+
+// NewCoreGatewayStore returns the SQLite adapter for Core Gateway snapshot
+// acceptance at the same operational database path used by NewStore.
+func NewCoreGatewayStore(path string) coreconfig.GatewayRuntimeRepository {
+	return newSQLiteStoreForPath(path)
+}
+
+// NewEnrollmentStore returns the SQLite adapter for durable enrollment attempts
+// at the same operational database path used by other Agent state repositories.
+func NewEnrollmentStore(path string) enrollment.AttemptRepository {
+	return newSQLiteStoreForPath(path)
+}
+
+func newSQLiteStoreForPath(path string) SQLiteStore {
 	path = strings.TrimSpace(path)
 	if strings.EqualFold(filepath.Ext(path), ".json") {
 		return SQLiteStore{

@@ -3,12 +3,15 @@ package agentlifecycle
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
+	"github.com/ar-imms/telemetry-agent/internal/config"
+	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
 	"github.com/ar-imms/telemetry-agent/internal/supervisor"
 )
 
@@ -19,20 +22,24 @@ type collectorRunner func(context.Context, supervisor.Options) error
 // teardownApplicator executes safe pending dependency teardowns.
 type teardownApplicator func(context.Context) error
 
+type gatewayReadinessVerifier func(context.Context, string, string) error
+
 // runtimeWatcher supervises the Collector and records the configuration
 // generation that became healthy at runtime.
 type runtimeWatcher struct {
-	store agentstate.Repository
-	run   collectorRunner
+	store          agentstate.Repository
+	gatewayRuntime coreconfig.GatewayRuntimeRepository
+	run            collectorRunner
 
 	options      supervisor.Options
 	pollInterval time.Duration
 	lockPath     string
 
-	applyTeardowns teardownApplicator
-	commitConfig   func(string, string) error
-	snapshotConfig func(string, uint64) (string, func(), error)
-	rollback       func(context.Context, string, uint64) error
+	applyTeardowns         teardownApplicator
+	commitConfig           func(string, string) error
+	snapshotConfig         func(string, uint64) (string, func(), error)
+	rollback               func(context.Context, string, uint64) error
+	verifyGatewayReadiness gatewayReadinessVerifier
 
 	healthReporter agenthealth.ObservationReporter
 }
@@ -58,7 +65,7 @@ func (w runtimeWatcher) Run(ctx context.Context) error {
 		w.reportHealth(agenthealth.CollectorStateStarting, "")
 
 		launchGeneration := snapshot.ActivatedGeneration
-		activeConfigPath := options.ConfigPath
+		stableConfigPath := w.options.ConfigPath
 		previousOnReady := options.OnReady
 		launchContext, cancelLaunch := context.WithCancel(ctx)
 
@@ -75,15 +82,20 @@ func (w runtimeWatcher) Run(ctx context.Context) error {
 				}
 			}
 			if w.commitConfig != nil {
-				if err := w.commitConfig(activeConfigPath, options.ConfigPath); err != nil {
+				if err := w.commitConfig(stableConfigPath, options.ConfigPath); err != nil {
 					cancelLaunch()
 					return fmt.Errorf("commit last-known-good Collector config: %w", err)
 				}
 			}
 
-			_, err := w.store.Update(func(state *agentstate.State) error {
-				return state.MarkGenerationApplied(launchGeneration)
-			})
+			var err error
+			if w.gatewayRuntime != nil {
+				err = w.gatewayRuntime.MarkGatewayApplied(launchGeneration, options.GatewayEndpoint)
+			} else {
+				_, err = w.store.Update(func(state *agentstate.State) error {
+					return state.MarkGenerationApplied(launchGeneration)
+				})
+			}
 			if err != nil {
 				cancelLaunch()
 
@@ -98,6 +110,9 @@ func (w runtimeWatcher) Run(ctx context.Context) error {
 				)
 
 				return wrapped
+			}
+			if snapshot.PendingActivation != nil && snapshot.PendingActivation.RecoveryPath != "" {
+				_ = os.Remove(snapshot.PendingActivation.RecoveryPath)
 			}
 
 			if w.applyTeardowns != nil {
@@ -123,9 +138,12 @@ func (w runtimeWatcher) Run(ctx context.Context) error {
 		}
 
 		runDone := make(chan error, 1)
+		runFinished := make(chan struct{})
 
 		go func() {
-			runDone <- w.run(launchContext, options)
+			err := w.run(launchContext, options)
+			close(runFinished)
+			runDone <- err
 		}()
 
 		ticker := time.NewTicker(w.pollInterval)
@@ -140,7 +158,7 @@ func (w runtimeWatcher) Run(ctx context.Context) error {
 
 				if err != nil {
 					if w.rollback != nil {
-						if rollbackErr := w.rollback(ctx, activeConfigPath, launchGeneration); rollbackErr != nil {
+						if rollbackErr := w.rollback(ctx, stableConfigPath, launchGeneration); rollbackErr != nil {
 							err = fmt.Errorf("rollback failed Collector configuration: %w", rollbackErr)
 						}
 					}
@@ -209,6 +227,20 @@ func (w runtimeWatcher) Run(ctx context.Context) error {
 				}
 
 				if current.ActivatedGeneration <= launchGeneration {
+					if err := w.verifyPendingGatewayRevision(
+						ctx,
+						launchGeneration,
+						options,
+						runFinished,
+					); err != nil {
+						ticker.Stop()
+						cancelLaunch()
+						<-runDone
+						cleanupLaunchConfig()
+						wrapped := fmt.Errorf("confirm unchanged Core Gateway revision readiness: %w", err)
+						w.reportHealth(agenthealth.CollectorStateFailed, wrapped.Error())
+						return wrapped
+					}
 					continue
 				}
 
@@ -252,6 +284,13 @@ func (w runtimeWatcher) prepareLaunch() (agentstate.State, supervisor.Options, f
 		return agentstate.State{}, supervisor.Options{}, cleanup, fmt.Errorf("load Agent state: %w", err)
 	}
 	options := w.options
+	if w.gatewayRuntime != nil {
+		gateway, err := w.gatewayRuntime.GatewayForGeneration(snapshot.ActivatedGeneration)
+		if err != nil {
+			return agentstate.State{}, supervisor.Options{}, cleanup, fmt.Errorf("resolve Gateway endpoint for generation %d: %w", snapshot.ActivatedGeneration, err)
+		}
+		options.GatewayEndpoint = gateway.Endpoint
+	}
 	if w.snapshotConfig != nil {
 		launchConfigPath, remove, err := w.snapshotConfig(options.ConfigPath, snapshot.ActivatedGeneration)
 		if err != nil {
@@ -259,6 +298,34 @@ func (w runtimeWatcher) prepareLaunch() (agentstate.State, supervisor.Options, f
 		}
 		options.ConfigPath = launchConfigPath
 		cleanup = remove
+	}
+	if w.snapshotConfig != nil {
+		content, err := os.ReadFile(options.ConfigPath)
+		if err != nil {
+			cleanup()
+			return agentstate.State{}, supervisor.Options{}, func() {}, fmt.Errorf("read launch config readiness identity: %w", err)
+		}
+		options.ReadinessBody, err = config.ReadinessTokenFromConfig(content)
+		if err != nil {
+			cleanup()
+			return agentstate.State{}, supervisor.Options{}, func() {}, err
+		}
+		if options.ReadinessBody == "" {
+			options.ReadinessBody, err = config.NewReadinessToken()
+			if err != nil {
+				cleanup()
+				return agentstate.State{}, supervisor.Options{}, func() {}, err
+			}
+			content, err = config.WithReadinessToken(content, options.ReadinessBody)
+			if err != nil {
+				cleanup()
+				return agentstate.State{}, supervisor.Options{}, func() {}, err
+			}
+			if err := os.WriteFile(options.ConfigPath, content, 0o600); err != nil {
+				cleanup()
+				return agentstate.State{}, supervisor.Options{}, func() {}, fmt.Errorf("bind legacy launch config to readiness generation: %w", err)
+			}
+		}
 	}
 	return snapshot, options, cleanup, nil
 }
@@ -366,6 +433,9 @@ func RunCollectorRuntimeWithHealth(
 		recover: func(path string) error {
 			return bootstrap.RestoreConfigArtifact(collector.ConfigPath, path)
 		},
+		restoreLastKnownGood: func(path string) error {
+			return bootstrap.CommitLastKnownGoodConfigFrom(collector.ConfigPath, path)
+		},
 	}
 	if err := recovery.Recover(ctx); err != nil {
 		return fmt.Errorf("recover interrupted Collector activation: %w", err)
@@ -378,8 +448,9 @@ func RunCollectorRuntimeWithHealth(
 	}
 
 	return runtimeWatcher{
-		store: store,
-		run:   supervisor.Run,
+		store:          store,
+		gatewayRuntime: agentstate.NewCoreGatewayStore(statePath),
+		run:            supervisor.Run,
 		options: supervisor.Options{
 			BinaryPath:      collector.BinaryPath,
 			ConfigPath:      collector.ConfigPath,
