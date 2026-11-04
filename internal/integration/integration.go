@@ -72,6 +72,7 @@ type IntegrationInstance struct {
 	ID, DefinitionID, DefinitionVersion string
 	Configuration                       map[string]any
 	Enabled                             bool
+	Revision                            uint64
 }
 
 // Contributor deterministically converts a validated instance into component intents.
