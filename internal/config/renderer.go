@@ -54,12 +54,9 @@ func Render(input RenderInput) ([]byte, error) {
 		merged = mergeDocument(merged, layer.Document)
 	}
 
-	if err := ValidateDocument(merged); err != nil {
-		return nil, fmt.Errorf("validate rendered configuration: %w", err)
-	}
-	rendered, err := yaml.Marshal(merged)
+	rendered, err := RenderDocument(merged)
 	if err != nil {
-		return nil, fmt.Errorf("encode rendered configuration: %w", err)
+		return nil, err
 	}
 	values := renderValues(input)
 	if len(values) > 0 {
@@ -67,6 +64,19 @@ func Render(input RenderInput) ([]byte, error) {
 	}
 
 	return rendered, nil
+}
+
+// RenderDocument validates and serializes one already-merged Collector document.
+// It does not merge layers or mutate the supplied document.
+func RenderDocument(document map[string]any) ([]byte, error) {
+	if err := ValidateDocument(document); err != nil {
+		return nil, fmt.Errorf("validate rendered configuration: %w", err)
+	}
+	encoded, err := yaml.Marshal(document)
+	if err != nil {
+		return nil, fmt.Errorf("encode rendered configuration: %w", err)
+	}
+	return encoded, nil
 }
 
 func renderValues(input RenderInput) map[string]string {
