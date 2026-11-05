@@ -103,3 +103,27 @@ func ActivateRenderedConfig(
 
 	return nil
 }
+
+// ValidateRenderedConfig validates candidate bytes with the pinned Collector
+// without touching the active configuration path or lifecycle state.
+func ValidateRenderedConfig(ctx context.Context, runner CommandRunner, binaryPath string, rendered []byte, environment []string) error {
+	if runner == nil {
+		return fmt.Errorf("Collector command runner is required")
+	}
+	if binaryPath == "" {
+		return fmt.Errorf("Collector binary path is required")
+	}
+	dir, err := os.MkdirTemp("", "otelcol-candidate-validation-")
+	if err != nil {
+		return fmt.Errorf("create Collector validation staging directory: %w", err)
+	}
+	defer os.RemoveAll(dir)
+	path := filepath.Join(dir, "candidate.yaml")
+	if err := config.WriteAtomic(path, rendered, renderedConfigPermission); err != nil {
+		return fmt.Errorf("stage Collector validation candidate: %w", err)
+	}
+	if err := validateCollector(ctx, runner, binaryPath, path, append([]string(nil), environment...)); err != nil {
+		return fmt.Errorf("validate Collector candidate: %w", err)
+	}
+	return nil
+}
