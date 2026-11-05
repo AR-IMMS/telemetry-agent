@@ -38,6 +38,8 @@ jobs:
         shell: bash
         run: |
           version=0.160.0
+          runner_temp="$(cygpath -u "$RUNNER_TEMP")"
+          github_env="$(cygpath -u "$GITHUB_ENV")"
           if [[ "$RUNNER_OS" == "Linux" ]]; then
             archive="otelcol-contrib_${version}_linux_amd64.tar.gz"
             expected="7bb60c584c241c86261c2b8697cd3725dd8c56691f5ad5d98454eaa005b47b0c"
@@ -48,11 +50,11 @@ jobs:
             binary="otelcol-contrib.exe"
           fi
           url="https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v${version}/${archive}"
-          curl --fail --location --silent --show-error "$url" --output "$RUNNER_TEMP/$archive"
-          echo "$expected  $RUNNER_TEMP/$archive" | sha256sum --check --status
-          mkdir -p "$RUNNER_TEMP/otelcol"
-          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/otelcol"
-          echo "OTELCOL_CONTRIB_BINARY=$RUNNER_TEMP/otelcol/$binary" >> "$GITHUB_ENV"
+          curl --fail --location --silent --show-error "$url" --output "$runner_temp/$archive"
+          echo "$expected  $runner_temp/$archive" | sha256sum --check --status
+          mkdir -p "$runner_temp/otelcol"
+          tar -xzf "$runner_temp/$archive" -C "$runner_temp/otelcol"
+          echo "OTELCOL_CONTRIB_BINARY=$runner_temp/otelcol/$binary" >> "$github_env"
 
       - name: Test
         run: go test ./... -count=1
