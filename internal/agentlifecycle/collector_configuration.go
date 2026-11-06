@@ -16,9 +16,10 @@ import (
 // collectorConfigurationActivator renders and activates the Collector
 // configuration represented by one desired dependency-state snapshot.
 type collectorConfigurationActivator struct {
-	platform identity.PlatformInfo
-	catalog  dependency.Catalog
-	layers   []config.Layer
+	platform     identity.PlatformInfo
+	catalog      dependency.Catalog
+	layers       []config.Layer
+	renderValues map[string]string
 
 	binaryPath            string
 	configPath            string
@@ -33,6 +34,8 @@ type CollectorConfigurationOptions struct {
 	Platform identity.PlatformInfo
 	Catalog  dependency.Catalog
 	Layers   []config.Layer
+	// RenderValues contains deterministic substitutions used by the clean baseline.
+	RenderValues map[string]string
 
 	BinaryPath            string
 	ConfigPath            string
@@ -48,34 +51,17 @@ func (a collectorConfigurationActivator) Activate(
 	ctx context.Context,
 	state agentstate.State,
 ) error {
-	managedReceivers, err := a.catalog.CollectorReceivers(
-		a.platform.OS,
-		state,
-	)
+	baseline, err := cleanBaselineInput(a.platform, a.catalog, a.layers, state, a.renderValues)
 	if err != nil {
-		return fmt.Errorf(
-			"resolve managed dependency receivers: %w",
-			err,
-		)
+		return fmt.Errorf("build clean Collector baseline: %w", err)
 	}
-
-	receivers := append(
-		[]string{"otlp", "hostmetrics"},
-		managedReceivers...,
-	)
 	readinessToken, err := config.NewReadinessToken()
 	if err != nil {
 		return err
 	}
 
-	rendered, err := config.Render(config.RenderInput{
-		Platform: a.platform,
-		Layers:   a.layers,
-		InlineLayers: []config.InlineLayer{
-			config.MetricsReceiverLayer(receivers),
-			config.ReadinessLayer(readinessToken),
-		},
-	})
+	baseline.InlineLayers = append(baseline.InlineLayers, config.ReadinessLayer(readinessToken))
+	rendered, err := config.Render(baseline)
 	if err != nil {
 		return fmt.Errorf(
 			"render desired Collector configuration: %w",
@@ -127,6 +113,7 @@ func ApplyDesiredConfiguration(
 		platform:              options.Platform,
 		catalog:               options.Catalog,
 		layers:                options.Layers,
+		renderValues:          options.RenderValues,
 		binaryPath:            options.BinaryPath,
 		configPath:            options.ConfigPath,
 		validationEnvironment: options.ValidationEnvironment,

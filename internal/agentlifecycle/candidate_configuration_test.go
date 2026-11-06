@@ -1,0 +1,255 @@
+package agentlifecycle
+
+import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+
+	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
+	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
+	"github.com/ar-imms/telemetry-agent/internal/config"
+	"github.com/ar-imms/telemetry-agent/internal/dependency"
+	"github.com/ar-imms/telemetry-agent/internal/identity"
+)
+
+func TestApplyCollectorCandidateUsesExistingLifecycleAndWaitsForReadiness(t *testing.T) {
+	store, request, options, activePath, _ := candidateFixture(t)
+	outcome, err := ApplyCollectorCandidate(context.Background(), store, request, options)
+	if err != nil {
+		t.Fatalf("ApplyCollectorCandidate() error = %v", err)
+	}
+	if outcome.Result != "activated" || outcome.Generation != request.ExpectedGeneration+1 || outcome.EffectiveConfigDigest == "" {
+		t.Fatalf("outcome = %#v", outcome)
+	}
+	state, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.AppliedGeneration != 0 || state.ActivatedGeneration != outcome.Generation || state.PendingActivation == nil || state.PendingActivation.Candidate == nil {
+		t.Fatalf("state before Collector readiness = %#v", state)
+	}
+	active, err := os.ReadFile(activePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := config.ReadinessTokenFromConfig(active); err != nil {
+		t.Fatalf("active candidate readiness overlay invalid: %v", err)
+	}
+	if !strings.Contains(string(active), "${env:OTEL_GATEWAY_ENDPOINT}") || !strings.Contains(string(active), "prometheus/fixture_exporter") {
+		t.Fatalf("active candidate did not preserve Gateway settings and managed receiver configuration:\n%s", active)
+	}
+	if err := store.MarkCandidateGenerationApplied(outcome.Generation, ""); err != nil {
+		t.Fatalf("mark candidate applied after readiness: %v", err)
+	}
+	state, err = store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.AppliedGeneration != outcome.Generation || state.PendingActivation != nil {
+		t.Fatalf("state after readiness = %#v", state)
+	}
+}
+
+func TestApplyCollectorCandidateRejectsChangedBaselineBeforeAdmission(t *testing.T) {
+	store, request, options, _, _ := candidateFixture(t)
+	if err := os.WriteFile(options.Layers[0].Path, []byte("receivers: {otlp: {protocols: {grpc: {endpoint: '127.0.0.1:4317'}}}}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	options.Runner = candidateRunnerFunc(func(context.Context, bootstrap.Command) bootstrap.CommandResult {
+		t.Fatal("Collector validation ran for a stale baseline")
+		return bootstrap.CommandResult{}
+	})
+	if _, err := ApplyCollectorCandidate(context.Background(), store, request, options); !errors.Is(err, agentstate.ErrStaleCandidate) {
+		t.Fatalf("ApplyCollectorCandidate() error = %v, want stale candidate", err)
+	}
+	state, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.DesiredGeneration != request.ExpectedGeneration || state.PendingActivation != nil {
+		t.Fatalf("stale admission mutated M2 state: %#v", state)
+	}
+}
+
+func TestApplyCollectorCandidateFinishesAfterDesiredGenerationChangesPostAdmission(t *testing.T) {
+	store, request, options, _, _ := candidateFixture(t)
+	options.Runner = candidateRunnerFunc(func(context.Context, bootstrap.Command) bootstrap.CommandResult {
+		if _, err := store.Update(func(state *agentstate.State) error {
+			state.DesiredGeneration++
+			return nil
+		}); err != nil {
+			t.Fatalf("advance desired generation during activation: %v", err)
+		}
+		return bootstrap.CommandResult{}
+	})
+	outcome, err := ApplyCollectorCandidate(context.Background(), store, request, options)
+	if err != nil {
+		t.Fatalf("ApplyCollectorCandidate() error = %v", err)
+	}
+	state, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome.Result != "activated" || state.DesiredGeneration != outcome.Generation+1 || state.ActivatedGeneration != outcome.Generation || state.PendingActivation == nil {
+		t.Fatalf("outcome/state = %#v / %#v", outcome, state)
+	}
+	if err := store.MarkCandidateGenerationApplied(outcome.Generation, ""); err != nil {
+		t.Fatalf("complete admitted generation after readiness: %v", err)
+	}
+	state, err = store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.AppliedGeneration != outcome.Generation || state.DesiredGeneration != outcome.Generation+1 {
+		t.Fatalf("terminal state = %#v, want admitted generation applied and newer generation still desired", state)
+	}
+}
+
+func TestApplyCollectorCandidateValidationFailurePreservesActiveConfigAndAppliedState(t *testing.T) {
+	store, request, options, activePath, _ := candidateFixture(t)
+	before, err := os.ReadFile(activePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options.Runner = candidateRunnerFunc(func(context.Context, bootstrap.Command) bootstrap.CommandResult {
+		return bootstrap.CommandResult{ExitCode: 1, Stderr: "invalid fixture"}
+	})
+	outcome, err := ApplyCollectorCandidate(context.Background(), store, request, options)
+	if !errors.Is(err, bootstrap.ErrNativeConfigValidation) {
+		t.Fatalf("ApplyCollectorCandidate() error = %v, want native validation error", err)
+	}
+	if outcome.Stage != "final_validation" || outcome.RecoveryResult != "succeeded" {
+		t.Fatalf("failure outcome = %#v", outcome)
+	}
+	after, err := os.ReadFile(activePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatal("validation failure changed the active configuration")
+	}
+	state, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.AppliedGeneration != 0 || state.ActivatedGeneration != 0 || state.PendingActivation != nil || state.DesiredGeneration != request.ExpectedGeneration+1 {
+		t.Fatalf("validation failure state = %#v", state)
+	}
+}
+
+type candidateRunnerFunc func(context.Context, bootstrap.Command) bootstrap.CommandResult
+
+func (f candidateRunnerFunc) Run(ctx context.Context, command bootstrap.Command) bootstrap.CommandResult {
+	return f(ctx, command)
+}
+
+func candidateFixture(t *testing.T) (agentstate.SQLiteStore, CandidateApplyRequest, CollectorConfigurationOptions, string, string) {
+	t.Helper()
+	platform := identity.PlatformInfo{OS: runtime.GOOS, Architecture: runtime.GOARCH}
+	layerPath := filepath.Join(t.TempDir(), "base.yaml")
+	baseline := []byte(`receivers:
+  otlp:
+    protocols:
+      grpc: { endpoint: 127.0.0.1:4317 }
+  hostmetrics:
+    scrapers:
+      cpu: {}
+      memory: {}
+  prometheus/fixture_exporter:
+    config:
+      scrape_configs:
+        - job_name: fixture_exporter
+          static_configs:
+            - targets: [127.0.0.1:19100]
+processors:
+  batch: {}
+exporters:
+  otlp:
+    endpoint: ${env:OTEL_GATEWAY_ENDPOINT}
+    tls: { insecure: true }
+  debug: {}
+extensions:
+  health_check:
+    endpoint: 127.0.0.1:13133
+service:
+  extensions: [health_check]
+  pipelines:
+    metrics:
+      receivers: [otlp, hostmetrics]
+      processors: [batch]
+      exporters: [otlp]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp]
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp]
+`)
+	if err := os.WriteFile(layerPath, baseline, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	activePath := filepath.Join(t.TempDir(), "otel.yaml")
+	if err := os.WriteFile(activePath, baseline, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	statePath := filepath.Join(t.TempDir(), "state.db")
+	store := agentstate.NewSQLiteStore(statePath)
+	if _, err := store.Update(func(*agentstate.State) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	layers := []config.Layer{{Name: "base", Path: layerPath}}
+	catalog, err := dependency.NewCatalog([]dependency.Integration{{
+		Definition:        dependency.Definition{Name: "fixture-exporter", DisplayName: "Fixture Exporter", SupportedOS: []string{platform.OS}},
+		CollectorReceiver: "prometheus/fixture_exporter",
+		Install:           func(context.Context) (dependency.InstallResult, error) { return dependency.InstallResult{}, nil },
+		Inspect:           func(context.Context) (dependency.Inspection, error) { return dependency.Inspection{}, nil },
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Update(func(state *agentstate.State) error {
+		_, err := state.EnableDependency("fixture-exporter")
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	state, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	gatewayEndpoint := "127.0.0.1:14317"
+	values := map[string]string{"OTEL_GATEWAY_ENDPOINT": gatewayEndpoint}
+	snapshot, err := BuildCleanBaselineSnapshot(platform, catalog, layers, state, values)
+	if err != nil {
+		t.Fatal(err)
+	}
+	capabilities, err := collectorruntime.StaticCatalog(platform)
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate, err := collectorruntime.NewCompiler(capabilities).Compile(snapshot.Input, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := CandidateApplyRequest{BaselineFingerprint: snapshot.Fingerprint, ExpectedGeneration: snapshot.DesiredGeneration, Candidate: candidate}
+	options := CollectorConfigurationOptions{
+		Platform:     platform,
+		Catalog:      catalog,
+		Layers:       layers,
+		BinaryPath:   "otelcol-contrib",
+		ConfigPath:   activePath,
+		RenderValues: values,
+		ValidationEnvironment: []string{
+			"OTEL_GATEWAY_ENDPOINT=" + gatewayEndpoint,
+		},
+		Runner: successfulCollectorRunner{},
+	}
+	return store, request, options, activePath, statePath
+}

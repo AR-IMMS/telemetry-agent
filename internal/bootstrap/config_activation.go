@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,9 @@ import (
 )
 
 const renderedConfigPermission = 0640
+
+// ErrNativeConfigValidation identifies Collector-native candidate rejection.
+var ErrNativeConfigValidation = errors.New("Collector native configuration validation failed")
 
 // ActivateRenderedConfig validates rendered config in a temporary directory
 // before atomically replacing targetPath.
@@ -88,7 +92,8 @@ func ActivateRenderedConfig(
 		environment,
 	); err != nil {
 		return fmt.Errorf(
-			"validate Collector configuration at staging path %q: %w",
+			"%w at staging path %q: %w",
+			ErrNativeConfigValidation,
 			stagedConfigPath,
 			err,
 		)

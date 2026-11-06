@@ -68,73 +68,8 @@ func (w runtimeWatcher) Run(ctx context.Context) error {
 		stableConfigPath := w.options.ConfigPath
 		previousOnReady := options.OnReady
 		launchContext, cancelLaunch := context.WithCancel(ctx)
-
 		options.OnReady = func() error {
-			if previousOnReady != nil {
-				if err := previousOnReady(); err != nil {
-					cancelLaunch()
-					w.reportHealth(
-						agenthealth.CollectorStateFailed,
-						err.Error(),
-					)
-
-					return err
-				}
-			}
-			if w.commitConfig != nil {
-				if err := w.commitConfig(stableConfigPath, options.ConfigPath); err != nil {
-					cancelLaunch()
-					return fmt.Errorf("commit last-known-good Collector config: %w", err)
-				}
-			}
-
-			var err error
-			if w.gatewayRuntime != nil {
-				err = w.gatewayRuntime.MarkGatewayApplied(launchGeneration, options.GatewayEndpoint)
-			} else {
-				_, err = w.store.Update(func(state *agentstate.State) error {
-					return state.MarkGenerationApplied(launchGeneration)
-				})
-			}
-			if err != nil {
-				cancelLaunch()
-
-				wrapped := fmt.Errorf(
-					"mark Collector generation %d applied: %w",
-					launchGeneration,
-					err,
-				)
-				w.reportHealth(
-					agenthealth.CollectorStateFailed,
-					wrapped.Error(),
-				)
-
-				return wrapped
-			}
-			if snapshot.PendingActivation != nil && snapshot.PendingActivation.RecoveryPath != "" {
-				_ = os.Remove(snapshot.PendingActivation.RecoveryPath)
-			}
-
-			if w.applyTeardowns != nil {
-				if err := w.applyTeardowns(ctx); err != nil {
-					cancelLaunch()
-
-					wrapped := fmt.Errorf(
-						"apply pending dependency teardowns: %w",
-						err,
-					)
-					w.reportHealth(
-						agenthealth.CollectorStateFailed,
-						wrapped.Error(),
-					)
-
-					return wrapped
-				}
-			}
-
-			w.reportHealth(agenthealth.CollectorStateReady, "")
-
-			return nil
+			return w.onCollectorReady(ctx, snapshot, options, launchGeneration, stableConfigPath, previousOnReady, cancelLaunch)
 		}
 
 		runDone := make(chan error, 1)

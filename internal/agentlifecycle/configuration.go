@@ -40,6 +40,10 @@ type configurationCoordinator struct {
 // generation in state. The dedicated OS lock spans promotion so another Agent
 // process cannot overwrite or roll back the active artifact concurrently.
 func (c configurationCoordinator) Apply(ctx context.Context) error {
+	return c.withLifecycleLock(func() error { return c.applyLocked(ctx) })
+}
+
+func (c configurationCoordinator) withLifecycleLock(action func() error) error {
 	activationMutex.Lock()
 	defer activationMutex.Unlock()
 	if c.lockPath != "" {
@@ -49,6 +53,10 @@ func (c configurationCoordinator) Apply(ctx context.Context) error {
 		}
 		defer lock.Close()
 	}
+	return action()
+}
+
+func (c configurationCoordinator) applyLocked(ctx context.Context) error {
 
 	// Keep the previous contract: applying configuration requires persisted
 	// Agent state and must not create an empty state file.
