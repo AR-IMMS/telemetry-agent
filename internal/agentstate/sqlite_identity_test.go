@@ -82,8 +82,21 @@ func TestSQLiteIdentityMigrationSeparatesSchemaAndInitialization(t *testing.T) {
 	if err := db.QueryRow("SELECT MAX(version) FROM schema_migrations").Scan(&schemaVersion); err != nil {
 		t.Fatalf("read schema version: %v", err)
 	}
-	if schemaVersion != 6 {
-		t.Fatalf("schema version = %d, want 6 after Integration migration", schemaVersion)
+	if schemaVersion != 8 {
+		t.Fatalf("schema version = %d, want 8 after candidate activation history migration", schemaVersion)
+	}
+	var integrationMigration, candidateMappingMigration, candidateHistoryMigration int
+	if err := db.QueryRow("SELECT COUNT(*) FROM schema_migrations WHERE version=6").Scan(&integrationMigration); err != nil {
+		t.Fatalf("read Integration migration marker: %v", err)
+	}
+	if err := db.QueryRow("SELECT COUNT(*) FROM schema_migrations WHERE version=7").Scan(&candidateMappingMigration); err != nil {
+		t.Fatalf("read candidate mapping migration marker: %v", err)
+	}
+	if err := db.QueryRow("SELECT COUNT(*) FROM schema_migrations WHERE version=8").Scan(&candidateHistoryMigration); err != nil {
+		t.Fatalf("read candidate history migration marker: %v", err)
+	}
+	if integrationMigration != 1 || candidateMappingMigration != 1 || candidateHistoryMigration != 1 {
+		t.Fatalf("migration markers 6/7/8 = %d/%d/%d, want 1/1/1", integrationMigration, candidateMappingMigration, candidateHistoryMigration)
 	}
 	var coreSnapshots int
 	if err := db.QueryRow("SELECT COUNT(*) FROM core_gateway_snapshot").Scan(&coreSnapshots); err != nil {
