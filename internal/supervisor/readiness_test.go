@@ -3,11 +3,29 @@ package supervisor
 import (
 	"context"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestEnsureReadinessEndpointVacantAcceptsClosedLoopbackPort(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve temporary loopback port: %v", err)
+	}
+	endpoint := "http://" + listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatalf("release temporary loopback port: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := ensureReadinessEndpointVacant(ctx, endpoint); err != nil {
+		t.Fatalf("ensureReadinessEndpointVacant() error = %v", err)
+	}
+}
 
 func TestWaitForReadinessReturnsWhenEndpointIsHealthy(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
