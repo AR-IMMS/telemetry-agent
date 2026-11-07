@@ -121,29 +121,96 @@ flowchart TB
     DISC --> SYSTEM
     RECEIVERS --> SERVICES
     EXPORTERS --> GATEWAY
-    classDef external fill:#e9ecef,stroke:#495057,color:#212529
-    classDef host fill:#dceeff,stroke:#2463a6,color:#102a43
-    classDef identity fill:#e8e1f5,stroke:#6941a5,color:#271447
-    classDef config fill:#fff2cc,stroke:#b7791f,color:#49320a
-    classDef inventory fill:#dff3e4,stroke:#287a3d,color:#153b20
-    classDef integration fill:#fce4d6,stroke:#bf5b17,color:#51250b
-    classDef reconcile fill:#d9eaf7,stroke:#16708a,color:#103746
-    classDef runtime fill:#f3e8ff,stroke:#7042a1,color:#2d1646
-    classDef health fill:#e2f0d9,stroke:#548235,color:#223618
-    classDef infra fill:#fff2cc,stroke:#9a6700,color:#49320a
-    classDef otel fill:#ffe5e5,stroke:#b42318,color:#481414
-    class CORE,GATEWAY,SYSTEM,SERVICES external
-    class ENTRY,BOOT,SUP host
-    class REG,AUTH,SYNC,OUTBOX identity
-    class BASE,DESIRED,POLICY,ACT,REVISIONS config
-    class DP,DISC,INV inventory
-    class REGISTRY,MATCH,INST,PREFLIGHT integration
-    class QUEUE,CONTROLLER,PLAN reconcile
-    class CAT,COMP,VALID,LCM runtime
-    class PROBES,EVAL,SNAP,EVENT health
-    class BUS,DB,SECRETS,OSAD infra
-    class RECEIVERS,PROCESSORS,EXPORTERS,STORAGE otel
+    classDef implemented fill:#2E7D32,color:#FFFFFF,stroke:#1B5E20
+    classDef notImplemented fill:#C62828,color:#FFFFFF,stroke:#8E0000
+    class ENTRY,BOOT,SUP,REG,BASE,DESIRED,ACT,REVISIONS,CONTROLLER,COMP,VALID,LCM,SNAP,DB,SECRETS,OSAD,RECEIVERS,PROCESSORS,EXPORTERS implemented
+    class AUTH,SYNC,OUTBOX,POLICY,DP,DISC,INV,REGISTRY,MATCH,INST,PREFLIGHT,QUEUE,PLAN,CAT,PROBES,EVAL,EVENT,BUS,STORAGE notImplemented
 ```
+
+**Implementation status overlay — source audit, 7 November 2026.** This colors the unchanged target topology: green means the diagrammed responsibility is implemented and wired in the current Agent; red means it is absent or materially incomplete relative to the target. Partial implementations are red and described in the matrix. External systems are intentionally uncolored because they are not Agent components. This status overlay does not revise the accepted target architecture.
+
+| Diagram component | Status | Current source evidence and completeness |
+|---|---|---|
+| ENTRY — CLI / OS Service / Diagnostics API | Green | `cmd/agentctl/main.go`, `cmd/agentctl/composition.go`, `internal/agenthealth/server.go`; CLI and local diagnostics are composed. |
+| BOOT — Bootstrap & Shutdown | Green | `internal/bootstrap/`, `cmd/agentctl/`; installation, configuration and shutdown paths are wired. |
+| SUP — Process Supervision | Green | `internal/supervisor/supervisor.go`; Collector process supervision and readiness are used by Agent lifecycle. |
+| REG — Registration & Installation Identity | Green | `internal/enrollment/service.go`, `internal/identity/`, `cmd/agentctl/installation_identity.go`; installation identity and enrollment persist through Agent state. |
+| AUTH — Credential / Authentication Session | Red | `internal/credentialstore/store.go` protects enrollment credentials, but the broader target authentication-session lifecycle is not implemented. |
+| SYNC — Core Configuration Sync | Red | `internal/coreconfig/` stores Gateway configuration snapshots; bidirectional Core configuration sync is absent. |
+| OUTBOX — Status Reporting / Outbox | Red | No Agent outbox/status-reporting implementation is wired. |
+| BASE — Baseline Configuration | Green | `internal/agentlifecycle/baseline.go` builds clean baseline from layers and managed receivers; `internal/config/renderer.go` renders it. |
+| DESIRED — Desired State Store | Green | `internal/agentstate/sqlite_integration.go` and SQLite state persist integration desired instances and revision; managed dependency desired state remains in M2 state. |
+| POLICY — Configuration Precedence | Red | Future Core/local ownership precedence remains unresolved and is not implemented. |
+| ACT — Activation Coordinator | Green | `internal/agentlifecycle/candidate_coordinator.go` extends the existing activation coordinator with candidate admission. |
+| REVISIONS — Applied Revision / Last-Known-Good | Green | `internal/agentstate/sqlite_candidate.go`, `sqlite_store.go`, and lifecycle recovery retain M2 generation, journal and recovery evidence. |
+| DP — Discovery Provider Registry | Red | Dependency catalogues exist, but the target general discovery-provider registry is absent. |
+| DISC — Host / VM / Service / Container Discovery | Red | Identity and dependency probes cover narrow sources; target resource discovery is not implemented. |
+| INV — Resource Inventory | Red | No durable general resource inventory is implemented. |
+| REGISTRY — Integration Registry | Red | `internal/integration/registry.go` provides the static registry contract, but `cmd/agentctl/reconciliation_runtime.go` currently wires an empty registry. |
+| MATCH — Integration Matcher | Red | Discovery-to-definition matching is not implemented. |
+| INST — Integration Instances | Red | SQLite desired-state storage and `agentctl integration` commands exist, but no production definitions are registered for usable integrations. |
+| PREFLIGHT — Preflight Validation | Red | S1 resolver validates and contributes intents when a definition is registered; production definition preflight is unavailable while registry is empty. |
+| QUEUE — Reconcile Queue | Red | There is no durable queue or in-process event bus; periodic SQLite polling provides recovery/detection. |
+| CONTROLLER — Reconciliation Controller | Green | `internal/reconciliation/controller.go` is composed into Agent Service; startup recovery plus periodic polling drives convergence. |
+| PLAN — Immutable Configuration Plan | Red | Controller computes and applies a revision-bound candidate, but there is no standalone immutable plan model matching this target node. |
+| CAT — Collector Capability Catalog | Red | `internal/collectorruntime/manifest.go` and `compiler.go` implement a static, version/platform-aware subset; complete artifact proof and Redis capability remain open. |
+| COMP — Configuration Compiler | Green | `internal/collectorruntime/compiler.go` assembles the clean baseline with the complete enabled intent set into deterministic candidates; reconciliation wires it. |
+| VALID — Collector Config Validator | Green | `internal/collectorruntime/validation.go` validates S2 candidates; M2 validates final effective configuration before activation. |
+| LCM — Collector Lifecycle Adapter | Green | `internal/agentlifecycle/candidate_configuration.go` routes candidates through the existing M2 coordinator and lifecycle. |
+| PROBES — Health Probes | Red | Collector readiness and dependency checks exist, but generalized per-integration health probes are not implemented. |
+| EVAL — Health Evaluator | Red | `internal/agenthealth/snapshot.go` evaluates runtime observations; target-wide integration/source health evaluation is incomplete. |
+| SNAP — Health Snapshot / Evidence Reader | Green | `internal/agenthealth/snapshot.go` and `server.go` expose read-only runtime status snapshots. |
+| EVENT — HealthChanged Publisher | Red | A HealthChanged publisher is not implemented. |
+| BUS — Internal Event Dispatcher | Red | No generic internal event dispatcher is present; wakeups are not used as a correctness mechanism. |
+| DB — SQLite state.db — WAL | Green | `internal/agentstate/sqlite_store.go` and migration/schema code use SQLite WAL for operational state. |
+| SECRETS — Secure Credential Storage | Green | `internal/credentialstore/` provides platform-protected credential storage used by enrollment. |
+| OSAD — OS / Filesystem / Network Adapters | Green | `internal/bootstrap/`, `internal/identity/`, `internal/dependency/` and platform-specific files provide these adapters for current workflows. |
+| RECEIVERS — OTel Receivers | Green | Shipped Collector and current host baseline configure supported receivers; this does not assert Redis support. |
+| PROCESSORS — OTel Processors | Green | Current Collector baseline includes the required processing pipeline components. |
+| EXPORTERS — OTel Exporters | Green | Current baseline exports through OTLP Gateway; other capabilities remain catalog-bound. |
+| STORAGE — Optional Persistent Queue | Red | Persistent Collector queue/storage is not enabled in the shipped configuration. |
+
+### Verified Go dependency and runtime paths
+
+The following Mermaid graph shows the **critical direct internal-package imports** verified with `go list`; arrows are compile-time dependencies, not claims of runtime invocation. It omits standard-library and leaf/helper imports for readability. There are no Go import cycles. `cmd/agentctl` is the composition root. `collectorruntime → bootstrap` reuses the existing pinned Collector command runner for native validation; `agentlifecycle → dependency` is the retained managed-dependency path.
+
+```mermaid
+flowchart LR
+    CLI["cmd/agentctl<br/>composition root"] --> REC["internal/reconciliation"]
+    CLI --> LC["internal/agentlifecycle"]
+    CLI --> STATE["internal/agentstate"]
+    REC --> CFG["internal/configuration"]
+    REC --> INT["internal/integration"]
+    REC --> RT["internal/collectorruntime"]
+    REC --> CONFIG["internal/config"]
+    REC --> LC
+    REC --> STATE
+    LC --> STATE
+    LC --> BOOT["internal/bootstrap"]
+    LC --> DEPS["internal/dependency<br/>legacy managed-dependency path"]
+    LC --> SUP["internal/supervisor"]
+    LC --> HEALTH["internal/agenthealth"]
+    LC --> CORECFG["internal/coreconfig"]
+    LC --> ID["internal/identity"]
+    LC --> CONFIG
+    RT --> BOOT
+    RT --> CONFIG
+    RT --> INT
+    RT --> ID
+    STATE --> CFG
+    STATE --> INT
+    STATE --> CORECFG
+    STATE --> ENROLL["internal/enrollment"]
+    STATE --> ID
+    CFG --> INT
+    BOOT --> CONFIG
+    DEPS --> STATE
+    DEPS --> CONFIG
+```
+
+**Verified runtime path:** Agent Service startup runs M2 pending-activation recovery, then starts the reconciliation controller; `Controller.Reconcile` reads a consistent desired snapshot and clean baseline, resolves enabled definitions, compiles and validates a candidate, then submits it through `agentlifecycle.ApplyCollectorCandidate`. The existing coordinator admits, overlays, validates and activates it; readiness records the terminal candidate mapping. After an Applied outcome, convergence and CLI status compare desired-set revision, M2 desired generation and baseline fingerprint; a mismatch is Pending and triggers another pass. Managed-dependency CLI operations persist desired changes; the Agent Service poll observes them and compiles the combined baseline plus enabled integration set. The CLI does not run an independent reconciliation worker.
+
+**Not implemented:** production integration definitions (including Redis), general Discovery/Matcher, event dispatcher, Core configuration sync/precedence, status outbox, generalized integration health and persistent Collector storage. Green compiler/controller/lifecycle status does not imply a usable Redis integration, integration health, or telemetry delivery for a service.
 
 ## 1. Decision register
 
