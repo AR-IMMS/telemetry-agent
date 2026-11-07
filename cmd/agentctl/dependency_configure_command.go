@@ -168,7 +168,7 @@ func runDependencyConfigure(ctx context.Context, args []string, stdout io.Writer
 		if action == dependencyLifecycleEnable {
 			fmt.Fprintf(
 				stdout,
-				"Dependency enabled: %s\n",
+				"Dependency enable desired state committed; Agent Service convergence is pending: %s\n",
 				option.Definition.Name,
 			)
 
@@ -177,7 +177,7 @@ func runDependencyConfigure(ctx context.Context, args []string, stdout io.Writer
 
 		fmt.Fprintf(
 			stdout,
-			"Dependency disable scheduled: %s\n",
+			"Dependency disable desired state committed; Agent Service convergence is pending: %s\n",
 			option.Definition.Name,
 		)
 	}

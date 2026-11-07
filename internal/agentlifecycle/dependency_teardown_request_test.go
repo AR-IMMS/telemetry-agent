@@ -120,9 +120,9 @@ service:
 		t.Fatalf("changed dependencies = %v, want %v", got, want)
 	}
 
-	if runner.calls != 1 {
+	if runner.calls != 0 {
 		t.Fatalf(
-			"Collector validation calls = %d, want 1",
+			"Collector validation calls = %d, want 0 because Agent Service owns activation",
 			runner.calls,
 		)
 	}
@@ -138,9 +138,9 @@ service:
 			state.DesiredGeneration,
 		)
 	}
-	if state.ActivatedGeneration != 8 {
+	if state.ActivatedGeneration != 7 {
 		t.Fatalf(
-			"ActivatedGeneration = %d, want 8",
+			"ActivatedGeneration = %d, want 7 until Agent Service convergence",
 			state.ActivatedGeneration,
 		)
 	}

@@ -28,6 +28,7 @@ func TestRunHelpWritesCommandSummary(t *testing.T) {
 Commands:
   bootstrap   Bootstrap the OpenTelemetry Collector.
   dependency  Manage telemetry dependencies.
+  integration Manage desired Integration instances and local convergence diagnostics.
   run         Run the OpenTelemetry Collector under supervision.
   status      Show live Agent health.
   enroll      Bind this Agent installation to an AR-IMMS Core node.
@@ -80,6 +81,7 @@ Usage:
 Commands:
   bootstrap   Bootstrap the OpenTelemetry Collector.
   dependency  Manage telemetry dependencies.
+  integration Manage desired Integration instances and local convergence diagnostics.
   run         Run the OpenTelemetry Collector under supervision.
   status      Show live Agent health.
   enroll      Bind this Agent installation to an AR-IMMS Core node.
@@ -128,6 +130,7 @@ Usage:
 Commands:
   bootstrap   Bootstrap the OpenTelemetry Collector.
   dependency  Manage telemetry dependencies.
+  integration Manage desired Integration instances and local convergence diagnostics.
   run         Run the OpenTelemetry Collector under supervision.
   status      Show live Agent health.
   enroll      Bind this Agent installation to an AR-IMMS Core node.

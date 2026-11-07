@@ -95,6 +95,29 @@ func TestStaleAdmissionImmediatelyReconcilesLatestDesiredRevision(t *testing.T) 
 	}
 }
 
+func TestReconcileLatestRepeatsWhenBaselineFingerprintChangesAfterApply(t *testing.T) {
+	desired := &snapshotReader{snapshot: configuration.DesiredSnapshot{Revision: 12}}
+	baseline := &sequenceBaseline{snapshots: []agentlifecycle.CleanBaselineSnapshot{
+		{DesiredGeneration: 4, Fingerprint: "before", Input: config.RenderInput{Platform: identity.PlatformInfo{OS: "windows", Architecture: "amd64"}}},
+		{DesiredGeneration: 4, Fingerprint: "after", Input: config.RenderInput{Platform: identity.PlatformInfo{OS: "windows", Architecture: "amd64"}}},
+		{DesiredGeneration: 4, Fingerprint: "after", Input: config.RenderInput{Platform: identity.PlatformInfo{OS: "windows", Architecture: "amd64"}}},
+		{DesiredGeneration: 4, Fingerprint: "after", Input: config.RenderInput{Platform: identity.PlatformInfo{OS: "windows", Architecture: "amd64"}}},
+	}}
+	controller := Controller{
+		Desired: desired, Baseline: baseline, Resolver: &testResolver{}, Compiler: &testCompiler{},
+		Validator: func(context.Context, collectorruntime.Candidate) error { return nil },
+		Applier:   &testApplier{}, Attempts: &testAttempts{},
+		Outcomes: fixedOutcome{mapping: agentstate.CandidateMapping{Outcome: "applied"}, generation: 5, found: true},
+	}
+	result, err := controller.reconcileLatest(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != StatusApplied || result.BaselineFingerprint != "after" || baseline.calls != 4 {
+		t.Fatalf("result=%+v baseline snapshots=%d; changed baseline must be recompiled before convergence is returned", result, baseline.calls)
+	}
+}
+
 func TestReconcileAcknowledgesAppliedOnlyFromM2Journal(t *testing.T) {
 	controller := Controller{Desired: &snapshotReader{snapshot: configuration.DesiredSnapshot{Revision: 12}}, Baseline: staticBaseline{}, Resolver: &testResolver{}, Compiler: &testCompiler{}, Validator: func(context.Context, collectorruntime.Candidate) error { return nil }, Applier: &testApplier{}, Attempts: &testAttempts{}, Outcomes: fixedOutcome{mapping: agentstate.CandidateMapping{Outcome: "applied"}, generation: 37, found: true}}
 	result, err := controller.Reconcile(context.Background())
@@ -454,6 +477,20 @@ type changingBaseline struct{ generation uint64 }
 
 func (b *changingBaseline) Snapshot() (agentlifecycle.CleanBaselineSnapshot, error) {
 	return agentlifecycle.CleanBaselineSnapshot{DesiredGeneration: b.generation, Fingerprint: "baseline", Input: config.RenderInput{Platform: identity.PlatformInfo{OS: "windows", Architecture: "amd64"}}}, nil
+}
+
+type sequenceBaseline struct {
+	snapshots []agentlifecycle.CleanBaselineSnapshot
+	calls     int
+}
+
+func (b *sequenceBaseline) Snapshot() (agentlifecycle.CleanBaselineSnapshot, error) {
+	index := b.calls
+	if index >= len(b.snapshots) {
+		index = len(b.snapshots) - 1
+	}
+	b.calls++
+	return b.snapshots[index], nil
 }
 
 type testCleanBaseline struct {

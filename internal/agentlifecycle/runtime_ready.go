@@ -34,12 +34,17 @@ func (w runtimeWatcher) onCollectorReady(
 	}
 
 	var err error
-	if w.gatewayRuntime != nil {
+	if snapshot.PendingActivation != nil && snapshot.PendingActivation.Candidate != nil {
+		candidateStore, ok := w.store.(interface {
+			MarkCandidateGenerationApplied(uint64, string) error
+		})
+		if !ok {
+			err = fmt.Errorf("candidate lifecycle outcome repository is required")
+		} else {
+			err = candidateStore.MarkCandidateGenerationApplied(generation, options.GatewayEndpoint)
+		}
+	} else if w.gatewayRuntime != nil {
 		err = w.gatewayRuntime.MarkGatewayApplied(generation, options.GatewayEndpoint)
-	} else if candidateStore, ok := w.store.(interface {
-		MarkCandidateGenerationApplied(uint64, string) error
-	}); ok && snapshot.PendingActivation != nil && snapshot.PendingActivation.Candidate != nil {
-		err = candidateStore.MarkCandidateGenerationApplied(generation, options.GatewayEndpoint)
 	} else {
 		_, err = w.store.Update(func(state *agentstate.State) error {
 			return state.MarkGenerationApplied(generation)

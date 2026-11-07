@@ -2,6 +2,7 @@ package agentlifecycle
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -332,6 +333,29 @@ func RunCollectorRuntimeWithHealth(
 	teardown DependencyTeardownFunc,
 	healthReporter agenthealth.ObservationReporter,
 ) error {
+	return runCollectorRuntimeWithReconciliation(ctx, statePath, teardown, healthReporter, nil, nil)
+}
+
+// RunCollectorRuntimeWithReconciliation starts the sole runtime-owned convergence loop after M2 recovery.
+func RunCollectorRuntimeWithReconciliation(
+	ctx context.Context,
+	statePath string,
+	teardown DependencyTeardownFunc,
+	healthReporter agenthealth.ObservationReporter,
+	reconcile func(context.Context) error,
+	onRecoveryFailure func(agentstate.State, error) error,
+) error {
+	return runCollectorRuntimeWithReconciliation(ctx, statePath, teardown, healthReporter, reconcile, onRecoveryFailure)
+}
+
+func runCollectorRuntimeWithReconciliation(
+	ctx context.Context,
+	statePath string,
+	teardown DependencyTeardownFunc,
+	healthReporter agenthealth.ObservationReporter,
+	reconcile func(context.Context) error,
+	onRecoveryFailure func(agentstate.State, error) error,
+) error {
 	statePath = strings.TrimSpace(statePath)
 	if statePath == "" {
 		return fmt.Errorf("Agent state path is required")
@@ -373,7 +397,19 @@ func RunCollectorRuntimeWithHealth(
 		},
 	}
 	if err := recovery.Recover(ctx); err != nil {
+		if onRecoveryFailure != nil {
+			if recordErr := onRecoveryFailure(state, err); recordErr != nil {
+				return errors.Join(fmt.Errorf("recover interrupted Collector activation: %w", err), fmt.Errorf("record reconciliation recovery failure: %w", recordErr))
+			}
+		}
 		return fmt.Errorf("recover interrupted Collector activation: %w", err)
+	}
+	runtimeContext, cancelRuntime := context.WithCancel(ctx)
+	defer cancelRuntime()
+	var reconciliationDone chan error
+	if reconcile != nil {
+		reconciliationDone = make(chan error, 1)
+		go func() { reconciliationDone <- reconcile(runtimeContext) }()
 	}
 
 	coordinator := teardownCoordinator{
@@ -382,7 +418,7 @@ func RunCollectorRuntimeWithHealth(
 		lockPath: collector.ConfigPath + ".lifecycle",
 	}
 
-	return runtimeWatcher{
+	runtimeErr := runtimeWatcher{
 		store:          store,
 		gatewayRuntime: agentstate.NewCoreGatewayStore(statePath),
 		run:            supervisor.Run,
@@ -403,5 +439,12 @@ func RunCollectorRuntimeWithHealth(
 			return rollbackUnappliedConfiguration(ctx, store, configPath, generation)
 		},
 		healthReporter: healthReporter,
-	}.Run(ctx)
+	}.Run(runtimeContext)
+	cancelRuntime()
+	if reconciliationDone != nil {
+		if err := <-reconciliationDone; err != nil && !errors.Is(err, context.Canceled) && runtimeErr == nil {
+			return fmt.Errorf("Agent reconciliation service stopped: %w", err)
+		}
+	}
+	return runtimeErr
 }

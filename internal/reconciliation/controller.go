@@ -84,12 +84,14 @@ type Outcome struct {
 
 // Result reports what a reconciliation pass established without implying health or delivery.
 type Result struct {
-	DesiredRevision uint64
-	Status          Status
-	Attempt         uint64
-	CandidateDigest string
-	Generation      uint64
-	Stale           bool
+	DesiredRevision     uint64
+	DesiredGeneration   uint64
+	BaselineFingerprint string
+	Status              Status
+	Attempt             uint64
+	CandidateDigest     string
+	Generation          uint64
+	Stale               bool
 }
 
 type desiredReader interface {
@@ -152,17 +154,19 @@ func (c *Controller) Reconcile(ctx context.Context) (Result, error) {
 		return Result{}, Failure{Stage: "baseline", Code: "baseline_snapshot_failed", Class: FailureTransient, Err: err}
 	}
 	target := Target{DesiredRevision: snapshot.Revision, DesiredGeneration: baseline.DesiredGeneration, BaselineFingerprint: baseline.Fingerprint}
+	result := Result{DesiredRevision: target.DesiredRevision, DesiredGeneration: target.DesiredGeneration, BaselineFingerprint: target.BaselineFingerprint, Status: StatusPending}
 	attempt, err := c.Attempts.BeginAttempt(target)
 	if err != nil {
 		if errors.Is(err, agentstate.ErrReconciliationApplied) {
-			return Result{DesiredRevision: snapshot.Revision, Status: StatusApplied}, nil
+			result.Status = StatusApplied
+			return result, nil
 		}
 		if errors.Is(err, agentstate.ErrReconciliationAwaitingLifecycle) {
-			return Result{DesiredRevision: snapshot.Revision, Status: StatusPending}, nil
+			return result, nil
 		}
-		return Result{}, err
+		return result, err
 	}
-	result := Result{DesiredRevision: snapshot.Revision, Attempt: attempt.Number, Status: StatusPending}
+	result.Attempt = attempt.Number
 	finish := func(outcome Outcome, cause error) (Result, error) {
 		if saveErr := c.Attempts.FinishAttempt(attempt, outcome); saveErr != nil {
 			return result, errors.Join(cause, fmt.Errorf("persist reconciliation outcome: %w", saveErr))
@@ -320,8 +324,14 @@ func (c *Controller) reconcileLatest(ctx context.Context) (Result, error) {
 			return result, nil
 		}
 		desired, de := c.Desired.Snapshot()
+		if de != nil {
+			return result, Failure{Stage: "latest_desired", Code: "desired_snapshot_failed", Class: FailureTransient, Err: de}
+		}
 		baseline, be := c.Baseline.Snapshot()
-		if de != nil || be != nil || desired.Revision <= result.DesiredRevision && baseline.DesiredGeneration <= result.Generation {
+		if be != nil {
+			return result, Failure{Stage: "latest_baseline", Code: "baseline_snapshot_failed", Class: FailureTransient, Err: be}
+		}
+		if desired.Revision == result.DesiredRevision && baseline.DesiredGeneration == result.DesiredGeneration && baseline.Fingerprint == result.BaselineFingerprint {
 			return result, nil
 		}
 	}

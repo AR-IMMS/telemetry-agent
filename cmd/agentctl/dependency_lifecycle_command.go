@@ -56,12 +56,7 @@ func runDependencyLifecycle(ctx context.Context, args []string, stdout io.Writer
 		return 1
 	}
 
-	fmt.Fprintf(
-		stdout,
-		"Dependency %s scheduled: %s\n",
-		command,
-		names[0],
-	)
+	fmt.Fprintf(stdout, "Dependency %s desired state committed: %s (Agent Service convergence is pending)\n", command, names[0])
 
 	return 0
 

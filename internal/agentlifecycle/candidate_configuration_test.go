@@ -15,6 +15,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/config"
 	"github.com/ar-imms/telemetry-agent/internal/dependency"
 	"github.com/ar-imms/telemetry-agent/internal/identity"
+	"github.com/ar-imms/telemetry-agent/internal/supervisor"
 )
 
 func TestApplyCollectorCandidateUsesExistingLifecycleAndWaitsForReadiness(t *testing.T) {
@@ -52,6 +53,34 @@ func TestApplyCollectorCandidateUsesExistingLifecycleAndWaitsForReadiness(t *tes
 	}
 	if state.AppliedGeneration != outcome.Generation || state.PendingActivation != nil {
 		t.Fatalf("state after readiness = %#v", state)
+	}
+}
+
+func TestCandidateReadinessCommitsM2MappingEvenWithGatewayRuntime(t *testing.T) {
+	store, request, options, _, _ := candidateFixture(t)
+	outcome, err := ApplyCollectorCandidate(context.Background(), store, request, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	marks := make(chan uint64, 1)
+	gateway := &pendingGatewayRuntime{store: store, marks: marks}
+	watcher := runtimeWatcher{store: store, gatewayRuntime: gateway}
+	if err := watcher.onCollectorReady(context.Background(), snapshot, supervisor.Options{GatewayEndpoint: options.RenderValues["OTEL_GATEWAY_ENDPOINT"]}, outcome.Generation, options.ConfigPath, nil, func() {}); err != nil {
+		t.Fatalf("onCollectorReady() error = %v", err)
+	}
+	mapping := snapshot.PendingActivation.Candidate
+	got, generation, found, err := store.CandidateOutcome(mapping.DesiredSetRevision, mapping.BaselineFingerprint, mapping.CandidateDigest)
+	if err != nil || !found || got.Outcome != "applied" || generation != outcome.Generation {
+		t.Fatalf("candidate terminal evidence = %+v generation=%d found=%t error=%v", got, generation, found, err)
+	}
+	select {
+	case generation := <-marks:
+		t.Fatalf("candidate readiness used Gateway-only commit for generation %d", generation)
+	default:
 	}
 }
 

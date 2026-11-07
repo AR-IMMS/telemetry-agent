@@ -7,7 +7,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentlifecycle"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/dependency"
@@ -43,9 +42,7 @@ type managedDependencyLifecycleFunc func(
 	dependencyLifecycleAction,
 ) error
 type managedDependencyInstaller struct {
-	collectPlatform func() (identity.PlatformInfo, error)
-	install         dependencyInstallFunc
-	runner          bootstrap.CommandRunner
+	install dependencyInstallFunc
 }
 
 func newManagedDependencyInstaller(
@@ -53,19 +50,15 @@ func newManagedDependencyInstaller(
 	install dependencyInstallFunc,
 	runner bootstrap.CommandRunner,
 ) managedDependencyInstallFunc {
-	installer := managedDependencyInstaller{
-		collectPlatform: collectPlatform,
-		install:         install,
-		runner:          runner,
-	}
+	_ = collectPlatform // platform data is consumed by Agent Service reconciliation.
+	_ = runner
+	installer := managedDependencyInstaller{install: install}
 
 	return installer.Install
 }
 
 type managedDependencyLifecycle struct {
-	collectPlatform func() (identity.PlatformInfo, error)
-	runner          bootstrap.CommandRunner
-	enable          dependencyEnableFunc
+	enable dependencyEnableFunc
 }
 
 func newManagedDependencyLifecycle(
@@ -79,17 +72,15 @@ func newManagedDependencyLifecycle(
 		enable = enablers[0]
 	}
 
-	lifecycle := managedDependencyLifecycle{
-		collectPlatform: collectPlatform,
-		runner:          runner,
-		enable:          enable,
-	}
+	_ = collectPlatform // platform data is consumed by Agent Service reconciliation.
+	_ = runner
+	lifecycle := managedDependencyLifecycle{enable: enable}
 
 	return lifecycle.Apply
 }
 
-// Apply changes one dependency's desired lifecycle state and activates the
-// matching Collector configuration before reporting success.
+// Apply changes dependency state after preserving its ownership and teardown
+// rules. The Agent Service observes SQLite and performs unified convergence.
 func (l managedDependencyLifecycle) Apply(
 	ctx context.Context,
 	name string,
@@ -135,8 +126,6 @@ func (l managedDependencyLifecycle) Apply(
 		}
 	}()
 
-	var updatedState agentstate.State
-
 	switch action {
 	case dependencyLifecycleEnable:
 		normalizedName := strings.ToLower(strings.TrimSpace(name))
@@ -177,7 +166,7 @@ func (l managedDependencyLifecycle) Apply(
 			}
 		}
 
-		updatedState, err = store.Update(
+		_, err = store.Update(
 			func(state *agentstate.State) error {
 				_, err := state.EnableDependency(name)
 
@@ -186,7 +175,7 @@ func (l managedDependencyLifecycle) Apply(
 		)
 
 	case dependencyLifecycleDisable:
-		updatedState, err = store.Update(
+		_, err = store.Update(
 			func(state *agentstate.State) error {
 				_, err := state.DisableDependency(name)
 
@@ -195,7 +184,7 @@ func (l managedDependencyLifecycle) Apply(
 		)
 
 	case dependencyLifecycleUninstall:
-		updatedState, err = store.Update(
+		_, err = store.Update(
 			func(state *agentstate.State) error {
 				_, err := state.RequestUninstall(name)
 
@@ -221,57 +210,6 @@ func (l managedDependencyLifecycle) Apply(
 		return fmt.Errorf("release Agent lifecycle lock: %w", err)
 	}
 	lockHeld = false
-
-	if updatedState.DesiredGeneration ==
-		updatedState.ActivatedGeneration {
-		return nil
-	}
-
-	collectPlatform := l.collectPlatform
-	if collectPlatform == nil {
-		collectPlatform = identity.CollectPlatformInfo
-	}
-
-	platform, err := collectPlatform()
-	if err != nil {
-		return fmt.Errorf("collect platform information: %w", err)
-	}
-
-	catalog, err := defaultDependencyCatalog()
-	if err != nil {
-		return fmt.Errorf("build dependency catalog: %w", err)
-	}
-
-	layers, err := configurationLayers(
-		updatedState.Collector.ConfigRoot,
-		platform.OS,
-	)
-	if err != nil {
-		return err
-	}
-
-	if err := agentlifecycle.ApplyDesiredConfiguration(
-		ctx,
-		store,
-		agentlifecycle.CollectorConfigurationOptions{
-			Platform:   platform,
-			Catalog:    catalog,
-			Layers:     layers,
-			BinaryPath: updatedState.Collector.BinaryPath,
-			ConfigPath: updatedState.Collector.ConfigPath,
-			ValidationEnvironment: []string{
-				"OTEL_GATEWAY_ENDPOINT=" +
-					updatedState.Collector.GatewayEndpoint,
-			},
-			Runner:            l.runner,
-			GatewayRepository: agentstate.NewCoreGatewayStore(statePath),
-		},
-	); err != nil {
-		return fmt.Errorf(
-			"activate dependency lifecycle configuration: %w",
-			err,
-		)
-	}
 
 	return nil
 }
@@ -333,35 +271,6 @@ func (i managedDependencyInstaller) Install(
 		}
 	}()
 
-	collectPlatform := i.collectPlatform
-	if collectPlatform == nil {
-		collectPlatform = identity.CollectPlatformInfo
-	}
-
-	platform, err := collectPlatform()
-	if err != nil {
-		return dependency.InstallResult{}, fmt.Errorf(
-			"collect platform information: %w",
-			err,
-		)
-	}
-
-	catalog, err := defaultDependencyCatalog()
-	if err != nil {
-		return dependency.InstallResult{}, fmt.Errorf(
-			"build dependency catalog: %w",
-			err,
-		)
-	}
-
-	layers, err := configurationLayers(
-		state.Collector.ConfigRoot,
-		platform.OS,
-	)
-	if err != nil {
-		return dependency.InstallResult{}, err
-	}
-
 	result, err := i.install(ctx, name)
 	if err != nil {
 		return dependency.InstallResult{}, err
@@ -394,29 +303,6 @@ func (i managedDependencyInstaller) Install(
 		return dependency.InstallResult{}, fmt.Errorf("release Agent lifecycle lock: %w", err)
 	}
 	lockHeld = false
-
-	if err := agentlifecycle.ApplyDesiredConfiguration(
-		ctx,
-		store,
-		agentlifecycle.CollectorConfigurationOptions{
-			Platform:   platform,
-			Catalog:    catalog,
-			Layers:     layers,
-			BinaryPath: state.Collector.BinaryPath,
-			ConfigPath: state.Collector.ConfigPath,
-			ValidationEnvironment: []string{
-				"OTEL_GATEWAY_ENDPOINT=" +
-					state.Collector.GatewayEndpoint,
-			},
-			Runner:            i.runner,
-			GatewayRepository: agentstate.NewCoreGatewayStore(statePath),
-		},
-	); err != nil {
-		return dependency.InstallResult{}, fmt.Errorf(
-			"activate dependency configuration: %w",
-			err,
-		)
-	}
 
 	return result, nil
 }
