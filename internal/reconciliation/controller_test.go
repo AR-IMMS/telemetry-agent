@@ -19,6 +19,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/dependency"
 	"github.com/ar-imms/telemetry-agent/internal/identity"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
+	redisintegration "github.com/ar-imms/telemetry-agent/internal/integration/redis"
 	"gopkg.in/yaml.v3"
 )
 
@@ -178,7 +179,7 @@ func TestPeriodicSQLitePollingDetectsCommittedCrossProcessDesiredChange(t *testi
 	}
 }
 
-func TestGenericIntegrationPlugUnplugUsesCompleteM2Candidate(t *testing.T) {
+func TestRedisAndGenericIntegrationPlugUnplugUsesCompleteM2Candidate(t *testing.T) {
 	root := t.TempDir()
 	statePath := filepath.Join(root, "state.db")
 	configPath := filepath.Join(root, "otel.yaml")
@@ -264,18 +265,26 @@ service:
 			return integration.NewContribution([]integration.ComponentIntent{intent}), nil
 		},
 	}
-	registry, err := integration.NewRegistry(definition)
+	redisDefinition := redisintegration.Definition()
+	registry, err := integration.NewRegistry(definition, redisDefinition)
 	if err != nil {
 		t.Fatal(err)
 	}
 	resolver := integration.NewResolver(registry)
 	repository := store.IntegrationRepository()
 	service := configuration.NewIntegrationService(resolver, repository)
-	instance, _, err := service.Put(integration.IntegrationInstance{ID: "postgres-a", DefinitionID: definition.ID, DefinitionVersion: definition.Version, Configuration: map[string]any{"endpoint": "127.0.0.1:5432"}, Enabled: true}, 0)
+	_, _, err = service.Put(integration.IntegrationInstance{ID: "postgres-a", DefinitionID: definition.ID, DefinitionVersion: definition.Version, Configuration: map[string]any{"endpoint": "127.0.0.1:5432"}, Enabled: true}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	capabilities, err := collectorruntime.NewCatalog("0.160.0", "fixture-manifest", []collectorruntime.Capability{{ID: "fixture-receiver-metrics", NativeName: "prometheus", Kind: "receiver", OS: []string{platform.OS}, Signals: []string{"metrics"}, Pipeline: "metrics"}})
+	redisInstance, _, err := service.Put(integration.IntegrationInstance{ID: "redis-a", DefinitionID: redisDefinition.ID, DefinitionVersion: redisDefinition.Version, Configuration: map[string]any{"endpoint": "127.0.0.1:6379"}, Enabled: true}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	capabilities, err := collectorruntime.NewCatalog("0.160.0", "fixture-manifest", []collectorruntime.Capability{
+		{ID: "fixture-receiver-metrics", NativeName: "prometheus", Kind: "receiver", OS: []string{platform.OS}, Signals: []string{"metrics"}, Pipeline: "metrics"},
+		{ID: "otel.receiver.redis.metrics", NativeName: "redis", Kind: "receiver", OS: []string{platform.OS}, Signals: []string{"metrics"}, Pipeline: "metrics"},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,8 +299,8 @@ service:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(active), "prometheus/i-") || !strings.Contains(string(active), "hostmetrics") || !strings.Contains(string(active), "127.0.0.1:4317") || !pipelineHasReceiver(t, active, "prometheus/fixture_exporter") {
-		t.Fatalf("plug candidate omitted integration, managed dependency, host telemetry, or Gateway:\n%s", active)
+	if !strings.Contains(string(active), "prometheus/i-") || !strings.Contains(string(active), "redis/i-") || !strings.Contains(string(active), "hostmetrics") || !strings.Contains(string(active), "127.0.0.1:4317") || !pipelineHasReceiver(t, active, "prometheus/fixture_exporter") {
+		t.Fatalf("plug candidate omitted Redis/PostgreSQL-like integrations, managed dependency, host telemetry, or Gateway:\n%s", active)
 	}
 	if _, err := store.Update(func(state *agentstate.State) error {
 		_, err := state.DisableDependency("fixture-exporter")
@@ -307,8 +316,8 @@ service:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(active), "prometheus/i-") || !strings.Contains(string(active), "hostmetrics") || !strings.Contains(string(active), "127.0.0.1:4317") || pipelineHasReceiver(t, active, "prometheus/fixture_exporter") {
-		t.Fatalf("dependency disable disturbed the Integration, host telemetry, Gateway, or retained dependency pipeline:\n%s", active)
+	if !strings.Contains(string(active), "prometheus/i-") || !strings.Contains(string(active), "redis/i-") || !strings.Contains(string(active), "hostmetrics") || !strings.Contains(string(active), "127.0.0.1:4317") || pipelineHasReceiver(t, active, "prometheus/fixture_exporter") {
+		t.Fatalf("dependency disable disturbed either Integration, host telemetry, Gateway, or retained dependency pipeline:\n%s", active)
 	}
 	if _, err := store.Update(func(state *agentstate.State) error {
 		_, err := state.EnableDependency("fixture-exporter")
@@ -320,8 +329,8 @@ service:
 	if err != nil || dependencyEnabled.Status != StatusApplied || dependencyEnabled.DesiredRevision != first.DesiredRevision {
 		t.Fatalf("managed dependency enable reconciliation=%+v err=%v", dependencyEnabled, err)
 	}
-	instance.Enabled = false
-	if _, _, err := service.Put(instance, instance.Revision); err != nil {
+	redisInstance.Enabled = false
+	if _, _, err := service.Put(redisInstance, redisInstance.Revision); err != nil {
 		t.Fatal(err)
 	}
 	second, err := controller.Reconcile(context.Background())
@@ -332,8 +341,8 @@ service:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(active), "prometheus/i-") || !strings.Contains(string(active), "hostmetrics") || !strings.Contains(string(active), "127.0.0.1:4317") || !pipelineHasReceiver(t, active, "prometheus/fixture_exporter") {
-		t.Fatalf("unplug candidate retained Integration or removed managed dependency, host telemetry, or Gateway:\n%s", active)
+	if strings.Contains(string(active), "redis/i-") || !strings.Contains(string(active), "prometheus/i-") || !strings.Contains(string(active), "hostmetrics") || !strings.Contains(string(active), "127.0.0.1:4317") || !pipelineHasReceiver(t, active, "prometheus/fixture_exporter") {
+		t.Fatalf("Redis unplug removed the PostgreSQL-like Integration, managed dependency, host telemetry, or Gateway, or retained Redis:\n%s", active)
 	}
 }
 
