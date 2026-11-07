@@ -66,3 +66,13 @@ func TestComponentIntentAndContributionCopyMutableData(t *testing.T) {
 		t.Fatalf("secret error = %v", err)
 	}
 }
+
+func TestComponentIntentAcceptsDottedRuntimeCapabilityID(t *testing.T) {
+	intent, err := NewComponentIntent("otel.receiver.redis.metrics", map[string]any{"endpoint": "127.0.0.1:6379"})
+	if err != nil {
+		t.Fatalf("NewComponentIntent() error = %v", err)
+	}
+	if intent.Capability() != "otel.receiver.redis.metrics" {
+		t.Fatalf("capability = %q", intent.Capability())
+	}
+}

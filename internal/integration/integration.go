@@ -11,6 +11,7 @@ import (
 
 var (
 	definitionIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
+	capabilityIDPattern = regexp.MustCompile(`^[a-z][a-z0-9._-]{0,127}$`)
 	versionPattern      = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
 )
 
@@ -31,7 +32,7 @@ type ComponentIntent struct {
 // NewComponentIntent validates and copies JSON configuration into an immutable intent.
 func NewComponentIntent(capability string, config any) (ComponentIntent, error) {
 	capability = strings.TrimSpace(capability)
-	if !definitionIDPattern.MatchString(capability) {
+	if !capabilityIDPattern.MatchString(capability) {
 		return ComponentIntent{}, fmt.Errorf("%w: malformed capability ID", ErrInvalidContribution)
 	}
 	b, err := json.Marshal(config)

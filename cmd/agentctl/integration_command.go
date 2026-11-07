@@ -15,7 +15,9 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentlifecycle"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
+	"github.com/ar-imms/telemetry-agent/internal/identity"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	"github.com/ar-imms/telemetry-agent/internal/reconciliation"
 )
@@ -98,7 +100,7 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 			fmt.Fprintln(stderr, "usage error: --settings must be a JSON object")
 			return 2
 		}
-		registry, err := integration.NewRegistry()
+		registry, err := productionIntegrationRegistryForHost()
 		if err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
@@ -136,7 +138,7 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 			return integrationCommandError(stderr, command, sql.ErrNoRows)
 		}
 		instance.Enabled = command == "enable"
-		registry, err := integration.NewRegistry()
+		registry, err := productionIntegrationRegistryForHost()
 		if err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
@@ -235,6 +237,18 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 		return usageIntegration(stderr, "unknown integration command "+command)
 	}
 	return 0
+}
+
+func productionIntegrationRegistryForHost() (integration.Registry, error) {
+	platform, err := identity.CollectPlatformInfo()
+	if err != nil {
+		return integration.Registry{}, err
+	}
+	catalog, err := collectorruntime.StaticCatalog(platform)
+	if err != nil {
+		return integration.Registry{}, err
+	}
+	return productionIntegrationRegistry(catalog)
 }
 
 func usageIntegration(w io.Writer, message string) int {
