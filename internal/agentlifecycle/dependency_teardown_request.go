@@ -8,8 +8,8 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 )
 
-// RequestDependencyUninstalls removes the selected dependency receivers from
-// desired Collector configuration and activates one shared teardown generation.
+// RequestDependencyUninstalls records teardown intent; the Agent Service's
+// reconciliation loop removes receivers before runtime applies owned cleanup.
 func RequestDependencyUninstalls(
 	ctx context.Context,
 	store agentstate.Repository,
@@ -40,12 +40,7 @@ func RequestDependencyUninstalls(
 		return nil, nil
 	}
 
-	if err := ApplyDesiredConfiguration(ctx, store, options); err != nil {
-		return nil, fmt.Errorf(
-			"activate dependency uninstall configuration: %w",
-			err,
-		)
-	}
+	_ = options // retained for source compatibility; activation belongs to the Agent Service.
 
 	return changed, nil
 }

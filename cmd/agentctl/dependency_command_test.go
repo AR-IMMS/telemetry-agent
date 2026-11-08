@@ -81,7 +81,7 @@ func TestRunDependencyDisablePassesExplicitStatePathToManagedLifecycle(
 			lifecycleCalls,
 		)
 	}
-	if stdout.String() != "Dependency disable scheduled: windows-exporter\n" {
+	if stdout.String() != "Dependency disable desired state committed: windows-exporter (Agent Service convergence is pending)\n" {
 		t.Fatalf("runDependency(disable) stdout = %q", stdout.String())
 	}
 }
@@ -153,7 +153,7 @@ func TestRunDependencyUninstallPassesExplicitStatePathToManagedLifecycle(
 			lifecycleCalls,
 		)
 	}
-	if stdout.String() != "Dependency uninstall scheduled: windows-exporter\n" {
+	if stdout.String() != "Dependency uninstall desired state committed: windows-exporter (Agent Service convergence is pending)\n" {
 		t.Fatalf("runDependency(uninstall) stdout = %q", stdout.String())
 	}
 }

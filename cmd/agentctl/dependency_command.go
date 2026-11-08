@@ -20,9 +20,9 @@ Commands:
   pending [--state-path <path>]      List scheduled dependency teardowns.
   configure [--state-path <path>]     Configure enabled managed dependencies in a terminal.
   disable <dependency-name> [--state-path <path>]
-                                    Disable safely after Collector readiness.
+                                    Persist desired disable; Agent Service converges asynchronously.
   uninstall <dependency-name> [--state-path <path>]
-                                    Uninstall safely after Collector readiness.
+                                    Persist teardown request; Agent Service applies it asynchronously.
   help                              Show this help.
 `)
 }

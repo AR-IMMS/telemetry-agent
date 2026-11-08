@@ -52,6 +52,21 @@ func rollbackUnappliedConfiguration(
 	} else if err := bootstrap.RestoreLastKnownGoodConfig(configPath); err != nil {
 		return err
 	}
+	if state.PendingActivation != nil && state.PendingActivation.Generation == generation && state.PendingActivation.Candidate != nil {
+		candidateStore, ok := store.(interface {
+			CompleteCandidateFailure(uint64, string, string, string) error
+		})
+		if !ok {
+			return fmt.Errorf("candidate lifecycle outcome repository is required")
+		}
+		if err := candidateStore.CompleteCandidateFailure(generation, "readiness", "failed", "succeeded"); err != nil {
+			return fmt.Errorf("record candidate activation rollback: %w", err)
+		}
+		if recoveryPath != "" {
+			_ = os.Remove(recoveryPath)
+		}
+		return nil
+	}
 	_, err = store.Update(func(current *agentstate.State) error {
 		if current.ActivatedGeneration != generation ||
 			current.AppliedGeneration >= generation {

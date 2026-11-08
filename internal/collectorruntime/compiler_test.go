@@ -7,12 +7,14 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/config"
 	"github.com/ar-imms/telemetry-agent/internal/identity"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
+	redisintegration "github.com/ar-imms/telemetry-agent/internal/integration/redis"
 	"gopkg.in/yaml.v3"
 )
 
@@ -198,6 +200,61 @@ func TestCandidateBytesAreDefensivelyCopied(t *testing.T) {
 	first[0] ^= 0xff
 	if bytes.Equal(first, candidate.Bytes()) {
 		t.Fatal("mutating returned bytes changed immutable candidate content")
+	}
+}
+
+func TestRedisInstancesCompileToIndependentStableReceiverIDs(t *testing.T) {
+	definition := redisintegration.Definition()
+	registry, err := integration.NewRegistry(definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver := integration.NewResolver(registry)
+	var resolved []integration.ResolvedInstance
+	for _, id := range []string{"redis-a", "redis-b"} {
+		instance, err := resolver.Resolve(integration.IntegrationInstance{
+			ID: id, DefinitionID: definition.ID, DefinitionVersion: definition.Version,
+			Enabled: true, Configuration: map[string]any{"endpoint": "127.0.0.1:6379"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		resolved = append(resolved, instance)
+	}
+	input := testInput(t)
+	input.Platform = identity.PlatformInfo{OS: "windows", Architecture: "amd64"}
+	catalog, err := StaticCatalog(input.Platform)
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate, err := NewCompiler(catalog).Compile(input, resolved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(candidate.Bytes())
+	for _, id := range []string{"redis-a", "redis-b"} {
+		want := "redis/i-" + stableInstanceSuffix(id)
+		if !strings.Contains(content, want) {
+			t.Errorf("candidate missing independent Redis receiver %q", want)
+		}
+	}
+}
+
+func TestCompilerFailsClosedWhenCatalogDoesNotAuthorizeRedis(t *testing.T) {
+	definition := redisintegration.Definition()
+	registry, err := integration.NewRegistry(definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := integration.NewResolver(registry).Resolve(integration.IntegrationInstance{
+		ID: "redis-a", DefinitionID: definition.ID, DefinitionVersion: definition.Version,
+		Enabled: true, Configuration: map[string]any{"endpoint": "127.0.0.1:6379"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewCompiler(testCatalog(t)).Compile(testInput(t), []integration.ResolvedInstance{resolved}); !errors.Is(err, ErrUnsupportedCapability) {
+		t.Fatalf("Redis compile error = %v, want unsupported capability", err)
 	}
 }
 

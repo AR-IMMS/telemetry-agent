@@ -90,11 +90,7 @@ func runDependencyInstall(ctx context.Context, args []string, stdout io.Writer, 
 				return 1
 			}
 
-			fmt.Fprintf(
-				stdout,
-				"Dependency installed: %s\n",
-				result.Name,
-			)
+			fmt.Fprintf(stdout, "Dependency installed; monitoring change committed and awaiting Agent Service convergence: %s\n", result.Name)
 
 			continue
 		}

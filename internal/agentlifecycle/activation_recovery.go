@@ -44,6 +44,19 @@ func (r pendingActivationRecovery) Recover(ctx context.Context) error {
 		if err := r.recover(pending.RecoveryPath); err != nil {
 			return fmt.Errorf("restore interrupted Collector activation: %w", err)
 		}
+		if pending.Candidate != nil {
+			candidateStore, ok := r.store.(interface {
+				CompleteCandidateFailure(uint64, string, string, string) error
+			})
+			if !ok {
+				return fmt.Errorf("candidate lifecycle outcome repository is required")
+			}
+			if err := candidateStore.CompleteCandidateFailure(pending.Generation, "crash_recovery", "interrupted", "succeeded"); err != nil {
+				return fmt.Errorf("record interrupted candidate activation: %w", err)
+			}
+			_ = os.Remove(pending.RecoveryPath)
+			return nil
+		}
 	}
 	if pending.Generation > state.AppliedGeneration &&
 		pending.Generation <= state.ActivatedGeneration {
@@ -55,6 +68,19 @@ func (r pendingActivationRecovery) Recover(ctx context.Context) error {
 		}
 		if err := r.restoreLastKnownGood(pending.RecoveryPath); err != nil {
 			return fmt.Errorf("restore last-known-good Collector config after interrupted readiness: %w", err)
+		}
+		if pending.Candidate != nil {
+			candidateStore, ok := r.store.(interface {
+				CompleteCandidateFailure(uint64, string, string, string) error
+			})
+			if !ok {
+				return fmt.Errorf("candidate lifecycle outcome repository is required")
+			}
+			if err := candidateStore.CompleteCandidateFailure(pending.Generation, "crash_readiness", "interrupted", "succeeded"); err != nil {
+				return fmt.Errorf("record interrupted candidate readiness: %w", err)
+			}
+			_ = os.Remove(pending.RecoveryPath)
+			return nil
 		}
 		_, err = r.store.Update(func(current *agentstate.State) error {
 			if current.PendingActivation == nil || current.PendingActivation.Generation != pending.Generation {

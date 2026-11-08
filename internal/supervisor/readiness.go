@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"runtime"
 	"syscall"
 	"time"
 )
@@ -137,8 +138,19 @@ func ensureReadinessEndpointVacant(ctx context.Context, endpoint string) error {
 		_ = connection.Close()
 		return fmt.Errorf("health listener is still serving before candidate launch")
 	}
-	if errors.Is(err, syscall.ECONNREFUSED) {
+	if isConnectionRefused(err) {
 		return nil
 	}
 	return fmt.Errorf("cannot prove that health listener is stopped: %w", err)
+}
+
+func isConnectionRefused(err error) bool {
+	if errors.Is(err, syscall.ECONNREFUSED) {
+		return true
+	}
+	if runtime.GOOS != "windows" {
+		return false
+	}
+	var errno syscall.Errno
+	return errors.As(err, &errno) && errno == syscall.Errno(10061)
 }

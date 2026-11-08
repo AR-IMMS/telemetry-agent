@@ -203,10 +203,12 @@ func defaultDependencies() dependencies {
 			},
 			runDependencyConfigureProgram(os.Stdin),
 		),
-		listenStatus:                  net.Listen,
-		serveStatus:                   agenthealth.ServeStatus,
-		runCollectorRuntimeWithHealth: agentlifecycle.RunCollectorRuntimeWithHealth,
-		fetchHealthStatus:             defaultFetchHealthStatus,
+		listenStatus: net.Listen,
+		serveStatus:  agenthealth.ServeStatus,
+		runCollectorRuntimeWithHealth: func(ctx context.Context, statePath string, teardown dependencyTeardownFunc, reporter agenthealth.ObservationReporter) error {
+			return runRuntimeWithReconciliation(ctx, statePath, teardown, reporter, runner)
+		},
+		fetchHealthStatus: defaultFetchHealthStatus,
 	}
 }
 

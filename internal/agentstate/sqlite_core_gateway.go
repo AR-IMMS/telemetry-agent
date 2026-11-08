@@ -226,6 +226,10 @@ func (s SQLiteStore) MarkGatewayApplied(generation uint64, endpoint string) erro
 	if err != nil {
 		return err
 	}
+	var candidate *CandidateMapping
+	if state.PendingActivation != nil && state.PendingActivation.Generation == generation {
+		candidate = state.PendingActivation.Candidate
+	}
 	if err := state.MarkGenerationApplied(generation); err != nil {
 		return err
 	}
@@ -235,6 +239,13 @@ func (s SQLiteStore) MarkGatewayApplied(generation uint64, endpoint string) erro
 	}
 	if _, err := tx.Exec(`UPDATE agent_state SET payload = ?, updated_at = ? WHERE id = 1`, content, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
 		return fmt.Errorf("persist Gateway applied generation: %w", err)
+	}
+	if candidate != nil {
+		mapping := *candidate
+		mapping.Outcome, mapping.Stage, mapping.RecoveryResult = "applied", "readiness", "not_needed"
+		if err := writeCandidateJournal(tx, generation, mapping); err != nil {
+			return err
+		}
 	}
 	row, exists, err := loadCoreGatewayRow(tx)
 	if err != nil {

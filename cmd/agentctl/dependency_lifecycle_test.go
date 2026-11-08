@@ -59,7 +59,7 @@ func TestManagedDependencyInstallerRequiresBootstrapBeforePhysicalInstall(
 	}
 }
 
-func TestManagedDependencyInstallerActivatesEnabledDependencyConfiguration(
+func TestManagedDependencyInstallerPersistsEnabledDependencyForServiceConvergence(
 	t *testing.T,
 ) {
 	configRoot := t.TempDir()
@@ -222,25 +222,15 @@ service:
 			state.DesiredGeneration,
 		)
 	}
-	if state.ActivatedGeneration != 1 {
+	if state.ActivatedGeneration != 0 {
 		t.Fatalf(
-			"ActivatedGeneration = %d, want 1",
+			"ActivatedGeneration = %d, want 0 until Agent Service convergence",
 			state.ActivatedGeneration,
 		)
 	}
 
-	rendered, err := os.ReadFile(targetPath)
-	if err != nil {
-		t.Fatalf("read activated config: %v", err)
-	}
-	if !strings.Contains(
-		string(rendered),
-		"- prometheus/windows_exporter",
-	) {
-		t.Fatalf(
-			"activated config does not include Windows Exporter:\n%s",
-			rendered,
-		)
+	if _, err := os.Stat(targetPath); !os.IsNotExist(err) {
+		t.Fatalf("dependency install wrote Collector config before Agent Service convergence: stat error=%v", err)
 	}
 }
 
@@ -316,7 +306,7 @@ func TestRunDependencyInstallPassesExplicitStatePathToManagedInstaller(
 			managedCalls,
 		)
 	}
-	if stdout.String() != "Dependency installed: windows-exporter\n" {
+	if stdout.String() != "Dependency installed; monitoring change committed and awaiting Agent Service convergence: windows-exporter\n" {
 		t.Fatalf(
 			"runDependency(install) stdout = %q",
 			stdout.String(),
@@ -359,7 +349,7 @@ func TestManagedDependencyLifecycleRequiresBootstrapBeforeChangingState(
 	}
 }
 
-func TestManagedDependencyLifecycleDisablesDependencyAndActivatesConfiguration(
+func TestManagedDependencyLifecyclePersistsDisableForServiceConvergence(
 	t *testing.T,
 ) {
 	configRoot := t.TempDir()
@@ -474,29 +464,19 @@ service:
 			dependency.PendingTeardown.Generation,
 		)
 	}
-	if state.ActivatedGeneration != 2 {
+	if state.ActivatedGeneration != 1 {
 		t.Fatalf(
-			"ActivatedGeneration = %d, want 2",
+			"ActivatedGeneration = %d, want 1 until Agent Service convergence",
 			state.ActivatedGeneration,
 		)
 	}
 
-	rendered, err := os.ReadFile(targetPath)
-	if err != nil {
-		t.Fatalf("read activated config: %v", err)
-	}
-	if strings.Contains(
-		string(rendered),
-		"- prometheus/windows_exporter",
-	) {
-		t.Fatalf(
-			"activated metrics pipeline still uses Windows Exporter:\n%s",
-			rendered,
-		)
+	if _, err := os.Stat(targetPath); !os.IsNotExist(err) {
+		t.Fatalf("dependency disable wrote Collector config before Agent Service convergence: stat error=%v", err)
 	}
 }
 
-func TestManagedDependencyLifecycleEnablesOwnedDependencyAndActivatesConfiguration(
+func TestManagedDependencyLifecycleEnablesOwnedDependencyForServiceConvergence(
 	t *testing.T,
 ) {
 	configRoot := t.TempDir()
@@ -642,25 +622,15 @@ service:
 			state.DesiredGeneration,
 		)
 	}
-	if state.ActivatedGeneration != 2 {
+	if state.ActivatedGeneration != 1 {
 		t.Fatalf(
-			"ActivatedGeneration = %d, want 2",
+			"ActivatedGeneration = %d, want 1 until Agent Service convergence",
 			state.ActivatedGeneration,
 		)
 	}
 
-	rendered, err := os.ReadFile(targetPath)
-	if err != nil {
-		t.Fatalf("read activated config: %v", err)
-	}
-	if !strings.Contains(
-		string(rendered),
-		"- prometheus/windows_exporter",
-	) {
-		t.Fatalf(
-			"activated metrics pipeline does not use Windows Exporter:\n%s",
-			rendered,
-		)
+	if _, err := os.Stat(targetPath); !os.IsNotExist(err) {
+		t.Fatalf("dependency enable wrote Collector config before Agent Service convergence: stat error=%v", err)
 	}
 }
 

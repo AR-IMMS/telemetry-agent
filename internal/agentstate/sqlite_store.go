@@ -87,6 +87,9 @@ func (s SQLiteStore) Update(mutate StateMutation) (State, error) {
 	if err := mutate(&state); err != nil {
 		return State{}, err
 	}
+	if previous.PendingActivation != nil && previous.PendingActivation.Candidate != nil && state.AppliedGeneration > previous.AppliedGeneration {
+		return State{}, ErrCandidateTerminalRequired
+	}
 	content, err := json.Marshal(state)
 	if err != nil {
 		return State{}, fmt.Errorf("encode Agent state: %w", err)

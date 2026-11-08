@@ -45,7 +45,16 @@ func ensureSQLiteSchema(db *sql.DB) error {
 	if err := migrateEnrollmentAttempts(db); err != nil {
 		return err
 	}
-	return migrateIntegrationDesiredState(db)
+	if err := migrateIntegrationDesiredState(db); err != nil {
+		return err
+	}
+	if err := migrateCandidateActivationMapping(db); err != nil {
+		return err
+	}
+	if err := migrateCandidateAttemptHistory(db); err != nil {
+		return err
+	}
+	return migrateReconciliationDiagnostics(db)
 }
 
 // migrateInstallationIdentity atomically creates the identity schema and its
@@ -172,6 +181,24 @@ func recordActivationTransition(
 	}
 	if outcome == "" {
 		return nil
+	}
+	var candidate *CandidateMapping
+	if current.PendingActivation != nil && current.PendingActivation.Generation == generation {
+		candidate = current.PendingActivation.Candidate
+	}
+	if candidate == nil && previous.PendingActivation != nil && previous.PendingActivation.Generation == generation {
+		candidate = previous.PendingActivation.Candidate
+	}
+	if candidate != nil {
+		mapping := *candidate
+		mapping.Outcome = outcome
+		if outcome == "activated" {
+			mapping.Stage = "activation"
+		} else {
+			mapping.Stage = "rollback"
+			mapping.RecoveryResult = "recovered"
+		}
+		return writeCandidateJournal(tx, generation, mapping)
 	}
 	if _, err := tx.Exec(
 		`INSERT INTO activation_journal (generation, outcome, updated_at) VALUES (?, ?, ?)
