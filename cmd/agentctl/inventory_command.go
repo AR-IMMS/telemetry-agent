@@ -41,6 +41,22 @@ func runInventory(ctx context.Context, args []string, stdout, stderr io.Writer) 
 		fmt.Fprintln(stderr, "usage error: --state-path must not be empty")
 		return 2
 	}
+	switch command {
+	case "list", "status":
+		if flags.NArg() != 0 {
+			fmt.Fprintf(stderr, "usage error: inventory %s does not accept positional arguments\n", command)
+			return 2
+		}
+	case "inspect":
+		if flags.NArg() != 1 {
+			fmt.Fprintln(stderr, "usage error: inventory inspect requires provider/instance/resource-id")
+			return 2
+		}
+	default:
+		fmt.Fprintf(stderr, "usage error: unknown inventory command %q\n", command)
+		writeInventoryHelp(stderr)
+		return 2
+	}
 	if err := ctx.Err(); err != nil {
 		fmt.Fprintf(stderr, "inventory %s: %v\n", command, err)
 		return 1
@@ -52,20 +68,12 @@ func runInventory(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	}
 	switch command {
 	case "list":
-		if flags.NArg() != 0 {
-			fmt.Fprintln(stderr, "usage error: inventory list does not accept positional arguments")
-			return 2
-		}
 		fmt.Fprintln(stdout, "PROVIDER\tRESOURCE\tKIND\tNAME\tSTATE\tPRESENCE\tFRESHNESS")
 		for _, resource := range snapshot.Resources {
 			fmt.Fprintf(stdout, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", resource.Key.Provider, resource.Key.String(), resource.Kind, resource.DisplayName, resource.LifecycleState, resource.Presence, resource.FreshnessAt(time.Now().UTC(), discovery.DefaultPolicy().StaleAfter))
 		}
 		return 0
 	case "inspect":
-		if flags.NArg() != 1 {
-			fmt.Fprintln(stderr, "usage error: inventory inspect requires provider/instance/resource-id")
-			return 2
-		}
 		key := flags.Arg(0)
 		for _, resource := range snapshot.Resources {
 			if resource.Key.String() == key {
@@ -93,10 +101,6 @@ func runInventory(ctx context.Context, args []string, stdout, stderr io.Writer) 
 		fmt.Fprintf(stderr, "inventory inspect: resource %q not found\n", key)
 		return 1
 	case "status":
-		if flags.NArg() != 0 {
-			fmt.Fprintln(stderr, "usage error: inventory status does not accept positional arguments")
-			return 2
-		}
 		fmt.Fprintf(stdout, "Inventory revision: %d\nResources: %d\n", snapshot.Revision, len(snapshot.Resources))
 		if len(snapshot.Providers) == 0 {
 			fmt.Fprintln(stdout, "Docker discovery: disabled (no explicit endpoint configured)")
@@ -111,11 +115,8 @@ func runInventory(ctx context.Context, args []string, stdout, stderr io.Writer) 
 				provider.ProviderID, provider.ProviderInstanceID, state, provider.ResourceCount, formatInventoryTime(provider.LastAttemptAt), formatInventoryTime(provider.LastSuccessAt), emptyAsNone(provider.LastErrorCode))
 		}
 		return 0
-	default:
-		fmt.Fprintf(stderr, "usage error: unknown inventory command %q\n", command)
-		writeInventoryHelp(stderr)
-		return 2
 	}
+	return 2
 }
 
 func formatInventoryTime(value time.Time) string {

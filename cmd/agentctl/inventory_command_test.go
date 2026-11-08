@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -57,10 +58,14 @@ func TestInventoryCommandsReadPersistedSnapshot(t *testing.T) {
 }
 
 func TestInventoryCommandsRejectInvalidArgumentsAndHonorCanceledContext(t *testing.T) {
+	invalidDatabasePath := filepath.Join(t.TempDir(), "not-a-database.db")
+	if err := os.WriteFile(invalidDatabasePath, []byte("not a SQLite database"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for _, args := range [][]string{
-		{"list", "unexpected"},
-		{"inspect"},
-		{"unknown"},
+		{"list", "--state-path", invalidDatabasePath, "unexpected"},
+		{"inspect", "--state-path", invalidDatabasePath},
+		{"unknown", "--state-path", invalidDatabasePath},
 		{"list", "--state-path", " "},
 	} {
 		var stdout, stderr bytes.Buffer
