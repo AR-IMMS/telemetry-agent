@@ -30,6 +30,7 @@ Commands:
   dependency  Manage telemetry dependencies.
   integration Manage desired Integration instances and local convergence diagnostics.
   run         Run the OpenTelemetry Collector under supervision.
+  inventory   Read persisted resource discovery inventory.
   status      Show live Agent health.
   enroll      Bind this Agent installation to an AR-IMMS Core node.
   install     Install and start the Agent as a managed service.
@@ -83,6 +84,7 @@ Commands:
   dependency  Manage telemetry dependencies.
   integration Manage desired Integration instances and local convergence diagnostics.
   run         Run the OpenTelemetry Collector under supervision.
+  inventory   Read persisted resource discovery inventory.
   status      Show live Agent health.
   enroll      Bind this Agent installation to an AR-IMMS Core node.
   install     Install and start the Agent as a managed service.
@@ -132,6 +134,7 @@ Commands:
   dependency  Manage telemetry dependencies.
   integration Manage desired Integration instances and local convergence diagnostics.
   run         Run the OpenTelemetry Collector under supervision.
+  inventory   Read persisted resource discovery inventory.
   status      Show live Agent health.
   enroll      Bind this Agent installation to an AR-IMMS Core node.
   install     Install and start the Agent as a managed service.

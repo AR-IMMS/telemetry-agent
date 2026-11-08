@@ -112,13 +112,14 @@ func runRuntimeWithReconciliation(ctx context.Context, statePath string, teardow
 	if err != nil {
 		return fmt.Errorf("compose Agent reconciliation: %w", err)
 	}
+	inventory := newDockerDiscoveryCoordinator(statePath)
 	return agentlifecycle.RunCollectorRuntimeWithReconciliation(
 		ctx,
 		statePath,
 		teardown,
 		reporter,
 		func(ctx context.Context) error {
-			return controller.Run(ctx, reconciliationPollInterval)
+			return runRuntimeControlLoops(ctx, func(ctx context.Context) error { return controller.Run(ctx, reconciliationPollInterval) }, inventory)
 		},
 		func(state agentstate.State, _ error) error {
 			return recordRecoveryFailure(state)
