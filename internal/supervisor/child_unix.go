@@ -15,6 +15,12 @@ func configureChildCommand(command *exec.Cmd) {
 	}
 }
 
+// isExpectedGracefulStopExit reports whether a process exit is the expected
+// result of the supervisor's graceful shutdown request.
+func isExpectedGracefulStopExit(ExitResult) bool {
+	return false
+}
+
 func requestGracefulStop(command *exec.Cmd) error {
 	if command.Process == nil {
 		return fmt.Errorf("Collector process has not started")

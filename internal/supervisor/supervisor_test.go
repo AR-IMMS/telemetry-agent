@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -56,6 +57,41 @@ func TestSupervisorStopsChildAfterContextCancellation(t *testing.T) {
 
 	case <-time.After(time.Second):
 		t.Fatal("supervisor did not finish after child exit")
+	}
+}
+
+func TestSupervisorAcceptsWindowsControlBreakExitDuringShutdown(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows CTRL_BREAK exit status is platform-specific")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	child := &fakeChild{
+		exited:        make(chan ExitResult, 1),
+		stopRequested: make(chan struct{}),
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- runWith(ctx, Options{
+			BinaryPath: "otelcol-contrib.exe", ConfigPath: "otel.yaml",
+			HealthEndpoint: "http://127.0.0.1:13133", GatewayEndpoint: "gateway.example:4317",
+			StartupTimeout: time.Second, ShutdownTimeout: time.Second,
+		}, fakeStarter{child: child}, &http.Client{})
+	}()
+	cancel()
+	select {
+	case <-child.stopRequested:
+	case <-time.After(time.Second):
+		t.Fatal("supervisor did not request graceful shutdown")
+	}
+	child.exited <- ExitResult{Code: int(uint32(0xC000013A)), Err: errors.New("exit status 0xc000013a")}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run() error = %v, want successful CTRL_BREAK shutdown", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("supervisor did not finish after CTRL_BREAK exit")
 	}
 }
 

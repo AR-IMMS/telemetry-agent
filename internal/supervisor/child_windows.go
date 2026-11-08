@@ -18,6 +18,12 @@ func configureChildCommand(command *exec.Cmd) {
 	}
 }
 
+// isExpectedGracefulStopExit recognizes the Windows status produced when the
+// Collector exits after the supervisor's CTRL_BREAK shutdown request.
+func isExpectedGracefulStopExit(result ExitResult) bool {
+	return uint32(result.Code) == 0xC000013A
+}
+
 func requestGracefulStop(command *exec.Cmd) error {
 	if command.Process == nil {
 		return fmt.Errorf("Collector process has not started")
