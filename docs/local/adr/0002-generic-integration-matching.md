@@ -1,6 +1,6 @@
 # ADR-0002: Generic Integration Matching and Configuration Candidate Boundary
 
-- **Status:** Accepted for S4.3 implementation; not deployed
+- **Status:** Accepted for S4.3 implementation; matcher core and read-only inventory/CLI composition are present in the current checkout, while dedicated live E2E and cross-platform verification are unconfirmed
 - **Date:** 2026-11-09
 - **Decision owner:** Not recorded
 - **Related task / plan:** S4.3 Integration Matching & Configuration Resolution
@@ -29,13 +29,15 @@ Docker inventory adds bounded image reference/repository evidence with exact mat
 
 S4.3 ends at matching results and diagnostics. S4.4 owns persistent proposal identity/deduplication; approval belongs to Configuration and must re-read inventory and re-match before desired-state CAS. S3/S2/M2 continue to resolve approved instances, compile, activate and recover as before.
 
+The current checkout contains the S1 Registry matching extension, generic matcher, Redis definition-owned selector/candidate builder, bounded Docker image evidence, the read-only inventory projection, capability assessor and `agentctl integration match` command. Fixture-based SQLite/CLI tests cover the composed read-only path. A dedicated live Docker → SQLite → match-command E2E and Windows/Linux execution evidence remain unconfirmed. S4.4 proposal/approval code is present in this working tree, but remains a separate scope and does not change this ADR's S4.3 boundary. This status describes source presence, not commit, deployment or cross-platform verification.
+
 ## Bounded-context ownership
 
-- **Discovery & Inventory:** observations, provider identity, normalized evidence, freshness and snapshots; future Proposal Manager.
+- **Discovery & Inventory:** observations, provider identity, normalized evidence, freshness and snapshots; the separate S4.4 Proposal Manager is present in the current working tree.
 - **Integration:** definitions, Registry, generic matcher, definition-owned selectors/builders and candidate diagnostics.
-- **Configuration:** future proposal approval operation and desired instances/revisions.
+- **Configuration:** the separate S4.4 approval operation and desired instances/revisions; approval remains Configuration-owned.
 - **S3/S2/M2:** existing reconciliation, Collector compilation/capability catalog, lifecycle activation/readiness/journal/LKG.
-- **Composition:** read adapter and wiring only; no matching policy or state ownership.
+- **Composition:** read adapter, S2 capability wiring and read-only CLI diagnostics only; no matching policy or S4.3 state ownership.
 
 ## Alternatives considered
 
@@ -56,11 +58,11 @@ S4.3 ends at matching results and diagnostics. S4.4 owns persistent proposal ide
 
 ### Limitations and migration impact
 
-- Existing Docker rows lack image evidence and will remain unmatched until a later successful snapshot populates additive fields.
+- Existing Docker rows lack image evidence and remain unmatched until a later successful snapshot populates additive fields.
 - A resource fingerprint is needed because inventory exposes a global revision, not per-resource revisions.
 - No candidate proves network reachability, Integration health or telemetry delivery.
 - Image alias and endpoint policy must stay conservative to avoid false matches.
-- No SQL migration is expected for additive resource JSON; implementation must prove backward compatibility with populated old inventory.
+- No SQL migration was required for additive resource JSON; existing and new records must remain backward compatible.
 
 ## Security and compatibility
 
@@ -74,5 +76,5 @@ S4.3 ends at matching results and diagnostics. S4.4 owns persistent proposal ide
 - Generic device ResourceKind, device providers and PDU/cooling integrations (AD-06 deferred).
 - Network reachability policy beyond explicit loopback host-published endpoints.
 - Complex matching rules beyond exact selectors and optional pure Definition behavior.
-- S4.4 durable proposal lifecycle, duplicate suppression against desired state, approval and desired-state mutation.
+- S4.4 durable proposal lifecycle, duplicate suppression against desired state, approval and desired-state mutation are separate from this decision and are covered by the S4.4 design.
 - Additional production integrations beyond Redis proof.

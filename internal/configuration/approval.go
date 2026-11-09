@@ -120,6 +120,9 @@ func (s ApprovalService) Approve(ctx context.Context, request ApprovalRequest) (
 	if verified.DefinitionVersion == "" || verified.CandidateDigest == "" || verified.Configuration == nil {
 		return integration.IntegrationInstance{}, 0, fmt.Errorf("%w: verifier returned incomplete candidate", ErrApprovalStale)
 	}
+	if verified.DefinitionVersion != proposal.DefinitionVersion {
+		return integration.IntegrationInstance{}, 0, ErrApprovalStale
+	}
 	if proposal.CandidateDigest != "" && verified.CandidateDigest != proposal.CandidateDigest {
 		return integration.IntegrationInstance{}, 0, ErrApprovalStale
 	}

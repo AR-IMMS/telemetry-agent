@@ -56,6 +56,30 @@ func TestApprovalServiceRejectsStaleCandidateWithoutPersistence(t *testing.T) {
 	}
 }
 
+func TestApprovalServiceRejectsDefinitionVersionChangeWithoutCandidateDigest(t *testing.T) {
+	proposal := approvalTestProposal(t, discovery.ProposalNeedsInput)
+	proposal.CandidateDigest = ""
+	proposal.CandidateConfiguration = nil
+	proposal.RequiredInputs = []discovery.ProposalInput{{Name: "username", Reason: "database username is required"}}
+	if err := discovery.ValidateProposal(proposal); err != nil {
+		t.Fatal(err)
+	}
+	proposals := &approvalProposalRepository{proposals: []discovery.Proposal{proposal}}
+	verifier := &approvalCandidateVerifier{candidate: VerifiedCandidate{
+		DefinitionVersion: "1.1.0", Configuration: map[string]any{"username": "operator"},
+		CandidateDigest: "sha256:" + approvalRepeatedHex('c'), InventoryWriteRevision: 7,
+	}}
+	repository := &recordingApprovalRepository{}
+	service := NewApprovalService(proposals, verifier, repository)
+	_, _, err := service.Approve(context.Background(), ApprovalRequest{
+		ProposalID: proposal.ID, ProposalRevision: proposal.Revision, ExpectedDesiredRevision: 4,
+		Inputs: map[string]any{"username": "operator"},
+	})
+	if !errors.Is(err, ErrApprovalStale) || repository.calls != 0 {
+		t.Fatalf("approval after definition change err=%v repository calls=%d; want stale and no persistence", err, repository.calls)
+	}
+}
+
 func approvalTestProposal(t *testing.T, status discovery.ProposalStatus) discovery.Proposal {
 	t.Helper()
 	identity := discovery.ProposalIdentity{Provider: "docker", ProviderInstance: "local", ResourceID: "container-a", IntegrationID: "redis"}
