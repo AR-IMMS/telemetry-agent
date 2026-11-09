@@ -48,16 +48,26 @@ func newDockerDiscoveryCoordinator(statePath string) *discovery.Coordinator {
 
 // runRuntimeControlLoops runs discovery beside the Agent Service's sole S3 controller.
 // Discovery errors are logged as safe codes and never stop Collector supervision.
-func runRuntimeControlLoops(ctx context.Context, reconcile func(context.Context) error, inventory *discovery.Coordinator) error {
+func runRuntimeControlLoops(ctx context.Context, reconcile func(context.Context) error, inventory *discovery.Coordinator, refreshProposals func(context.Context) error) error {
 	if inventory == nil {
+		if refreshProposals != nil {
+			if err := refreshProposals(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				log.Printf("Proposal refresh failed code=proposal_refresh_error")
+			}
+		}
 		return reconcile(ctx)
 	}
 	serviceContext, cancel := context.WithCancel(ctx)
 	discoveryDone := make(chan struct{})
 	go func() {
 		defer close(discoveryDone)
-		err := inventory.Run(serviceContext, discoveryPollInterval, func(error) {
+		err := inventory.RunWithCycle(serviceContext, discoveryPollInterval, func(error) {
 			log.Printf("Discovery inventory cycle failed code=inventory_store_error")
+		}, func(discovery.CycleResult) error {
+			if refreshProposals == nil {
+				return nil
+			}
+			return refreshProposals(serviceContext)
 		})
 		if err != nil && !errors.Is(err, context.Canceled) && serviceContext.Err() == nil {
 			log.Printf("Discovery service stopped code=inventory_service_error")

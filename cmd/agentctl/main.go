@@ -35,6 +35,7 @@ Commands:
   integration Manage desired Integration instances and local convergence diagnostics.
   run         Run the OpenTelemetry Collector under supervision.
   inventory   Read persisted resource discovery inventory.
+  discovery   Review and approve durable monitoring proposals.
   status      Show live Agent health.
   enroll      Bind this Agent installation to an AR-IMMS Core node.
   install     Install and start the Agent as a managed service.
@@ -72,6 +73,9 @@ func run(
 
 	case "inventory":
 		return runInventory(ctx, args[1:], stdout, stderr)
+
+	case "discovery":
+		return runDiscovery(ctx, args[1:], stdout, stderr)
 
 	case "integration":
 		return runIntegration(ctx, args[1:], stdout, stderr)
