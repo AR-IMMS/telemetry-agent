@@ -94,7 +94,7 @@ func newRuntimeReconciliationController(statePath string, runner bootstrap.Comma
 	if err != nil {
 		return nil, nil, err
 	}
-	registry, err := productionIntegrationRegistry(collectorCatalog)
+	registry, err := productionIntegrationRegistry()
 	if err != nil {
 		return nil, nil, err
 	}
