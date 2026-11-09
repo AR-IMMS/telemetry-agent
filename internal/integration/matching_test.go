@@ -160,6 +160,30 @@ func TestMatcherReportsStaleAndAmbiguousEvidenceWithoutCandidate(t *testing.T) {
 	}
 }
 
+func TestMatcherRejectsSecretBearingRequiredInputNames(t *testing.T) {
+	definition := matchableDefinition("redis", "1.0.0", "docker.io/library/redis")
+	definition.Matching.BuildCandidate = func(MatchResource) (CandidateBuild, error) {
+		return CandidateBuild{RequiredInputs: []RequiredInput{{Name: "password", Reason: "authentication is required"}}}, nil
+	}
+	registry, err := NewRegistry(definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resource := testMatchResource()
+	matcher := NewMatcher(registry, fixedCapabilityAssessor{status: CapabilitySupported})
+	report, err := matcher.Match(MatchSnapshot{AsOf: resource.LastSeenAt, StaleAfter: 2 * time.Minute, Resources: []MatchResource{resource}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Results) != 1 {
+		t.Fatalf("results=%d, want one", len(report.Results))
+	}
+	result := report.Results[0]
+	if result.ResolutionStatus != ResolutionInvalid || len(result.RequiredInputs) != 0 || len(result.Diagnostics) != 1 || result.Diagnostics[0].Code != "candidate_input_invalid" {
+		t.Fatalf("secret-bearing required input was not rejected safely: %+v", result)
+	}
+}
+
 func TestResourceFingerprintExcludesPollTimesAndGlobalInventoryRevision(t *testing.T) {
 	resource := testMatchResource()
 	first := resourceFingerprint(resource)

@@ -93,9 +93,24 @@ func sameIntegrationIntent(stored, requested []byte) bool {
 	if json.Unmarshal(stored, &current) != nil {
 		return false
 	}
+	var desired integration.IntegrationInstance
+	if json.Unmarshal(requested, &desired) != nil {
+		return false
+	}
+	if current.Source == "" {
+		current.Source = integration.SourceLocal
+	}
+	if desired.Source == "" {
+		desired.Source = integration.SourceLocal
+	}
 	current.Revision = 0
-	canonical, err := json.Marshal(current)
-	return err == nil && string(canonical) == string(requested)
+	desired.Revision = 0
+	canonicalCurrent, err := json.Marshal(current)
+	if err != nil {
+		return false
+	}
+	canonicalDesired, err := json.Marshal(desired)
+	return err == nil && string(canonicalCurrent) == string(canonicalDesired)
 }
 
 func (s integrationSQLite) Delete(id string, expected uint64) (uint64, error) {
@@ -171,6 +186,9 @@ func (s integrationSQLite) Snapshot() (configuration.DesiredSnapshot, error) {
 		var instance integration.IntegrationInstance
 		if err := json.Unmarshal(payload, &instance); err != nil {
 			return configuration.DesiredSnapshot{}, err
+		}
+		if instance.Source == "" {
+			instance.Source = integration.SourceLocal
 		}
 		snapshot.Instances = append(snapshot.Instances, instance)
 	}
