@@ -86,7 +86,7 @@ func runInventory(ctx context.Context, args []string, stdout, stderr io.Writer) 
 				}
 				sort.Strings(attributeNames)
 				for _, name := range attributeNames {
-					fmt.Fprintf(stdout, "  %s=%s\\n", name, resource.Attributes[name])
+					fmt.Fprintf(stdout, "  %s=%s\n", name, resource.Attributes[name])
 				}
 				fmt.Fprintln(stdout, "Endpoint evidence:")
 				for _, endpoint := range resource.Endpoints {

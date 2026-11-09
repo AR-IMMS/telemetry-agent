@@ -16,7 +16,7 @@ import (
 func TestInventoryCommandsReadPersistedSnapshot(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "state.db")
 	repository := agentstate.NewSQLiteStore(statePath).InventoryRepository()
-	at := time.Date(2026, 11, 9, 10, 0, 0, 0, time.UTC)
+	at := time.Now().UTC()
 	snapshot := discovery.ProviderSnapshot{
 		ProviderID: "docker", ProviderInstanceID: "local", Complete: true, ObservedAt: at,
 		Resources: []discovery.ResourceObservation{{
@@ -50,6 +50,9 @@ func TestInventoryCommandsReadPersistedSnapshot(t *testing.T) {
 			if !strings.Contains(stdout.String(), fragment) {
 				t.Errorf("runInventory(%v) output missing %q: %s", tc.args, fragment, stdout.String())
 			}
+		}
+		if len(tc.args) > 0 && tc.args[0] == "inspect" && !strings.Contains(stdout.String(), "label.safe=value\nEndpoint evidence:") {
+			t.Errorf("inspect attributes must end with a line break before endpoint evidence: %q", stdout.String())
 		}
 		if stderr.Len() != 0 {
 			t.Errorf("runInventory(%v) stderr=%s", tc.args, stderr.String())
