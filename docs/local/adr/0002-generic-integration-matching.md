@@ -1,6 +1,6 @@
 # ADR-0002: Generic Integration Matching and Configuration Candidate Boundary
 
-- **Status:** Accepted for S4.3 implementation; matcher core and read-only inventory/CLI composition are present in the current checkout, while dedicated live E2E and cross-platform verification are unconfirmed
+- **Status:** Accepted for S4.3 implementation
 - **Date:** 2026-11-09
 - **Decision owner:** Not recorded
 - **Related task / plan:** S4.3 Integration Matching & Configuration Resolution
@@ -29,13 +29,11 @@ Docker inventory adds bounded image reference/repository evidence with exact mat
 
 S4.3 ends at matching results and diagnostics. S4.4 owns persistent proposal identity/deduplication; approval belongs to Configuration and must re-read inventory and re-match before desired-state CAS. S3/S2/M2 continue to resolve approved instances, compile, activate and recover as before.
 
-The current checkout contains the S1 Registry matching extension, generic matcher, Redis definition-owned selector/candidate builder, bounded Docker image evidence, the read-only inventory projection, capability assessor and `agentctl integration match` command. Fixture-based SQLite/CLI tests cover the composed read-only path. A dedicated live Docker → SQLite → match-command E2E and Windows/Linux execution evidence remain unconfirmed. S4.4 proposal/approval code is present in this working tree, but remains a separate scope and does not change this ADR's S4.3 boundary. This status describes source presence, not commit, deployment or cross-platform verification.
-
 ## Bounded-context ownership
 
-- **Discovery & Inventory:** observations, provider identity, normalized evidence, freshness and snapshots; the separate S4.4 Proposal Manager is present in the current working tree.
+- **Discovery & Inventory:** observations, provider identity, normalized evidence, freshness and snapshots. The future S4.4 Proposal Manager may consume S4.3 results but is outside this decision.
 - **Integration:** definitions, Registry, generic matcher, definition-owned selectors/builders and candidate diagnostics.
-- **Configuration:** the separate S4.4 approval operation and desired instances/revisions; approval remains Configuration-owned.
+- **Configuration:** future S4.4 approval policy and existing Desired Integration state/CAS.
 - **S3/S2/M2:** existing reconciliation, Collector compilation/capability catalog, lifecycle activation/readiness/journal/LKG.
 - **Composition:** read adapter, S2 capability wiring and read-only CLI diagnostics only; no matching policy or S4.3 state ownership.
 
@@ -64,12 +62,17 @@ The current checkout contains the S1 Registry matching extension, generic matche
 - Image alias and endpoint policy must stay conservative to avoid false matches.
 - No SQL migration was required for additive resource JSON; existing and new records must remain backward compatible.
 
-## Security and compatibility
+## Security
 
 - Keep bounded normalized fields and current sensitive-attribute filtering; never persist environment variables or credentials.
 - Reject wildcard bind endpoints as destinations; do not probe networks.
 - Keep capability assessment separate from identification and backed by pinned artifact evidence. Unsupported/unverified results are not actionable by default.
-- Do not change S1 desired-state persistence, S3 reconciliation, S2 compilation, M2 activation or the SQLite schema unless tests/source prove a requirement.
+
+## Compatibility
+
+- Matching metadata remains optional on existing S1 definitions; manual exact-version instance resolution continues to use the existing Registry, validation and Resolver.
+- Docker image evidence is an additive resource JSON extension. Missing fields in older records remain valid and simply provide no image-based match evidence.
+- S4.3 does not change Desired Integration persistence, S3 reconciliation, S2 compilation, M2 activation or the SQLite schema.
 
 ## Deferred decisions
 
