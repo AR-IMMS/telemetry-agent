@@ -84,12 +84,16 @@ type IntegrationDefinition struct {
 	ID, Version string
 	Validate    func(map[string]any) error
 	Contribute  Contributor
+	Matching    *MatchingDefinition
 }
 
 // ValidateDefinition checks identifiers and required definition behavior.
 func ValidateDefinition(d IntegrationDefinition) error {
 	if !definitionIDPattern.MatchString(d.ID) || !versionPattern.MatchString(d.Version) || d.Validate == nil || d.Contribute == nil {
 		return fmt.Errorf("%w: malformed ID/version or missing behavior", ErrInvalidDefinition)
+	}
+	if err := validateMatchingDefinition(d.Matching); err != nil {
+		return fmt.Errorf("%w: invalid matching metadata", ErrInvalidDefinition)
 	}
 	return nil
 }
