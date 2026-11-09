@@ -96,8 +96,8 @@ func TestFreshnessIsIndependentFromPresence(t *testing.T) {
 type fakeRepository struct{ snapshot InventorySnapshot }
 
 func (f *fakeRepository) Snapshot() (InventorySnapshot, error) { return cloneSnapshot(f.snapshot), nil }
-func (f *fakeRepository) CommitProviderSnapshot(expected uint64, s ProviderSnapshot, resources []Resource, changed bool) error {
-	if f.snapshot.Revision != expected {
+func (f *fakeRepository) CommitProviderSnapshot(expectedWriteRevision uint64, s ProviderSnapshot, resources []Resource, changed bool) error {
+	if f.snapshot.WriteRevision != expectedWriteRevision {
 		return ErrSnapshotConflict
 	}
 	filtered := f.snapshot.Resources[:0]
@@ -110,6 +110,7 @@ func (f *fakeRepository) CommitProviderSnapshot(expected uint64, s ProviderSnaps
 	if changed {
 		f.snapshot.Revision++
 	}
+	f.snapshot.WriteRevision++
 	return nil
 }
 func (f *fakeRepository) RecordProviderFailure(status ProviderStatus) error {

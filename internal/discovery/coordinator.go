@@ -132,7 +132,7 @@ func (c *Coordinator) applySnapshot(snapshot ProviderSnapshot, at time.Time) err
 		if err != nil {
 			return err
 		}
-		err = c.repository.CommitProviderSnapshot(current.Revision, snapshot, resources, changed)
+		err = c.repository.CommitProviderSnapshot(current.WriteRevision, snapshot, resources, changed)
 		if !errors.Is(err, ErrSnapshotConflict) {
 			if err != nil {
 				return fmt.Errorf("commit provider snapshot: %w", err)

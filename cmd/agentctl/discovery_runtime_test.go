@@ -12,19 +12,21 @@ import (
 
 type runtimeInventoryRepository struct {
 	revision atomic.Uint64
+	writes   atomic.Uint64
 }
 
 func (r *runtimeInventoryRepository) Snapshot() (discovery.InventorySnapshot, error) {
-	return discovery.InventorySnapshot{Revision: r.revision.Load()}, nil
+	return discovery.InventorySnapshot{Revision: r.revision.Load(), WriteRevision: r.writes.Load()}, nil
 }
 
-func (r *runtimeInventoryRepository) CommitProviderSnapshot(expected uint64, _ discovery.ProviderSnapshot, _ []discovery.Resource, changed bool) error {
-	if r.revision.Load() != expected {
+func (r *runtimeInventoryRepository) CommitProviderSnapshot(expectedWriteRevision uint64, _ discovery.ProviderSnapshot, _ []discovery.Resource, changed bool) error {
+	if r.writes.Load() != expectedWriteRevision {
 		return discovery.ErrSnapshotConflict
 	}
 	if changed {
 		r.revision.Add(1)
 	}
+	r.writes.Add(1)
 	return nil
 }
 

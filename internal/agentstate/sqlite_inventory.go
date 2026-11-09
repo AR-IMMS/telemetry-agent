@@ -29,11 +29,11 @@ func (s inventorySQLite) Snapshot() (discovery.InventorySnapshot, error) {
 		return discovery.InventorySnapshot{}, fmt.Errorf("begin inventory snapshot: %w", err)
 	}
 	defer tx.Rollback()
-	var revision int64
-	if err := tx.QueryRow(`SELECT revision FROM inventory_meta WHERE id=1`).Scan(&revision); err != nil {
+	var revision, writeRevision int64
+	if err := tx.QueryRow(`SELECT revision,write_revision FROM inventory_meta WHERE id=1`).Scan(&revision, &writeRevision); err != nil {
 		return discovery.InventorySnapshot{}, fmt.Errorf("load inventory revision: %w", err)
 	}
-	snapshot := discovery.InventorySnapshot{Revision: uint64(revision), Resources: []discovery.Resource{}, Providers: []discovery.ProviderStatus{}}
+	snapshot := discovery.InventorySnapshot{Revision: uint64(revision), WriteRevision: uint64(writeRevision), Resources: []discovery.Resource{}, Providers: []discovery.ProviderStatus{}}
 	rows, err := tx.Query(`SELECT payload FROM inventory_resources ORDER BY provider_id,provider_instance_id,provider_resource_id`)
 	if err != nil {
 		return discovery.InventorySnapshot{}, fmt.Errorf("query inventory resources: %w", err)
@@ -84,13 +84,13 @@ func (s inventorySQLite) Snapshot() (discovery.InventorySnapshot, error) {
 	return snapshot, nil
 }
 
-func (s inventorySQLite) CommitProviderSnapshot(expectedRevision uint64, snapshot discovery.ProviderSnapshot, resources []discovery.Resource, materialChange bool) error {
+func (s inventorySQLite) CommitProviderSnapshot(expectedWriteRevision uint64, snapshot discovery.ProviderSnapshot, resources []discovery.Resource, materialChange bool) error {
 	normalized, err := discovery.NormalizeSnapshot(snapshot)
 	if err != nil {
 		return err
 	}
-	if expectedRevision > uint64(^uint64(0)>>1) {
-		return fmt.Errorf("inventory revision exceeds SQLite range")
+	if expectedWriteRevision > uint64(^uint64(0)>>1) {
+		return fmt.Errorf("inventory write revision exceeds SQLite range")
 	}
 	for _, resource := range resources {
 		if err := resource.Key.Validate(); err != nil {
@@ -112,11 +112,11 @@ func (s inventorySQLite) CommitProviderSnapshot(expectedRevision uint64, snapsho
 		return fmt.Errorf("begin inventory update: %w", err)
 	}
 	defer tx.Rollback()
-	var current int64
-	if err := tx.QueryRow(`SELECT revision FROM inventory_meta WHERE id=1`).Scan(&current); err != nil {
-		return fmt.Errorf("load inventory revision for update: %w", err)
+	var currentWriteRevision int64
+	if err := tx.QueryRow(`SELECT write_revision FROM inventory_meta WHERE id=1`).Scan(&currentWriteRevision); err != nil {
+		return fmt.Errorf("load inventory write revision for update: %w", err)
 	}
-	if uint64(current) != expectedRevision {
+	if uint64(currentWriteRevision) != expectedWriteRevision {
 		return discovery.ErrSnapshotConflict
 	}
 	now := normalized.ObservedAt.UTC().Format(time.RFC3339Nano)
@@ -133,11 +133,6 @@ func (s inventorySQLite) CommitProviderSnapshot(expectedRevision uint64, snapsho
 			return fmt.Errorf("persist inventory resource: %w", err)
 		}
 	}
-	if materialChange {
-		if _, err := tx.Exec(`UPDATE inventory_meta SET revision=revision+1 WHERE id=1 AND revision=?`, current); err != nil {
-			return fmt.Errorf("advance inventory revision: %w", err)
-		}
-	}
 	status := discovery.ProviderStatus{
 		ProviderID: normalized.ProviderID, ProviderInstanceID: normalized.ProviderInstanceID,
 		Enabled: true, LastAttemptAt: nowTime(normalized.ObservedAt), LastSuccessAt: nowTime(normalized.ObservedAt),
@@ -151,6 +146,20 @@ func (s inventorySQLite) CommitProviderSnapshot(expectedRevision uint64, snapsho
 		ON CONFLICT(provider_id,provider_instance_id) DO UPDATE SET payload=excluded.payload,updated_at=excluded.updated_at`,
 		status.ProviderID, status.ProviderInstanceID, payload, now); err != nil {
 		return fmt.Errorf("persist discovery provider status: %w", err)
+	}
+	materialIncrement := 0
+	if materialChange {
+		materialIncrement = 1
+	}
+	result, err := tx.Exec(`UPDATE inventory_meta SET revision=revision+?,write_revision=write_revision+1 WHERE id=1 AND write_revision=?`, materialIncrement, currentWriteRevision)
+	if err != nil {
+		return fmt.Errorf("advance inventory revisions: %w", err)
+	}
+	if rows, err := result.RowsAffected(); err != nil || rows != 1 {
+		if err != nil {
+			return fmt.Errorf("check inventory revision update: %w", err)
+		}
+		return discovery.ErrSnapshotConflict
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit inventory update: %w", err)
@@ -185,6 +194,9 @@ func (s inventorySQLite) RecordProviderFailure(status discovery.ProviderStatus) 
 		status.ResourceCount = previous.ResourceCount
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("load previous provider status: %w", err)
+	}
+	if _, err := tx.Exec(`UPDATE inventory_meta SET write_revision=write_revision+1 WHERE id=1`); err != nil {
+		return fmt.Errorf("advance inventory write revision after provider failure: %w", err)
 	}
 	payload, err := json.Marshal(status)
 	if err != nil {

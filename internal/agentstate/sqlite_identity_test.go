@@ -82,8 +82,8 @@ func TestSQLiteIdentityMigrationSeparatesSchemaAndInitialization(t *testing.T) {
 	if err := db.QueryRow("SELECT MAX(version) FROM schema_migrations").Scan(&schemaVersion); err != nil {
 		t.Fatalf("read schema version: %v", err)
 	}
-	if schemaVersion != 10 {
-		t.Fatalf("schema version = %d, want 10 after Discovery inventory migration", schemaVersion)
+	if schemaVersion != 11 {
+		t.Fatalf("schema version = %d, want 11 after inventory write revision migration", schemaVersion)
 	}
 	var integrationMigration, candidateMappingMigration, candidateHistoryMigration int
 	if err := db.QueryRow("SELECT COUNT(*) FROM schema_migrations WHERE version=6").Scan(&integrationMigration); err != nil {
