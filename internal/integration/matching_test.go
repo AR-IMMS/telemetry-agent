@@ -109,6 +109,17 @@ func TestMatcherKeepsStatusAxesSeparateAndFailsClosedOnUnverifiedCapability(t *t
 	if result.MatchStatus != MatchMatched || result.ResolutionStatus != ResolutionReady || result.CapabilityStatus != CapabilityUnverified {
 		t.Fatalf("unverified capability changed or falsely supported independent statuses: %+v", result)
 	}
+	assessment.Status = CapabilityUnsupported
+	assessment.ArtifactVersion = "0.160.0"
+	assessment.ManifestVersion = "manifest-1"
+	matcher.capability = fixedCapabilityAssessorWithEvidence{assessment: assessment}
+	report, err = matcher.Match(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := report.Results[0].CapabilityStatus; got != CapabilityUnverified {
+		t.Fatalf("unsupported result without missing-capability evidence status=%q", got)
+	}
 }
 
 func TestMatcherReportsStaleAndAmbiguousEvidenceWithoutCandidate(t *testing.T) {
@@ -160,6 +171,15 @@ func TestResourceFingerprintExcludesPollTimesAndGlobalInventoryRevision(t *testi
 	resource.Endpoints[0].Port++
 	if got := resourceFingerprint(resource); got == first {
 		t.Fatal("material endpoint change did not change resource fingerprint")
+	}
+}
+
+func TestMatcherRejectsMalformedEndpointEvidence(t *testing.T) {
+	resource := testMatchResource()
+	resource.Endpoints[0].Scope = "unknown"
+	matcher := NewMatcher(Registry{}, nil)
+	if _, err := matcher.Match(MatchSnapshot{AsOf: resource.LastSeenAt, StaleAfter: time.Minute, Resources: []MatchResource{resource}}); err == nil {
+		t.Fatal("unknown endpoint scope accepted")
 	}
 }
 

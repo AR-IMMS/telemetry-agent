@@ -170,6 +170,9 @@ func (m Matcher) assessCapabilities(required []string) CapabilityAssessment {
 		if assessment.Platform == "" || assessment.ArtifactVersion == "" || assessment.ManifestVersion == "" {
 			return CapabilityAssessment{Status: CapabilityUnverified, Required: append([]string(nil), required...)}
 		}
+		if assessment.Status == CapabilityUnsupported && len(assessment.Unsupported) == 0 {
+			return CapabilityAssessment{Status: CapabilityUnverified, Required: append([]string(nil), required...)}
+		}
 		for _, unsupported := range assessment.Unsupported {
 			if !contains(required, unsupported) {
 				return CapabilityAssessment{Status: CapabilityUnverified, Required: append([]string(nil), required...)}
@@ -277,6 +280,9 @@ func validateMatchResource(resource MatchResource) error {
 	for _, endpoint := range resource.Endpoints {
 		if len(endpoint.Address) > 256 || len(endpoint.Protocol) > 16 || len(endpoint.Scope) > 32 || len(endpoint.Provenance) > 64 || containsControlText(endpoint.Address) || containsControlText(endpoint.Provenance) {
 			return fmt.Errorf("invalid endpoint evidence")
+		}
+		if (endpoint.Scope != "host" && endpoint.Scope != "container") || (endpoint.Protocol != "" && endpoint.Protocol != "tcp" && endpoint.Protocol != "udp" && endpoint.Protocol != "sctp") || (endpoint.Port == 0 && endpoint.Provenance != "network_address") || (endpoint.Address == "" && endpoint.Provenance != "exposed_port") {
+			return fmt.Errorf("invalid endpoint scope, protocol or address")
 		}
 		if endpoint.Address != "" {
 			if _, err := netip.ParseAddr(endpoint.Address); err != nil && strings.ContainsAny(endpoint.Address, " \t/@?#") {
