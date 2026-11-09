@@ -314,7 +314,7 @@ func TestSQLiteInventoryMigrationFromPopulatedV9PreservesExistingState(t *testin
 		db.Close()
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`DROP TABLE discovery_provider_status; DROP TABLE inventory_resources; DROP TABLE inventory_meta; DELETE FROM schema_migrations WHERE version IN (10,11)`); err != nil {
+	if _, err := db.Exec(`DROP TABLE discovery_provider_status; DROP TABLE inventory_resources; DROP TABLE inventory_meta; DROP TABLE integration_proposals; DELETE FROM schema_migrations WHERE version IN (10,11,12)`); err != nil {
 		db.Close()
 		t.Fatal(err)
 	}
@@ -356,7 +356,7 @@ func TestSQLiteInventoryMigrationFromPopulatedV9PreservesExistingState(t *testin
 	if err := verify.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if identityValue != 1 || enrollmentRows != 1 || version != 11 {
+	if identityValue != 1 || enrollmentRows != 1 || version != 12 {
 		t.Fatalf("identity=%d enrollment=%d migration=%d", identityValue, enrollmentRows, version)
 	}
 }
