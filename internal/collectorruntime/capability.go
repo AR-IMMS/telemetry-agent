@@ -45,6 +45,12 @@ type Catalog struct {
 	entries                  map[string]capability
 }
 
+// ArtifactVersion returns the pinned Collector version represented by the catalog.
+func (c Catalog) ArtifactVersion() string { return c.version }
+
+// ManifestVersion returns the reviewed static manifest version represented by the catalog.
+func (c Catalog) ManifestVersion() string { return c.manifestVersion }
+
 // NewCatalog creates a catalog from reviewed manifest entries and rejects duplicates or incomplete wiring.
 func NewCatalog(version, manifestVersion string, entries []Capability) (Catalog, error) {
 	if strings.TrimSpace(version) == "" || strings.TrimSpace(manifestVersion) == "" {

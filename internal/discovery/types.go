@@ -143,17 +143,18 @@ type ProviderStatus struct {
 	ResourceCount      int                `json:"resource_count"`
 }
 
-// InventorySnapshot is a consistent material revision and its records.
+// InventorySnapshot is a consistent material revision, write token and records.
 type InventorySnapshot struct {
-	Revision  uint64           `json:"inventory_revision"`
-	Resources []Resource       `json:"resources"`
-	Providers []ProviderStatus `json:"providers"`
+	Revision      uint64           `json:"inventory_revision"`
+	WriteRevision uint64           `json:"inventory_write_revision"`
+	Resources     []Resource       `json:"resources"`
+	Providers     []ProviderStatus `json:"providers"`
 }
 
 // InventoryRepository persists inventory snapshots independently of desired state.
 type InventoryRepository interface {
 	Snapshot() (InventorySnapshot, error)
-	CommitProviderSnapshot(expectedRevision uint64, snapshot ProviderSnapshot, resources []Resource, materialChange bool) error
+	CommitProviderSnapshot(expectedWriteRevision uint64, snapshot ProviderSnapshot, resources []Resource, materialChange bool) error
 	RecordProviderFailure(status ProviderStatus) error
 }
 

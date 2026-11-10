@@ -3,6 +3,7 @@ package redis
 import (
 	"fmt"
 	"net"
+	"net/netip"
 	"strconv"
 	"strings"
 
@@ -22,6 +23,14 @@ func Definition() integration.IntegrationDefinition {
 		ID:       definitionID,
 		Version:  definitionVersion,
 		Validate: validateConfiguration,
+		Matching: &integration.MatchingDefinition{
+			Selector: &integration.MatchSelector{
+				ResourceKinds: []string{"container"}, LifecycleStates: []string{"running"},
+				ExactAttributes: map[string]string{"container.image.repository": "docker.io/library/redis"},
+			},
+			BuildCandidate:       buildDiscoveredCandidate,
+			RequiredCapabilities: []string{redisMetricsCapability},
+		},
 		Contribute: func(instance integration.IntegrationInstance) (integration.Contribution, error) {
 			if err := integration.ValidateInstance(instance); err != nil {
 				return integration.Contribution{}, err
@@ -38,6 +47,33 @@ func Definition() integration.IntegrationDefinition {
 			return integration.NewContribution([]integration.ComponentIntent{intent}), nil
 		},
 	}
+}
+
+func buildDiscoveredCandidate(resource integration.MatchResource) (integration.CandidateBuild, error) {
+	endpoints := make(map[string]integration.MatchEndpoint)
+	for _, endpoint := range resource.Endpoints {
+		if endpoint.Scope != "host" || endpoint.Provenance != "published_port" || endpoint.Protocol != "tcp" || endpoint.Port == 0 {
+			continue
+		}
+		address, err := netip.ParseAddr(endpoint.Address)
+		if err != nil || !address.IsLoopback() {
+			continue
+		}
+		key := net.JoinHostPort(address.String(), strconv.Itoa(int(endpoint.Port)))
+		endpoints[key] = endpoint
+	}
+	if len(endpoints) != 1 {
+		return integration.CandidateBuild{
+			RequiredInputs: []integration.RequiredInput{{Name: "endpoint", Reason: "a unique loopback host-published TCP endpoint is required"}},
+		}, nil
+	}
+	for endpoint := range endpoints {
+		return integration.CandidateBuild{
+			Settings: map[string]any{"endpoint": endpoint},
+			Evidence: []integration.MatchEvidence{{Code: "endpoint_selected", Source: "host/published_port/tcp", Value: endpoint}},
+		}, nil
+	}
+	return integration.CandidateBuild{}, fmt.Errorf("no usable endpoint")
 }
 
 func validateConfiguration(configuration map[string]any) error {

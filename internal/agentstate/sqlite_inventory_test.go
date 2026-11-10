@@ -1,6 +1,7 @@
 package agentstate
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -37,7 +38,7 @@ func TestSQLiteInventoryRevisionCASNoopFailureAndRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Revision != 1 || len(loaded.Resources) != 1 || loaded.Resources[0].Key.ProviderResourceID != "container-a" {
+	if loaded.Revision != 1 || loaded.WriteRevision != 1 || len(loaded.Resources) != 1 || loaded.Resources[0].Key.ProviderResourceID != "container-a" {
 		t.Fatalf("initial snapshot=%+v", loaded)
 	}
 	if err := repository.CommitProviderSnapshot(0, snapshot, resources, true); !errors.Is(err, discovery.ErrSnapshotConflict) {
@@ -45,14 +46,14 @@ func TestSQLiteInventoryRevisionCASNoopFailureAndRestart(t *testing.T) {
 	}
 	snapshot.ObservedAt = at.Add(time.Minute)
 	resources[0].LastSeenAt = snapshot.ObservedAt
-	if err := repository.CommitProviderSnapshot(1, snapshot, resources, false); err != nil {
+	if err := repository.CommitProviderSnapshot(loaded.WriteRevision, snapshot, resources, false); err != nil {
 		t.Fatal(err)
 	}
 	loaded, err = repository.Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Revision != 1 || !loaded.Resources[0].LastSeenAt.Equal(snapshot.ObservedAt) {
+	if loaded.Revision != 1 || loaded.WriteRevision != 2 || !loaded.Resources[0].LastSeenAt.Equal(snapshot.ObservedAt) {
 		t.Fatalf("no-op revision or last_seen incorrect: %+v", loaded)
 	}
 	failure := discovery.ProviderStatus{ProviderID: "docker", ProviderInstanceID: "local", Enabled: true, LastAttemptAt: at.Add(2 * time.Minute), LastErrorCode: "daemon_unavailable"}
@@ -63,7 +64,7 @@ func TestSQLiteInventoryRevisionCASNoopFailureAndRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Revision != 1 || len(loaded.Resources) != 1 || loaded.Resources[0].Presence != discovery.PresencePresent || loaded.Providers[0].LastErrorCode != "daemon_unavailable" || !loaded.Providers[0].LastSuccessAt.Equal(at.Add(time.Minute)) {
+	if loaded.Revision != 1 || loaded.WriteRevision != 3 || len(loaded.Resources) != 1 || loaded.Resources[0].Presence != discovery.PresencePresent || loaded.Providers[0].LastErrorCode != "daemon_unavailable" || !loaded.Providers[0].LastSuccessAt.Equal(at.Add(time.Minute)) {
 		t.Fatalf("failure changed resource evidence or lost success: %+v", loaded)
 	}
 	restarted, err := NewSQLiteStore(path).InventoryRepository().Snapshot()
@@ -72,6 +73,80 @@ func TestSQLiteInventoryRevisionCASNoopFailureAndRestart(t *testing.T) {
 	}
 	if restarted.Revision != loaded.Revision || restarted.Resources[0].Key != loaded.Resources[0].Key || restarted.Providers[0].LastErrorCode != loaded.Providers[0].LastErrorCode {
 		t.Fatalf("restart lost inventory: %+v", restarted)
+	}
+}
+
+func TestSQLiteInventoryCASRejectsSnapshotMadeStaleByNonMaterialWrites(t *testing.T) {
+	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	repo := store.InventoryRepository()
+	at := time.Now().UTC()
+	snapshot, resources := inventoryFixture(at, "container-a")
+	if err := repo.CommitProviderSnapshot(0, snapshot, resources, true); err != nil {
+		t.Fatal(err)
+	}
+	stale, err := repo.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.RecordProviderFailure(discovery.ProviderStatus{
+		ProviderID: "docker", ProviderInstanceID: "local", Enabled: true,
+		LastAttemptAt: at.Add(time.Second), LastErrorCode: "daemon_unavailable",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.CommitProviderSnapshot(stale.WriteRevision, snapshot, resources, false); !errors.Is(err, discovery.ErrSnapshotConflict) {
+		t.Fatalf("stale non-material writer error=%v, want snapshot conflict", err)
+	}
+	current, err := repo.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Revision != stale.Revision || current.Providers[0].LastErrorCode != "daemon_unavailable" {
+		t.Fatalf("non-material write changed material evidence or was lost: %+v", current)
+	}
+}
+
+func TestMigrateInventoryWriteRevisionFromPopulatedV10PreservesInventory(t *testing.T) {
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	statements := []string{
+		`CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)`,
+		`INSERT INTO schema_migrations(version,applied_at) VALUES(10,'before')`,
+		`CREATE TABLE inventory_meta(id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL CHECK(revision>=0))`,
+		`INSERT INTO inventory_meta(id,revision) VALUES(1,7)`,
+		`CREATE TABLE inventory_resources(provider_id TEXT NOT NULL,provider_instance_id TEXT NOT NULL,provider_resource_id TEXT NOT NULL,payload BLOB NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(provider_id,provider_instance_id,provider_resource_id))`,
+		`INSERT INTO inventory_resources VALUES('docker','local','resource-1','{"key":"preserve"}','before')`,
+		`CREATE TABLE discovery_provider_status(provider_id TEXT NOT NULL,provider_instance_id TEXT NOT NULL,payload BLOB NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(provider_id,provider_instance_id))`,
+		`INSERT INTO discovery_provider_status VALUES('docker','local','{"status":"preserve"}','before')`,
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := migrateInventoryWriteRevision(db); err != nil {
+		t.Fatal(err)
+	}
+	var materialRevision, writeRevision int
+	if err := db.QueryRow(`SELECT revision,write_revision FROM inventory_meta WHERE id=1`).Scan(&materialRevision, &writeRevision); err != nil {
+		t.Fatal(err)
+	}
+	var resourcePayload, statusPayload string
+	if err := db.QueryRow(`SELECT payload FROM inventory_resources WHERE provider_resource_id='resource-1'`).Scan(&resourcePayload); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT payload FROM discovery_provider_status WHERE provider_id='docker'`).Scan(&statusPayload); err != nil {
+		t.Fatal(err)
+	}
+	var schemaVersion int
+	if err := db.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&schemaVersion); err != nil {
+		t.Fatal(err)
+	}
+	if materialRevision != 7 || writeRevision != 7 || resourcePayload != `{"key":"preserve"}` || statusPayload != `{"status":"preserve"}` || schemaVersion != 11 {
+		t.Fatalf("migration changed existing inventory: material=%d write=%d resource=%q status=%q version=%d", materialRevision, writeRevision, resourcePayload, statusPayload, schemaVersion)
 	}
 }
 
@@ -105,7 +180,7 @@ func TestSQLiteInventoryDeleteEvidenceAndAtomicRollback(t *testing.T) {
 	}
 	db.Close()
 	second, added := inventoryFixture(at.Add(2*time.Minute), "new")
-	err = repo.CommitProviderSnapshot(before.Revision, second, added, true)
+	err = repo.CommitProviderSnapshot(before.WriteRevision, second, added, true)
 	if err == nil {
 		t.Fatal("injected persistence failure unexpectedly committed")
 	}
@@ -142,7 +217,7 @@ func TestSQLiteInventoryConcurrentCASAndConsistentSnapshots(t *testing.T) {
 					writerErrors <- err
 					return
 				}
-				err = repo.CommitProviderSnapshot(current.Revision, snapshot, resources, true)
+				err = repo.CommitProviderSnapshot(current.WriteRevision, snapshot, resources, true)
 				if err == nil {
 					writerErrors <- nil
 					return
@@ -239,7 +314,7 @@ func TestSQLiteInventoryMigrationFromPopulatedV9PreservesExistingState(t *testin
 		db.Close()
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`DROP TABLE discovery_provider_status; DROP TABLE inventory_resources; DROP TABLE inventory_meta; DELETE FROM schema_migrations WHERE version=10`); err != nil {
+	if _, err := db.Exec(`DROP TABLE discovery_provider_status; DROP TABLE inventory_resources; DROP TABLE inventory_meta; DROP TABLE integration_proposals; DELETE FROM schema_migrations WHERE version IN (10,11,12)`); err != nil {
 		db.Close()
 		t.Fatal(err)
 	}
@@ -281,7 +356,7 @@ func TestSQLiteInventoryMigrationFromPopulatedV9PreservesExistingState(t *testin
 	if err := verify.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if identityValue != 1 || enrollmentRows != 1 || version != 10 {
+	if identityValue != 1 || enrollmentRows != 1 || version != 12 {
 		t.Fatalf("identity=%d enrollment=%d migration=%d", identityValue, enrollmentRows, version)
 	}
 }

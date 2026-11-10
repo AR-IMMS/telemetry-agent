@@ -42,3 +42,31 @@ func migrateDiscoveryInventory(db *sql.DB) error {
 	}
 	return nil
 }
+
+func migrateInventoryWriteRevision(db *sql.DB) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin inventory write revision migration: %w", err)
+	}
+	defer tx.Rollback()
+	var applied int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version=11`).Scan(&applied); err != nil {
+		return fmt.Errorf("check inventory write revision schema version: %w", err)
+	}
+	if applied != 0 {
+		return tx.Commit()
+	}
+	if _, err := tx.Exec(`ALTER TABLE inventory_meta ADD COLUMN write_revision INTEGER NOT NULL DEFAULT 0 CHECK(write_revision>=0)`); err != nil {
+		return fmt.Errorf("add inventory write revision: %w", err)
+	}
+	if _, err := tx.Exec(`UPDATE inventory_meta SET write_revision=revision WHERE id=1`); err != nil {
+		return fmt.Errorf("initialize inventory write revision: %w", err)
+	}
+	if _, err := tx.Exec(`INSERT INTO schema_migrations(version,applied_at) VALUES(11,CURRENT_TIMESTAMP)`); err != nil {
+		return fmt.Errorf("record inventory write revision migration: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit inventory write revision migration: %w", err)
+	}
+	return nil
+}

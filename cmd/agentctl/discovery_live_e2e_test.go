@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +14,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/discovery"
 	discoverydocker "github.com/ar-imms/telemetry-agent/internal/discovery/docker"
+	"github.com/ar-imms/telemetry-agent/internal/integration"
 )
 
 // TestLiveDockerInventoryWhenExplicitlyEnabled runs only in the documented local E2E.
@@ -188,6 +191,219 @@ func TestLiveDockerUnavailableRetainsInventory(t *testing.T) {
 	if state.DesiredGeneration != 3 || state.ActivatedGeneration != 2 || state.AppliedGeneration != 2 {
 		t.Fatalf("provider failure changed lifecycle generations: %+v", state)
 	}
+}
+
+func TestLiveDockerProposalAndExplicitApproval(t *testing.T) {
+	if os.Getenv("AR_IMMS_S4_E2E") != "1" {
+		t.Skip("set AR_IMMS_S4_E2E=1 to run against an isolated live Docker fixture")
+	}
+	statePath := os.Getenv("AR_IMMS_S4_E2E_STATE")
+	fixtureID := os.Getenv("AR_IMMS_S4_E2E_CONTAINER_ID")
+	if statePath == "" || fixtureID == "" || filepath.Clean(statePath) == filepath.Clean(agentstate.DefaultPath()) {
+		t.Fatal("isolated E2E state path and disposable fixture ID are required")
+	}
+	store := agentstate.NewSQLiteStore(statePath)
+	before, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	desiredBefore, err := store.IntegrationRepository().Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	refresher, err := newRuntimeProposalRefresher(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := refresher.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var matchOutput, matchStderr bytes.Buffer
+	if code := runIntegrationMatch(context.Background(), []string{"--state-path", statePath}, &matchOutput, &matchStderr); code != 0 {
+		t.Fatalf("read-only integration match code=%d stderr=%s", code, matchStderr.String())
+	}
+	if !strings.Contains(matchOutput.String(), `"definition_id": "redis"`) ||
+		!strings.Contains(matchOutput.String(), `"match_status": "matched"`) ||
+		!strings.Contains(matchOutput.String(), `"candidate": {`) {
+		t.Fatalf("live read-only match omitted the Redis candidate: %s", matchOutput.String())
+	}
+	matchState, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	matchDesired, err := store.IntegrationRepository().Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if matchState.DesiredGeneration != before.DesiredGeneration || matchState.ActivatedGeneration != before.ActivatedGeneration ||
+		matchState.AppliedGeneration != before.AppliedGeneration || matchDesired.Revision != desiredBefore.Revision {
+		t.Fatalf("read-only match mutated lifecycle or desired state: before=%+v after=%+v desired %d -> %d", before, matchState, desiredBefore.Revision, matchDesired.Revision)
+	}
+	proposals, err := store.ProposalRepository().ProposalSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var selected *discovery.Proposal
+	for i := range proposals {
+		proposal := &proposals[i]
+		if proposal.Identity.Provider == "docker" && proposal.Identity.ResourceID == fixtureID && proposal.Identity.IntegrationID == "redis" {
+			selected = proposal
+			break
+		}
+	}
+	if selected == nil || selected.Status != discovery.ProposalPending || selected.CandidateDigest == "" {
+		t.Fatalf("Redis proposal=%+v; all proposals=%+v", selected, proposals)
+	}
+	var listed, approvalOutput, stderr bytes.Buffer
+	if code := runDiscovery(context.Background(), []string{"proposals", "list", "--state-path", statePath}, &listed, &stderr); code != 0 {
+		t.Fatalf("proposal list code=%d stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(listed.String(), selected.ID) || !strings.Contains(listed.String(), selected.CandidateDigest) {
+		t.Fatalf("operator listing omitted proposal evidence: %s", listed.String())
+	}
+	if code := runDiscovery(context.Background(), []string{
+		"proposals", "approve", "--state-path", statePath, "--id", selected.ID,
+		"--revision", fmt.Sprint(selected.Revision), "--expected-desired-revision", fmt.Sprint(desiredBefore.Revision),
+	}, &approvalOutput, &stderr); code != 0 {
+		t.Fatalf("proposal approval code=%d stderr=%s", code, stderr.String())
+	}
+	desiredAfter, err := store.IntegrationRepository().Snapshot()
+	if err != nil || len(desiredAfter.Instances) != len(desiredBefore.Instances)+1 || desiredAfter.Revision != desiredBefore.Revision+1 {
+		t.Fatalf("desired state after approval=%+v err=%v", desiredAfter, err)
+	}
+	var approved *integration.IntegrationInstance
+	for i := range desiredAfter.Instances {
+		instance := &desiredAfter.Instances[i]
+		if instance.Binding != nil && instance.Binding.ResourceID == fixtureID {
+			approved = instance
+			break
+		}
+	}
+	if approved == nil || approved.Source != integration.SourceDiscovery || approved.Configuration["endpoint"] == nil {
+		t.Fatalf("approved desired Integration=%+v", approved)
+	}
+	after, err := store.Load()
+	if err != nil || after.DesiredGeneration != before.DesiredGeneration || after.ActivatedGeneration != before.ActivatedGeneration || after.AppliedGeneration != before.AppliedGeneration {
+		t.Fatalf("approval changed Collector lifecycle state: before=%+v after=%+v err=%v", before, after, err)
+	}
+	if !strings.Contains(approvalOutput.String(), "convergence is pending") {
+		t.Fatalf("approval output did not distinguish later convergence: %s", approvalOutput.String())
+	}
+}
+
+func TestLiveDatabaseFixturesMatchIntoNeedsInputProposals(t *testing.T) {
+	if os.Getenv("AR_IMMS_S4_E2E") != "1" {
+		t.Skip("set AR_IMMS_S4_E2E=1 to run against isolated live Docker fixtures")
+	}
+	statePath := os.Getenv("AR_IMMS_S4_E2E_STATE")
+	postgresID := os.Getenv("AR_IMMS_S4_E2E_POSTGRES_ID")
+	mongoID := os.Getenv("AR_IMMS_S4_E2E_MONGO_ID")
+	endpoint := os.Getenv(dockerDiscoveryEndpointEnv)
+	if statePath == "" || postgresID == "" || mongoID == "" || endpoint == "" || filepath.Clean(statePath) == filepath.Clean(agentstate.DefaultPath()) {
+		t.Fatal("isolated E2E state path, Docker endpoint, and PostgreSQL/MongoDB fixture IDs are required")
+	}
+	store := agentstate.NewSQLiteStore(statePath)
+	provider, err := discoverydocker.NewProvider(endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	coordinator, err := discovery.NewCoordinator(store.InventoryRepository(), []discovery.DiscoveryProvider{provider}, discovery.DefaultPolicy(), 5*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := coordinator.DiscoverOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	inventory, err := store.InventoryRepository().Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	postgresDefinition := fixtureDatabaseDefinition("postgresql-fixture", "docker.io/library/postgres", []integration.RequiredInput{
+		{Name: "username", Reason: "database username is required"}, {Name: "authentication_profile", Reason: "an approved authentication profile must be selected"},
+	})
+	mongoDefinition := fixtureDatabaseDefinition("mongodb-fixture", "docker.io/library/mongo", []integration.RequiredInput{
+		{Name: "username", Reason: "database username is required"}, {Name: "authentication_profile", Reason: "an approved authentication profile must be selected"},
+	})
+	registry, err := integration.NewRegistry(postgresDefinition, mongoDefinition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	matcher := integration.NewMatcher(registry, fixtureCapabilityAssessor{})
+	report, err := matcher.Match(projectInventory(inventory, time.Now().UTC()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	observations := make([]discovery.ProposalObservation, 0, 2)
+	fixtureResults := make([]integration.MatchResult, 0, 2)
+	for _, result := range report.Results {
+		if result.Resource.ResourceID != postgresID && result.Resource.ResourceID != mongoID {
+			continue
+		}
+		fixtureResults = append(fixtureResults, result)
+		observation, err := proposalObservationFromMatch(result, report.InventoryRevision)
+		if err != nil {
+			t.Fatal(err)
+		}
+		observations = append(observations, observation)
+	}
+	if len(observations) != 2 {
+		t.Fatalf("test-only matcher observations=%+v, want PostgreSQL and MongoDB fixtures", observations)
+	}
+	manager := discovery.NewProposalManager(store.ProposalRepository())
+	if err := manager.Refresh(observations, report.EvaluatedAt); err != nil {
+		t.Fatal(err)
+	}
+	proposals, err := store.ProposalRepository().ProposalSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fixture := range []struct{ id, definition string }{{postgresID, "postgresql-fixture"}, {mongoID, "mongodb-fixture"}} {
+		found := false
+		for _, proposal := range proposals {
+			if proposal.Identity.ResourceID == fixture.id && proposal.Identity.IntegrationID == fixture.definition {
+				found = proposal.Status == discovery.ProposalNeedsInput && len(proposal.RequiredInputs) == 2 && proposal.CandidateDigest == ""
+			}
+		}
+		if !found {
+			t.Fatalf("fixture %s did not produce a needs_input proposal; fixture_results=%+v proposals=%+v", fixture.id, fixtureResults, proposals)
+		}
+	}
+}
+
+func fixtureDatabaseDefinition(id, imageRepository string, inputs []integration.RequiredInput) integration.IntegrationDefinition {
+	return integration.IntegrationDefinition{
+		ID: id, Version: "1.0.0", Validate: func(settings map[string]any) error {
+			endpoint, ok := settings["endpoint"].(string)
+			if !ok || endpoint == "" {
+				return errors.New("fixture endpoint is required")
+			}
+			return nil
+		},
+		Contribute: func(integration.IntegrationInstance) (integration.Contribution, error) {
+			return integration.NewContribution(nil), nil
+		},
+		Matching: &integration.MatchingDefinition{
+			Selector: &integration.MatchSelector{
+				ResourceKinds: []string{"container"}, LifecycleStates: []string{"running"},
+				ExactAttributes: map[string]string{"container.image.repository": imageRepository},
+			},
+			BuildCandidate: func(resource integration.MatchResource) (integration.CandidateBuild, error) {
+				for _, endpoint := range resource.Endpoints {
+					if endpoint.Scope == "host" && endpoint.Provenance == "published_port" && endpoint.Protocol == "tcp" && endpoint.Port > 0 {
+						return integration.CandidateBuild{RequiredInputs: append([]integration.RequiredInput(nil), inputs...)}, nil
+					}
+				}
+				missing := append([]integration.RequiredInput{{Name: "endpoint", Reason: "test fixture has no host-published endpoint"}}, inputs...)
+				return integration.CandidateBuild{RequiredInputs: missing}, nil
+			},
+		},
+	}
+}
+
+type fixtureCapabilityAssessor struct{}
+
+func (fixtureCapabilityAssessor) Assess(required []string) (integration.CapabilityAssessment, error) {
+	return integration.CapabilityAssessment{Status: integration.CapabilitySupported, Platform: "test-fixture", ArtifactVersion: "test-only", ManifestVersion: "test-only", Required: append([]string(nil), required...)}, nil
 }
 
 func mustInventory(t *testing.T, repository discovery.InventoryRepository) discovery.InventorySnapshot {

@@ -29,4 +29,4 @@ Use `--state-path <path>` before the resource key when inspecting a non-default 
 
 Unset `AR_IMMS_DOCKER_DISCOVERY_ENDPOINT` and restart the service to disable discovery. This does not disable Collector monitoring.
 
-Matching, Integration proposals, approvals, process discovery and Docker event notifications are not implemented.
+Integration matching and durable proposals are evaluated by the Agent Service after discovery cycles. Review proposals and explicitly approve or dismiss them with the operations in [Monitoring proposal operations](monitoring-proposals.md). Approval only persists desired state; the Agent Service's existing S3/M2 lifecycle performs convergence and activation. Docker event notifications and process discovery are not implemented.

@@ -1,6 +1,6 @@
 # S4 Resource Discovery & Inventory
 
-**Status:** Implemented provider-neutral inventory foundation with an opt-in Docker provider. Integration matching, proposals and approval remain future work.
+**Status:** Provider-neutral inventory, opt-in Docker provider, S4.3 matcher core, S4.4 proposal/approval workflow and Agent Service refresh are implemented in the current branch. Verified evidence includes live Docker discovery and proposal approval, Windows Agent Service convergence for Redis, and Redis metric delivery to an isolated OTLP sink. Linux runtime end-to-end Redis delivery remains open. This status describes the current branch, not deployment.
 
 ## Responsibility and boundaries
 
@@ -20,8 +20,8 @@ flowchart LR
     REDUCE --> REPO["InventoryRepository"]
     REPO --> DB[("SQLite state.db WAL")]
     DB --> CLI["agentctl inventory (read-only)"]
-    DB -. future read-only consumer .-> MATCH["Integration Matcher (not implemented)"]
-    MATCH -. future proposal .-> APPROVAL["Proposal and approval (not implemented)"]
+    DB --> READ["Read-only Inventory projection"] --> MATCH["S4.3 Integration Matcher"]
+    MATCH --> APPROVAL["Proposal and approval"]
 ```
 
 ## Provider and resource identity
@@ -72,4 +72,4 @@ The commands are read-only. List and inspect show normalized evidence; status re
 
 ## Extension boundary
 
-Future providers implement `discovery.DiscoveryProvider` and return complete provider-neutral snapshots. They are composed at the Agent runtime. S4 does not include Docker event streaming, process/VM providers, Integration Matcher, proposal lifecycle, operator approval, automatic desired-state writes or Core synchronization.
+Future providers implement `discovery.DiscoveryProvider` and return complete provider-neutral snapshots. They are composed at the Agent runtime. S4.3 matching consumes inventory through an Integration-owned projection; Discovery does not import Integration or perform matching. The read-only S4.3 CLI composition and S4.4 proposal lifecycle/approval are present. Live verification confirms Docker discovery, proposal creation, explicit approval, Agent Service convergence and Redis telemetry delivery on Windows. PostgreSQL and Mongo fixtures were verified through discovery/matching into `needs_input` proposals only; they are not production monitoring definitions and were not activated. Linux runtime delivery and Docker event streaming remain unverified/out of scope. Discovery does not automatically approve or write desired state; Core synchronization is not included.

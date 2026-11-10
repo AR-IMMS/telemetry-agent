@@ -12,19 +12,21 @@ import (
 
 type runtimeInventoryRepository struct {
 	revision atomic.Uint64
+	writes   atomic.Uint64
 }
 
 func (r *runtimeInventoryRepository) Snapshot() (discovery.InventorySnapshot, error) {
-	return discovery.InventorySnapshot{Revision: r.revision.Load()}, nil
+	return discovery.InventorySnapshot{Revision: r.revision.Load(), WriteRevision: r.writes.Load()}, nil
 }
 
-func (r *runtimeInventoryRepository) CommitProviderSnapshot(expected uint64, _ discovery.ProviderSnapshot, _ []discovery.Resource, changed bool) error {
-	if r.revision.Load() != expected {
+func (r *runtimeInventoryRepository) CommitProviderSnapshot(expectedWriteRevision uint64, _ discovery.ProviderSnapshot, _ []discovery.Resource, changed bool) error {
+	if r.writes.Load() != expectedWriteRevision {
 		return discovery.ErrSnapshotConflict
 	}
 	if changed {
 		r.revision.Add(1)
 	}
+	r.writes.Add(1)
 	return nil
 }
 
@@ -55,6 +57,8 @@ func TestRuntimeControlLoopsRunsDiscoveryAndStopsWithReconciliation(t *testing.T
 		t.Fatal(err)
 	}
 	want := errors.New("reconciliation stopped")
+	var refreshes atomic.Int32
+	refresh := func(context.Context) error { refreshes.Add(1); return nil }
 	reconcile := func(ctx context.Context) error {
 		select {
 		case <-provider.seen:
@@ -65,17 +69,24 @@ func TestRuntimeControlLoopsRunsDiscoveryAndStopsWithReconciliation(t *testing.T
 			return errors.New("discovery did not run")
 		}
 	}
-	if err := runRuntimeControlLoops(context.Background(), reconcile, coordinator); !errors.Is(err, want) {
+	if err := runRuntimeControlLoops(context.Background(), reconcile, coordinator, refresh); !errors.Is(err, want) {
 		t.Fatalf("runtime error=%v, want %v", err, want)
 	}
 	if provider.calls.Load() != 1 {
 		t.Fatalf("provider calls=%d, want one initial snapshot", provider.calls.Load())
 	}
+	if refreshes.Load() != 1 {
+		t.Fatalf("proposal refresh calls=%d, want one completed cycle", refreshes.Load())
+	}
 }
 
 func TestRuntimeControlLoopsWithoutDiscoveryPreservesReconciliation(t *testing.T) {
 	want := errors.New("reconciliation failure")
-	if err := runRuntimeControlLoops(context.Background(), func(context.Context) error { return want }, nil); !errors.Is(err, want) {
+	var refreshes atomic.Int32
+	if err := runRuntimeControlLoops(context.Background(), func(context.Context) error { return want }, nil, func(context.Context) error { refreshes.Add(1); return nil }); !errors.Is(err, want) {
 		t.Fatalf("runtime error=%v, want %v", err, want)
+	}
+	if refreshes.Load() != 1 {
+		t.Fatalf("persisted inventory should be evaluated once at startup, refreshes=%d", refreshes.Load())
 	}
 }

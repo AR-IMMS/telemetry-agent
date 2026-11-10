@@ -141,6 +141,25 @@ func TestSQLiteIntegrationMutationsCASNoOpDeleteRestartAndMigration(t *testing.T
 	}
 }
 
+func TestSQLiteIntegrationLegacySourceNormalizesWithoutAdvancingRevision(t *testing.T) {
+	repository := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db")).IntegrationRepository()
+	legacy := integrationInstance("legacy-cache", "localhost:6379")
+	created, setRevision, err := repository.Put(legacy, 0)
+	if err != nil || setRevision != 1 || created.Revision != 1 {
+		t.Fatalf("legacy create=%+v desired revision=%d err=%v", created, setRevision, err)
+	}
+	snapshot, err := repository.Snapshot()
+	if err != nil || snapshot.Instances[0].Source != integration.SourceLocal {
+		t.Fatalf("legacy source snapshot=%+v err=%v", snapshot, err)
+	}
+	explicitLocal := legacy
+	explicitLocal.Source = integration.SourceLocal
+	unchanged, setRevision, err := repository.Put(explicitLocal, 1)
+	if err != nil || unchanged.Revision != 1 || setRevision != 1 {
+		t.Fatalf("normalizing legacy source advanced revision: instance=%+v desired=%d err=%v", unchanged, setRevision, err)
+	}
+}
+
 func TestSQLiteIntegrationMutationRollsBackInstanceWhenMarkerUpdateFails(t *testing.T) {
 	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	repo := store.IntegrationRepository()

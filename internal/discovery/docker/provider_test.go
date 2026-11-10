@@ -70,11 +70,64 @@ func TestProviderMapsCompleteContainerInventoryWithoutSensitiveMetadata(t *testi
 	if resource.ProviderResourceID != strings.Repeat("a", 64) || resource.DisplayName != "redis-fixture" || resource.LifecycleState != "running" {
 		t.Fatalf("resource identity/name/state = %+v", resource)
 	}
-	if len(resource.Attributes) != 2 || resource.Attributes["secret"] != "" {
+	if resource.Attributes["secret"] != "" || resource.Attributes["label.com.docker.compose.service"] != "redis" || resource.Attributes["label.org.opencontainers.image.version"] != "7.4" {
 		t.Fatalf("attributes leaked or missing: %+v", resource.Attributes)
 	}
 	if len(resource.Endpoints) != 2 {
 		t.Fatalf("endpoints=%+v", resource.Endpoints)
+	}
+}
+
+func TestMapContainerPreservesBoundedImageEvidenceWithoutUsingImageID(t *testing.T) {
+	resource, err := mapContainer(container.Summary{
+		ID: "container-id", State: "running",
+		Image:   "registry.example:5000/team/redis:7.4",
+		ImageID: "sha256:must-not-be-used-as-registry-digest",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"container.image.reference":  "registry.example:5000/team/redis:7.4",
+		"container.image.repository": "registry.example:5000/team/redis",
+		"container.image.tag":        "7.4",
+	}
+	for key, value := range want {
+		if resource.Attributes[key] != value {
+			t.Errorf("attribute %q=%q, want %q; all=%+v", key, resource.Attributes[key], value, resource.Attributes)
+		}
+	}
+	if _, ok := resource.Attributes["container.image.digest"]; ok {
+		t.Fatalf("Docker ImageID was treated as an image digest: %+v", resource.Attributes)
+	}
+}
+
+func TestMapContainerKeepsUnknownImageReferenceWithoutGuessingRepository(t *testing.T) {
+	resource, err := mapContainer(container.Summary{ID: "container-id", State: "running", Image: "not a valid image ref"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := resource.Attributes["container.image.reference"]; got != "not a valid image ref" {
+		t.Fatalf("raw image reference=%q", got)
+	}
+	if got := resource.Attributes["container.image.repository"]; got != "" {
+		t.Fatalf("malformed image reference received guessed repository %q", got)
+	}
+}
+
+func TestMapContainerPreservesExplicitImageDigest(t *testing.T) {
+	resource, err := mapContainer(container.Summary{
+		ID: "container-id", State: "running",
+		Image: "redis@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := resource.Attributes["container.image.repository"]; got != "docker.io/library/redis" {
+		t.Fatalf("repository=%q", got)
+	}
+	if got := resource.Attributes["container.image.digest"]; got != "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" {
+		t.Fatalf("digest=%q", got)
 	}
 }
 

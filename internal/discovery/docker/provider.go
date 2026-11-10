@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/ar-imms/telemetry-agent/internal/discovery"
+	"github.com/distribution/reference"
 	"github.com/moby/moby/api/types/container"
 	moby "github.com/moby/moby/client"
 )
@@ -143,6 +144,13 @@ func mapContainer(item container.Summary) (discovery.ResourceObservation, error)
 		}
 		attributes["label."+key] = value
 	}
+	imageAttributes, err := normalizedImageAttributes(item.Image)
+	if err != nil {
+		return discovery.ResourceObservation{}, err
+	}
+	for key, value := range imageAttributes {
+		attributes[key] = value
+	}
 	endpoints, err := mapEndpoints(item)
 	if err != nil {
 		return discovery.ResourceObservation{}, err
@@ -151,6 +159,28 @@ func mapContainer(item container.Summary) (discovery.ResourceObservation, error)
 		ProviderResourceID: item.ID, Kind: discovery.ResourceContainer,
 		DisplayName: name, LifecycleState: state, Attributes: attributes, Endpoints: endpoints,
 	}, nil
+}
+
+func normalizedImageAttributes(image string) (map[string]string, error) {
+	if image == "" {
+		return nil, nil
+	}
+	if len(image) > 1024 || strings.ContainsAny(image, "\x00\r\n") {
+		return nil, fmt.Errorf("Docker image reference exceeds inventory limits")
+	}
+	attributes := map[string]string{"container.image.reference": image}
+	named, err := reference.ParseNormalizedNamed(image)
+	if err != nil {
+		return attributes, nil
+	}
+	attributes["container.image.repository"] = reference.Domain(named) + "/" + reference.Path(named)
+	if tagged, ok := named.(reference.Tagged); ok {
+		attributes["container.image.tag"] = tagged.Tag()
+	}
+	if digested, ok := named.(reference.Digested); ok {
+		attributes["container.image.digest"] = digested.Digest().String()
+	}
+	return attributes, nil
 }
 
 func allowedLabel(key string) bool {

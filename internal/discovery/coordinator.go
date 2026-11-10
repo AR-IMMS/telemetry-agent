@@ -132,7 +132,7 @@ func (c *Coordinator) applySnapshot(snapshot ProviderSnapshot, at time.Time) err
 		if err != nil {
 			return err
 		}
-		err = c.repository.CommitProviderSnapshot(current.Revision, snapshot, resources, changed)
+		err = c.repository.CommitProviderSnapshot(current.WriteRevision, snapshot, resources, changed)
 		if !errors.Is(err, ErrSnapshotConflict) {
 			if err != nil {
 				return fmt.Errorf("commit provider snapshot: %w", err)
@@ -145,13 +145,22 @@ func (c *Coordinator) applySnapshot(snapshot ProviderSnapshot, at time.Time) err
 
 // Run performs an initial cycle and then polls until context cancellation.
 func (c *Coordinator) Run(ctx context.Context, interval time.Duration, onError func(error)) error {
+	return c.RunWithCycle(ctx, interval, onError, nil)
+}
+
+// RunWithCycle performs the existing poll loop and calls afterCycle once after each completed provider cycle.
+func (c *Coordinator) RunWithCycle(ctx context.Context, interval time.Duration, onError func(error), afterCycle func(CycleResult) error) error {
 	if ctx == nil || interval <= 0 {
 		return fmt.Errorf("discovery context and positive interval are required")
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
-		if _, err := c.DiscoverOnce(ctx); err != nil && onError != nil && ctx.Err() == nil {
+		result, err := c.DiscoverOnce(ctx)
+		if err == nil && afterCycle != nil {
+			err = afterCycle(result)
+		}
+		if err != nil && onError != nil && ctx.Err() == nil {
 			onError(err)
 		}
 		select {
