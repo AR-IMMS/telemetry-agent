@@ -283,15 +283,32 @@ func TestRuntimeTemplateMaterializerPreservesFailureAndTracksResourceLifecycle(t
 
 	provider.snapshot = redisProviderSnapshot("container-b")
 	refreshAfterSuccessfulCycle()
-	refreshAfterSuccessfulCycle()
-	afterReplacement := readDesired()
+	afterFirstReplacementMiss := readDesired()
 	newID, err := integration.GeneratedInstanceID(integration.TemplateOwnerLocal, "redis-auto", integration.ResourceIdentity{
 		Provider: "docker", ProviderInstance: "local", ResourceID: "container-b",
 	}, "redis")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if afterReplacement.Revision != afterReappearance.Revision+2 || len(afterReplacement.Instances) != 2 {
+	if afterFirstReplacementMiss.Revision != afterReappearance.Revision+1 || len(afterFirstReplacementMiss.Instances) != 2 {
+		t.Fatalf("first replacement miss desired snapshot=%+v", afterFirstReplacementMiss)
+	}
+	oldEnabled, newEnabled := false, false
+	for _, instance := range afterFirstReplacementMiss.Instances {
+		if instance.ID == instanceID {
+			oldEnabled = instance.Enabled
+		}
+		if instance.ID == newID {
+			newEnabled = instance.Enabled
+		}
+	}
+	if !oldEnabled || !newEnabled {
+		t.Fatalf("two-snapshot missing policy should retain old and new instances through the first miss: %+v", afterFirstReplacementMiss.Instances)
+	}
+
+	refreshAfterSuccessfulCycle()
+	afterReplacement := readDesired()
+	if afterReplacement.Revision != afterFirstReplacementMiss.Revision+1 || len(afterReplacement.Instances) != 2 {
 		t.Fatalf("replacement desired snapshot=%+v", afterReplacement)
 	}
 	oldSuspended, newEnabled := false, false

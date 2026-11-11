@@ -18,7 +18,7 @@ func writeInventoryHelp(output io.Writer) {
 	fmt.Fprint(output, `Usage: agentctl inventory <list|inspect|status> [options]
 
 Commands:
-  list                           List persisted discovered resources.
+  list [--active-only]           List persisted resources; optionally hide missing history.
   inspect <provider/instance/id> Show one persisted resource and its evidence.
   status                         Show provider and inventory status.
 `)
@@ -34,6 +34,7 @@ func runInventory(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	flags := flag.NewFlagSet("inventory "+command, flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	statePath := flags.String("state-path", agentstate.DefaultPath(), "persistent Agent state path")
+	activeOnly := flags.Bool("active-only", false, "list only resources currently present in a complete provider snapshot")
 	if err := flags.Parse(args[1:]); err != nil {
 		return 2
 	}
@@ -57,6 +58,10 @@ func runInventory(ctx context.Context, args []string, stdout, stderr io.Writer) 
 		writeInventoryHelp(stderr)
 		return 2
 	}
+	if *activeOnly && command != "list" {
+		fmt.Fprintln(stderr, "usage error: --active-only is supported only by inventory list")
+		return 2
+	}
 	if err := ctx.Err(); err != nil {
 		fmt.Fprintf(stderr, "inventory %s: %v\n", command, err)
 		return 1
@@ -70,6 +75,9 @@ func runInventory(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	case "list":
 		fmt.Fprintln(stdout, "PROVIDER\tRESOURCE\tKIND\tNAME\tSTATE\tPRESENCE\tFRESHNESS")
 		for _, resource := range snapshot.Resources {
+			if *activeOnly && resource.Presence != discovery.PresencePresent {
+				continue
+			}
 			fmt.Fprintf(stdout, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", resource.Key.Provider, resource.Key.String(), resource.Kind, resource.DisplayName, resource.LifecycleState, resource.Presence, resource.FreshnessAt(time.Now().UTC(), discovery.DefaultPolicy().StaleAfter))
 		}
 		return 0

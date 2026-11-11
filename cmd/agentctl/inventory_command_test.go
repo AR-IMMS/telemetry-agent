@@ -60,6 +60,62 @@ func TestInventoryCommandsReadPersistedSnapshot(t *testing.T) {
 	}
 }
 
+func TestInventoryListActiveOnlyExcludesMissingHistory(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "state.db")
+	repository := agentstate.NewSQLiteStore(statePath).InventoryRepository()
+	at := time.Now().UTC()
+	first := discovery.ProviderSnapshot{
+		ProviderID: "docker", ProviderInstanceID: "local", Complete: true, ObservedAt: at,
+		Resources: []discovery.ResourceObservation{
+			{ProviderResourceID: "redis-v1", Kind: discovery.ResourceContainer, DisplayName: "redis-old", LifecycleState: "running"},
+			{ProviderResourceID: "redis-v2", Kind: discovery.ResourceContainer, DisplayName: "redis-new", LifecycleState: "running"},
+		},
+	}
+	resources, changed, err := discovery.ReconcileProviderSnapshot(nil, first, discovery.DefaultPolicy())
+	if err != nil || !changed {
+		t.Fatalf("first snapshot changed=%v err=%v", changed, err)
+	}
+	if err := repository.CommitProviderSnapshot(0, first, resources, changed); err != nil {
+		t.Fatal(err)
+	}
+	for miss := 1; miss <= 2; miss++ {
+		snapshot := discovery.ProviderSnapshot{
+			ProviderID: "docker", ProviderInstanceID: "local", Complete: true, ObservedAt: at.Add(time.Duration(miss) * time.Second),
+			Resources: []discovery.ResourceObservation{{ProviderResourceID: "redis-v2", Kind: discovery.ResourceContainer, DisplayName: "redis-new", LifecycleState: "running"}},
+		}
+		current, err := repository.Snapshot()
+		if err != nil {
+			t.Fatal(err)
+		}
+		resources, changed, err = discovery.ReconcileProviderSnapshot(current.Resources, snapshot, discovery.DefaultPolicy())
+		if err != nil {
+			t.Fatalf("miss %d changed=%v err=%v", miss, changed, err)
+		}
+		if changed != (miss == 2) {
+			t.Fatalf("miss %d material revision changed=%v, want %t", miss, changed, miss == 2)
+		}
+		if err := repository.CommitProviderSnapshot(current.WriteRevision, snapshot, resources, changed); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var activeOut, activeErr bytes.Buffer
+	if code := runInventory(context.Background(), []string{"list", "--active-only", "--state-path", statePath}, &activeOut, &activeErr); code != 0 {
+		t.Fatalf("active-only list code=%d stderr=%s", code, activeErr.String())
+	}
+	if !strings.Contains(activeOut.String(), "redis-v2") || strings.Contains(activeOut.String(), "redis-v1") {
+		t.Fatalf("active-only view should show only the recreated container: %s", activeOut.String())
+	}
+
+	var historyOut, historyErr bytes.Buffer
+	if code := runInventory(context.Background(), []string{"list", "--state-path", statePath}, &historyOut, &historyErr); code != 0 {
+		t.Fatalf("history list code=%d stderr=%s", code, historyErr.String())
+	}
+	if !strings.Contains(historyOut.String(), "redis-v1") || !strings.Contains(historyOut.String(), "missing") {
+		t.Fatalf("default inventory history should retain the old missing container: %s", historyOut.String())
+	}
+}
+
 func TestInventoryCommandsRejectInvalidArgumentsAndHonorCanceledContext(t *testing.T) {
 	invalidDatabasePath := filepath.Join(t.TempDir(), "not-a-database.db")
 	if err := os.WriteFile(invalidDatabasePath, []byte("not a SQLite database"), 0o600); err != nil {
@@ -70,6 +126,7 @@ func TestInventoryCommandsRejectInvalidArgumentsAndHonorCanceledContext(t *testi
 		{"inspect", "--state-path", invalidDatabasePath},
 		{"unknown", "--state-path", invalidDatabasePath},
 		{"list", "--state-path", " "},
+		{"status", "--state-path", filepath.Join(t.TempDir(), "state.db"), "--active-only"},
 	} {
 		var stdout, stderr bytes.Buffer
 		if code := runInventory(context.Background(), args, &stdout, &stderr); code != 2 {
