@@ -313,7 +313,7 @@ func (s *supervisor) shutdown(
 
 	select {
 	case result := <-child.Wait():
-		if result.Err != nil {
+		if result.Err != nil && !isExpectedGracefulStopExit(result) {
 			_ = lifecycle.Transition(StateFailed)
 
 			return fmt.Errorf(

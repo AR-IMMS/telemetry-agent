@@ -1,0 +1,94 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"log"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/discovery"
+	discoverydocker "github.com/ar-imms/telemetry-agent/internal/discovery/docker"
+)
+
+const (
+	dockerDiscoveryEndpointEnv = "AR_IMMS_DOCKER_DISCOVERY_ENDPOINT"
+	discoveryPollInterval      = 30 * time.Second
+	discoveryProviderTimeout   = 5 * time.Second
+)
+
+// newDockerDiscoveryCoordinator opts in only when an explicit local endpoint is set.
+func newDockerDiscoveryCoordinator(statePath string) *discovery.Coordinator {
+	endpoint := strings.TrimSpace(os.Getenv(dockerDiscoveryEndpointEnv))
+	if endpoint == "" {
+		return nil
+	}
+	repository := agentstate.NewSQLiteStore(statePath).InventoryRepository()
+	provider, err := discoverydocker.NewProvider(endpoint)
+	if err != nil {
+		status := discovery.ProviderStatus{
+			ProviderID: "docker", ProviderInstanceID: "configured", Enabled: true,
+			LastAttemptAt: time.Now().UTC(), LastErrorCode: "invalid_configuration",
+		}
+		if recordErr := repository.RecordProviderFailure(status); recordErr != nil {
+			log.Printf("Docker discovery configuration diagnostic could not persist code=inventory_store_error")
+		}
+		log.Printf("Docker discovery is enabled but the endpoint is invalid code=invalid_configuration")
+		return nil
+	}
+	coordinator, err := discovery.NewCoordinator(repository, []discovery.DiscoveryProvider{provider}, discovery.DefaultPolicy(), discoveryProviderTimeout)
+	if err != nil {
+		log.Printf("Docker discovery could not start code=invalid_configuration")
+		return nil
+	}
+	return coordinator
+}
+
+// runRuntimeControlLoops runs discovery beside the Agent Service's sole S3 controller.
+// Discovery errors are logged as safe codes and never stop Collector supervision.
+func runRuntimeControlLoops(ctx context.Context, reconcile func(context.Context) error, inventory *discovery.Coordinator, refreshProposals, refreshTemplates func(context.Context) error) error {
+	if inventory == nil {
+		if refreshProposals != nil {
+			if err := refreshProposals(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				log.Printf("Proposal refresh failed code=proposal_refresh_error")
+			}
+		}
+		return reconcile(ctx)
+	}
+	serviceContext, cancel := context.WithCancel(ctx)
+	discoveryDone := make(chan struct{})
+	go func() {
+		defer close(discoveryDone)
+		err := inventory.RunWithCycle(serviceContext, discoveryPollInterval, func(error) {
+			log.Printf("Discovery inventory cycle failed code=inventory_store_error")
+		}, func(result discovery.CycleResult) error {
+			if refreshTemplates != nil && discoveryCycleSucceeded(result) {
+				if err := refreshTemplates(serviceContext); err != nil {
+					log.Printf("Template materialization refresh failed code=materialization_error")
+				}
+			}
+			if refreshProposals == nil {
+				return nil
+			}
+			return refreshProposals(serviceContext)
+		})
+		if err != nil && !errors.Is(err, context.Canceled) && serviceContext.Err() == nil {
+			log.Printf("Discovery service stopped code=inventory_service_error")
+		}
+	}()
+	err := reconcile(serviceContext)
+	cancel()
+	<-discoveryDone
+	return err
+}
+
+func discoveryCycleSucceeded(result discovery.CycleResult) bool {
+	for _, provider := range result.ProviderResults {
+		if provider.ErrorCode != "" {
+			return false
+		}
+	}
+	return true
+}

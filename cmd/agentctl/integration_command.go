@@ -15,17 +15,18 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentlifecycle"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	"github.com/ar-imms/telemetry-agent/internal/reconciliation"
 )
 
 func writeIntegrationHelp(w io.Writer) {
-	fmt.Fprint(w, `Usage: agentctl integration <configure|update|enable|disable|delete|list|inspect|status|history|retry> [options]
+	fmt.Fprint(w, `Usage: agentctl integration <configure|update|enable|disable|delete|list|inspect|status|history|retry|match|catalog|template> [options]
 
 Desired mutations commit locally. The Agent Service detects them through SQLite polling and applies configuration asynchronously.
+The match command reads persisted inventory and prints candidate diagnostics without changing desired state or contacting providers.
+Use "agentctl integration catalog help" to list shipped Integration Definitions and inspect their supported settings and Collector capability evidence.
+Use "agentctl integration template help" to manage local automatic monitoring Templates. Templates change desired state; the Agent Service owns discovery projection and Collector convergence.
 `)
 }
 
@@ -34,7 +35,16 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 		writeIntegrationHelp(stdout)
 		return 0
 	}
+	if args[0] == "template" {
+		return runIntegrationTemplate(ctx, args[1:], stdout, stderr)
+	}
+	if args[0] == "catalog" {
+		return runIntegrationCatalog(ctx, args[1:], stdout, stderr)
+	}
 	command := args[0]
+	if command == "match" {
+		return runIntegrationMatch(ctx, args[1:], stdout, stderr)
+	}
 	flags := flag.NewFlagSet("integration "+command, flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	statePath := flags.String("state-path", agentstate.DefaultPath(), "persistent Agent state path")
@@ -100,7 +110,7 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 			fmt.Fprintln(stderr, "usage error: --settings must be a JSON object")
 			return 2
 		}
-		registry, err := productionIntegrationRegistryForHost()
+		registry, err := productionIntegrationRegistry()
 		if err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
@@ -138,7 +148,7 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 			return integrationCommandError(stderr, command, sql.ErrNoRows)
 		}
 		instance.Enabled = command == "enable"
-		registry, err := productionIntegrationRegistryForHost()
+		registry, err := productionIntegrationRegistry()
 		if err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
@@ -237,18 +247,6 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 		return usageIntegration(stderr, "unknown integration command "+command)
 	}
 	return 0
-}
-
-func productionIntegrationRegistryForHost() (integration.Registry, error) {
-	platform, err := identity.CollectPlatformInfo()
-	if err != nil {
-		return integration.Registry{}, err
-	}
-	catalog, err := collectorruntime.StaticCatalog(platform)
-	if err != nil {
-		return integration.Registry{}, err
-	}
-	return productionIntegrationRegistry(catalog)
 }
 
 func usageIntegration(w io.Writer, message string) int {

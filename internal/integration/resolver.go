@@ -19,6 +19,9 @@ func NewResolver(registry Registry) Resolver { return Resolver{registry: registr
 
 // Resolve validates and resolves one instance without I/O or persistence.
 func (r Resolver) Resolve(instance IntegrationInstance) (ResolvedInstance, error) {
+	if instance.Source == "" {
+		instance.Source = SourceLocal
+	}
 	if err := ValidateInstance(instance); err != nil {
 		return ResolvedInstance{}, err
 	}
@@ -30,6 +33,10 @@ func (r Resolver) Resolve(instance IntegrationInstance) (ResolvedInstance, error
 	var copied map[string]any
 	_ = json.Unmarshal(configuration, &copied)
 	instance.Configuration = copied
+	if instance.Binding != nil {
+		binding := *instance.Binding
+		instance.Binding = &binding
+	}
 	if err := definition.Validate(instance.Configuration); err != nil {
 		return ResolvedInstance{}, fmt.Errorf("%w: %v", ErrInvalidInstance, err)
 	}

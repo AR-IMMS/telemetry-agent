@@ -19,6 +19,9 @@ func (s SQLiteStore) IntegrationRepository() configuration.IntegrationRepository
 type integrationSQLite struct{ store SQLiteStore }
 
 func (s integrationSQLite) Put(instance integration.IntegrationInstance, expected uint64) (integration.IntegrationInstance, uint64, error) {
+	if instance.Source == integration.SourceTemplate {
+		return integration.IntegrationInstance{}, 0, configuration.ErrTemplateOwnedInstance
+	}
 	if err := integration.ValidateInstance(instance); err != nil {
 		return integration.IntegrationInstance{}, 0, err
 	}
@@ -51,6 +54,15 @@ func (s integrationSQLite) Put(instance integration.IntegrationInstance, expecte
 		return integration.IntegrationInstance{}, 0, err
 	} else if expected != current {
 		return integration.IntegrationInstance{}, 0, configuration.ErrRevisionConflict
+	}
+	if old != nil {
+		var existing integration.IntegrationInstance
+		if err := json.Unmarshal(old, &existing); err != nil {
+			return integration.IntegrationInstance{}, 0, fmt.Errorf("decode existing Integration instance: %w", err)
+		}
+		if existing.Source == integration.SourceTemplate {
+			return integration.IntegrationInstance{}, 0, configuration.ErrTemplateOwnedInstance
+		}
 	}
 	if old != nil && sameIntegrationIntent(old, encoded) {
 		setRevision, e := desiredIntegrationRevision(tx)
@@ -93,9 +105,24 @@ func sameIntegrationIntent(stored, requested []byte) bool {
 	if json.Unmarshal(stored, &current) != nil {
 		return false
 	}
+	var desired integration.IntegrationInstance
+	if json.Unmarshal(requested, &desired) != nil {
+		return false
+	}
+	if current.Source == "" {
+		current.Source = integration.SourceLocal
+	}
+	if desired.Source == "" {
+		desired.Source = integration.SourceLocal
+	}
 	current.Revision = 0
-	canonical, err := json.Marshal(current)
-	return err == nil && string(canonical) == string(requested)
+	desired.Revision = 0
+	canonicalCurrent, err := json.Marshal(current)
+	if err != nil {
+		return false
+	}
+	canonicalDesired, err := json.Marshal(desired)
+	return err == nil && string(canonicalCurrent) == string(canonicalDesired)
 }
 
 func (s integrationSQLite) Delete(id string, expected uint64) (uint64, error) {
@@ -112,7 +139,8 @@ func (s integrationSQLite) Delete(id string, expected uint64) (uint64, error) {
 	}
 	defer tx.Rollback()
 	var current uint64
-	err = tx.QueryRow(`SELECT revision FROM integration_instances WHERE instance_id=?`, id).Scan(&current)
+	var payload []byte
+	err = tx.QueryRow(`SELECT payload,revision FROM integration_instances WHERE instance_id=?`, id).Scan(&payload, &current)
 	if errors.Is(err, sql.ErrNoRows) {
 		revision, e := desiredIntegrationRevision(tx)
 		if e != nil {
@@ -122,6 +150,13 @@ func (s integrationSQLite) Delete(id string, expected uint64) (uint64, error) {
 	}
 	if err != nil {
 		return 0, err
+	}
+	var existing integration.IntegrationInstance
+	if err := json.Unmarshal(payload, &existing); err != nil {
+		return 0, fmt.Errorf("decode Integration instance before delete: %w", err)
+	}
+	if existing.Source == integration.SourceTemplate {
+		return 0, configuration.ErrTemplateOwnedInstance
 	}
 	if current != expected {
 		return 0, configuration.ErrRevisionConflict
@@ -171,6 +206,9 @@ func (s integrationSQLite) Snapshot() (configuration.DesiredSnapshot, error) {
 		var instance integration.IntegrationInstance
 		if err := json.Unmarshal(payload, &instance); err != nil {
 			return configuration.DesiredSnapshot{}, err
+		}
+		if instance.Source == "" {
+			instance.Source = integration.SourceLocal
 		}
 		snapshot.Instances = append(snapshot.Instances, instance)
 	}

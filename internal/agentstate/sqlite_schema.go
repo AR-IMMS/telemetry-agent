@@ -54,7 +54,19 @@ func ensureSQLiteSchema(db *sql.DB) error {
 	if err := migrateCandidateAttemptHistory(db); err != nil {
 		return err
 	}
-	return migrateReconciliationDiagnostics(db)
+	if err := migrateReconciliationDiagnostics(db); err != nil {
+		return err
+	}
+	if err := migrateDiscoveryInventory(db); err != nil {
+		return err
+	}
+	if err := migrateInventoryWriteRevision(db); err != nil {
+		return err
+	}
+	if err := migrateMonitoringProposals(db); err != nil {
+		return err
+	}
+	return migrateIntegrationTemplates(db)
 }
 
 // migrateInstallationIdentity atomically creates the identity schema and its
