@@ -50,3 +50,33 @@ The command reports that Agent Service convergence is pending. It does not start
 - Credentials for authenticated database integrations require a separately approved secure secret-reference and Collector expansion contract; such proposals remain non-actionable.
 - A resource disappearing does not automatically disable an already approved Integration. Inventory freshness/presence and proposal status are distinct from desired state.
 - PostgreSQL and MongoDB test fixtures do not imply production Integration definitions or verified Collector pipelines.
+
+## Local automatic monitoring Templates
+
+Use a Template when an operator explicitly authorizes the Agent to create and maintain desired instances for every resource matching its selector. A Template is not a Core policy, and enabling it is broader than approving one proposal. Use a narrow selector and review endpoint binding rules before enabling.
+
+Create a local Redis Template (PowerShell users may save the JSON to a file and pass its contents as one quoted argument):
+
+```text
+agentctl integration template create --expected-revision 0 --template-json '{"id":"redis-local","definition_id":"redis","definition_version":"1.0.0","owner":"local","status":"enabled","selector":{"resource_kinds":["container"],"exact_attributes":{"container.image.repository":"docker.io/library/redis"}},"bindings":[{"target":"endpoint","source":{"kind":"endpoint","endpoint_scope":"host","endpoint_protocol":"tcp","endpoint_provenance":"published_port"}}]}' [--state-path <path>]
+```
+
+List and inspect Templates:
+
+```text
+agentctl integration template list [--state-path <path>]
+agentctl integration template inspect --id redis-local [--state-path <path>]
+```
+
+Update the full Template JSON using its displayed per-Template revision as the CAS token. Enable/disable are also revision-checked. Disable suspends only the Template-owned generated instances and can be reversed; delete is a permanent tombstone and cannot be re-enabled or reused:
+
+```text
+agentctl integration template update --expected-revision <revision> --template-json <json> [--state-path <path>]
+agentctl integration template disable --id redis-local --expected-revision <revision> [--state-path <path>]
+agentctl integration template enable --id redis-local --expected-revision <revision> [--state-path <path>]
+agentctl integration template delete --id redis-local --expected-revision <revision> [--state-path <path>]
+```
+
+The Agent Service materializes changes after a complete successful Discovery provider cycle. Repeated unchanged projections do not advance the desired-set revision. Provider failure does not suspend instances; confirmed absence follows the existing two-complete-snapshot policy. Check Integration desired state and S3 reconciliation status separately. These commands do not run reconciliation or claim activation/telemetry delivery.
+
+Templates and Integration settings reject plaintext credentials. Candidates requiring unavailable inputs, ambiguous endpoints, conflicting Templates or unsupported Collector capabilities are not materialized automatically; use the proposal workflow where it is eligible, otherwise leave the Integration disabled until its requirements are resolved.
