@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -91,10 +92,18 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	templateService := newRuntimeTemplateServiceForTest(t, statePath, registry)
-	storedTemplate, _, err := templateService.Put(redisRuntimeTemplate(), 0)
-	if err != nil {
-		t.Fatal(err)
+	templateFile := filepath.Join(tempDir, "redis-monitoring.json")
+	writeRuntimeTemplateFile(t, templateFile, redisRuntimeTemplate())
+	runTemplateCLI(t, statePath, "create", "--file", templateFile, "--expected-revision", "0")
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	if code := runIntegration(context.Background(), []string{"template", "inspect", "--state-path", statePath, "--id", "redis-auto", "--output", "json"}, stdout, stderr); code != 0 || !bytes.Contains(stdout.Bytes(), []byte(`"bindings"`)) {
+		t.Fatalf("inspect persisted Template exit=%d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
+	templateSnapshot, err := templateService.Snapshot()
+	if err != nil || len(templateSnapshot.Templates) != 1 {
+		t.Fatalf("read created Template snapshot=%+v err=%v", templateSnapshot, err)
+	}
+	storedTemplate := templateSnapshot.Templates[0]
 	provider, err := discoverydocker.NewProvider(dockerEndpoint)
 	if err != nil {
 		t.Fatal(err)
@@ -186,11 +195,14 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 	}
 	updatedTemplate := storedTemplate
 	updatedTemplate.Settings = map[string]any{"collection_interval": "15s"}
-	updatedTemplate, _, err = templateService.Put(updatedTemplate, storedTemplate.Revision)
-	if err != nil {
+	writeRuntimeTemplateFile(t, templateFile, updatedTemplate)
+	runTemplateCLI(t, statePath, "update", "--file", templateFile, "--expected-revision", fmt.Sprint(storedTemplate.Revision))
+	templateSnapshot, err = templateService.Snapshot()
+	if err != nil || len(templateSnapshot.Templates) != 1 {
 		stopService()
-		t.Fatalf("update Redis Template interval: %v", err)
+		t.Fatalf("read updated Template snapshot=%+v err=%v", templateSnapshot, err)
 	}
+	updatedTemplate = templateSnapshot.Templates[0]
 	if err := materializer.Refresh(ctx); err != nil {
 		stopService()
 		t.Fatalf("materialize updated Redis Template: %v", err)
@@ -261,11 +273,13 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 		t.Fatalf("unchanged Template caused another lifecycle change: generation=%d want=%d config_changed=%t state_err=%v config_err=%v", finalSteadyState.AppliedGeneration, steadyGeneration, !bytes.Equal(finalConfig, updatedConfig), err, configErr)
 	}
 
-	disabledTemplate, _, err := templateService.SetEnabled(updatedTemplate.ID, false, updatedTemplate.Revision)
-	if err != nil {
+	runTemplateCLI(t, statePath, "disable", "--id", updatedTemplate.ID, "--expected-revision", fmt.Sprint(updatedTemplate.Revision))
+	templateSnapshot, err = templateService.Snapshot()
+	if err != nil || len(templateSnapshot.Templates) != 1 {
 		stopService()
-		t.Fatalf("disable Redis Template: %v", err)
+		t.Fatalf("read disabled Template snapshot=%+v err=%v", templateSnapshot, err)
 	}
+	disabledTemplate := templateSnapshot.Templates[0]
 	if err := materializer.Refresh(ctx); err != nil {
 		stopService()
 		t.Fatalf("materialize disabled Redis Template: %v", err)
@@ -277,11 +291,13 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 	}
 	assertTemplateInstancesEnabled(t, store, false, containerIDs)
 
-	enabledTemplate, _, err := templateService.SetEnabled(disabledTemplate.ID, true, disabledTemplate.Revision)
-	if err != nil {
+	runTemplateCLI(t, statePath, "enable", "--id", disabledTemplate.ID, "--expected-revision", fmt.Sprint(disabledTemplate.Revision))
+	templateSnapshot, err = templateService.Snapshot()
+	if err != nil || len(templateSnapshot.Templates) != 1 {
 		stopService()
-		t.Fatalf("re-enable Redis Template: %v", err)
+		t.Fatalf("read enabled Template snapshot=%+v err=%v", templateSnapshot, err)
 	}
+	enabledTemplate := templateSnapshot.Templates[0]
 	if err := materializer.Refresh(ctx); err != nil {
 		stopService()
 		t.Fatalf("materialize re-enabled Redis Template: %v", err)
@@ -315,11 +331,7 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 	}
 	assertTemplateInstancesEnabled(t, store, true, containerIDs)
 
-	_, _, err = templateService.Delete(enabledTemplate.ID, enabledTemplate.Revision)
-	if err != nil {
-		stopService()
-		t.Fatalf("delete Redis Template: %v", err)
-	}
+	runTemplateCLI(t, statePath, "delete", "--id", enabledTemplate.ID, "--expected-revision", fmt.Sprint(enabledTemplate.Revision))
 	if err := materializer.Refresh(ctx); err != nil {
 		stopService()
 		t.Fatalf("materialize deleted Redis Template: %v", err)
@@ -588,6 +600,27 @@ service:
 func newRuntimeTemplateServiceForTest(t *testing.T, statePath string, registry integration.Registry) configuration.TemplateService {
 	t.Helper()
 	return configuration.NewTemplateService(registry, agentstate.NewSQLiteStore(statePath).TemplateRepository())
+}
+
+func writeRuntimeTemplateFile(t *testing.T, path string, template integration.IntegrationTemplate) {
+	t.Helper()
+	content, err := json.MarshalIndent(template, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, content, 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func runTemplateCLI(t *testing.T, statePath string, args ...string) {
+	t.Helper()
+	commandArgs := append([]string{"template"}, args...)
+	commandArgs = append(commandArgs, "--state-path", statePath)
+	var stdout, stderr bytes.Buffer
+	if code := runIntegration(context.Background(), commandArgs, &stdout, &stderr); code != 0 {
+		t.Fatalf("agentctl integration %s exit=%d stdout=%q stderr=%q", strings.Join(commandArgs, " "), code, stdout.String(), stderr.String())
+	}
 }
 
 type lockedTemplateE2EBuffer struct {

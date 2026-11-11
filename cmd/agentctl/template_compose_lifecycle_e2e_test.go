@@ -106,19 +106,14 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	registry, err := productionIntegrationRegistry()
-	if err != nil {
-		t.Fatal(err)
-	}
-	templateService := newRuntimeTemplateServiceForTest(t, statePath, registry)
 	templateA := composeProjectRedisTemplate("redis-project-a", projectA)
 	templateB := composeProjectRedisTemplate("redis-project-b", projectB)
-	if _, _, err := templateService.Put(templateA, 0); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := templateService.Put(templateB, 0); err != nil {
-		t.Fatal(err)
-	}
+	templateAFile := filepath.Join(root, "redis-project-a.json")
+	templateBFile := filepath.Join(root, "redis-project-b.json")
+	writeRuntimeTemplateFile(t, templateAFile, templateA)
+	writeRuntimeTemplateFile(t, templateBFile, templateB)
+	runTemplateCLI(t, statePath, "create", "--file", templateAFile, "--expected-revision", "0")
+	runTemplateCLI(t, statePath, "create", "--file", templateBFile, "--expected-revision", "0")
 	provider, err := discoverydocker.NewProvider(endpoint)
 	if err != nil {
 		t.Fatal(err)
@@ -186,6 +181,19 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 		t.Fatalf("initial Collector config has %d Redis receivers, want one per Compose project: %s", got, initialConfig)
 	}
 
+	// The public file-based CLI updates a Template that is already materialized;
+	// the next S3/M2 generation must contain the changed setting.
+	templateA.Settings = map[string]any{"collection_interval": "15s"}
+	writeRuntimeTemplateFile(t, templateAFile, templateA)
+	runTemplateCLI(t, statePath, "update", "--file", templateAFile, "--expected-revision", "1")
+	if err := materializer.Refresh(ctx); err != nil {
+		t.Fatalf("materialize CLI-updated Template: %v", err)
+	}
+	updatedState, updatedConfig := waitForTemplateInterval(t, ctx, serviceDone, store, configPath, initialState.AppliedGeneration, "15s")
+	if !bytes.Contains(updatedConfig, []byte("hostmetrics")) || !bytes.Contains(updatedConfig, []byte("otlp/gateway")) {
+		t.Fatalf("CLI Template update lost host or Gateway configuration: %s", updatedConfig)
+	}
+
 	// A normal restart keeps Docker's container identity and the generated instance.
 	beforeRestart, err := store.IntegrationRepository().Snapshot()
 	if err != nil {
@@ -201,8 +209,8 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 	if err != nil || afterRestart.Revision != beforeRestart.Revision {
 		t.Fatalf("unchanged container restart changed generated desired state: before=%d after=%d before_instances=%+v after_instances=%+v err=%v", beforeRestart.Revision, afterRestart.Revision, beforeRestart.Instances, afterRestart.Instances, err)
 	}
-	if state, err := store.Load(); err != nil || state.AppliedGeneration != initialState.AppliedGeneration {
-		t.Fatalf("unchanged restart caused an unnecessary Collector activation: before=%d after=%d err=%v", initialState.AppliedGeneration, state.AppliedGeneration, err)
+	if state, err := store.Load(); err != nil || state.AppliedGeneration != updatedState.AppliedGeneration {
+		t.Fatalf("unchanged restart caused an unnecessary Collector activation: before=%d after=%d err=%v", updatedState.AppliedGeneration, state.AppliedGeneration, err)
 	}
 
 	// Compose down/up replaces every container. No Discovery snapshot is taken
@@ -550,6 +558,31 @@ func waitForRedisReceiverCount(t *testing.T, ctx context.Context, serviceDone <-
 			t.Fatalf("timed out waiting for %d Redis receivers: state=%+v read_error=%v", want, state, configErr)
 		case <-deadline.C:
 			t.Fatalf("timed out waiting for %d Redis receivers: state=%+v read_error=%v config=%s", want, state, configErr, content)
+		case <-poll.C:
+		}
+	}
+}
+
+func waitForTemplateInterval(t *testing.T, ctx context.Context, serviceDone <-chan error, store agentstate.SQLiteStore, configPath string, afterGeneration uint64, interval string) (agentstate.State, []byte) {
+	t.Helper()
+	deadline := time.NewTimer(90 * time.Second)
+	defer deadline.Stop()
+	poll := time.NewTicker(500 * time.Millisecond)
+	defer poll.Stop()
+	want := []byte("collection_interval: " + interval)
+	for {
+		state, stateErr := store.Load()
+		content, configErr := os.ReadFile(configPath)
+		if stateErr == nil && configErr == nil && state.AppliedGeneration > afterGeneration && state.AppliedGeneration == state.DesiredGeneration && bytes.Contains(content, want) {
+			return state, content
+		}
+		select {
+		case err := <-serviceDone:
+			t.Fatalf("Agent runtime stopped before Template setting applied: %v", err)
+		case <-ctx.Done():
+			t.Fatalf("timed out waiting for Template setting %q: state=%+v read_error=%v", interval, state, configErr)
+		case <-deadline.C:
+			t.Fatalf("timed out waiting for Template setting %q: state=%+v read_error=%v config=%s", interval, state, configErr, content)
 		case <-poll.C:
 		}
 	}
