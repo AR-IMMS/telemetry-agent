@@ -1,7 +1,7 @@
 # v0.1.4a-next — release progress
 
 **Canonical target:** `v0.1.4a-next`<br>
-**Execution state:** BLOCKED — PR-01 implementation and local verification are complete; GitHub-auth/API and shared-submodule worktree-status gates prevent integration. Docker Engine 29.5.3 / Compose 5.1.4 are available with elevated read-only access; no isolated test namespace has been established for infrastructure tests. No runtime-behavior changes made.<br>
+**Execution state:** BLOCKED — PR-01 implementation and local verification are complete and both requested branches are published. PR creation is blocked: the connected GitHub integration returned 403 `Resource not accessible by integration`; `gh` CLI auth/API remains unavailable. The shared gitlink is unchanged and its pinned commit exists. Docker Engine 29.5.3 / Compose 5.1.4 are available with elevated access; no isolated test namespace has been established for infrastructure tests. No runtime-behavior changes made.<br>
 **Checkpoint rule:** PR-01–PR-10 are verified checkpoints; they do not require ten separate GitHub PRs. Reconcile the GitHub PR shape with the approved integration branch before publishing.<br>
 **Last updated:** 2026-11-12
 
@@ -25,7 +25,7 @@
 | Linux/amd64 cross-build | PASS | `GOOS=linux GOARCH=amd64 go build ./...` from Windows. This is a build check, not Linux E2E. |
 | CLI compatibility snapshot | PASS | Actual root `agentctl help` output and exit code recorded in [PR-01 baseline](../../verification/v0.1.4a-next/pr-verification/pr-01-baseline.md). `agentctl --help` currently exits 2 with unknown command; `service` is implemented but absent from root help. |
 | Shared policy and submodule | PARTIAL | The shared policy text is readable from the original checkout and consistent with the local supplement. Gitlink is recorded; worktree status/content verification remains blocked. |
-| GitHub access | BLOCKED | Existing `gh` reports invalid `GH_TOKEN` and saved token; API requests failed to connect. No remote refs, branches or PRs changed. |
+| GitHub access | PARTIAL | `gh` 2.96.0 reports invalid `GH_TOKEN` and saved token; CLI API calls cannot connect. GitHub integration identifies `iSenity1812`, reads the repo, and both refs were pushed. PR creation returned 403 `Resource not accessible by integration`; no PR exists. |
 | Docker infrastructure | PARTIAL | Docker CLI 29.5.3 / Compose 5.1.4 and Engine 29.5.3 are available using elevated read-only access; existing Core and observability services are running. No isolated fixture/E2E was run. |
 | Native Linux E2E | NOT RUN | A Windows-hosted cross-build is not native Linux execution. |
 
@@ -46,7 +46,7 @@ Unresolved Core config authority, OpAMP identity/status mapping, remote-operatio
 
 | Checkpoint | Scope | Dependencies | Status | Verification / blockers | PR and commit references |
 |---|---|---|---|---|---|
-| PR-01 Foundation | Documentation, source ownership baseline, package docs, architecture guard, CI target | None | BLOCKED | Local Windows tests/vet/build and Linux cross-build pass; architecture guard passes for 23 packages; 0 broken local links. Blocked on shared submodule/policy access and invalid GH token/API connectivity. | `feat/v0.1.4a-next-work` → `chore/v0.1.4a-next`; no PR; commit `75aaf9a36f95778effb70a06750b743d2b3f562e`; base `1a32602` |
+| PR-01 Foundation | Documentation, source ownership baseline, package docs, architecture guard, CI target | None | BLOCKED | Local Windows tests/vet/build and Linux cross-build pass; architecture guard passes for 23 packages; release-doc link scan has 0 broken local links. Branches are published; PR creation was denied with 403 by the connected GitHub integration. No remote CI run or PR review yet. | `feat/v0.1.4a-next-work` → `chore/v0.1.4a-next`; head `5a0032242a1de8554c5af3c716b0be703cc8382b`; implementation commit `75aaf9a36f95778effb70a06750b743d2b3f562e`; base `1a32602` |
 | PR-02 Events & SQLite | Typed event delivery and technical persistence layer | PR-01 merged; commit/failure/transaction contracts before code | BLOCKED | Not started. Blocked by PR-01 integration gate. | None |
 | PR-03 App composition | Thin app host and CLI adapters | PR-02 merged; CLI and use-case contracts | BLOCKED | Not started. Blocked by preceding checkpoint. | None |
 | PR-04 Context migration | Incremental repository/owner migration | PR-03 merged; per-context contracts before each slice | BLOCKED | Not started. Blocked by preceding checkpoint. | None |
