@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"regexp"
 	"sort"
@@ -45,12 +46,63 @@ const (
 	TemplateDeleted TemplateStatus = "deleted"
 )
 
-// TemplateSettingRule declares which values a template may override or bind.
+// TemplateSettingRule declares the JSON setting schema and which values a Template may override or bind.
 type TemplateSettingRule struct {
-	Default                  any  `json:"default,omitempty"`
-	DefaultOverridable       bool `json:"default_overridable,omitempty"`
-	AllowResourceBinding     bool `json:"allow_resource_binding,omitempty"`
-	BindingOverridesTemplate bool `json:"binding_overrides_template,omitempty"`
+	Type                     string          `json:"type,omitempty"`
+	Description              string          `json:"description,omitempty"`
+	Required                 bool            `json:"required,omitempty"`
+	Constraints              []string        `json:"constraints,omitempty"`
+	Validate                 func(any) error `json:"-"`
+	Default                  any             `json:"default,omitempty"`
+	DefaultOverridable       bool            `json:"default_overridable,omitempty"`
+	AllowResourceBinding     bool            `json:"allow_resource_binding,omitempty"`
+	BindingOverridesTemplate bool            `json:"binding_overrides_template,omitempty"`
+}
+
+// ValidateTemplateSettingValue checks a Template value against its declared JSON type.
+func ValidateTemplateSettingValue(name string, value any, rule TemplateSettingRule) error {
+	if rule.Type == "" || !templateSettingValueMatchesType(value, rule.Type) {
+		return fmt.Errorf("%w: setting %q must be %s", ErrInvalidTemplate, name, rule.Type)
+	}
+	if rule.Validate != nil {
+		if err := rule.Validate(value); err != nil {
+			return fmt.Errorf("%w: setting %q: %v", ErrInvalidTemplate, name, err)
+		}
+	}
+	return nil
+}
+
+func templateSettingValueMatchesType(value any, valueType string) bool {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return false
+	}
+	var normalized any
+	if err := json.Unmarshal(encoded, &normalized); err != nil {
+		return false
+	}
+	switch valueType {
+	case "string":
+		_, ok := normalized.(string)
+		return ok
+	case "integer":
+		number, ok := normalized.(float64)
+		return ok && math.Trunc(number) == number
+	case "number":
+		_, ok := normalized.(float64)
+		return ok
+	case "boolean":
+		_, ok := normalized.(bool)
+		return ok
+	case "object":
+		_, ok := normalized.(map[string]any)
+		return ok
+	case "array":
+		_, ok := normalized.([]any)
+		return ok
+	default:
+		return false
+	}
 }
 
 // IntegrationTemplate is an operator-authorized reusable configuration for one Integration.
@@ -177,6 +229,9 @@ func ResolveTemplateSettings(template IntegrationTemplate, definition Integratio
 			if err != nil {
 				return nil, fmt.Errorf("%w: copy Definition default for %q: %v", ErrInvalidTemplate, key, err)
 			}
+			if err := ValidateTemplateSettingValue(key, value, rule); err != nil {
+				return nil, err
+			}
 			settings[key] = value
 		}
 	}
@@ -189,6 +244,9 @@ func ResolveTemplateSettings(template IntegrationTemplate, definition Integratio
 		value, exists := definition.TemplateSettingRules[key]
 		if !exists {
 			return nil, fmt.Errorf("%w: Definition does not declare setting %q for templates", ErrInvalidTemplate, key)
+		}
+		if err := ValidateTemplateSettingValue(key, template.Settings[key], value); err != nil {
+			return nil, err
 		}
 		if value.Default != nil && !value.DefaultOverridable {
 			if !sameJSONValue(value.Default, template.Settings[key]) {
@@ -209,6 +267,9 @@ func ResolveTemplateSettings(template IntegrationTemplate, definition Integratio
 		}
 		value, err := resolveTemplateSource(binding.Source, resource)
 		if err != nil {
+			return nil, err
+		}
+		if err := ValidateTemplateSettingValue(binding.Target, value, rule); err != nil {
 			return nil, err
 		}
 		if current, exists := settings[binding.Target]; exists {

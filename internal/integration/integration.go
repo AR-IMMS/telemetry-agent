@@ -163,6 +163,17 @@ func validateTemplateSettingRules(rules map[string]TemplateSettingRule) error {
 		if !matchFieldPattern.MatchString(key) || sensitiveMatchKey(key) {
 			return fmt.Errorf("invalid or sensitive Template setting name")
 		}
+		if rule.Type != "string" && rule.Type != "integer" && rule.Type != "number" && rule.Type != "boolean" && rule.Type != "object" && rule.Type != "array" {
+			return fmt.Errorf("invalid Template setting type for %q", key)
+		}
+		if strings.TrimSpace(rule.Description) == "" || len(rule.Description) > 512 || containsControlText(rule.Description) || len(rule.Constraints) > 16 {
+			return fmt.Errorf("invalid Template setting metadata for %q", key)
+		}
+		for _, constraint := range rule.Constraints {
+			if strings.TrimSpace(constraint) == "" || len(constraint) > 512 || containsControlText(constraint) {
+				return fmt.Errorf("invalid Template setting constraint for %q", key)
+			}
+		}
 		if rule.DefaultOverridable && rule.Default == nil || rule.BindingOverridesTemplate && !rule.AllowResourceBinding {
 			return fmt.Errorf("inconsistent Template setting precedence for %q", key)
 		}
@@ -170,6 +181,9 @@ func validateTemplateSettingRules(rules map[string]TemplateSettingRule) error {
 			encoded, err := json.Marshal(rule.Default)
 			if err != nil || containsSecret(json.RawMessage(encoded)) {
 				return fmt.Errorf("invalid or secret-bearing default for %q", key)
+			}
+			if err := ValidateTemplateSettingValue(key, rule.Default, rule); err != nil {
+				return fmt.Errorf("invalid Template setting default for %q: %w", key, err)
 			}
 		}
 	}

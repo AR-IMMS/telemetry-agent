@@ -22,6 +22,8 @@ func TestTemplateServiceRejectsCoreOwnedOrUnknownDefinitionBeforePersistence(t *
 		{"core owner", func(value *integration.IntegrationTemplate) { value.Owner = integration.TemplateOwnerCore }},
 		{"unknown definition version", func(value *integration.IntegrationTemplate) { value.DefinitionVersion = "2.0.0" }},
 		{"undeclared setting", func(value *integration.IntegrationTemplate) { value.Settings["password"] = "should-not-persist" }},
+		{"wrong declared setting type", func(value *integration.IntegrationTemplate) { value.Settings["endpoint"] = 6379 }},
+		{"missing required setting", func(value *integration.IntegrationTemplate) { value.Bindings = nil }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -138,7 +140,7 @@ func templateTestDefinition() integration.IntegrationDefinition {
 			return integration.NewContribution(nil), nil
 		},
 		TemplateSettingRules: map[string]integration.TemplateSettingRule{
-			"endpoint": {AllowResourceBinding: true},
+			"endpoint": {Type: "string", Description: "Target endpoint", Required: true, AllowResourceBinding: true},
 		},
 	}
 }

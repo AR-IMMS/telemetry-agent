@@ -99,8 +99,8 @@ func templateTestMatcher(t *testing.T, capability CapabilityStatus) Matcher {
 			RequiredCapabilities: []string{"otel.receiver.redis.metrics"},
 		},
 		TemplateSettingRules: map[string]TemplateSettingRule{
-			"endpoint":            {AllowResourceBinding: true},
-			"collection_interval": {Default: "10s", DefaultOverridable: true},
+			"endpoint":            {Type: "string", Description: "Target endpoint", Required: true, AllowResourceBinding: true},
+			"collection_interval": {Type: "string", Description: "Collection frequency", Default: "10s", DefaultOverridable: true},
 		},
 	}
 	registry, err := NewRegistry(definition)

@@ -133,9 +133,13 @@ func (s TemplateService) Delete(id string, expectedRevision uint64) (integration
 }
 
 func validateTemplateDefinition(template integration.IntegrationTemplate, definition integration.IntegrationDefinition) error {
-	for key := range template.Settings {
-		if _, ok := definition.TemplateSettingRules[key]; !ok {
+	for key, value := range template.Settings {
+		rule, ok := definition.TemplateSettingRules[key]
+		if !ok {
 			return fmt.Errorf("%w: Definition does not allow Template setting %q", integration.ErrInvalidTemplate, key)
+		}
+		if err := integration.ValidateTemplateSettingValue(key, value, rule); err != nil {
+			return err
 		}
 	}
 	for _, binding := range template.Bindings {
@@ -143,6 +147,25 @@ func validateTemplateDefinition(template integration.IntegrationTemplate, defini
 		if !ok || !rule.AllowResourceBinding {
 			return fmt.Errorf("%w: Definition does not allow binding setting %q", integration.ErrInvalidTemplate, binding.Target)
 		}
+		if _, configured := template.Settings[binding.Target]; configured && !rule.BindingOverridesTemplate {
+			return fmt.Errorf("%w: setting %q has both a Template value and resource binding", integration.ErrInvalidTemplate, binding.Target)
+		}
+	}
+	bound := make(map[string]struct{}, len(template.Bindings))
+	for _, binding := range template.Bindings {
+		bound[binding.Target] = struct{}{}
+	}
+	for key, rule := range definition.TemplateSettingRules {
+		if !rule.Required || rule.Default != nil {
+			continue
+		}
+		if _, configured := template.Settings[key]; configured {
+			continue
+		}
+		if _, configured := bound[key]; configured {
+			continue
+		}
+		return fmt.Errorf("%w: required Template setting %q needs a value or binding", integration.ErrInvalidTemplate, key)
 	}
 	return nil
 }

@@ -122,6 +122,43 @@ func TestRegistryPreservesTemplateSettingRulesInDefinitionCopies(t *testing.T) {
 	}
 }
 
+func TestRegistryDefinitionsAreStableAndDefensivelyCopyTemplateMetadata(t *testing.T) {
+	first := IntegrationDefinition{
+		ID: "zeta", Version: "1.0.0", Validate: func(map[string]any) error { return nil },
+		Contribute: func(IntegrationInstance) (Contribution, error) { return NewContribution(nil), nil },
+		TemplateSettingRules: map[string]TemplateSettingRule{
+			"interval": {Type: "string", Description: "Collection interval", Constraints: []string{"positive duration"}},
+		},
+	}
+	second := IntegrationDefinition{
+		ID: "alpha", Version: "2.0.0", Validate: func(map[string]any) error { return nil },
+		Contribute: func(IntegrationInstance) (Contribution, error) { return NewContribution(nil), nil },
+	}
+	registry, err := NewRegistry(first, second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	definitions := registry.Definitions()
+	if len(definitions) != 2 || definitions[0].ID != "alpha" || definitions[1].ID != "zeta" {
+		t.Fatalf("definition order=%+v", definitions)
+	}
+	definitions[1].TemplateSettingRules["interval"].Constraints[0] = "mutated"
+	definitions = registry.Definitions()
+	if definitions[1].TemplateSettingRules["interval"].Constraints[0] != "positive duration" {
+		t.Fatalf("mutating returned catalog metadata changed registry: %+v", definitions[1].TemplateSettingRules)
+	}
+}
+
+func TestTemplateSettingValueMustMatchDeclaredJSONType(t *testing.T) {
+	rule := TemplateSettingRule{Type: "string", Description: "collection interval"}
+	if err := ValidateTemplateSettingValue("collection_interval", "15s", rule); err != nil {
+		t.Fatalf("valid string setting rejected: %v", err)
+	}
+	if err := ValidateTemplateSettingValue("collection_interval", 15, rule); err == nil {
+		t.Fatal("numeric value accepted for string setting")
+	}
+}
+
 func TestResolveTemplateSettingsAppliesExplicitDefaultAndBindingPrecedence(t *testing.T) {
 	definition := templateDefinition()
 	template := validTemplate()
@@ -146,6 +183,7 @@ func TestResolveTemplateSettingsAppliesExplicitDefaultAndBindingPrecedence(t *te
 	}
 
 	definition.TemplateSettingRules["endpoint"] = TemplateSettingRule{
+		Type: "string", Description: "Target endpoint", Required: true,
 		AllowResourceBinding: true, BindingOverridesTemplate: true,
 	}
 	settings, err = ResolveTemplateSettings(template, definition, resource)
@@ -170,8 +208,8 @@ func templateDefinition() IntegrationDefinition {
 		ID: "redis", Version: "1.0.0", Validate: func(map[string]any) error { return nil },
 		Contribute: func(IntegrationInstance) (Contribution, error) { return Contribution{}, nil },
 		TemplateSettingRules: map[string]TemplateSettingRule{
-			"endpoint":            {AllowResourceBinding: true},
-			"collection_interval": {Default: "10s", DefaultOverridable: true},
+			"endpoint":            {Type: "string", Description: "Target endpoint", Required: true, AllowResourceBinding: true},
+			"collection_interval": {Type: "string", Description: "Collection frequency", Default: "10s", DefaultOverridable: true},
 		},
 	}
 }

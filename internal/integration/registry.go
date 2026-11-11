@@ -61,6 +61,21 @@ func (r Registry) MatchableDefinitions() []IntegrationDefinition {
 	return definitions
 }
 
+// Definitions returns every registered definition as a defensive copy in stable ID/version order.
+func (r Registry) Definitions() []IntegrationDefinition {
+	definitions := make([]IntegrationDefinition, 0, len(r.definitions))
+	for _, definition := range r.definitions {
+		definitions = append(definitions, cloneDefinition(definition))
+	}
+	sort.Slice(definitions, func(i, j int) bool {
+		if definitions[i].ID == definitions[j].ID {
+			return definitions[i].Version < definitions[j].Version
+		}
+		return definitions[i].ID < definitions[j].ID
+	})
+	return definitions
+}
+
 func cloneDefinition(definition IntegrationDefinition) IntegrationDefinition {
 	if definition.TemplateSettingRules != nil {
 		rules := definition.TemplateSettingRules
@@ -69,6 +84,7 @@ func cloneDefinition(definition IntegrationDefinition) IntegrationDefinition {
 			if rule.Default != nil {
 				rule.Default, _ = cloneJSONValue(rule.Default)
 			}
+			rule.Constraints = append([]string(nil), rule.Constraints...)
 			definition.TemplateSettingRules[key] = rule
 		}
 	}
