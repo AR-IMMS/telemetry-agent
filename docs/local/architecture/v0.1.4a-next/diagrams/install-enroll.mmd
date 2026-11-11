@@ -1,0 +1,16 @@
+sequenceDiagram
+    actor Engineer
+    participant OS as OS Service Manager
+    participant Agent
+    participant Core
+    participant Collector
+    Engineer->>Agent: Install native package
+    Agent->>OS: Register managed service
+    Agent->>Agent: Persist installation ID / SQLite
+    Engineer->>Agent: Enroll with one-time token
+    Agent->>Core: Secure enrollment request
+    Core-->>Agent: Binding + credential
+    Agent->>Agent: Store secret securely
+    Agent->>Collector: Validate/apply host baseline
+    Collector-->>Agent: Runtime readiness
+    Agent->>Core: Authenticated health/status

@@ -1,5 +1,26 @@
 # Telemetry Agent
 
+## Documentation map
+
+**Architecture target:** `v0.1.4a-next` is the proposed target for review. It
+describes intended work and is not evidence that those capabilities have
+shipped. Start with the [target architecture index](local/architecture/v0.1.4a-next/README.md),
+then review the [release scope](local/requirements/v0.1.4a-next/release-scope.md),
+[acceptance criteria](local/requirements/v0.1.4a-next/acceptance-criteria.md),
+[ten-plan index](local/plans/v0.1.4a-next/README.md),
+[migration roadmap](local/plans/v0.1.4a-next/migration-roadmap.md), and
+[verification matrix](local/verification/v0.1.4a-next/test-matrix.md).
+
+Repository-specific architecture, plans, verification, requirements, and
+runbooks live under [`docs/local/`](local/). Cross-repository contracts and
+shared standards live under [`docs/shared/`](shared/); that directory is a Git
+submodule and is not modified by this documentation integration.
+
+For the architecture in the current implementation, see
+[`ARCHITECTURE.md`](ARCHITECTURE.md). The accepted v0.1.4 target remains
+historical context; the v0.1.4a-next proposal is the target currently under
+review. See [integration status and reconciliations](local/architecture/v0.1.4a-next/integration-status.md).
+
 Telemetry Agent is a small Go application that runs an OpenTelemetry Collector
 and safely manages host-level telemetry dependencies on one machine.
 
@@ -129,17 +150,17 @@ docs/                  Architecture, runbooks, requirements, and changelog
 
 ## Documentation
 
-- [Product overview](docs/PRODUCT.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Agent installation runbook](docs/runbooks/agent-installation.md)
-- [Managed dependencies runbook](docs/runbooks/managed-dependencies.md)
-- [Desired-state configuration lifecycle](docs/architecture/desired-state-configuration-lifecycle.md)
-- [Managed dependency lifecycle](docs/architecture/managed-dependency-lifecycle.md)
-- [Windows Exporter runbook](docs/runbooks/windows_exporter.md)
-- [Node Exporter runbook](docs/runbooks/node-exporter.md)
-- [Libre Hardware Monitor runbook](docs/runbooks/libre-hardware-monitor.md)
-- [Requirements](docs/requirements/)
-- [Changelog](docs/changelog/)
+- [Shared product overview](shared/PRODUCT.md)
+- [Current architecture overview](ARCHITECTURE.md)
+- [Agent installation runbook](local/runbooks/agent-installation.md)
+- [Managed dependencies runbook](local/runbooks/managed-dependencies.md)
+- [Desired-state configuration lifecycle](local/architecture/desired-state-configuration-lifecycle.md)
+- [Managed dependency lifecycle](local/architecture/managed-dependency-lifecycle.md)
+- [Windows Exporter runbook](local/runbooks/windows_exporter.md)
+- [Node Exporter runbook](local/runbooks/node-exporter.md)
+- [Libre Hardware Monitor runbook](local/runbooks/libre-hardware-monitor.md)
+- [Requirements](local/requirements/README.md)
+- [Changelog](local/changelog/)
 
 ## Development
 

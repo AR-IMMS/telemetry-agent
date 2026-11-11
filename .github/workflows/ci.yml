@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main, dev, chore/v0.1.4a-next]
   pull_request:
-    branches: [main, dev, 'feat/**']
+    branches: [main, dev, 'feat/**', chore/v0.1.4a-next]
 
 permissions:
   contents: read
@@ -74,6 +74,9 @@ jobs:
           "OTELCOL_CONTRIB_BINARY=$binaryPath" | Add-Content $env:GITHUB_ENV
           "OTELCOL_ARTIFACT_SHA256=$actual" | Add-Content $env:GITHUB_ENV
 
+      - name: Check architecture boundaries and production Go file size
+        shell: pwsh
+        run: ./scripts/check-architecture.ps1
       - name: Test
         run: go test ./... -count=1
 
