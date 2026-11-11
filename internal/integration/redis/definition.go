@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 )
@@ -23,6 +24,20 @@ func Definition() integration.IntegrationDefinition {
 		ID:       definitionID,
 		Version:  definitionVersion,
 		Validate: validateConfiguration,
+		TemplateSettingRules: map[string]integration.TemplateSettingRule{
+			"endpoint": {
+				Type: "string", Description: "Redis host and port without URL or credential syntax.", Required: true,
+				Constraints:          []string{"valid DNS hostname or IP address", "port must be between 1 and 65535"},
+				AllowResourceBinding: true,
+				Validate:             validateEndpointSetting,
+			},
+			"collection_interval": {
+				Type: "string", Description: "Interval at which Redis metrics are collected.",
+				Constraints: []string{"must be a positive Go duration"},
+				Default:     "10s", DefaultOverridable: true,
+				Validate: validateCollectionInterval,
+			},
+		},
 		Matching: &integration.MatchingDefinition{
 			Selector: &integration.MatchSelector{
 				ResourceKinds: []string{"container"}, LifecycleStates: []string{"running"},
@@ -38,9 +53,19 @@ func Definition() integration.IntegrationDefinition {
 			if err := validateConfiguration(instance.Configuration); err != nil {
 				return integration.Contribution{}, fmt.Errorf("validate Redis settings: %w", err)
 			}
-			intent, err := integration.NewComponentIntent(redisMetricsCapability, map[string]any{
+			componentConfig := map[string]any{
 				"endpoint": instance.Configuration["endpoint"],
-			})
+				// The receiver disables these identifying resource attributes by
+				// default. Enable them so multiple instances remain distinguishable.
+				"resource_attributes": map[string]any{
+					"server.address": map[string]any{"enabled": true},
+					"server.port":    map[string]any{"enabled": true},
+				},
+			}
+			if interval, exists := instance.Configuration["collection_interval"]; exists {
+				componentConfig["collection_interval"] = interval
+			}
+			intent, err := integration.NewComponentIntent(redisMetricsCapability, componentConfig)
 			if err != nil {
 				return integration.Contribution{}, err
 			}
@@ -77,20 +102,50 @@ func buildDiscoveredCandidate(resource integration.MatchResource) (integration.C
 }
 
 func validateConfiguration(configuration map[string]any) error {
-	if len(configuration) != 1 {
-		return fmt.Errorf("Redis settings require only endpoint")
+	if len(configuration) < 1 || len(configuration) > 2 {
+		return fmt.Errorf("Redis settings require endpoint and optional collection_interval")
 	}
-	endpoint, ok := configuration["endpoint"].(string)
+	endpoint, exists := configuration["endpoint"]
+	if !exists {
+		return fmt.Errorf("Redis settings require endpoint and optional collection_interval")
+	}
+	if err := validateEndpointSetting(endpoint); err != nil {
+		return err
+	}
+	if intervalValue, exists := configuration["collection_interval"]; exists {
+		if err := validateCollectionInterval(intervalValue); err != nil {
+			return fmt.Errorf("Redis collection_interval %w", err)
+		}
+	}
+	for key := range configuration {
+		if key != "endpoint" && key != "collection_interval" {
+			return fmt.Errorf("unsupported Redis setting %q", key)
+		}
+	}
+	return nil
+}
+
+func validateEndpointSetting(value any) error {
+	endpoint, ok := value.(string)
 	if !ok || endpoint == "" || strings.TrimSpace(endpoint) != endpoint || strings.ContainsAny(endpoint, "/?#@") {
-		return fmt.Errorf("Redis endpoint must be host:port without URL or credential syntax")
+		return fmt.Errorf("must be host:port without URL or credential syntax")
 	}
 	host, portText, err := net.SplitHostPort(endpoint)
 	if err != nil || !validHost(host) {
-		return fmt.Errorf("Redis endpoint must be a valid host:port")
+		return fmt.Errorf("must be a valid host:port")
 	}
 	port, err := strconv.Atoi(portText)
 	if err != nil || port < 1 || port > 65535 {
-		return fmt.Errorf("Redis endpoint port must be between 1 and 65535")
+		return fmt.Errorf("port must be between 1 and 65535")
+	}
+	return nil
+}
+
+func validateCollectionInterval(value any) error {
+	intervalText, ok := value.(string)
+	interval, err := time.ParseDuration(intervalText)
+	if !ok || err != nil || interval <= 0 {
+		return fmt.Errorf("must be a positive Go duration")
 	}
 	return nil
 }

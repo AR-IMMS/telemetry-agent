@@ -272,6 +272,54 @@ func TestNativeValidationWhenPinnedBinaryProvided(t *testing.T) {
 	}
 }
 
+func TestRedisCandidateNativeValidationWhenPinnedBinaryProvided(t *testing.T) {
+	binary := os.Getenv("OTELCOL_CONTRIB_BINARY")
+	if binary == "" {
+		t.Skip("pinned Collector binary is not available in this test environment")
+	}
+	platform, err := identity.CollectPlatformInfo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := StaticCatalog(platform)
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition := redisintegration.Definition()
+	registry, err := integration.NewRegistry(definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := integration.NewResolver(registry).Resolve(integration.IntegrationInstance{
+		ID: "redis-native-validation", DefinitionID: definition.ID, DefinitionVersion: definition.Version,
+		Enabled: true, Configuration: map[string]any{"endpoint": "127.0.0.1:6379"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	configRoot, err := filepath.Abs(filepath.Join("..", "..", "configs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := config.RenderInput{
+		Platform: platform,
+		Layers: []config.Layer{
+			{Name: "base", Path: filepath.Join(configRoot, "base", "otel.yaml")},
+			{Name: "profile", Path: filepath.Join(configRoot, "profiles", "laptop.yaml")},
+			{Name: "os", Path: filepath.Join(configRoot, "os", platform.OS, "otel.yaml")},
+		},
+		InlineLayers: []config.InlineLayer{config.MetricsReceiverLayer([]string{"otlp", "hostmetrics"})},
+		Values:       map[string]string{"OTEL_GATEWAY_ENDPOINT": "127.0.0.1:4317"},
+	}
+	candidate, err := NewCompiler(catalog).Compile(input, []integration.ResolvedInstance{resolved})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateCandidate(context.Background(), bootstrap.OSCommandRunner{}, binary, candidate, []string{"OTEL_GATEWAY_ENDPOINT=127.0.0.1:4317"}); err != nil {
+		t.Fatalf("pinned Collector rejected Redis candidate: %v", err)
+	}
+}
+
 type validationRunner struct {
 	path   string
 	result bootstrap.CommandResult

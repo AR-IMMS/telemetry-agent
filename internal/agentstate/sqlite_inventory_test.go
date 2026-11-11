@@ -356,7 +356,7 @@ func TestSQLiteInventoryMigrationFromPopulatedV9PreservesExistingState(t *testin
 	if err := verify.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if identityValue != 1 || enrollmentRows != 1 || version != 12 {
+	if identityValue != 1 || enrollmentRows != 1 || version != 13 {
 		t.Fatalf("identity=%d enrollment=%d migration=%d", identityValue, enrollmentRows, version)
 	}
 }

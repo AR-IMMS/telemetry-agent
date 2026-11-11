@@ -7,7 +7,11 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 )
 
-var ErrRevisionConflict = errors.New("integration revision conflict")
+var (
+	ErrRevisionConflict = errors.New("integration revision conflict")
+	// ErrTemplateOwnedInstance prevents local CRUD from mutating generated ownership records.
+	ErrTemplateOwnedInstance = errors.New("Integration instance is owned by a Template")
+)
 
 // DesiredSnapshot is a consistent desired Integration set and its change marker.
 type DesiredSnapshot struct {
@@ -35,6 +39,9 @@ func NewIntegrationService(resolver integration.Resolver, repository Integration
 
 // Put validates and resolves before applying an expected-revision mutation.
 func (s IntegrationService) Put(instance integration.IntegrationInstance, expected uint64) (integration.IntegrationInstance, uint64, error) {
+	if instance.Source == integration.SourceTemplate {
+		return integration.IntegrationInstance{}, 0, ErrTemplateOwnedInstance
+	}
 	resolved, err := s.resolver.Resolve(instance)
 	if err != nil {
 		return integration.IntegrationInstance{}, 0, err

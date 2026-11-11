@@ -19,6 +19,9 @@ func (s SQLiteStore) IntegrationRepository() configuration.IntegrationRepository
 type integrationSQLite struct{ store SQLiteStore }
 
 func (s integrationSQLite) Put(instance integration.IntegrationInstance, expected uint64) (integration.IntegrationInstance, uint64, error) {
+	if instance.Source == integration.SourceTemplate {
+		return integration.IntegrationInstance{}, 0, configuration.ErrTemplateOwnedInstance
+	}
 	if err := integration.ValidateInstance(instance); err != nil {
 		return integration.IntegrationInstance{}, 0, err
 	}
@@ -51,6 +54,15 @@ func (s integrationSQLite) Put(instance integration.IntegrationInstance, expecte
 		return integration.IntegrationInstance{}, 0, err
 	} else if expected != current {
 		return integration.IntegrationInstance{}, 0, configuration.ErrRevisionConflict
+	}
+	if old != nil {
+		var existing integration.IntegrationInstance
+		if err := json.Unmarshal(old, &existing); err != nil {
+			return integration.IntegrationInstance{}, 0, fmt.Errorf("decode existing Integration instance: %w", err)
+		}
+		if existing.Source == integration.SourceTemplate {
+			return integration.IntegrationInstance{}, 0, configuration.ErrTemplateOwnedInstance
+		}
 	}
 	if old != nil && sameIntegrationIntent(old, encoded) {
 		setRevision, e := desiredIntegrationRevision(tx)
@@ -127,7 +139,8 @@ func (s integrationSQLite) Delete(id string, expected uint64) (uint64, error) {
 	}
 	defer tx.Rollback()
 	var current uint64
-	err = tx.QueryRow(`SELECT revision FROM integration_instances WHERE instance_id=?`, id).Scan(&current)
+	var payload []byte
+	err = tx.QueryRow(`SELECT payload,revision FROM integration_instances WHERE instance_id=?`, id).Scan(&payload, &current)
 	if errors.Is(err, sql.ErrNoRows) {
 		revision, e := desiredIntegrationRevision(tx)
 		if e != nil {
@@ -137,6 +150,13 @@ func (s integrationSQLite) Delete(id string, expected uint64) (uint64, error) {
 	}
 	if err != nil {
 		return 0, err
+	}
+	var existing integration.IntegrationInstance
+	if err := json.Unmarshal(payload, &existing); err != nil {
+		return 0, fmt.Errorf("decode Integration instance before delete: %w", err)
+	}
+	if existing.Source == integration.SourceTemplate {
+		return 0, configuration.ErrTemplateOwnedInstance
 	}
 	if current != expected {
 		return 0, configuration.ErrRevisionConflict

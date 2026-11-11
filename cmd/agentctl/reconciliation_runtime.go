@@ -117,13 +117,19 @@ func runRuntimeWithReconciliation(ctx context.Context, statePath string, teardow
 	if err != nil {
 		return fmt.Errorf("compose monitoring proposal refresh: %w", err)
 	}
+	templateMaterializer, err := newRuntimeTemplateMaterializer(statePath)
+	if err != nil {
+		return fmt.Errorf("compose Integration Template materialization: %w", err)
+	}
 	return agentlifecycle.RunCollectorRuntimeWithReconciliation(
 		ctx,
 		statePath,
 		teardown,
 		reporter,
 		func(ctx context.Context) error {
-			return runRuntimeControlLoops(ctx, func(ctx context.Context) error { return controller.Run(ctx, reconciliationPollInterval) }, inventory, proposalRefresher.Refresh)
+			return runRuntimeControlLoops(ctx,
+				func(ctx context.Context) error { return controller.Run(ctx, reconciliationPollInterval) },
+				inventory, proposalRefresher.Refresh, templateMaterializer.Refresh)
 		},
 		func(state agentstate.State, _ error) error {
 			return recordRecoveryFailure(state)

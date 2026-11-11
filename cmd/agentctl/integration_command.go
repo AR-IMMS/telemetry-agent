@@ -21,10 +21,12 @@ import (
 )
 
 func writeIntegrationHelp(w io.Writer) {
-	fmt.Fprint(w, `Usage: agentctl integration <configure|update|enable|disable|delete|list|inspect|status|history|retry|match> [options]
+	fmt.Fprint(w, `Usage: agentctl integration <configure|update|enable|disable|delete|list|inspect|status|history|retry|match|catalog|template> [options]
 
 Desired mutations commit locally. The Agent Service detects them through SQLite polling and applies configuration asynchronously.
 The match command reads persisted inventory and prints candidate diagnostics without changing desired state or contacting providers.
+Use "agentctl integration catalog help" to list shipped Integration Definitions and inspect their supported settings and Collector capability evidence.
+Use "agentctl integration template help" to manage local automatic monitoring Templates. Templates change desired state; the Agent Service owns discovery projection and Collector convergence.
 `)
 }
 
@@ -32,6 +34,12 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 	if len(args) == 0 || args[0] == "help" {
 		writeIntegrationHelp(stdout)
 		return 0
+	}
+	if args[0] == "template" {
+		return runIntegrationTemplate(ctx, args[1:], stdout, stderr)
+	}
+	if args[0] == "catalog" {
+		return runIntegrationCatalog(ctx, args[1:], stdout, stderr)
 	}
 	command := args[0]
 	if command == "match" {

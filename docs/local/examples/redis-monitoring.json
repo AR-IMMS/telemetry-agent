@@ -1,0 +1,29 @@
+{
+  "id": "redis-monitoring",
+  "definition_id": "redis",
+  "definition_version": "1.0.0",
+  "owner": "local",
+  "revision": 1,
+  "status": "enabled",
+  "selector": {
+    "resource_kinds": ["container"],
+    "lifecycle_states": ["running"],
+    "exact_attributes": {
+      "container.image.tag": "7.4.2-alpine"
+    }
+  },
+  "settings": {
+    "collection_interval": "15s"
+  },
+  "bindings": [
+    {
+      "target": "endpoint",
+      "source": {
+        "kind": "endpoint",
+        "endpoint_scope": "host",
+        "endpoint_protocol": "tcp",
+        "endpoint_provenance": "published_port"
+      }
+    }
+  ]
+}

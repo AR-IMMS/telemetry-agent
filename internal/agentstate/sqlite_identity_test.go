@@ -82,10 +82,10 @@ func TestSQLiteIdentityMigrationSeparatesSchemaAndInitialization(t *testing.T) {
 	if err := db.QueryRow("SELECT MAX(version) FROM schema_migrations").Scan(&schemaVersion); err != nil {
 		t.Fatalf("read schema version: %v", err)
 	}
-	if schemaVersion != 12 {
-		t.Fatalf("schema version = %d, want 12 after monitoring proposal migration", schemaVersion)
+	if schemaVersion != 13 {
+		t.Fatalf("schema version = %d, want 13 after Integration Template migration", schemaVersion)
 	}
-	var integrationMigration, candidateMappingMigration, candidateHistoryMigration, inventoryWriteMigration, proposalMigration int
+	var integrationMigration, candidateMappingMigration, candidateHistoryMigration, inventoryWriteMigration, proposalMigration, templateMigration int
 	if err := db.QueryRow("SELECT COUNT(*) FROM schema_migrations WHERE version=6").Scan(&integrationMigration); err != nil {
 		t.Fatalf("read Integration migration marker: %v", err)
 	}
@@ -101,8 +101,11 @@ func TestSQLiteIdentityMigrationSeparatesSchemaAndInitialization(t *testing.T) {
 	if err := db.QueryRow("SELECT COUNT(*) FROM schema_migrations WHERE version=12").Scan(&proposalMigration); err != nil {
 		t.Fatalf("read monitoring proposal migration marker: %v", err)
 	}
-	if integrationMigration != 1 || candidateMappingMigration != 1 || candidateHistoryMigration != 1 || inventoryWriteMigration != 1 || proposalMigration != 1 {
-		t.Fatalf("migration markers 6/7/8/11/12 = %d/%d/%d/%d/%d, want 1/1/1/1/1", integrationMigration, candidateMappingMigration, candidateHistoryMigration, inventoryWriteMigration, proposalMigration)
+	if err := db.QueryRow("SELECT COUNT(*) FROM schema_migrations WHERE version=13").Scan(&templateMigration); err != nil {
+		t.Fatalf("read Integration Template migration marker: %v", err)
+	}
+	if integrationMigration != 1 || candidateMappingMigration != 1 || candidateHistoryMigration != 1 || inventoryWriteMigration != 1 || proposalMigration != 1 || templateMigration != 1 {
+		t.Fatalf("migration markers 6/7/8/11/12/13 = %d/%d/%d/%d/%d/%d, want 1/1/1/1/1/1", integrationMigration, candidateMappingMigration, candidateHistoryMigration, inventoryWriteMigration, proposalMigration, templateMigration)
 	}
 	var coreSnapshots int
 	if err := db.QueryRow("SELECT COUNT(*) FROM core_gateway_snapshot").Scan(&coreSnapshots); err != nil {

@@ -22,9 +22,9 @@ var matchProviderPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
 
 // MatchSelector describes exact, declarative resource evidence required by a definition.
 type MatchSelector struct {
-	ResourceKinds   []string
-	LifecycleStates []string
-	ExactAttributes map[string]string
+	ResourceKinds   []string          `json:"resource_kinds,omitempty"`
+	LifecycleStates []string          `json:"lifecycle_states,omitempty"`
+	ExactAttributes map[string]string `json:"exact_attributes,omitempty"`
 }
 
 // DefinitionMatcher performs a pure definition-owned match when selectors are insufficient.

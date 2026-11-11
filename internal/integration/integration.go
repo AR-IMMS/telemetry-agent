@@ -75,6 +75,9 @@ type IntegrationInstance struct {
 	Configuration                       map[string]any
 	Source                              DesiredSource    `json:"source,omitempty"`
 	Binding                             *ResourceBinding `json:"resource_binding,omitempty"`
+	TemplateOwner                       TemplateOwner    `json:"template_owner,omitempty"`
+	TemplateID                          string           `json:"template_id,omitempty"`
+	TemplateRevision                    uint64           `json:"template_revision,omitempty"`
 	Enabled                             bool
 	Revision                            uint64
 }
@@ -87,6 +90,8 @@ const (
 	SourceLocal DesiredSource = "local"
 	// SourceDiscovery identifies an instance explicitly approved from resource evidence.
 	SourceDiscovery DesiredSource = "discovery"
+	// SourceTemplate identifies an instance generated under an enabled Integration Template.
+	SourceTemplate DesiredSource = "template"
 )
 
 // ResourceBinding links an Integration instance to provider-scoped observed resource identity.
@@ -101,10 +106,11 @@ type Contributor func(IntegrationInstance) (Contribution, error)
 
 // IntegrationDefinition describes a shipped integration version.
 type IntegrationDefinition struct {
-	ID, Version string
-	Validate    func(map[string]any) error
-	Contribute  Contributor
-	Matching    *MatchingDefinition
+	ID, Version          string
+	Validate             func(map[string]any) error
+	Contribute           Contributor
+	Matching             *MatchingDefinition
+	TemplateSettingRules map[string]TemplateSettingRule
 }
 
 // ValidateDefinition checks identifiers and required definition behavior.
@@ -115,6 +121,9 @@ func ValidateDefinition(d IntegrationDefinition) error {
 	if err := validateMatchingDefinition(d.Matching); err != nil {
 		return fmt.Errorf("%w: invalid matching metadata", ErrInvalidDefinition)
 	}
+	if err := validateTemplateSettingRules(d.TemplateSettingRules); err != nil {
+		return fmt.Errorf("%w: invalid Template setting rules", ErrInvalidDefinition)
+	}
 	return nil
 }
 
@@ -123,11 +132,18 @@ func ValidateInstance(i IntegrationInstance) error {
 	if !definitionIDPattern.MatchString(i.ID) || !definitionIDPattern.MatchString(i.DefinitionID) || !versionPattern.MatchString(i.DefinitionVersion) || i.Configuration == nil {
 		return fmt.Errorf("%w: malformed identity, version, or configuration", ErrInvalidInstance)
 	}
-	if i.Source != "" && i.Source != SourceLocal && i.Source != SourceDiscovery {
+	if i.Source != "" && i.Source != SourceLocal && i.Source != SourceDiscovery && i.Source != SourceTemplate {
 		return fmt.Errorf("%w: unknown desired source", ErrInvalidInstance)
 	}
 	if i.Source == SourceDiscovery && i.Binding == nil {
 		return fmt.Errorf("%w: discovery source requires a resource binding", ErrInvalidInstance)
+	}
+	if i.Source == SourceTemplate {
+		if i.Binding == nil || !validTemplateOwner(i.TemplateOwner) || !templateIDPattern.MatchString(i.TemplateID) || i.TemplateRevision == 0 {
+			return fmt.Errorf("%w: template source requires owner, template revision and resource binding", ErrInvalidInstance)
+		}
+	} else if i.TemplateOwner != "" || i.TemplateID != "" || i.TemplateRevision != 0 {
+		return fmt.Errorf("%w: non-template instance cannot carry template provenance", ErrInvalidInstance)
 	}
 	if i.Binding != nil && !validResourceBinding(*i.Binding) {
 		return fmt.Errorf("%w: malformed resource binding", ErrInvalidInstance)
@@ -135,6 +151,41 @@ func ValidateInstance(i IntegrationInstance) error {
 	b, err := json.Marshal(i.Configuration)
 	if err != nil || containsSecret(json.RawMessage(b)) {
 		return fmt.Errorf("%w: invalid or secret-bearing configuration", ErrInvalidInstance)
+	}
+	return nil
+}
+
+func validateTemplateSettingRules(rules map[string]TemplateSettingRule) error {
+	if len(rules) > 128 {
+		return fmt.Errorf("too many Template setting rules")
+	}
+	for key, rule := range rules {
+		if !matchFieldPattern.MatchString(key) || sensitiveMatchKey(key) {
+			return fmt.Errorf("invalid or sensitive Template setting name")
+		}
+		if rule.Type != "string" && rule.Type != "integer" && rule.Type != "number" && rule.Type != "boolean" && rule.Type != "object" && rule.Type != "array" {
+			return fmt.Errorf("invalid Template setting type for %q", key)
+		}
+		if strings.TrimSpace(rule.Description) == "" || len(rule.Description) > 512 || containsControlText(rule.Description) || len(rule.Constraints) > 16 {
+			return fmt.Errorf("invalid Template setting metadata for %q", key)
+		}
+		for _, constraint := range rule.Constraints {
+			if strings.TrimSpace(constraint) == "" || len(constraint) > 512 || containsControlText(constraint) {
+				return fmt.Errorf("invalid Template setting constraint for %q", key)
+			}
+		}
+		if rule.DefaultOverridable && rule.Default == nil || rule.BindingOverridesTemplate && !rule.AllowResourceBinding {
+			return fmt.Errorf("inconsistent Template setting precedence for %q", key)
+		}
+		if rule.Default != nil {
+			encoded, err := json.Marshal(rule.Default)
+			if err != nil || containsSecret(json.RawMessage(encoded)) {
+				return fmt.Errorf("invalid or secret-bearing default for %q", key)
+			}
+			if err := ValidateTemplateSettingValue(key, rule.Default, rule); err != nil {
+				return fmt.Errorf("invalid Template setting default for %q: %w", key, err)
+			}
+		}
 	}
 	return nil
 }

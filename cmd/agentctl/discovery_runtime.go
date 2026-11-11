@@ -48,7 +48,7 @@ func newDockerDiscoveryCoordinator(statePath string) *discovery.Coordinator {
 
 // runRuntimeControlLoops runs discovery beside the Agent Service's sole S3 controller.
 // Discovery errors are logged as safe codes and never stop Collector supervision.
-func runRuntimeControlLoops(ctx context.Context, reconcile func(context.Context) error, inventory *discovery.Coordinator, refreshProposals func(context.Context) error) error {
+func runRuntimeControlLoops(ctx context.Context, reconcile func(context.Context) error, inventory *discovery.Coordinator, refreshProposals, refreshTemplates func(context.Context) error) error {
 	if inventory == nil {
 		if refreshProposals != nil {
 			if err := refreshProposals(ctx); err != nil && !errors.Is(err, context.Canceled) {
@@ -63,7 +63,12 @@ func runRuntimeControlLoops(ctx context.Context, reconcile func(context.Context)
 		defer close(discoveryDone)
 		err := inventory.RunWithCycle(serviceContext, discoveryPollInterval, func(error) {
 			log.Printf("Discovery inventory cycle failed code=inventory_store_error")
-		}, func(discovery.CycleResult) error {
+		}, func(result discovery.CycleResult) error {
+			if refreshTemplates != nil && discoveryCycleSucceeded(result) {
+				if err := refreshTemplates(serviceContext); err != nil {
+					log.Printf("Template materialization refresh failed code=materialization_error")
+				}
+			}
 			if refreshProposals == nil {
 				return nil
 			}
@@ -77,4 +82,13 @@ func runRuntimeControlLoops(ctx context.Context, reconcile func(context.Context)
 	cancel()
 	<-discoveryDone
 	return err
+}
+
+func discoveryCycleSucceeded(result discovery.CycleResult) bool {
+	for _, provider := range result.ProviderResults {
+		if provider.ErrorCode != "" {
+			return false
+		}
+	}
+	return true
 }
