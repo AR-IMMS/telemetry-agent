@@ -46,7 +46,7 @@ Unresolved Core config authority, OpAMP identity/status mapping, remote-operatio
 
 | Checkpoint | Scope | Dependencies | Status | Verification / blockers | PR and commit references |
 |---|---|---|---|---|---|
-| PR-01 Foundation | Documentation, source ownership baseline, package docs, architecture guard, CI target | None | BLOCKED | Local Windows tests/vet/build and Linux cross-build pass; architecture guard passes for 23 packages; 0 broken local links. Blocked on shared submodule/policy access and invalid GH token/API connectivity. | `feat/v0.1.4a-next-work` → `chore/v0.1.4a-next`; no PR/commit; base `1a32602` |
+| PR-01 Foundation | Documentation, source ownership baseline, package docs, architecture guard, CI target | None | BLOCKED | Local Windows tests/vet/build and Linux cross-build pass; architecture guard passes for 23 packages; 0 broken local links. Blocked on shared submodule/policy access and invalid GH token/API connectivity. | `feat/v0.1.4a-next-work` → `chore/v0.1.4a-next`; no PR; commit `75aaf9a36f95778effb70a06750b743d2b3f562e`; base `1a32602` |
 | PR-02 Events & SQLite | Typed event delivery and technical persistence layer | PR-01 merged; commit/failure/transaction contracts before code | BLOCKED | Not started. Blocked by PR-01 integration gate. | None |
 | PR-03 App composition | Thin app host and CLI adapters | PR-02 merged; CLI and use-case contracts | BLOCKED | Not started. Blocked by preceding checkpoint. | None |
 | PR-04 Context migration | Incremental repository/owner migration | PR-03 merged; per-context contracts before each slice | BLOCKED | Not started. Blocked by preceding checkpoint. | None |

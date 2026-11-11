@@ -3,13 +3,13 @@
 **Canonical release:** `v0.1.4a-next`<br>
 **Status:** BLOCKED<br>
 **Base commit:** `1a32602bd1d655c1bdfbf8d477f55b42ac27b49a`<br>
-**Branch / PR / Commit SHA:** `feat/v0.1.4a-next-work` → `chore/v0.1.4a-next` / no PR created / no checkpoint commit; base `1a32602bd1d655c1bdfbf8d477f55b42ac27b49a`<br>
+**Branch / PR / Commit SHA:** `feat/v0.1.4a-next-work` → `chore/v0.1.4a-next` / no PR created / implementation commit `75aaf9a36f95778effb70a06750b743d2b3f562e`; base `1a32602bd1d655c1bdfbf8d477f55b42ac27b49a`<br>
 **Integration branch:** `chore/v0.1.4a-next` (local, still at the base commit)<br>
 **Report date:** 2026-11-12
 
 ## Summary
 
-PR-01 establishes the reviewed release documentation, preserves current runtime contracts, documents the source baseline, adds a narrow CI architecture/package-documentation/file-size guard, and enables CI for pull requests targeting the approved integration branch. No runtime behavior, SQLite schema, Collector artifact, dependency ownership, enrollment behavior, or shared-submodule content changed. No commit, push, or pull request was created.
+PR-01 establishes the reviewed release documentation, preserves current runtime contracts, documents the source baseline, adds a narrow CI architecture/package-documentation/file-size guard, and enables CI for pull requests targeting the approved integration branch. No runtime behavior, SQLite schema, Collector artifact, dependency ownership, enrollment behavior, or shared-submodule content changed. Local checkpoint commit `75aaf9a36f95778effb70a06750b743d2b3f562e` was created after verification. No push or pull request was created.
 
 The user-authorized PR-01 preparation is complete in the isolated worktree. Review and publication remain blocked by shared-policy/submodule access and invalid GitHub authentication/API reachability. Docker Engine access is a later infrastructure-verification gate, not a PR-01 foundation acceptance criterion. Therefore PR-01 is not marked fully PASS for integration.
 
@@ -61,7 +61,7 @@ The user-authorized PR-01 preparation is complete in the isolated worktree. Revi
 - The original `dev` checkout remains at `1a32602` and still has its original staged lock file, modified entrypoints/architecture, historical verification folder, and untracked v0.1.4a-next documents. Its state was rechecked after preparation. No original files were removed or rewritten.
 - The shared submodule was not modified. Its Git metadata remains inaccessible; the original checkout reported submodule dirtiness in the initial inspection, so its exact contents/status cannot be certified here.
 - A 0-byte `cmd/agentctl/otel.yaml.lifecycle.lock` is also present as untracked in the isolated worktree. Its creation/source could not be established; it was left untouched and is excluded from PR-01 changes.
-- No files were staged. No commit, push, GitHub branch, PR, or merge was created.
+- Only the reviewed PR-01 file set was staged; the unexplained lock artifact was excluded. Local implementation commit `75aaf9a36f95778effb70a06750b743d2b3f562e` is on the feature branch. No push, remote branch, PR, or merge was created.
 
 ## Changed-file list
 
