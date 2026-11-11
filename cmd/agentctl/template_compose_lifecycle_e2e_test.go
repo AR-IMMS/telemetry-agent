@@ -166,13 +166,17 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 		t.Fatal(err)
 	}
 	serviceCtx, stopService := context.WithCancel(ctx)
-	serviceDone := make(chan error, 1)
-	go func() {
-		serviceDone <- runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, agentstate.TeardownAction, []agentstate.OwnedResource) error {
-			return nil
-		}, nil, bootstrap.OSCommandRunner{})
-	}()
-	t.Cleanup(stopService)
+	startService := func(runtimeCtx context.Context) chan error {
+		done := make(chan error, 1)
+		go func(done chan<- error, serviceCtx context.Context) {
+			done <- runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, agentstate.TeardownAction, []agentstate.OwnedResource) error {
+				return nil
+			}, nil, bootstrap.OSCommandRunner{})
+		}(done, runtimeCtx)
+		return done
+	}
+	serviceDone := startService(serviceCtx)
+	t.Cleanup(func() { stopService() })
 
 	initialState, initialConfig := waitForTemplateActivation(t, ctx, store, configPath, initial.AppliedGeneration, true)
 	initialEndpoints := composeTemplateEndpoints(t, store, []string{oldA, stableB})
@@ -277,6 +281,25 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 	}
 	activeEndpoints = composeTemplateEndpoints(t, store, []string{newA, newB})
 	waitForComposeTelemetry(t, ctx, serviceDone, sinkOutput, activeEndpoints)
+
+	// Restart the Agent runtime against the same SQLite state. The CLI Templates,
+	// generated instances and applied monitoring must recover without re-creation.
+	outputBeforeAgentRestart := len(sinkOutput.String())
+	stopService()
+	select {
+	case err := <-serviceDone:
+		if err != nil {
+			t.Fatalf("stop Agent runtime before persistence check: %v", err)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("Agent runtime did not stop before persistence check")
+	}
+	serviceCtx, stopService = context.WithCancel(ctx)
+	serviceDone = startService(serviceCtx)
+	if err := waitForRestoredTemplateRuntime(ctx, store, configPath, sinkOutput, outputBeforeAgentRestart, true, serviceDone); err != nil {
+		t.Fatalf("Template monitoring did not resume after Agent runtime restart: %v", err)
+	}
+	assertEnabledComposeTemplateResources(t, store, []string{newA, newB})
 
 	var activeOut, activeErr bytes.Buffer
 	if code := runInventory(context.Background(), []string{"list", "--active-only", "--state-path", statePath}, &activeOut, &activeErr); code != 0 {
