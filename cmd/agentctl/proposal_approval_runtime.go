@@ -19,6 +19,7 @@ import (
 
 type runtimeProposalRefresher struct {
 	inventory discovery.InventoryRepository
+	templates configuration.TemplateRepository
 	manager   discovery.ProposalManager
 	matcher   integration.Matcher
 }
@@ -35,7 +36,7 @@ func newRuntimeProposalRefresher(statePath string) (runtimeProposalRefresher, er
 		assessor = catalogCapabilityAssessor{catalog: catalog, platform: platform.OS + "/" + platform.Architecture}
 	}
 	return runtimeProposalRefresher{
-		inventory: store.InventoryRepository(), manager: discovery.NewProposalManager(store.ProposalRepository()),
+		inventory: store.InventoryRepository(), templates: store.TemplateRepository(), manager: discovery.NewProposalManager(store.ProposalRepository()),
 		matcher: integration.NewMatcher(registry, assessor),
 	}, nil
 }
@@ -48,12 +49,25 @@ func (r runtimeProposalRefresher) Refresh(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("read inventory for proposal refresh: %w", err)
 	}
-	report, err := r.matcher.Match(projectInventory(snapshot, time.Now().UTC()))
+	templates, err := r.templates.Snapshot()
+	if err != nil {
+		return fmt.Errorf("read Templates for proposal refresh: %w", err)
+	}
+	matchSnapshot := projectInventory(snapshot, time.Now().UTC())
+	templateReport, err := r.matcher.MatchTemplates(matchSnapshot, templates.Templates)
+	if err != nil {
+		return fmt.Errorf("match Templates for proposal refresh: %w", err)
+	}
+	managed := materializableTemplatePairs(templateReport)
+	report, err := r.matcher.Match(matchSnapshot)
 	if err != nil {
 		return fmt.Errorf("match inventory for proposal refresh: %w", err)
 	}
 	observations := make([]discovery.ProposalObservation, 0, len(report.Results))
 	for _, result := range report.Results {
+		if _, autoManaged := managed[templatePairKey(result.Resource, result.DefinitionID)]; autoManaged {
+			continue
+		}
 		observation, err := proposalObservationFromMatch(result, report.InventoryRevision)
 		if err != nil {
 			return err
@@ -64,6 +78,20 @@ func (r runtimeProposalRefresher) Refresh(ctx context.Context) error {
 		return fmt.Errorf("refresh durable proposals: %w", err)
 	}
 	return nil
+}
+
+func materializableTemplatePairs(report integration.TemplateMatchReport) map[string]struct{} {
+	pairs := make(map[string]struct{})
+	for _, result := range report.Results {
+		if result.Materializable || result.Conflict {
+			pairs[templatePairKey(result.Resource, result.DefinitionID)] = struct{}{}
+		}
+	}
+	return pairs
+}
+
+func templatePairKey(resource integration.ResourceIdentity, definitionID string) string {
+	return resource.Provider + "\x00" + resource.ProviderInstance + "\x00" + resource.ResourceID + "\x00" + definitionID
 }
 
 func proposalObservationFromMatch(result integration.MatchResult, inventoryRevision uint64) (discovery.ProposalObservation, error) {
