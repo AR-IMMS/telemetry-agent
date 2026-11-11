@@ -49,7 +49,7 @@ Observed compatibility notes:
 | `go vet ./...` | PASS | Windows workspace. |
 | `go build ./...` | PASS | Windows workspace. |
 | `$env:GOOS='linux'; $env:GOARCH='amd64'; go build ./...` | PASS | Cross-compilation only; not native Linux verification. |
-| `docker version --format 'Client={{.Client.Version}} Server={{.Server.Version}}'` | BLOCKED | Client 29.5.3 exists; server version unavailable because the Docker Desktop Linux Engine named pipe denied access. |
+| `docker version --format 'Client={{.Client.Version}} Server={{.Server.Version}}'` | PARTIAL | Normal sandbox access is denied. Elevated read-only access confirmed Client and Engine 29.5.3 and Compose 5.1.4; the daemon is Linux on Docker Desktop. Existing Core and observability stacks are running, so use an isolated fixture before infrastructure tests. |
 | Native Linux E2E | NOT RUN | No native Linux host was available in this verification. |
 | GitHub CLI/API | BLOCKED | `gh` 2.96.0 installed; `GH_TOKEN` and saved auth are invalid; API connection failed. No remote changes were made. |
 | Shared coding policy | BLOCKED | `docs/shared/engineering/AI_CODING_POLICY.md` could not be read because the shared submodule is inaccessible/unavailable in this checkout. |

@@ -1,7 +1,7 @@
 # v0.1.4a-next — release progress
 
 **Canonical target:** `v0.1.4a-next`<br>
-**Execution state:** BLOCKED — PR-01 implementation and local verification are complete; shared-policy/submodule and GitHub-auth/API gates prevent integration. Docker Engine access blocks later infrastructure checkpoints, not PR-01. No runtime-behavior changes made.<br>
+**Execution state:** BLOCKED — PR-01 implementation and local verification are complete; GitHub-auth/API and shared-submodule worktree-status gates prevent integration. Docker Engine 29.5.3 / Compose 5.1.4 are available with elevated read-only access; no isolated test namespace has been established for infrastructure tests. No runtime-behavior changes made.<br>
 **Checkpoint rule:** PR-01–PR-10 are verified checkpoints; they do not require ten separate GitHub PRs. Reconcile the GitHub PR shape with the approved integration branch before publishing.<br>
 **Last updated:** 2026-11-12
 
@@ -9,7 +9,7 @@
 
 - The original `dev` checkout at `D:\Study\FPTU\FPTU\WDP301\projects\telemetry-agent` remains untouched by this preparation. Its staged, unstaged, untracked, and submodule state is preserved as found.
 - Work is isolated in `C:\Users\pvduc\.codex\worktrees\v014a-next-pr01\telemetry-agent`. The local integration branch `chore/v0.1.4a-next` starts at baseline `1a32602bd1d655c1bdfbf8d477f55b42ac27b49a`; reusable development branch `feat/v0.1.4a-next-work` is the active branch.
-- `docs/shared/` is a Git submodule and is not modified. The checked-out target worktree does not expose its policy file; submodule state and shared policy remain unresolved access gates.
+- `docs/shared/` is a Git submodule and is not modified. The target/index gitlink is `c4cd59a9bcaaf0735c3107424f1be98fc498670a`. Policy text read from the original checkout is consistent with the local supplement, but the checked-out submodule worktree status/content cannot be certified.
 - Do not use or modify the unrelated staged `cmd/agentctl/otel.yaml.lifecycle.lock`, `.local-verification/`, `docs/local/architecture/target-architecture-v0.1.4.md`, `docs/local/architecture/architecture-refactoring-proposal-phase-1.md`, or `docs/local/architecture/telemetry-agent-template-autodiscovery-goal-en.md` from the original checkout. A 0-byte same-name lock file appeared as untracked in this worktree after branch setup; it is left untouched and excluded from PR-01.
 - Existing CLI behavior, SQLite schema/data, Collector artifacts, dependency ownership, enrollment, activation and last-known-good behavior are compatibility constraints. No runtime change is part of PR-01.
 
@@ -24,9 +24,9 @@
 | `go build ./...` | PASS | Baseline on Windows. |
 | Linux/amd64 cross-build | PASS | `GOOS=linux GOARCH=amd64 go build ./...` from Windows. This is a build check, not Linux E2E. |
 | CLI compatibility snapshot | PASS | Actual root `agentctl help` output and exit code recorded in [PR-01 baseline](../../verification/v0.1.4a-next/pr-verification/pr-01-baseline.md). `agentctl --help` currently exits 2 with unknown command; `service` is implemented but absent from root help. |
-| Shared policy and submodule | BLOCKED | `docs/shared/engineering/AI_CODING_POLICY.md` is unavailable in the worktree; do not claim cross-policy validation. |
+| Shared policy and submodule | PARTIAL | The shared policy text is readable from the original checkout and consistent with the local supplement. Gitlink is recorded; worktree status/content verification remains blocked. |
 | GitHub access | BLOCKED | Existing `gh` reports invalid `GH_TOKEN` and saved token; API requests failed to connect. No remote refs, branches or PRs changed. |
-| Docker infrastructure | BLOCKED | Docker CLI 29.5.3 / Compose 5.1.4 are installed, but the Docker Engine named pipe is inaccessible. No infrastructure E2E was run. |
+| Docker infrastructure | PARTIAL | Docker CLI 29.5.3 / Compose 5.1.4 and Engine 29.5.3 are available using elevated read-only access; existing Core and observability services are running. No isolated fixture/E2E was run. |
 | Native Linux E2E | NOT RUN | A Windows-hosted cross-build is not native Linux execution. |
 
 ## PR-01 contracts and gates
