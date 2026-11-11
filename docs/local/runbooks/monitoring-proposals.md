@@ -51,31 +51,56 @@ The command reports that Agent Service convergence is pending. It does not start
 - A resource disappearing does not automatically disable an already approved Integration. Inventory freshness/presence and proposal status are distinct from desired state.
 - PostgreSQL and MongoDB test fixtures do not imply production Integration definitions or verified Collector pipelines.
 
+## Shipped Integration catalog
+
+List the Definitions available in this Agent build or inspect one exact version:
+
+```text
+agentctl integration catalog list
+agentctl integration catalog inspect --id redis --version 1.0.0
+agentctl integration catalog inspect --id redis --version 1.0.0 --output json
+```
+
+An unknown Definition such as Grafana is reported as not shipped and points to the [Integration Developer Guide](../guides/integration-developer-guide.md). A Collector component appearing in capability evidence does not by itself prove a service endpoint is compatible or telemetry is delivered.
+
 ## Local automatic monitoring Templates
 
 Use a Template when an operator explicitly authorizes the Agent to create and maintain desired instances for every resource matching its selector. A Template is not a Core policy, and enabling it is broader than approving one proposal. Use a narrow selector and review endpoint binding rules before enabling.
 
-Create a local Redis Template (PowerShell users may save the JSON to a file and pass its contents as one quoted argument):
+Create a local Redis Template from a normal JSON file. The complete example is [redis-monitoring.json](../examples/redis-monitoring.json):
 
 ```text
-agentctl integration template create --expected-revision 0 --template-json '{"id":"redis-local","definition_id":"redis","definition_version":"1.0.0","owner":"local","status":"enabled","selector":{"resource_kinds":["container"],"exact_attributes":{"container.image.repository":"docker.io/library/redis"}},"bindings":[{"target":"endpoint","source":{"kind":"endpoint","endpoint_scope":"host","endpoint_protocol":"tcp","endpoint_provenance":"published_port"}}]}' [--state-path <path>]
+cp docs/local/examples/redis-monitoring.json redis-monitoring.json
+agentctl integration template create --file redis-monitoring.json --expected-revision 0 [--state-path <path>]
 ```
 
-List and inspect Templates:
+The example matches running containers whose normalized `container.image.tag` is exactly `7.4.2-alpine`, overrides Redis `collection_interval` to `15s`, and binds the Redis `endpoint` from one host-published TCP endpoint. To match multiple Redis versions, remove `container.image.tag` from `selector.exact_attributes`; the remaining kind/state selector matches every running resource recognized by the Redis Definition. Ambiguous or missing endpoint bindings are not materialized.
+
+List, inspect the summary, or export the complete stored object:
 
 ```text
 agentctl integration template list [--state-path <path>]
-agentctl integration template inspect --id redis-local [--state-path <path>]
+agentctl integration template inspect --id redis-monitoring [--state-path <path>]
+agentctl integration template inspect --id redis-monitoring --output json [--state-path <path>]
 ```
 
-Update the full Template JSON using its displayed per-Template revision as the CAS token. Enable/disable are also revision-checked. Disable suspends only the Template-owned generated instances and can be reversed; delete is a permanent tombstone and cannot be re-enabled or reused:
+Save the exported JSON, edit `collection_interval` to `30s`, then update using the current per-Template revision as the compare-and-swap token:
 
 ```text
-agentctl integration template update --expected-revision <revision> --template-json <json> [--state-path <path>]
-agentctl integration template disable --id redis-local --expected-revision <revision> [--state-path <path>]
-agentctl integration template enable --id redis-local --expected-revision <revision> [--state-path <path>]
-agentctl integration template delete --id redis-local --expected-revision <revision> [--state-path <path>]
+agentctl integration template update --file redis-monitoring.json --expected-revision <current-revision> [--state-path <path>]
 ```
+
+The `revision` in the JSON is informational on write; the CLI's `--expected-revision` controls concurrency and the Configuration service assigns the next revision. A stale revision fails without overwriting newer state. Existing `--template-json '<object>'` create/update input remains supported; `--file` and `--template-json` are mutually exclusive. Files are limited to 1 MiB, unknown JSON fields and trailing JSON objects are rejected.
+
+Enable/disable are revision-checked. Disable suspends only the Template-owned generated instances and can be reversed; delete is a permanent tombstone and cannot be re-enabled or reused:
+
+```text
+agentctl integration template disable --id redis-monitoring --expected-revision <revision> [--state-path <path>]
+agentctl integration template enable --id redis-monitoring --expected-revision <revision> [--state-path <path>]
+agentctl integration template delete --id redis-monitoring --expected-revision <revision> [--state-path <path>]
+```
+
+Only fields declared by the selected Integration Definition can be configured. For Redis, `endpoint` is required and can be bound to a unique host-published TCP endpoint; `collection_interval` is an optional positive Go duration with default `10s`. Credentials, arbitrary Collector YAML, expressions and unknown settings are rejected. Use `agentctl integration catalog inspect --id redis --version 1.0.0` to see the shipped settings and capability evidence.
 
 The Agent Service materializes changes after a complete successful Discovery provider cycle. Repeated unchanged projections do not advance the desired-set revision. Provider failure does not suspend instances; confirmed absence follows the existing two-complete-snapshot policy. Check Integration desired state and S3 reconciliation status separately. These commands do not run reconciliation or claim activation/telemetry delivery.
 
