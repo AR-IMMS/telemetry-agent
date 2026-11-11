@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 )
@@ -23,6 +24,10 @@ func Definition() integration.IntegrationDefinition {
 		ID:       definitionID,
 		Version:  definitionVersion,
 		Validate: validateConfiguration,
+		TemplateSettingRules: map[string]integration.TemplateSettingRule{
+			"endpoint":            {AllowResourceBinding: true},
+			"collection_interval": {Default: "10s", DefaultOverridable: true},
+		},
 		Matching: &integration.MatchingDefinition{
 			Selector: &integration.MatchSelector{
 				ResourceKinds: []string{"container"}, LifecycleStates: []string{"running"},
@@ -38,9 +43,19 @@ func Definition() integration.IntegrationDefinition {
 			if err := validateConfiguration(instance.Configuration); err != nil {
 				return integration.Contribution{}, fmt.Errorf("validate Redis settings: %w", err)
 			}
-			intent, err := integration.NewComponentIntent(redisMetricsCapability, map[string]any{
+			componentConfig := map[string]any{
 				"endpoint": instance.Configuration["endpoint"],
-			})
+				// The receiver disables these identifying resource attributes by
+				// default. Enable them so multiple instances remain distinguishable.
+				"resource_attributes": map[string]any{
+					"server.address": map[string]any{"enabled": true},
+					"server.port":    map[string]any{"enabled": true},
+				},
+			}
+			if interval, exists := instance.Configuration["collection_interval"]; exists {
+				componentConfig["collection_interval"] = interval
+			}
+			intent, err := integration.NewComponentIntent(redisMetricsCapability, componentConfig)
 			if err != nil {
 				return integration.Contribution{}, err
 			}
@@ -77,8 +92,8 @@ func buildDiscoveredCandidate(resource integration.MatchResource) (integration.C
 }
 
 func validateConfiguration(configuration map[string]any) error {
-	if len(configuration) != 1 {
-		return fmt.Errorf("Redis settings require only endpoint")
+	if len(configuration) < 1 || len(configuration) > 2 {
+		return fmt.Errorf("Redis settings require endpoint and optional collection_interval")
 	}
 	endpoint, ok := configuration["endpoint"].(string)
 	if !ok || endpoint == "" || strings.TrimSpace(endpoint) != endpoint || strings.ContainsAny(endpoint, "/?#@") {
@@ -91,6 +106,18 @@ func validateConfiguration(configuration map[string]any) error {
 	port, err := strconv.Atoi(portText)
 	if err != nil || port < 1 || port > 65535 {
 		return fmt.Errorf("Redis endpoint port must be between 1 and 65535")
+	}
+	if intervalValue, exists := configuration["collection_interval"]; exists {
+		intervalText, ok := intervalValue.(string)
+		interval, parseErr := time.ParseDuration(intervalText)
+		if !ok || parseErr != nil || interval <= 0 {
+			return fmt.Errorf("Redis collection_interval must be a positive duration")
+		}
+	}
+	for key := range configuration {
+		if key != "endpoint" && key != "collection_interval" {
+			return fmt.Errorf("unsupported Redis setting %q", key)
+		}
 	}
 	return nil
 }

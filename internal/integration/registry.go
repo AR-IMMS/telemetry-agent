@@ -62,6 +62,16 @@ func (r Registry) MatchableDefinitions() []IntegrationDefinition {
 }
 
 func cloneDefinition(definition IntegrationDefinition) IntegrationDefinition {
+	if definition.TemplateSettingRules != nil {
+		rules := definition.TemplateSettingRules
+		definition.TemplateSettingRules = make(map[string]TemplateSettingRule, len(rules))
+		for key, rule := range rules {
+			if rule.Default != nil {
+				rule.Default, _ = cloneJSONValue(rule.Default)
+			}
+			definition.TemplateSettingRules[key] = rule
+		}
+	}
 	if definition.Matching == nil {
 		return definition
 	}
