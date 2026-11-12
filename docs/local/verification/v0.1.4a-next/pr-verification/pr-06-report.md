@@ -1,10 +1,10 @@
 # PR-06 verification report — application monitoring profiles
 
-**Status:** PASS — all required Windows/Linux unit, pinned Collector, architecture, and live Docker/OTLP gates passed. PR #29 is still draft pending merge preparation.
+**Status:** PASS — all required Windows/Linux unit, pinned Collector, architecture, and live Docker/OTLP gates passed.
 **Release target:** `v0.1.4a-next`
 **Branch:** `feat/pr-06-monitoring-profiles`
 **Base:** `chore/v0.1.4a-next` at PR-05 merge `11fdd1e720c542898ba9c0c673063b1d698d7451`
-**PR / commit:** [Draft PR #29](https://github.com/AR-IMMS/telemetry-agent/pull/29), verified implementation head `adcab1e6fc47fb97e67830d93e2c5dc3e69870f9`.
+**PR / commit:** [PR #29](https://github.com/AR-IMMS/telemetry-agent/pull/29) merged as `af2f5db4c6b8832bc7bcc87d332d899dad01b452`; verified implementation head `adcab1e6fc47fb97e67830d93e2c5dc3e69870f9`, final-head CI run `43275105064` passed Windows and Ubuntu.
 
 ## Scope delivered
 
