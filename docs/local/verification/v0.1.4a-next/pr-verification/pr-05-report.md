@@ -6,6 +6,7 @@
 **Worktree:** `feat/v0.1.4a-next-work`, base worktree commit `59c85eed375c77653bcfcc57022ee01093467bc6`
 **Implementation commit:** `0f03c25` (`feat(discovery): add OTel-native Docker Redis monitoring`)
 **Publication:** Draft [PR #28](https://github.com/AR-IMMS/telemetry-agent/pull/28) targets `chore/v0.1.4a-next`. This report does not claim PASS.
+**Current verified code/test head:** `9c74bfb`; GitHub Actions run [43237050133](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43237050133) passed on Windows and Ubuntu (test, vet, build).
 
 ## Accepted contract implemented
 
@@ -50,6 +51,8 @@ GOOS=linux GOARCH=amd64 go build ./...
 The Linux build above is a cross-build only. Ubuntu WSL2 is installed but has no Go toolchain; it is not a native Linux E2E host. Earlier WSL2 probes established Docker Desktop `alternate_port` behavior but do not substitute for this checkpoint's required native Linux Agent/Collector delivery run.
 
 After the endpoint diagnostics, CLI inspection, provider recovery test, and profile-composed failure injections were added, the full Windows suite, vet, build, and Linux/amd64 cross-build were rerun and passed. The full suite run set `AR_IMMS_PR05_COLLECTOR_BINARY` to the checksum-verified v0.160.0 Windows binary, enabling both profile failure tests.
+
+GitHub CI on PR #28 head `9c74bfb` passed on `windows-latest` and `ubuntu-latest`; both jobs completed test, vet, and build. Ubuntu CI is Linux runner evidence for Go checks, not native Linux Docker/Collector/OTLP E2E.
 
 ## Profile candidate failure and LKG evidence
 
