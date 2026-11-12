@@ -1,14 +1,16 @@
 # PR-04c — Discovery Inventory and Proposal SQLite Adapters
 
-**Status:** PASS — merged into `chore/v0.1.4a-next`  
-**Release target:** `v0.1.4a-next`  
-**Branch:** `feat/v0.1.4a-next-work`  
-**PR:** [#25 — Extract Discovery SQLite adapters](https://github.com/AR-IMMS/telemetry-agent/pull/25)  
-**PR base:** `chore/v0.1.4a-next`  
-**PR head:** `06a91377c2800f6e0379f779c8e1fa94441d2588`  
-**Merge commit:** `7bec19a5dae675778e1670037a8770b8285d5a86`  
-**Final-head CI:** run `43146754385` — Ubuntu PASS (46s), Windows PASS (1m49s)  
-**Verification date:** 2026-11-12
+| Field | Result |
+|---|---|
+| Status | PASS — merged into `chore/v0.1.4a-next` |
+| Release target | `v0.1.4a-next` |
+| Branch | `feat/v0.1.4a-next-work` |
+| PR | [#25 — Extract Discovery SQLite adapters](https://github.com/AR-IMMS/telemetry-agent/pull/25) |
+| PR base | `chore/v0.1.4a-next` |
+| PR head | `06a91377c2800f6e0379f779c8e1fa94441d2588` |
+| Merge commit | `7bec19a5dae675778e1670037a8770b8285d5a86` |
+| Final-head CI | Run `43146754385` — Ubuntu PASS (46s), Windows PASS (1m49s) |
+| Verification date | 2026-11-12 |
 
 ## Scope and result
 
