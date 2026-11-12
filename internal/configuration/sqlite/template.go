@@ -1,22 +1,24 @@
-package agentstate
+package sqlite
 
 import (
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 )
 
-// TemplateRepository returns the SQLite adapter for Integration Templates.
-func (s SQLiteStore) TemplateRepository() configuration.TemplateRepository {
-	return templateSQLite{store: s}
+// NewTemplateRepository creates the Integration Template adapter over the shared database.
+// The opener and write lock are required; repository operations return an error if either is missing.
+func NewTemplateRepository(open func() (*sql.DB, error), locker sync.Locker) configuration.TemplateRepository {
+	return templateSQLite{store: database{open: open, locker: locker}}
 }
 
-type templateSQLite struct{ store SQLiteStore }
+type templateSQLite struct{ store database }
 
 func (s templateSQLite) Put(template integration.IntegrationTemplate, expected uint64) (integration.IntegrationTemplate, uint64, error) {
 	if template.Owner != integration.TemplateOwnerLocal {
@@ -29,9 +31,12 @@ func (s templateSQLite) Put(template integration.IntegrationTemplate, expected u
 	if err != nil || len(requested) > 64*1024 {
 		return integration.IntegrationTemplate{}, 0, fmt.Errorf("encode Integration Template: invalid or oversized payload")
 	}
-	sqliteUpdateMutex.Lock()
-	defer sqliteUpdateMutex.Unlock()
-	db, err := s.store.open()
+	unlock, err := s.store.lockWrites()
+	if err != nil {
+		return integration.IntegrationTemplate{}, 0, err
+	}
+	defer unlock()
+	db, err := s.store.openDatabase()
 	if err != nil {
 		return integration.IntegrationTemplate{}, 0, err
 	}
@@ -115,7 +120,7 @@ func sameTemplateIntent(stored, requested []byte) bool {
 }
 
 func (s templateSQLite) Snapshot() (configuration.TemplateSnapshot, error) {
-	db, err := s.store.open()
+	db, err := s.store.openDatabase()
 	if err != nil {
 		return configuration.TemplateSnapshot{}, err
 	}
