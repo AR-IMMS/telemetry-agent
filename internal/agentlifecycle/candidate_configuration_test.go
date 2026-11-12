@@ -15,6 +15,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/config"
 	"github.com/ar-imms/telemetry-agent/internal/dependency"
 	"github.com/ar-imms/telemetry-agent/internal/identity"
+	"github.com/ar-imms/telemetry-agent/internal/reconciliation/contracts"
 	"github.com/ar-imms/telemetry-agent/internal/supervisor"
 )
 
@@ -177,7 +178,7 @@ func (f candidateRunnerFunc) Run(ctx context.Context, command bootstrap.Command)
 	return f(ctx, command)
 }
 
-func candidateFixture(t *testing.T) (agentstate.SQLiteStore, CandidateApplyRequest, CollectorConfigurationOptions, string, string) {
+func candidateFixture(t *testing.T) (agentstate.SQLiteStore, contracts.CandidateApplyRequest, CollectorConfigurationOptions, string, string) {
 	t.Helper()
 	platform := identity.PlatformInfo{OS: runtime.GOOS, Architecture: runtime.GOARCH}
 	layerPath := filepath.Join(t.TempDir(), "base.yaml")
@@ -267,7 +268,7 @@ service:
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := CandidateApplyRequest{BaselineFingerprint: snapshot.Fingerprint, ExpectedGeneration: snapshot.DesiredGeneration, Candidate: candidate}
+	request := contracts.CandidateApplyRequest{BaselineFingerprint: snapshot.Fingerprint, ExpectedGeneration: snapshot.DesiredGeneration, Candidate: candidate}
 	options := CollectorConfigurationOptions{
 		Platform:     platform,
 		Catalog:      catalog,

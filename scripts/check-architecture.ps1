@@ -37,6 +37,11 @@ try {
     }
     $platformAdapterRoots = @('golang.org/x/sys/windows/registry')
 
+    # Reconciliation owns the consumer-side runtime ports. It may depend on
+    # runtime contract values, but not on the concrete lifecycle package.
+    $reconciliationContextRoot = "$modulePath/internal/reconciliation"
+    $agentLifecyclePackage = "$modulePath/internal/agentlifecycle"
+
     # This pre-existing file is 454 lines. Avoid a mechanical split in the
     # foundation checkpoint; it may not grow and should be reduced in a
     # behavior-preserving context migration.
@@ -65,6 +70,12 @@ try {
         $imports = @()
         if (-not [string]::IsNullOrWhiteSpace($parts[1])) {
             $imports = $parts[1] -split ','
+        }
+
+        $isReconciliationPackage = $package -eq $reconciliationContextRoot -or
+            $package.StartsWith("$reconciliationContextRoot/", [StringComparison]::Ordinal)
+        if ($isReconciliationPackage -and $imports -contains $agentLifecyclePackage) {
+            $violations.Add("forbidden context dependency: $package -> $agentLifecyclePackage (Reconciliation owns its CandidateApplier and baseline ports; runtime implements them.)")
         }
 
         if ($package.StartsWith("$modulePath/internal/", [StringComparison]::Ordinal)) {

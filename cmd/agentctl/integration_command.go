@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentlifecycle"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
@@ -276,14 +275,14 @@ func flagProvided(args []string, name string) bool {
 	return false
 }
 
-func integrationConvergenceStatus(evidence agentstate.ReconciliationEvidence, desiredRevision uint64, baseline agentlifecycle.CleanBaselineSnapshot) string {
+func integrationConvergenceStatus(evidence agentstate.ReconciliationEvidence, desiredRevision uint64, baseline reconciliation.BaselineSnapshot) string {
 	if !integrationTargetMatches(evidence, desiredRevision, baseline) {
 		return string(reconciliation.StatusPending)
 	}
 	return evidence.Status
 }
 
-func integrationTargetMatches(evidence agentstate.ReconciliationEvidence, desiredRevision uint64, baseline agentlifecycle.CleanBaselineSnapshot) bool {
+func integrationTargetMatches(evidence agentstate.ReconciliationEvidence, desiredRevision uint64, baseline reconciliation.BaselineSnapshot) bool {
 	return evidence.Target.DesiredRevision == desiredRevision &&
 		evidence.Target.DesiredGeneration == baseline.DesiredGeneration &&
 		evidence.Target.BaselineFingerprint == baseline.Fingerprint

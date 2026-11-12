@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentlifecycle"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/reconciliation"
 )
 
 func TestIntegrationStatusDoesNotInferHealthOrDelivery(t *testing.T) {
@@ -31,7 +31,7 @@ func TestIntegrationStatusDoesNotAcknowledgeStaleBaselineAsApplied(t *testing.T)
 		},
 		Status: "Applied",
 	}
-	current := agentlifecycle.CleanBaselineSnapshot{DesiredGeneration: 4, Fingerprint: "new-baseline"}
+	current := reconciliation.BaselineSnapshot{DesiredGeneration: 4, Fingerprint: "new-baseline"}
 	if got := integrationConvergenceStatus(evidence, 12, current); got != "Pending" {
 		t.Fatalf("status for old applied baseline = %q, want Pending", got)
 	}

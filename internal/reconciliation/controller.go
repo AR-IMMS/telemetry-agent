@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentlifecycle"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
 	"github.com/ar-imms/telemetry-agent/internal/config"
@@ -97,9 +96,6 @@ type Result struct {
 type desiredReader interface {
 	Snapshot() (configuration.DesiredSnapshot, error)
 }
-type baselineReader interface {
-	Snapshot() (agentlifecycle.CleanBaselineSnapshot, error)
-}
 type resolver interface {
 	Resolve(integration.IntegrationInstance) (integration.ResolvedInstance, error)
 }
@@ -108,9 +104,6 @@ type compiler interface {
 }
 
 type candidateValidator func(context.Context, collectorruntime.Candidate) error
-type candidateApplier interface {
-	ApplyCandidate(context.Context, agentlifecycle.CandidateApplyRequest) (agentlifecycle.CandidateActivationOutcome, error)
-}
 type attemptRepository interface {
 	BeginAttempt(Target) (Attempt, error)
 	RecordCandidate(Attempt, string) error
@@ -123,11 +116,11 @@ type candidateOutcomeReader interface {
 // Controller performs one serialized desired-to-candidate convergence pass.
 type Controller struct {
 	Desired      desiredReader
-	Baseline     baselineReader
+	Baseline     BaselineReader
 	Resolver     resolver
 	Compiler     compiler
 	Validator    candidateValidator
-	Applier      candidateApplier
+	Applier      CandidateApplier
 	Attempts     attemptRepository
 	Outcomes     candidateOutcomeReader
 	PollInterval time.Duration
@@ -216,7 +209,7 @@ func (c *Controller) Reconcile(ctx context.Context) (Result, error) {
 		failure := classify("validate", err)
 		return finish(Outcome{Status: attemptStatus(failure.Class, attempt.Number), Stage: failure.Stage, Code: failure.Code, Class: failure.Class, CandidateDigest: candidate.Digest(), SafeDetail: "candidate validation failed", RetryAt: retryAt(attempt.Number)}, failure)
 	}
-	activation, err := c.Applier.ApplyCandidate(ctx, agentlifecycle.CandidateApplyRequest{DesiredSetRevision: snapshot.Revision, ExpectedGeneration: baseline.DesiredGeneration, BaselineFingerprint: baseline.Fingerprint, Candidate: candidate})
+	activation, err := c.Applier.ApplyCandidate(ctx, CandidateApplyRequest{DesiredSetRevision: snapshot.Revision, ExpectedGeneration: baseline.DesiredGeneration, BaselineFingerprint: baseline.Fingerprint, Candidate: candidate})
 	if err != nil {
 		if errors.Is(err, ErrStalePlan) || errors.Is(err, agentstate.ErrStaleCandidate) {
 			result.Stale = true
