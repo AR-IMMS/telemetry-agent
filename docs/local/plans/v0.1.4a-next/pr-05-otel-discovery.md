@@ -97,7 +97,7 @@ evidence below; retain it as historical context, not as the current status.
 - [x] Implement label normalization, native-target template filtering, and fail-closed ownership suppression.
 - [x] Run focused discovery, ownership, and materializer tests.
 
-### Task 3: Runtime composition and existing LKG handoff — implemented; rollback parity remains open
+### Task 3: Runtime composition and existing LKG handoff — implemented; profile failure paths verified on Windows
 
 **Files:** compose the profile layer in `cmd/agentctl` bootstrap and reconciliation baseline paths; include `receiver_creator` as a metrics receiver only when Docker endpoint and Core `node_id` are available. Preserve current candidate validation, activation journal, readiness, and LKG recovery; add no SQLite migration.
 
@@ -105,7 +105,7 @@ evidence below; retain it as historical context, not as the current status.
 
 - [x] Add runtime baseline composition and fingerprint tests.
 - [x] Compose native rules through bootstrap and reconciliation; require explicit Docker endpoint, registered Core Node ID, and pinned Redis capability.
-- [x] Keep the existing SQLite schema, candidate validation, activation, readiness, and LKG paths. Full lifecycle tests pass; profile-specific rejected-candidate rollback remains unverified.
+- [x] Keep the existing SQLite schema, candidate validation, activation, readiness, and LKG paths. Pinned v0.160.0 profile-composed validation rejection and Docker Observer activation/readiness failure both restore prior configuration/state on Windows.
 
 ### Task 4: Live parity, evidence, and release progress
 
@@ -120,6 +120,6 @@ evidence below; retain it as historical context, not as the current status.
 - [ ] Feed matching OTel scrape-error evidence into the Agent diagnostic surface and verify live `endpoint_unreachable`. Current CLI reports missing/ambiguous/resolved, and resolved explicitly means reachability unverified.
 - [ ] Exercise multiple published bindings and multiple network endpoints; prove fail-closed ambiguity and one active Receiver Creator instance/no duplicate metric points. Current Windows log showed repeated starts for one endpoint ID before a stop.
 - [ ] Verify a nondefault private Redis port or document and retain approval for the profile's current private-port-6379 limit. The live `59980` case is a host-mapped port only.
-- [ ] Induce a profile-composed candidate validation/activation failure and verify LKG restoration and receiver ownership.
+- [x] Induce profile-composed candidate validation and Docker Observer activation/readiness failures with the pinned Collector; verify LKG restoration and no native receiver configuration remains after rollback.
 - [ ] Run native Linux unit/suite/vet/build and Linux live Docker + OTLP sink E2E. Available Ubuntu is WSL2 without Go, not a native Linux host; cross-build is not equivalent.
 - [x] Record Windows evidence states, limitations, and progress in the verification report and [live evidence](../../verification/v0.1.4a-next/pr-verification/pr-05-windows-live-evidence.md).

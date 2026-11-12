@@ -1,6 +1,6 @@
 # PR-05 verification report — OTel-native Docker/Redis discovery
 
-**Status:** IN_PROGRESS — expanded Windows live delivery verified; mandatory resilience, unreachable-diagnostic, profile-specific LKG, and native Linux gates remain.
+**Status:** IN_PROGRESS — expanded Windows live delivery and profile-composed LKG validation/activation rollback verified; mandatory daemon, receiver uniqueness, unreachable-diagnostic, and native Linux gates remain.
 **Release target:** `v0.1.4a-next`
 **Review date:** 2026-11-12
 **Worktree:** `feat/v0.1.4a-next-work`, base worktree commit `59c85eed375c77653bcfcc57022ee01093467bc6`
@@ -49,7 +49,18 @@ GOOS=linux GOARCH=amd64 go build ./...
 
 The Linux build above is a cross-build only. Ubuntu WSL2 is installed but has no Go toolchain; it is not a native Linux E2E host. Earlier WSL2 probes established Docker Desktop `alternate_port` behavior but do not substitute for this checkpoint's required native Linux Agent/Collector delivery run.
 
-After the endpoint diagnostics, CLI inspection, and provider recovery tests were added, the full Windows suite, vet, build, and Linux/amd64 cross-build were rerun and passed.
+After the endpoint diagnostics, CLI inspection, provider recovery test, and profile-composed failure injections were added, the full Windows suite, vet, build, and Linux/amd64 cross-build were rerun and passed. The full suite run set `AR_IMMS_PR05_COLLECTOR_BINARY` to the checksum-verified v0.160.0 Windows binary, enabling both profile failure tests.
+
+## Profile candidate failure and LKG evidence
+
+With the checksum-verified Windows Collector v0.160.0 binary, both profile-composed failure injections passed:
+
+```powershell
+$env:AR_IMMS_PR05_COLLECTOR_BINARY = '<checksum-verified otelcol-contrib 0.160.0 path>'
+go test ./internal/agentlifecycle -run '^TestPinned(NativeProfileActivationFailureRollsBackToLKG|InvalidNativeProfileCandidateRestoresPreviousConfiguration)$' -count=1 -v
+```
+
+The invalid Receiver Creator observer configuration is rejected at final validation, and the previous active config/state remain intact. A valid native profile using an unavailable Docker endpoint passes candidate validation, fails Collector runtime activation/readiness, and restores the previous configuration/state. Both tests assert no native `receiver_creator` remains in the restored config. This is Windows process-level lifecycle evidence, not native Linux or Docker daemon recovery evidence.
 
 ## Remaining verification gates
 
@@ -61,7 +72,6 @@ These items remain open and prevent PASS:
 - Nondefault private Redis port behavior. PR-05's initial Redis profile explicitly supports private port `6379`; a nondefault published host port is verified, but alternate private Redis ports are unsupported and were not tested.
 - Multi-network receiver uniqueness and duplicate point behavior. The live run verifies two-network discovery and delivery, but Collector logs contain repeated starts for the same endpoint ID before a stop. Whether this produced overlapping receiver instances or duplicate points remains unresolved; do not mark single-receiver behavior PASS from these logs.
 - The unpublished Windows target was discovered and diagnosed missing; a live no-receiver assertion is not retained.
-- A profile-composed candidate validation/activation failure followed by LKG recovery and receiver ownership assertions. Existing generic candidate validation/LKG tests pass in the full suite, but the profile-specific failure injection was not run. No live activation failure was induced.
 - Windows/Linux service-level behavior beyond the process-level live test.
 
 Coordinator tests verify that failed observations preserve present inventory and a recovered snapshot clears the provider error and refreshes endpoint metadata. These use a fake provider and are unit evidence, not live Docker daemon recovery or Receiver Creator convergence. Do not infer the remaining behaviors from the successful Windows path.
@@ -70,4 +80,4 @@ Coordinator tests verify that failed observations preserve present inventory and
 
 Agent Go source and tests, local architecture/plan/progress documentation, and this verification report are the intended PR-05 changes. No production configuration, schema, database migration, `docs/shared` content, or runtime artifact was added. The pre-existing untracked `cmd/agentctl/otel.yaml.lifecycle.lock` is preserved and is not part of PR-05. Temporary Collector/test artifacts are removed after verification.
 
-**Checkpoint ruling:** Windows coverage includes multi-network observations, nondefault published host port, an unpublished target, inventory diagnosis, extensibility validation, and OTLP delivery. PR-05 remains **IN_PROGRESS / CONDITIONAL** because actual daemon recovery, live unreachable reporting, profile-composed LKG failure recovery/ownership, multi-network receiver uniqueness/duplicate points, nondefault private Redis ports, and native Linux E2E remain open. PR-06 remains blocked by PR-05.
+**Checkpoint ruling:** Windows coverage includes multi-network observations, nondefault published host port, an unpublished target, inventory diagnosis, profile extensibility, profile-composed LKG recovery after validation and activation failures, and OTLP delivery. PR-05 remains **IN_PROGRESS / CONDITIONAL** because actual daemon recovery, live unreachable reporting, multi-network receiver uniqueness/duplicate points, nondefault private Redis ports, and native Linux E2E remain open. PR-06 remains blocked by PR-05.
