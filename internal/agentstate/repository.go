@@ -6,6 +6,7 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
 	"github.com/ar-imms/telemetry-agent/internal/enrollment"
+	enrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/enrollment/sqlite"
 	"github.com/ar-imms/telemetry-agent/internal/identity"
 	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
 )
@@ -42,7 +43,8 @@ func NewCoreGatewayStore(path string) coreconfig.GatewayRuntimeRepository {
 // NewEnrollmentStore returns the SQLite adapter for durable enrollment attempts
 // at the same operational database path used by other Agent state repositories.
 func NewEnrollmentStore(path string) enrollment.AttemptRepository {
-	return newSQLiteStoreForPath(path)
+	store := newSQLiteStoreForPath(path)
+	return enrollmentsqlite.New(store.OpenDatabase, &sqliteUpdateMutex)
 }
 
 func newSQLiteStoreForPath(path string) SQLiteStore {

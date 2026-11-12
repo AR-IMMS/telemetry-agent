@@ -1,6 +1,6 @@
 # PR-04 — Bounded Context Ownership & Repository Migration
 
-**Status:** PR-04a IDENTITY ADAPTER SLICE IN PROGRESS / verified locally, not yet submitted. **Release target:** `v0.1.4a-next`. **Base:** `6a5fcf9324bb5acb291034a4dc3ab84d6ce7429e` on `feat/v0.1.4a-next-work`.
+**Status:** PR-04a identity adapter PASS and merged; PR-04b enrollment adapter local verification and independent review PASS, GitHub CI pending. **Release target:** `v0.1.4a-next`. **PR-04a merge:** `4bdfff72ea1bcc6b344ced4fdc65f5d0b3df3301`.
 
 ## Objective and exit boundary
 
@@ -34,7 +34,8 @@ The current source confirms a broad persistence and orchestration seam; the owne
 1. **Ruling:** keep schema migration and database opening under `agentstate` for this slice, and pass its opener into the context-owned identity SQLite adapter. This preserves the single migration order and old database path without adding a generic provider package. Cost if wrong: `agentstate` remains a shared technical infrastructure owner and may need a later provider extraction if other contexts require independent storage composition.
 2. Keep approval and Template materialization out of the first adapter extraction: each is a multi-table transaction spanning different domain records and must move as one repository operation.
 3. **Ruling:** do not invert the `reconciliation -> agentlifecycle` import by inventing a new shared DTO package. `agentlifecycle` currently supplies the runtime-owned baseline and candidate application contract; the source dependency is therefore not by itself proof of a boundary violation. Before changing it, decide whether the target requires a consumer-owned port with an explicit adapter, or whether the runtime-owned port is the accepted contract. Either choice must have one canonical request/result DTO and retain generation, fingerprint, digest, readiness, and LKG semantics.
-4. Split PR-04 into separately reviewable slices. Current order: (a) identity SQLite adapter with existing `agentstate` opener/migration owner and compatibility facades; (b) enrollment adapter only after protected-store side effects and recovery cases are covered; (c) inventory/proposal/configuration transactions by complete repository operation; (d) candidate/runtime and health ownership only after the apply-port decision. These slices do not change Core or security policy.
+4. **Ruling:** inject the existing `agentstate` SQLite write mutex into the enrollment adapter rather than creating a second lock. This keeps in-process writes serialized across repository values while SQLite immediate transactions and busy timeout continue coordinating other processes. Cost if wrong: sharing one mutex can increase local writer contention, but replacing it requires concurrency evidence and must not admit duplicate attempts.
+5. Split PR-04 into separately reviewable slices. Current order: (a) identity SQLite adapter with existing `agentstate` opener/migration owner and compatibility facades; (b) enrollment adapter with protected-store side effects left in the application service; (c) inventory/proposal/configuration transactions by complete repository operation; (d) candidate/runtime and health ownership only after the apply-port decision. These slices do not change Core or security policy.
 
 ### PR-04a identity slice implementation / verification
 
@@ -44,6 +45,16 @@ The current source confirms a broad persistence and orchestration seam; the owne
 - GREEN: `go test ./internal/identity/sqlite ./internal/agentstate -run 'TestRepositoryUsesSharedStateDatabaseAndKeepsFirstInstallationID|TestSQLiteIdentity' -count=1` passed on Windows.
 - Full Windows suite: `go test ./... -count=1` PASS. Additional gates: `go test -race ./internal/identity/sqlite ./internal/agentstate -count=1`, `go vet ./...`, `go build ./...`, `GOOS=linux GOARCH=amd64 go build ./...`, and `scripts/check-architecture.ps1` PASS. The architecture script must be invoked directly from the active PowerShell shell; launching it through nested `powershell -File` produced a Go template argument parsing error before the script check ran.
 - The sandboxed SQLite test attempt failed with SQLite error 14 while creating temporary databases; the same focused tests and full suite passed with the user's normal Windows filesystem access. Linux cross-build is not Linux E2E. No native service/E2E, Docker, Collector, schema migration, or enrollment adapter migration was part of this slice.
+- PR #23 targeted `chore/v0.1.4a-next` and merged at `4bdfff72ea1bcc6b344ced4fdc65f5d0b3df3301`. Final-head CI run `43142122120` passed on Ubuntu and Windows. Independent code review found no Critical, Important, or Minor findings. The reusable development branch was recreated and pushed from the merged integration head.
+
+### PR-04b enrollment slice implementation / verification
+
+- Enrollment persistence is being moved to `internal/enrollment/sqlite` behind the existing `enrollment.AttemptRepository`; `agentstate.NewEnrollmentStore` and concrete `SQLiteStore` methods remain compatibility facades. The adapter receives `SQLiteStore.OpenDatabase` and the existing shared `sqliteUpdateMutex`.
+- The adapter owns only SQLite attempt metadata and opaque credential references. `enrollment.Service` still owns retry/resume behavior, Core response validation, and the ordering between durable status updates and calls to `CredentialStore.Delete`; `credentialstore` remains unchanged.
+- Atomic operations retained: installation-ID check and initial attempt creation; failed-attempt replacement; explicit re-enrollment preserving old binding metadata; terminal completion plus credential reference; permanent failure; clearing the prior credential reference only after external deletion succeeds.
+- RED: `go test ./internal/enrollment/sqlite -count=1` failed because the new adapter package had no implementation. GREEN: the focused new adapter test plus existing enrollment persistence tests passed.
+- Full Windows suite `go test ./... -count=1`, focused race, `go vet ./...`, Windows build, Linux/amd64 cross-build, and direct `scripts/check-architecture.ps1` invocation passed. The existing Windows SQLite+CredentialStore integration test was explicitly run and SKIPPED because this process is not elevated; no credential-store integration pass is claimed for this slice.
+- Independent code review completed with no Critical, Important, or Minor findings. GitHub final-head CI and merge remain pending. No schema migration, Docker/Collector test, or native Linux E2E was part of this persistence-only slice.
 
 ### Open decisions (not resolved by this audit)
 
@@ -60,7 +71,7 @@ Use `docs/local/architecture/v0.1.4a-next/context-boundaries.md` and `source-str
 ## Implementation steps (ordered)
 
 1. Confirm exact domain ownership from source and contracts; record remaining ownership decisions without inventing them. **Audit complete at the base recorded above; open decisions remain.**
-2. **Identity adapter slice complete locally:** use the existing shared SQLite open/migration provider contract and extract identity persistence through compatibility facades; old schema, shared transaction reads, and repeated initialization passed current Windows tests. Enrollment remains a separate slice gated on its recovery and protected-store contract.
+2. **Identity adapter slice complete and merged:** use the existing shared SQLite open/migration provider contract and extract identity persistence through compatibility facades; old schema, shared transaction reads, and repeated initialization passed Windows tests and final-head CI. Enrollment remains a separate slice gated on its recovery and protected-store contract.
 3. Extract inventory and monitoring proposal repositories as complete operations; preserve complete-successful-snapshot and stale/missing semantics.
 4. Extract configuration desired-state/Template/approval adapters; keep approval and desired-state mutation in ONE atomic transaction.
 5. Decide the canonical candidate-apply port/DTO owner before altering imports; move generation journal/recovery storage only with the runtime owner and its transaction contract.
