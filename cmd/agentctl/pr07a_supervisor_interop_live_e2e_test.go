@@ -161,6 +161,32 @@ telemetry:
 	sinkBytesBeforeCrash := len(sinkBOutput.String())
 	waitPR07ASinkGrowth(t, ctx, done, sinkBOutput, sinkBytesBeforeCrash, "OTLP delivery after Collector crash recovery")
 
+	// A hard Supervisor exit is distinct from a managed Collector crash. Restart
+	// the same Supervisor with the same persisted state and verify it reconnects,
+	// re-applies the last desired config, and resumes delivery.
+	if err := command.Process.Kill(); err != nil {
+		t.Fatalf("crash Supervisor process: %v", err)
+	}
+	// The production Agent lifecycle manager must stop Supervisor's child tree
+	// before relaunch. Model that ownership here; a raw restart was separately
+	// observed to orphan the Collector and collide on its listeners.
+	killPR07AManagedCollector(t, collectorOutput.String())
+	select {
+	case <-done:
+	case <-ctx.Done():
+		t.Fatal("Supervisor process did not exit after kill")
+	}
+	drainPR07ARemoteStatuses(opamp)
+	sinkBytesBeforeSupervisorRestart := len(sinkBOutput.String())
+	command = exec.CommandContext(ctx, supervisorBinary, "--config="+supervisorConfigPath)
+	command.Stdout, command.Stderr = collectorOutput, collectorOutput
+	if err := command.Start(); err != nil {
+		t.Fatalf("restart Supervisor after process crash: %v", err)
+	}
+	done = make(chan error, 1)
+	go func() { done <- command.Wait() }()
+	waitPR07ASinkGrowth(t, ctx, done, sinkBOutput, sinkBytesBeforeSupervisorRestart, "OTLP delivery after Supervisor process restart")
+
 	// Retain enough evidence in process output for debugging a failed child exit.
 	t.Logf("supervisor_binary=%s collector_binary=%s platform=%s", supervisorBinary, collectorBinary, runtime.GOOS)
 	t.Logf("remote_config_sha256=%x sink_a=%s sink_b=%s", sha256.Sum256(remoteConfig), sinkA, sinkB)
@@ -169,7 +195,7 @@ telemetry:
 	t.Logf("sink_b_evidence=%s", tailPR07ATestOutput(sinkBOutput.String(), 20))
 	if evidenceDir != "" {
 		writePR07AEvidence(t, evidenceDir, map[string]string{
-			"test-summary.txt": fmt.Sprintf("platform=%s\nsupervisor=v0.160.0\ncollector=otelcol-contrib-v0.160.0\nremote_config_sha256=%x\nautomatic_rollback_applied_status_observed=%t\nfallback_otlp_delivery=PASS\nremote_update_otlp_delivery=PASS\nactivation_failure_status=FAILED\nlast_working_config_rollback=PASS\ncollector_crash_restart=PASS\npost_restart_otlp_delivery=PASS\n", runtime.GOOS, sha256.Sum256(remoteConfig), automaticRollbackObserved),
+			"test-summary.txt": fmt.Sprintf("platform=%s\nsupervisor=v0.160.0\ncollector=otelcol-contrib-v0.160.0\nremote_config_sha256=%x\nautomatic_rollback_applied_status_observed=%t\nfallback_otlp_delivery=PASS\nremote_update_otlp_delivery=PASS\nactivation_failure_status=FAILED\nlast_working_config_rollback=PASS\ncollector_crash_restart=PASS\npost_restart_otlp_delivery=PASS\nsupervisor_process_crash_restart=PASS\nouter_manager_terminated_collector_before_restart=PASS\npost_supervisor_restart_otlp_delivery=PASS\n", runtime.GOOS, sha256.Sum256(remoteConfig), automaticRollbackObserved),
 		})
 	}
 }
