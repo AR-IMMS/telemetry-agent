@@ -8,7 +8,7 @@
 
 **Base SHA:** `376b8526b0132d3dca1f9eabb9c9ffe9a9f01f5d` (PR-04a post-merge documentation sync)
 
-**Implementation commit:** pending
+**Implementation commit:** `d708433b0a2e2d672ed5332794727d2d48543060`
 
 ## Scope and contract
 
