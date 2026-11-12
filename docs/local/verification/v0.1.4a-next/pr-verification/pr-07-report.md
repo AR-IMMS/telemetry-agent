@@ -6,9 +6,9 @@ actual OTLP delivery passed. The pinned Linux Supervisor/Collector E2E also
 passed on Ubuntu 24.04 WSL. A raw Supervisor kill/restart failed because the
 Collector child remained alive; the coordinated case passed when the outer
 manager terminated that child before restart. The Agent process-tree manager
-is not implemented yet. Windows Docker profile parity passed; native Linux
-Docker profile parity is not verified because WSL Docker uses the Docker
-Desktop engine. PR-07b protocol and pinned Supervisor auth passed on both OSes
+is not implemented yet. Windows Docker profile parity passed. Linux Agent and
+Supervisor profile parity also passed under Ubuntu WSL against Docker Desktop's
+Linux Engine; native Linux Docker Engine parity remains unverified. PR-07b protocol and pinned Supervisor auth passed on both OSes
 against the Go Mock Core. Production Core interoperability, actual Agent-owned
 Supervisor lifecycle, and native Linux Docker parity remain open. Do not
 transfer Collector lifecycle ownership on this evidence.
@@ -62,10 +62,10 @@ this implementation branch's authorized scope.
    applied, failed, recovered and unknown statuses. Readiness is not scrape or
    OTLP delivery evidence; an older applied hash after rollback is not success
    for a newer desired revision.
-4. Profile parity is verified on Windows for Redis, PostgreSQL, Python
-   Prometheus, and a recreated cooling workload. WSL has a native Linux kernel,
-   but its Docker Engine reports `Docker Desktop (containerized)`; repeat
-   profile parity on a native Linux Docker Engine and add host-profile coverage.
+4. Profile parity is verified on Windows and Ubuntu WSL for Redis, PostgreSQL,
+   Python Prometheus, and a recreated cooling workload. WSL's Docker Engine
+   reports `Docker Desktop (containerized)`; native Linux Docker Engine parity
+   and Supervisor host-profile coverage remain open.
 5. Collector crash/restart and Supervisor restart with explicit child cleanup
    passed on Windows and Linux. Raw Supervisor restart alone failed on Linux:
    the orphan Collector kept its OTLP and health listeners bound. Implement and
@@ -93,7 +93,8 @@ this implementation branch's authorized scope.
 | Existing application-profile parity | PASS / LIMITED | Windows Docker E2E reused PR-06 Redis, PostgreSQL, Python Prometheus, and mock-cooling profiles. Agent Runtime emitted all four streams; after stopping it, Supervisor emitted the same profiles from startup fallback and after OpAMP reconnection. Docker container recreation delivered the new cooling `resource_id`. The candidate had no Agent-created duplicate receiver and all observed samples reached the isolated OTLP sink. Native Linux and hostmetrics in the profile-parity run remain NOT RUN. |
 | Windows native E2E | PASS / LIMITED | Focused Windows live test with exact binaries, local `opamp-go` server, and two isolated Collector OTLP sinks. This is a smoke test, not complete PR-05/06 parity. OS build number was not captured. |
 | Native Linux Supervisor/Collector/OTLP E2E | PASS / LIMITED | Ubuntu 24.04 WSL2 kernel `6.18.58.1-microsoft-standard-WSL2`, pinned Linux Supervisor and Collector, local OpAMP test server, and isolated OTLP sinks. Full Linux test/vet/build results are recorded below. |
-| Native Linux Docker profile parity | NOT RUN | WSL `docker info` identifies `Docker Desktop (containerized)`, Linux x86_64, Engine 29.5.3. This does not verify a native Linux Docker Engine. |
+| Linux Docker profile parity | PASS / WSL + DOCKER DESKTOP | Ubuntu WSL Go Agent and pinned Linux Supervisor/Collector exercised Redis, PostgreSQL, Python Prometheus, mock cooling, container recreation, profile identity, no duplicate samples, startup fallback, reconnect, and OTLP delivery against Docker Engine 29.5.3. `docker info` identifies `Docker Desktop (containerized)`; this does not verify a native Linux Docker Engine. Evidence: `tmp/pr07a/evidence/linux/application-profiles/`. |
+| Native Linux Docker Engine parity | BLOCKED | No native Linux Docker Engine is available in this environment; the available daemon is Docker Desktop. Run the same test on a native Linux Docker host before treating platform parity as complete. |
 | Mock Core contract interoperability | NOT RUN | Not implemented or tested. |
 | Production NestJS Core interoperability | BLOCKED | Core control operations are absent from inspected API baseline; requires reviewed contract and a separate Core implementation. |
 | Lifecycle ownership transfer / rollback | BLOCKED | Must wait for 07a parity and 07b contract gates; no transfer occurred. |
