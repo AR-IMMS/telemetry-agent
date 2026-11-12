@@ -52,7 +52,7 @@ The retained command output is [pr-06-windows-live-output.txt](./pr-06-windows-l
 | Architecture/import/450-line guard | PASS; 32 source directories and 293 production Go files checked. |
 | Native Linux full tests and live Docker/Collector/OTLP | PENDING PR CI; Windows build is not Linux E2E evidence. |
 
-Exact-head CI run [43272442212](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43272442212) is running on both Ubuntu and Windows. The PR remains draft while these checks, including isolated Linux Docker/Collector/OTLP delivery, execute.
+Exact-head CI run [43272599179](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43272599179) passed Windows, the Linux full suite, and the PR-05 live Redis gate, but failed the Linux application-profile E2E before Collector activation: the empty isolated Docker daemon did not have `postgres:17-alpine` when the test inspected fixture image IDs. Windows had cached the image, which masked this fixture dependency. The E2E now explicitly pulls Redis, PostgreSQL, and Python fixture images before recording their image IDs; the updated Windows live E2E passed in 55.85 seconds. The PR remains draft pending a fresh exact-head CI run of the corrected fixture, including native Linux application-profile OTLP delivery.
 
 The full Go suite was rerun with normal host filesystem and loopback access after a sandbox-restricted run failed to create SQLite state and bind test sockets. The host run passed all packages. The opt-in Windows Docker E2E was rerun against the pinned binary and passed in 33.84 seconds, delivering all four expected metric families and checking receiver uniqueness, duplicate samples, and churn convergence.
 

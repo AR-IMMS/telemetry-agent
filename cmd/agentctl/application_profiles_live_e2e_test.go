@@ -58,6 +58,11 @@ func TestLiveDockerApplicationProfilesDeliverOTLP(t *testing.T) {
 	caFile := makePostgreSQLTestCertificate(t, root)
 	writeApplicationProfileConfig(t, configRoot, caFile)
 	postgresImage := buildPostgreSQLTestImage(t, ctx, root)
+	for _, image := range []string{"redis:7-alpine", "postgres:17-alpine", "python:3.12-alpine"} {
+		if output, err := nativeDockerCommand(ctx, "pull", image).CombinedOutput(); err != nil {
+			t.Fatalf("pull test fixture image %s: %v (%s)", image, err, strings.TrimSpace(string(output)))
+		}
+	}
 	for _, image := range []string{"redis:7-alpine", "postgres:17-alpine", postgresImage, "python:3.12-alpine"} {
 		t.Logf("PR06_IMAGE tag=%s image_id=%s", image, nativeDockerImageID(t, ctx, image))
 	}
