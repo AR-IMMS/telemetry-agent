@@ -80,6 +80,13 @@ jobs:
       - name: Test
         run: go test ./... -count=1
 
+      - name: Live Docker/Collector/OTLP profile E2E
+        if: runner.os == 'Linux'
+        env:
+          AR_IMMS_PR05_NATIVE_RUNTIME_E2E: '1'
+          AR_IMMS_PR05_COLLECTOR_BINARY: ${{ env.OTELCOL_CONTRIB_BINARY }}
+        run: go test ./cmd/agentctl -run '^TestLiveNativeDockerRedisProfileDeliversOTLP$' -count=1 -v
+
       - name: Vet
         run: go vet ./...
 
