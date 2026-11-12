@@ -1,41 +1,95 @@
-# PR-07 readiness report — OpAMP Core/Agent integration
+# PR-07 verification report — OpAMP Supervisor and control plane
 
-**Status:** BLOCKED — implementation requires joint Core/Agent contracts before protocol or persistence changes.
+**Status:** IN_PROGRESS — revised target and evidence gates documented; PR-07a
+capability tests have not been run in this update. Do not merge or transfer
+Collector lifecycle ownership on this evidence.
 **Release target:** `v0.1.4a-next`
-**Branch:** `feat/pr-07-opamp`
-**Agent baseline:** `af2f5db4c6b8832bc7bcc87d332d899dad01b452` (PR-06 merge)
-**Core baseline checked:** `dev` at `9420437b532f667375736027df8f02024e3e9e0d`
+**Current branch at report update:** `feat/pr-07-opamp`
+**Current documentation base:** `3d30268` plus the scoped documentation changes
+listed in the release progress tracker; implementation baseline is PR-06 merge
+`af2f5db4c6b8832bc7bcc87d332d899dad01b452`.
 
-## Verified current state
+## Target change reviewed
 
-- Agent source search found no OpAMP client, OpAMP protocol status types, or remote-config transport. Existing effective-config digests and activation journal record local Collector candidates and outcomes; they do not establish remote configuration authority or OpAMP status semantics.
-- Core `dev` contains Agent enrollment, credential/binding lifecycle, and read-only registry capabilities. The Core Agent Management README explicitly says Agent Control APIs are not implemented and does not claim heartbeat, telemetry ingestion, or Collector activation. The repository tree has no OpAMP, remote-config, Agent-config, or control-plane module.
-- Core source inspected: [Agent Management README at the checked commit](https://github.com/AR-IMMS/core-backend/blob/9420437b532f667375736027df8f02024e3e9e0d/src/modules/agent-management/README.md).
-- The project’s local OpAMP plan requires an authority ADR, explicit Agent association, protocol/schema pinning, actual runtime status mapping, and Core IAM/audit checks before its implementation steps.
-- The official [OpAMP Go library](https://github.com/open-telemetry/opamp-go) supplies client transport and callbacks for remote configuration and protocol status. It does not decide AR-IMMS Core-versus-local policy authority, revision conflict semantics, credential binding, or which Collector runtime outcomes map to an application’s durable desired/effective state.
+The new proposal supersedes the earlier NestJS OpAMP adapter / Agent Go client
+plan. It proposes three gated slices: (07a) exact-version OTel OpAMP Supervisor
+capability spike without ownership transfer; (07b) reviewed Core/Agent contracts
+plus Go OpAMP server and Go Mock Core; (07c) controlled runtime ownership
+transfer and native platform E2E after parity. The immediate proposed Core policy
+scope is only a versioned OTLP Gateway endpoint. Production Core changes and
+shared-contract publication remain separate approval gates.
 
-## Contracts requiring joint approval
+## Verified documentation and current-state facts
 
-1. **Remote policy authority:** fields Core may set; local bootstrap retention/overrides; whether updates are full snapshots or patches; deletion semantics; target enforcement; stale, equal, malformed, and conflicting revision behavior; canonical hash inputs.
-2. **Identity and revocation:** binding from credential to installation and registered Node; whether/how OpAMP `instance_uid` is persisted or rotated; rebinding behavior; credential revocation and offline semantics. `instance_uid` is not an authentication credential.
-3. **Authentication and transport:** HTTP polling versus another OpAMP transport; TLS requirements, credential scope/rotation, redirect/proxy policy, server association, message-size/rate limits, and replay handling. Current docs describe both “plain HTTP polling” and authenticated TLS; reconcile that wording before implementation.
-4. **Configuration status:** map native OpAMP remote-config states to Agent receipt, validation, persistence, candidate activation, readiness, rollback, and effective-config reporting. Decide what survives Agent restart and what Core retains. `APPLIED` must not be asserted before the agreed runtime success boundary.
-5. **Remote secrets and schema:** allowed monitoring-policy fields, secret references and delivery scope, schema/content-type versioning, and rejection behavior. Do not serialize credentials or accept arbitrary Collector YAML/expressions.
-6. **Core API/security ownership:** Core endpoint/authentication/authorization, Admin policy authoring and audit requirements, isolated test namespace, and the separate Core repository implementation/review scope.
+- Agent source/docs identify existing `internal/supervisor` and
+  `internal/agentlifecycle` as the current Collector process/runtime path. They
+  are distinct from the proposed OTel OpAMP Supervisor.
+- Agent-repository filename search did not find the referenced
+  `agent-enrollment.openapi.yaml` or Core API Baseline. Those authoritative
+  artifacts must be located and reviewed before adding contracts; do not infer
+  their schemas from the pasted proposal.
+- The previous read-only readiness check inspected Core `dev` at
+  `9420437b532f667375736027df8f02024e3e9e0d`; its Agent Management README said
+  Agent Control APIs were not implemented. That is historical evidence, not a
+  fresh current-Core audit or proof about the proposed Mock Core.
+- Current official Collector Contrib Supervisor documentation describes
+  server endpoints with `ws`, `wss`, `http`, and `https`; remote config is
+  opt-in, is merged with an optional local config, written to the Collector
+  config, and causes a Collector restart. Automatic remote-config rollback is
+  configurable and disabled by default, and the described trigger is Collector
+  failure to start. Reference: [OpAMP Supervisor specification](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/cmd/opampsupervisor/specification).
+  These are upstream documentation findings, not pinned v0.160.0 artifact
+  verification. Validate actual behavior and broader LKG guarantees in 07a.
 
-## Open cross-repository contradictions and dependencies
+## Contract and compatibility gates still open
 
-- `docs/local/architecture/v0.1.4a-next/opamp-integration.md` labels the transport “authenticated plain-HTTP polling” but describes TLS in its flow; the PR-07 plan says “HTTPS plain HTTP polling.” Decide whether this means the OpAMP HTTP transport over HTTPS and specify the authentication mechanism.
-- The target flow assumes a versioned policy document inside OpAMP `config_map`, but no approved schema, target/hash/revision contract, or local-config conflict policy exists yet.
-- The accepted enrollment API and registry are not evidence that a Core OpAMP server or control API exists. Implementing only the Agent half would not satisfy the planned cross-repository acceptance gates.
-- `docs/local/requirements/v0.1.4a-next/cross-repository-contracts-open-decisions.md` is a local decision queue and is not published to `docs/shared/`; no shared-submodule change was made.
+1. Locate authoritative enrollment OpenAPI and Core API Baseline; confirm
+   existing request/response, error, credential, revocation, cache and
+   request-ID semantics.
+2. Define installation/binding ↔ OpAMP `instance_uid` identity and secure
+   Supervisor credential provisioning, storage, rotation, revocation and
+   session invalidation. `instance_uid` is not authentication.
+3. Define schema/version, target, desired/applied revision, hash canonicalization,
+   local/remote field ownership, merge order, deletion and stale/conflict rules
+   for the proposed Gateway endpoint policy.
+4. Map protocol/runtime evidence to truthful received, validated, applying,
+   applied, failed, recovered and unknown statuses. Readiness is not scrape or
+   OTLP delivery evidence; an older applied hash after rollback is not success
+   for a newer desired revision.
+5. Establish exact Supervisor artifact existence/provenance/SHA, Windows/Linux
+   support, compatibility with Collector Contrib v0.160.0, config composition,
+   local updates, offline fallback and rollback behavior.
+6. Review the migration/rollback design so the Agent Runtime remains sole
+   lifecycle owner until a single reversible transfer after parity.
 
-## Work and verification
+## Verification log
 
-- Read-only checks: current Agent branch/baseline, PR-07 plan and architecture docs, Agent symbol search, Core `dev` repository metadata/tree, and Core Agent Management README.
-- No production code, config, schema, database migration, Core source, or shared documentation changed for PR-07.
-- OpAMP protocol implementation tests are **NOT RUN** because required application contracts and Core server implementation are absent.
+| Gate | Status | Evidence / note |
+|---|---|---|
+| Proposal-to-doc reconciliation | PASS | Architecture, plan index, migration roadmap, release scope, acceptance, test matrix, diagrams, report and progress tracker updated. |
+| Exact Windows Supervisor artifact and checksum | NOT RUN | No artifact downloaded or verified in this documentation update. |
+| Exact Linux Supervisor artifact and checksum | NOT RUN | No native Linux artifact/runtime check in this documentation update. |
+| Collector v0.160.0 compatibility | NOT RUN | No binary interoperability check run. |
+| Local+remote config composition / local update semantics | NOT RUN | Upstream docs describe optional local merge, config write and Collector restart; pinned artifact behavior remains unknown. |
+| Startup fallback, offline/reconnect, Supervisor/Collector crash | NOT RUN | No test run. |
+| Candidate failure and rollback/LKG | NOT RUN | Upstream rollback is opt-in and documented for startup failure; Agent LKG parity is unverified. |
+| Actual OTLP delivery | NOT RUN | No endpoint-change test or sink evidence. |
+| Windows native E2E | NOT RUN | No PR-07a live run. |
+| Native Linux E2E | NOT RUN | No PR-07a live run. |
+| Mock Core contract interoperability | NOT RUN | Not implemented or tested. |
+| Production NestJS Core interoperability | BLOCKED | Separate Core implementation/contract approval gate; not implied by mock results. |
+| Lifecycle ownership transfer / rollback | BLOCKED | Must wait for 07a parity and 07b contract gates; no transfer occurred. |
 
-## Exit conditions
+No production code, runtime config, schema, database migration, Core source, or
+`docs/shared` submodule was changed as part of the documentation update. No
+PR-07 implementation, capability, or E2E test was run. The pre-existing
+untracked `cmd/agentctl/otel.yaml.lifecycle.lock` remains preserved and excluded.
 
-PR-07 can start after Core and Agent owners approve the six contract groups above, reconcile transport/TLS wording, decide how those artifacts are reviewed/published, and authorize the separate Core repository change. Keep the PR-07 checkpoint BLOCKED until those prerequisites exist. PR-08 depends on the resulting status/reporting contract; PR-09 remains independently blocked on its security ADR.
+## Merge audit requirement
+
+Before opening/merging an implementation checkpoint, replace `NOT RUN` only with
+reproducible evidence tied to exact commit and platform. Audit CI after the
+final code, docs, and verification-log changes; include raw evidence locations,
+artifact hashes, commands, environment versions, failure-injection results,
+single-owner/rollback result, and actual OTLP sink evidence. Keep mandatory
+gates open and checkpoint draft while any are unresolved.

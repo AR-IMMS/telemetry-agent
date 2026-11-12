@@ -14,9 +14,11 @@
 | E08 | Observer + Receiver Creator owner migration | NOT RUN | NOT RUN | Actual pinned components; no duplicate scrape |
 | E09 | Discovery provider error / partial snapshot | NOT RUN | NOT RUN | no false resource deletion; recovery |
 | E10 | Mock cooling or power profile/provider | NOT RUN | NOT RUN | new adapter without engine changes |
-| E11 | OpAMP targeted update + status | NOT RUN | NOT RUN | version/hash, apply success and failure feedback |
-| E12 | Core offline / reconnect / replay | NOT RUN | NOT RUN | running LKG, no duplicate activation |
-| E13 | Invalid Collector config / crash | NOT RUN | NOT RUN | LKG restored, diagnostics truthful |
+| E11a | Pinned OpAMP Supervisor capability + config composition | NOT RUN | NOT RUN | artifact SHA/provenance, exact Collector compatibility, local+remote merge/restart semantics, no ownership transfer |
+| E11b | Mock-backed OpAMP targeted update + status | NOT RUN | NOT RUN | contract revision/hash, identity binding, apply/failure mapping; mock result only |
+| E12 | Core/Mock Core offline / reconnect / replay | NOT RUN | NOT RUN | cached/fallback config, no duplicate activation, reconverges after restart |
+| E13 | Invalid remote Collector config / crash / rollback | NOT RUN | NOT RUN | actual rollback setting and evidence, LKG preserved, diagnostics truthful |
+| E13a | Single-owner migration and rollback | NOT RUN | NOT RUN | no overlapping lifecycle owners; reversible transfer after parity |
 | E14 | Gateway unavailable then restored | NOT RUN | NOT RUN | errors + queue limits surfaced, no zero-loss claims |
 | E15 | Read-only inspect/log/refresh | NOT RUN | NOT RUN | bounded output, right identity, no secret leak |
 | E16 | Authorized restart + duplicate/stale/timeout | NOT RUN | NOT RUN | single action, durable outcomes; gated by security |
@@ -27,4 +29,4 @@
 
 Docker Desktop VM vs native Linux network reachability; port unpublished/bridge/IPv6; mismatched image labels; unsupported capabilities; invalid credentials; profile collision; Docker daemon outage; event loss; write race; Collector process crash; OS reboot; protected sensors unavailable; TLS/certificate failures; multi Agent IDs; different Core target scoping.
 
-Evidence rows added per execution: command/steps, OS, Agent commit, Collector version+hash, fixture digest, timestamp, status, failure details, logs and captured OTLP metric/resource attributes. Failed real E2E prevents declaring release DONE.
+Evidence rows added per execution: command/steps, OS, Agent and Supervisor commit/version, exact artifact URL/SHA/provenance, Collector version+hash, fixture digest, timestamp, status, failure details, logs and captured OTLP metric/resource attributes. Label Mock Core evidence separately from production Core E2E. Failed real E2E prevents declaring release DONE.

@@ -13,7 +13,7 @@
 | R05 | Dynamic lifecycle | Add/stop/recreate/scale Docker services; no ghost receivers after convergence; identities remain distinguishable |
 | R06 | OTel-first extensibility | Observer + Receiver Creator for supported dynamic targets; receiver type validated against pinned Collector; no proprietary receiver engine |
 | R07 | Lightweight discovery support | Provider/listener interface, normalized registry, provenance, capability hints; Docker implementation; mock cooling/power adapter proof |
-| R08 | Central management | NestJS OpAMP HTTP adapter + Go client; targeted versioned remote config; actual apply/failure status |
+| R08 | Central management | Staged OpAMP path: verify official OTel Supervisor compatibility; Go OpAMP server + contract-compatible Go Mock Core vertical slice; targeted versioned Gateway-endpoint policy and evidence-backed status. Production NestJS Core interoperability is a separate gate and must not be claimed from mock tests. |
 | R09 | Resilience | SQLite, start/reconcile, Collector validation/readiness/LKG, offline continuation and accurate errors |
 | R10 | Self-health | Agent, Collector and pipeline status separated; export evidence not inferred from readiness |
 | R11 | Safe operations | Read-only inspect/logs/refresh; scoped container restart and service restart only if enforceable authorization and privilege design passes security gate |
@@ -21,7 +21,7 @@
 
 ## Scope limit / exclusions
 
-No SSH, arbitrary remote command, autonomous AI remediation, automatic secret discovery, full OpAMP functionality, guaranteed zero telemetry loss, arbitrary unknown-protocol monitoring, or physical cooling/power hardware integration. Native PostgreSQL scraping requires valid credentials and reachable network endpoint; mere discovery is not success.
+No SSH, arbitrary remote command, autonomous AI remediation, automatic secret discovery, full OpAMP functionality, remote package update, guaranteed zero telemetry loss, arbitrary unknown-protocol monitoring, or physical cooling/power hardware integration. Native PostgreSQL scraping requires valid credentials and reachable network endpoint; mere discovery is not success. Keep the current Agent Collector Runtime in place until the OpAMP Supervisor passes parity; only one Collector lifecycle owner may run at a time.
 
 ## Product DX / policy
 

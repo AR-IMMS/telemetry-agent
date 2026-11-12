@@ -11,7 +11,9 @@
 | A5 Lifecycle | Add/remove/recreate/scale, no ghost after documented convergence, multi-instance identity, stable no-op generation | Mandatory |
 | A6 Developer DX | New Python /metrics and mock facilities endpoint via profile/adapter without Agent Go changes or rebuild | Mandatory |
 | A7 OTel delegation | Component manifest verified; observer/receiver_creator active; only one receiver owner; parity with Redis baseline | Mandatory |
-| A8 Remote config | Core NestJS OpAMP HTTP↔Go client: targeted policy, invalid payload, hash/status, reconnect, no-op, rollback | Mandatory |
+| A8a Supervisor capability | Exact pinned Supervisor/Collector artifacts and supported config composition, local updates, offline fallback, crash recovery, rollback and real OTLP delivery on native Windows/Linux | Mandatory before lifecycle transfer |
+| A8b Mock-backed control slice | Go OpAMP server ↔ contract-compatible Go Mock Core ↔ OTel OpAMP Supervisor; reviewed identity/auth, targeted versioned Gateway endpoint, status/revision and failure contracts | Mandatory for mock-backed checkpoint; production Core is not implied |
+| A8c Runtime adoption | Single lifecycle owner after parity; native managed install/config/service/offline/recovery and PR-05/06 compatibility on Windows/Linux | Mandatory before marking PR-07 PASS |
 | A9 Health/recovery | Agent crash, Collector crash, Gateway outage, invalid config, startup recovery; no false delivery claim | Mandatory |
 | A10 Operations | Correct read-only diagnostics; any enabled mutating ops prove RBAC, exact identity, durable idempotency, audit, timeout/unknown | Mandatory within approved scope |
 | A11 Compatibility | Previous SQLite fixtures, public CLI contracts, managed dependencies, same Redis metrics on Windows/Linux | Mandatory |
