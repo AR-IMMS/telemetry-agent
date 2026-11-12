@@ -1,12 +1,12 @@
 # PR-03 — Agent Service application host and CLI adapter
 
 **Canonical release:** `v0.1.4a-next`<br>
-**Status:** VERIFYING — local code gates pass; isolated live Docker E2E and checkpoint CI remain outstanding<br>
+**Status:** VERIFYING — local and Windows/Ubuntu CI gates pass; isolated live Docker E2E remains outstanding<br>
 **Base:** PR-02 merge `d71f5aa39777824e29f1d06a364bb0a289373803`<br>
 **Branch:** `feat/v0.1.4a-next-work`<br>
 **Implementation commit:** `3f88d77b68c9d18bec819d3822733fa535052ffc` (`feat(pr-03): add agent application host`)<br>
 **Draft PR:** [#22](https://github.com/AR-IMMS/telemetry-agent/pull/22) — `feat/v0.1.4a-next-work` → `chore/v0.1.4a-next`<br>
-**CI-tested implementation head:** `0a7c5bd408220655bc1c0b7e54f7b6dc85e1abfb`<br>
+**CI-tested PR head:** `2936c8435aa75f62f8f7956ed571283c146f278d`<br>
 **Report date:** 2026-11-12
 
 ## Goal and scope
@@ -38,7 +38,7 @@ Move long-running Agent Service coordination from `cmd/agentctl` into a small `i
 | Docker Engine and Compose probe | User Windows environment, elevated access | PASS; Engine 29.5.3 and Compose 5.1.4 reachable |
 | `git diff --check` | Worktree | PASS; no whitespace errors |
 | Markdown link validation | Six changed local release documents | PASS; 10 local links checked, 0 missing |
-| GitHub Actions CI | Draft PR #22, head `0a7c5bd408220655bc1c0b7e54f7b6dc85e1abfb` | PASS; run [43136617157](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43136617157), Ubuntu and Windows passed. This report-only sync triggers a final PR-head rerun. |
+| GitHub Actions CI | Draft PR #22, head `2936c8435aa75f62f8f7956ed571283c146f278d` | PASS; run [43137014512](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43137014512), Ubuntu and Windows passed. This report-only status update triggers a final PR-head rerun. |
 
 ### Infrastructure limitations
 
