@@ -1,6 +1,6 @@
 # PR-04 — Bounded Context Ownership & Repository Migration
 
-**Status:** PRE-IMPLEMENTATION PLAN / implementation not started. **Release target:** `v0.1.4a-next`. **Evidence:** required from actual target-repository HEAD, not assumed.
+**Status:** PR-04a IDENTITY ADAPTER SLICE IN PROGRESS / verified locally, not yet submitted. **Release target:** `v0.1.4a-next`. **Base:** `6a5fcf9324bb5acb291034a4dc3ab84d6ce7429e` on `feat/v0.1.4a-next-work`.
 
 ## Objective and exit boundary
 
@@ -8,7 +8,50 @@ Align package ownership with seven contexts (six established plus deferred Opera
 
 ## Baseline / current architecture constraints
 
-Audit found a 35-file `agentstate`, split IntegrationInstance ownership and `reconciliation -> agentlifecycle` inversion. Its ownership matrix is a review input, not proof every proposed move is already safe.
+The current source confirms a broad persistence and orchestration seam; the ownership matrix below is a review input, not proof every proposed move is already safe.
+
+### Verified source baseline
+
+- `internal/agentstate` owns `SQLiteStore.open`, schema setup and the ordered schema migrations. `SQLiteStore` opens one operational database and initializes all registered context tables on access. `NewIdentityStore` and `NewEnrollmentStore` are compatibility constructors over that same store.
+- Identity SQL implements `identity.InstallationIdentityRepository`; initialization is a transaction that validates and stores one UUID, then returns the committed value. Enrollment SQL implements `enrollment.AttemptRepository`; SQLite contains request/result metadata and protected-store references, while credential values are passed to the credential-store adapter, not persisted here.
+- Enrollment operations have observable recovery semantics: a lost response remains a durable pending attempt; explicit re-enrollment retains prior binding metadata and credential references; retired credential references are cleared only after protected-store deletion succeeds. `CompleteAttempt` commits the validated Core result and protected credential reference atomically.
+- `internal/agentstate/sqlite_approval.go` owns the cross-table approval transaction. It validates proposal and inventory revisions, desired-state CAS, uniqueness, then writes desired Integration state and the approved proposal together. `internal/agentstate/sqlite_materialization.go` similarly applies revision-bound Template projections transactionally. Moving either half independently would break atomicity.
+- `internal/reconciliation` imports `internal/agentlifecycle` for the clean-baseline and candidate-apply DTOs, and imports `internal/agentstate` for durable attempt/error and candidate-outcome types. `agentlifecycle.ApplyCollectorCandidate` validates generation/fingerprint/digest and delegates activation through the lifecycle coordinator. Runtime activation journaling and Agent-state updates are coupled.
+- The supported workflow uses the Windows worktree branch `feat/v0.1.4a-next-work`. At the start of this slice, the only worktree artifact was the preserved untracked zero-byte `cmd/agentctl/otel.yaml.lifecycle.lock`; the current implementation diff is limited to the identity adapter, its compatibility seam/test, and this plan/progress record. `docs/shared/` remains untouched. A submodule status command could not read Git's Windows named-pipe/session object in this shell; parent status with submodules ignored shows no shared gitlink modification.
+
+### Contracts required before a migration slice
+
+| Slice | Contract that must remain stable | Current owner / evidence | Migration constraint |
+|---|---|---|---|
+| Identity persistence | Valid UUID input; first initialization wins; concurrent/repeated calls return the persisted UUID; malformed stored state fails visibly; SQLite schema/version remains compatible. | `identity.InstallationIdentityRepository`; `agentstate.EnsureInstallationID`; `installation_identity` schema migration. | Keep `NewIdentityStore` and old-database behavior until all callers and fixtures use the replacement; no UUID regeneration or schema rewrite. |
+| Enrollment persistence | Immutable pending request; no secret values in SQLite; protected credential references only; atomic binding/result completion; explicit failure/re-enrollment rules and credential cleanup ordering. | `enrollment.AttemptRepository`; `agentstate.sqlite_enrollment`; `credentialstore`; `coreapi` caller. | Preserve old lost-response/revocation behavior and secret-store side effects. A persistence refactor cannot change Core/security policy. |
+| Proposal approval | Validate proposal revision, inventory write revision, desired revision and resource binding; approval plus desired Integration update is one transaction; idempotent retry returns the committed instance. | `configuration.ApprovalRepository`; `agentstate.sqlite_approval`. | Keep this use case and transaction together even if persistence files/packages move. |
+| Template projection | Validate complete revision tokens; apply upserts/suspensions and desired revision atomically; queue wakeup only after commit. | `configuration.MaterializationRepository`; `agentstate.sqlite_materialization`. | Do not split repository operations across stores or change stale/missing semantics. |
+| Candidate application | Candidate bytes/digest/platform, baseline fingerprint and expected generation are validated; stale inputs fail before activation; activation/LKG journal remains coordinated. | `agentlifecycle.ApplyCollectorCandidate`, `CandidateApplyRequest`, `CandidateActivationOutcome`; `reconciliation.Controller`. | A new port/DTO owner must be selected before removing the existing import. Do not add duplicate DTOs or a generic common package. |
+
+## Contract audit ruling and migration order
+
+1. **Ruling:** keep schema migration and database opening under `agentstate` for this slice, and pass its opener into the context-owned identity SQLite adapter. This preserves the single migration order and old database path without adding a generic provider package. Cost if wrong: `agentstate` remains a shared technical infrastructure owner and may need a later provider extraction if other contexts require independent storage composition.
+2. Keep approval and Template materialization out of the first adapter extraction: each is a multi-table transaction spanning different domain records and must move as one repository operation.
+3. **Ruling:** do not invert the `reconciliation -> agentlifecycle` import by inventing a new shared DTO package. `agentlifecycle` currently supplies the runtime-owned baseline and candidate application contract; the source dependency is therefore not by itself proof of a boundary violation. Before changing it, decide whether the target requires a consumer-owned port with an explicit adapter, or whether the runtime-owned port is the accepted contract. Either choice must have one canonical request/result DTO and retain generation, fingerprint, digest, readiness, and LKG semantics.
+4. Split PR-04 into separately reviewable slices. Current order: (a) identity SQLite adapter with existing `agentstate` opener/migration owner and compatibility facades; (b) enrollment adapter only after protected-store side effects and recovery cases are covered; (c) inventory/proposal/configuration transactions by complete repository operation; (d) candidate/runtime and health ownership only after the apply-port decision. These slices do not change Core or security policy.
+
+### PR-04a identity slice implementation / verification
+
+- Moved installation identity SQL behavior to `internal/identity/sqlite`; `agentstate.NewIdentityStore` and the concrete `SQLiteStore.EnsureInstallationID` remain compatibility entrypoints. `agentstate` still owns schema migration and opens the shared operational DB through `SQLiteStore.OpenDatabase`.
+- Added a repository regression test proving first-initialization-wins across the new adapter and compatibility facade. Existing `agentstate` identity, Core Gateway, and enrollment tests also exercise the in-transaction identity read path.
+- RED: `go test ./internal/identity/sqlite -count=1` failed before production code because the new adapter package had no implementation.
+- GREEN: `go test ./internal/identity/sqlite ./internal/agentstate -run 'TestRepositoryUsesSharedStateDatabaseAndKeepsFirstInstallationID|TestSQLiteIdentity' -count=1` passed on Windows.
+- Full Windows suite: `go test ./... -count=1` PASS. Additional gates: `go test -race ./internal/identity/sqlite ./internal/agentstate -count=1`, `go vet ./...`, `go build ./...`, `GOOS=linux GOARCH=amd64 go build ./...`, and `scripts/check-architecture.ps1` PASS. The architecture script must be invoked directly from the active PowerShell shell; launching it through nested `powershell -File` produced a Go template argument parsing error before the script check ran.
+- The sandboxed SQLite test attempt failed with SQLite error 14 while creating temporary databases; the same focused tests and full suite passed with the user's normal Windows filesystem access. Linux cross-build is not Linux E2E. No native service/E2E, Docker, Collector, schema migration, or enrollment adapter migration was part of this slice.
+
+### Open decisions (not resolved by this audit)
+
+- Exact owner/API for shared operational DB opening and migration orchestration when context repositories are separated.
+- Whether migration files/packages can move without changing migration version/order or opening a new database more than once per operation.
+- Whether `reconciliation` should consume the runtime-owned apply port directly or use a consumer-owned port plus composition adapter.
+- Target context ownership for `IntegrationInstance`: current type is defined in `internal/integration`, while desired-state and Template use cases are in `internal/configuration`; do not duplicate it.
+- Core configuration authority, OpAMP identity/status mapping, and remote-operation security remain outside this checkpoint until their dependent contracts are approved.
 
 ## Affected contexts and anticipated code areas
 
@@ -16,13 +59,13 @@ Use `docs/local/architecture/v0.1.4a-next/context-boundaries.md` and `source-str
 
 ## Implementation steps (ordered)
 
-1. Confirm and document exact domain ownership: `identity` install/enrollment; `inventory` resource identity; `monitoring` definitions/matching; `configuration` desired instances/Templates/CAS; `runtime` process/generation/LKG; `health` projections.
-2. Extract identity/enrollment SQLite adapters first through compatibility facades; verify old DB + secret stores.
-3. Extract inventory and monitoring proposal repos, preserve complete-successful-snapshot and stale/missing semantics.
+1. Confirm exact domain ownership from source and contracts; record remaining ownership decisions without inventing them. **Audit complete at the base recorded above; open decisions remain.**
+2. **Identity adapter slice complete locally:** use the existing shared SQLite open/migration provider contract and extract identity persistence through compatibility facades; old schema, shared transaction reads, and repeated initialization passed current Windows tests. Enrollment remains a separate slice gated on its recovery and protected-store contract.
+3. Extract inventory and monitoring proposal repositories as complete operations; preserve complete-successful-snapshot and stale/missing semantics.
 4. Extract configuration desired-state/Template/approval adapters; keep approval and desired-state mutation in ONE atomic transaction.
-5. Invert `reconciliation -> agentlifecycle` using a minimal candidate-apply port; move generation journal/recovery storage with runtime owner.
+5. Decide the canonical candidate-apply port/DTO owner before altering imports; move generation journal/recovery storage only with the runtime owner and its transaction contract.
 6. Extract health projections and platform dependency adapters without changing installation ownership, checksums, retry or teardown semantics.
-7. Add package-level `doc.go` and enforce allowed imports. Avoid identical folder nesting unless complexity warrants it.
+7. Add package-level `doc.go` and enforce allowed imports after each coherent ownership change. Avoid identical folder nesting unless complexity warrants it.
 
 ## Edge cases and failure semantics
 

@@ -7,6 +7,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
 	"github.com/ar-imms/telemetry-agent/internal/enrollment"
 	"github.com/ar-imms/telemetry-agent/internal/identity"
+	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
 )
 
 // Repository loads and atomically updates Agent-owned state. Update serializes
@@ -28,7 +29,8 @@ func NewStore(path string) Repository {
 // NewIdentityStore returns the SQLite adapter for installation identity at
 // the same operational database path used by NewStore.
 func NewIdentityStore(path string) identity.InstallationIdentityRepository {
-	return newSQLiteStoreForPath(path)
+	store := newSQLiteStoreForPath(path)
+	return identitysqlite.New(store.OpenDatabase)
 }
 
 // NewCoreGatewayStore returns the SQLite adapter for Core Gateway snapshot

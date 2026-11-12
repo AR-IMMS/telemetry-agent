@@ -12,6 +12,7 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
 	"github.com/ar-imms/telemetry-agent/internal/identity"
+	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
 )
 
 type coreGatewayRow struct {
@@ -314,16 +315,12 @@ func (s SQLiteStore) EffectiveGateway() (coreconfig.EffectiveGateway, error) {
 }
 
 func checkGatewayInstallation(tx *sql.Tx, supplied string) error {
-	initialized, stored, err := loadInstallationIdentity(tx)
+	committed, initialized, err := identitysqlite.ReadInstallationID(tx)
 	if err != nil {
 		return err
 	}
-	if !initialized || !stored.Valid {
+	if !initialized {
 		return fmt.Errorf("Core Gateway snapshot requires an initialized installation identity")
-	}
-	committed, err := identity.ParseInstallationID(stored.String)
-	if err != nil {
-		return fmt.Errorf("validate committed installation identity: %w", err)
 	}
 	incoming, err := identity.ParseInstallationID(supplied)
 	if err != nil {
