@@ -1,12 +1,14 @@
 # PR-03 — Agent Service application host and CLI adapter
 
 **Canonical release:** `v0.1.4a-next`<br>
-**Status:** VERIFYING — local and isolated Windows Docker/Collector runtime E2E passed; final report-head CI rerun and integration merge pending<br>
+**Status:** PASS — local, live Windows Docker/Collector runtime E2E, and final-head CI passed; merged into the integration branch<br>
 **Base:** PR-02 merge `d71f5aa39777824e29f1d06a364bb0a289373803`<br>
 **Branch:** `feat/v0.1.4a-next-work`<br>
 **Implementation commit:** `3f88d77b68c9d18bec819d3822733fa535052ffc` (`feat(pr-03): add agent application host`)<br>
-**Draft PR:** [#22](https://github.com/AR-IMMS/telemetry-agent/pull/22) — `feat/v0.1.4a-next-work` → `chore/v0.1.4a-next`<br>
-**CI-tested PR head:** `8b66c93d3e8702d0114d426a9cde2ce5bda36a78`<br>
+**PR:** [#22](https://github.com/AR-IMMS/telemetry-agent/pull/22) — `feat/v0.1.4a-next-work` → `chore/v0.1.4a-next`<br>
+**Final CI-tested PR head:** `9cb00a7dedc70174d1dbb5e065384b14273b539f`<br>
+**CI run:** [43138456859](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43138456859) — Ubuntu and Windows passed<br>
+**Merge commit:** `eaaedc8ef229113573903bce9fa72c608025628d`<br>
 **Report date:** 2026-11-12
 
 ## Goal and scope
@@ -39,7 +41,7 @@ Move long-running Agent Service coordination from `cmd/agentctl` into a small `i
 | `TestLiveDockerTemplateConvergesThroughAgentRuntime` | Native Windows; Docker Desktop; three disposable Redis 7 containers; pinned Collector | PASS in 110.104s; Template discovery/materialization, reconciliation, Collector activation/restart, and per-endpoint OTLP metrics passed. Archive SHA-256 matched `d8de67cf9dc3ffe928610d52b192cb029365bb42dc79a23e0586c040c83293cf`. |
 | `git diff --check` | Worktree | PASS; no whitespace errors |
 | Markdown link validation | Six changed local release documents | PASS; 10 local links checked, 0 missing |
-| GitHub Actions CI | Draft PR #22, head `8b66c93d3e8702d0114d426a9cde2ce5bda36a78` | PASS; run [43137402492](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43137402492), Ubuntu and Windows passed. This E2E evidence sync triggers one final report-head rerun. |
+| GitHub Actions CI | PR #22, final head `9cb00a7dedc70174d1dbb5e065384b14273b539f` | PASS; run [43138456859](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43138456859), Ubuntu and Windows passed. |
 
 ### Infrastructure limitations
 
@@ -72,4 +74,4 @@ The independent review found no Critical or Important defect. It noted one minor
 
 ## Rollback and next checkpoint readiness
 
-Revert PR #22, restore `runRuntimeControlLoops` plus dispatcher lifecycle to `cmd/agentctl`, and retain the PR-02 event publisher contract if its other callers remain; persisted data and schema require no rollback. The scoped PR-03 implementation and verification gates pass. Merge after the report-only final-head CI passes; PR-04 starts only from the updated integration branch with its context contracts reviewed. Native Linux E2E remains a release-level gate.
+Revert PR #22, restore `runRuntimeControlLoops` plus dispatcher lifecycle to `cmd/agentctl`, and retain the PR-02 event publisher contract if its other callers remain; persisted data and schema require no rollback. PR #22 is merged at `eaaedc8ef229113573903bce9fa72c608025628d`. The reusable `feat/v0.1.4a-next-work` branch was recreated from that integration head. PR-04 may now start after reviewing its context contracts. Native Linux E2E remains a release-level gate.

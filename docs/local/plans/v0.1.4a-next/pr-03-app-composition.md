@@ -1,6 +1,6 @@
 # PR-03 — Application Host & Thin CLI
 
-**Status:** VERIFYING — implementation and local verification are complete; isolated live Docker E2E and checkpoint CI remain outstanding. **Release target:** `v0.1.4a-next`. **Evidence:** current feature branch starts from PR-02 merge `d71f5aa39777824e29f1d06a364bb0a289373803`.
+**Status:** PASS — PR #22 merged after local verification, live Windows Docker/Collector E2E, and final-head Windows/Ubuntu CI. **Release target:** `v0.1.4a-next`. **Merge:** `eaaedc8ef229113573903bce9fa72c608025628d`. The reusable feature branch has been recreated from the updated integration head.
 
 ## Objective and exit boundary
 
@@ -55,9 +55,9 @@ Use `docs/local/architecture/v0.1.4a-next/context-boundaries.md` and `source-str
 
 ## Acceptance / verification gates
 
-- CLI tests and the preserved help/output contracts pass locally; final-head CI is still required.
+- CLI tests and the preserved help/output contracts pass locally and in final-head CI.
 - Local unit/integration coverage for app loop coordination passes. Native service install/start/stop/reboot E2E is not claimed by this refactor.
-- Docker discovery → Template → Redis activation remains covered by local non-live tests. The live runtime regression was NOT RUN in this checkpoint because no pinned Windows Collector executable or disposable Redis fixture IDs are configured; rerun before merging this checkpoint.
+- Docker discovery → Template → Redis activation passed in the live Windows runtime regression using the pinned Collector and isolated Redis fixtures.
 - No domain logic or SQL records added to `cmd/agentctl` or `internal/app`.
 
 **Evidence to attach:** before/after state and test commands; platform and Docker/Collector versions, native metrics or agent/service logs where relevant; Git SHA; unreached items explicitly NOT RUN/BLOCKED. Tests must reproduce *negative* paths as well as happy paths.
