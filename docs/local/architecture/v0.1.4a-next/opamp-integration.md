@@ -1,8 +1,10 @@
 # OpAMP and Supervisor integration — v0.1.4a-next
 
-**Status:** target proposal revised by the PR-07 Supervisor adoption proposal;
-capability, contract, and parity gates remain unverified. This document does not
-claim that the Supervisor or the AR-IMMS control plane is implemented.
+**Status:** Windows and Ubuntu WSL Supervisor capability tests pass, including
+hostmetrics OTLP delivery. PR-07b Mock Core integration passes on both OSes.
+Native Linux Docker profile parity and Agent-owned process-tree recovery remain
+open. No production Core interoperability or PR-07c runtime ownership transfer
+is claimed.
 
 ## Target topology
 
@@ -52,9 +54,13 @@ Process ownership after migration is exactly:
 
 The current Agent `internal/supervisor` and `internal/agentlifecycle` are not the
 OTel OpAMP Supervisor. Keep existing Agent Runtime behavior until parity is
-demonstrated. Transfer ownership as one controlled transition; never run two
-Collector lifecycle owners for the same Collector. PR-07a and PR-07b must not
-silently transfer ownership. Rollback must restore the prior single-owner mode.
+demonstrated. The Linux hard-kill test showed that restarting Supervisor alone
+can leave its Collector child alive and holding listeners. The Agent/service
+manager must terminate the old process tree before a replacement Supervisor
+starts, and tests must confirm only one Collector emits. Transfer ownership as
+one controlled transition; never run two Collector lifecycle owners for the
+same Collector. PR-07a and PR-07b must not silently transfer ownership. Rollback
+must restore the prior single-owner mode.
 
 ## Version and capability evidence
 
@@ -73,7 +79,7 @@ start correctly. These semantics must be checked against the exact pinned
 artifact and real local configuration before relying on them. The existing
 Agent LKG contract may cover failures beyond startup and must not be weakened.
 
-Reference: [OpAMP Supervisor specification](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/cmd/opampsupervisor/specification).
+Reference: [OpAMP Supervisor v0.160.0 specification](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.160.0/cmd/opampsupervisor/specification/README.md).
 
 ## Configuration authority and status
 
@@ -83,12 +89,14 @@ This is not yet an approved cross-repository schema. Agent-local monitoring
 profiles, receiver rules, infrastructure identity, and protected Supervisor
 communication settings remain Agent-owned.
 
-Before contract implementation, define and review: schema/version, target and
-revision semantics, deterministic rendering/hash inputs, merge order and
-ownership, deletion semantics, stale/equal/conflicting revision behavior,
-local update behavior, secret references, and validation/errors. Merge order
-alone is not a security boundary. Do not accept arbitrary Collector YAML or
-remote commands.
+The local PR-07b contract defines schema/version, installation target, desired
+revision, deterministic rendering/hash inputs, endpoint validation, binding
+conflicts, and protocol-observed status in
+[agent-control-v1.openapi.yaml](contracts/agent-control-v1.openapi.yaml).
+It is intentionally a mock-backed Agent contract, not a production Core API
+approval or publication to `docs/shared/`. It contains no arbitrary Collector
+YAML or remote commands. Protected local configuration remains outside the
+remote policy.
 
 Keep desired revision separate from applied revision. Distinguish received,
 validated, applying, applied, failed, recovered, and unknown only where the
@@ -100,11 +108,16 @@ not count as success for the newest desired revision.
 ## Identity, authentication, and internal API
 
 Preserve enrollment's installation ID, binding, Node ID, and opaque credential
-semantics. OpAMP `instance_uid` is a separate protocol identity; bind it to an
-authenticated installation and never trust it as authentication. Specify
-credential provisioning/storage/rotation/revocation, session invalidation,
-TLS verification, and offline revocation behavior before enabling remote
-configuration.
+semantics. The local mock-backed slice reuses the existing enrollment bearer
+for Supervisor authentication, resolves installation/Node identity from that
+credential, and compare-and-set binds the Supervisor `instance_uid`. The UID
+is never authentication. The pinned Supervisor's Bearer Token Authenticator
+uses a token file and the `opampsupervisor.Extensions` feature gate; Windows
+live evidence exercises that path. Agent installation/provisioning of this
+file, production credential rotation/revocation, session invalidation, and
+offline revocation remain open for PR-07c/Core contract review. The Core client
+uses HTTPS, rejects redirects, and rejects insecure base URLs. The Go adapter
+allows cleartext OpAMP only on loopback; non-loopback requires TLS.
 
 The proposed OpAMP adapter needs only explicit internal Core operations for
 installation authentication, instance binding, desired policy retrieval,
@@ -113,9 +126,12 @@ adapter must reconcile after disconnects or missed notifications. HTTP schemas,
 auth, errors, idempotency, retry, cache, and request IDs must follow the actual
 Core API baseline. Native OpAMP messages remain standard protocol messages.
 
-The proposal references `agent-enrollment.openapi.yaml` and a Core API Baseline.
-Their paths and contents have not yet been verified in this repository; locate
-and review the authoritative artifacts before defining additional contracts.
+The authoritative enrollment OpenAPI and Core API Baseline were reviewed before
+this local contract was written (blob IDs are recorded in the [PR-07 plan](../../plans/v0.1.4a-next/pr-07-opamp.md)).
+They establish enrollment semantics and response conventions but do not define
+the Agent control routes above. Production NestJS Core interoperability stays
+blocked until those routes and their security policy are explicitly approved
+and implemented in Core.
 
 ## Migration slices
 

@@ -1,0 +1,197 @@
+openapi: 3.1.0
+info:
+  title: AR-IMMS Agent Control API (local PR-07 contract)
+  version: 1.0.0
+  description: >-
+    Proposed Agent-facing Core operations for the PR-07 mock-backed slice.
+    This file is not published to docs/shared and is not implemented by the
+    production Core API baseline. It deliberately preserves enrollment as the
+    only credential issuer and does not define a new authentication scheme.
+servers:
+  - url: https://core.example.invalid
+security:
+  - agentBearer: []
+paths:
+  /api/v1/agent-management/session:
+    get:
+      operationId: getAgentManagementSession
+      summary: Resolve the authenticated installation and its desired policy
+      description: >-
+        Installation and Node identity are derived from the authenticated
+        enrollment credential. Client-supplied identity fields are ignored.
+      responses:
+        '200':
+          description: Authenticated installation and current policy snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionEnvelope'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /api/v1/agent-management/opamp-instance:
+    put:
+      operationId: bindOpampInstance
+      summary: Bind the authenticated installation to its Supervisor instance UID
+      description: >-
+        The first authenticated bind is compare-and-set and idempotent. A
+        different existing UID is a conflict and never reassigns the binding.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InstanceBinding'
+      responses:
+        '200':
+          description: Existing or newly committed binding
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceEnvelope'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+  /api/v1/agent-management/status:
+    put:
+      operationId: reportAgentManagementStatus
+      summary: Report observed OpAMP configuration status
+      description: >-
+        Reports only protocol-observed configuration state. It does not assert
+        scrape success or OTLP delivery. The server correlates a config hash
+        with the desired revision it sent; an old applied hash does not mark a
+        newer revision applied.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusReport'
+      responses:
+        '204':
+          description: Status accepted idempotently
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+components:
+  securitySchemes:
+    agentBearer:
+      type: http
+      scheme: bearer
+      description: Existing opaque bearer credential returned by enrollment.
+  schemas:
+    SessionEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/Session'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    InstanceEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/InstanceBinding'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    Session:
+      type: object
+      required: [installation_id, node_id, opamp_instance_uid, desired_policy]
+      properties:
+        installation_id:
+          type: string
+          format: uuid
+        node_id:
+          type: string
+          format: uuid
+        opamp_instance_uid:
+          type: [string, 'null']
+          format: uuid
+        desired_policy:
+          $ref: '#/components/schemas/DesiredPolicy'
+    DesiredPolicy:
+      type: object
+      required: [schema_version, revision, gateway_endpoint]
+      properties:
+        schema_version:
+          const: ar-imms/gateway-policy/v1
+        revision:
+          type: integer
+          minimum: 1
+        gateway_endpoint:
+          type: string
+          minLength: 1
+          description: Host:port only; no URL scheme, credentials, path, or whitespace.
+    InstanceBinding:
+      type: object
+      required: [instance_uid]
+      properties:
+        instance_uid:
+          type: string
+          format: uuid
+    StatusReport:
+      type: object
+      required: [instance_uid, desired_revision, status, config_hash]
+      properties:
+        instance_uid:
+          type: string
+          format: uuid
+        desired_revision:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum: [APPLYING, APPLIED, FAILED]
+        config_hash:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        applied_revision:
+          type: integer
+          minimum: 1
+          description: >-
+            Optional. Set only when the reported hash is known to be the config
+            applied for that exact revision. Omit it when the hash is unknown or
+            belongs to a prior revision restored by rollback.
+        message:
+          type: string
+          maxLength: 512
+          description: Sanitized diagnostic; must not contain config or credential material.
+    Meta:
+      type: object
+      required: [request_id]
+      properties:
+        request_id:
+          type: string
+          minLength: 1
+  responses:
+    Problem:
+      description: Core problem response
+      content:
+        application/problem+json:
+          schema:
+            type: object
+            required: [status, code]
+            properties:
+              type:
+                type: string
+              title:
+                type: string
+              status:
+                type: integer
+              detail:
+                type: string
+              code:
+                type: string
+              request_id:
+                type: string
