@@ -8,6 +8,7 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
+	"github.com/ar-imms/telemetry-agent/internal/reconciliation/contracts"
 )
 
 type candidateLifecycleRepository interface {
@@ -28,12 +29,12 @@ type candidateActivator func(context.Context, []byte, []string) error
 // revision-bound admission while sharing its process and OS lifecycle locks.
 func (c configurationCoordinator) ApplyCandidate(
 	ctx context.Context,
-	request CandidateApplyRequest,
+	request contracts.CandidateApplyRequest,
 	build candidatePlanBuilder,
 	activate candidateActivator,
 	repository candidateLifecycleRepository,
-) (CandidateActivationOutcome, error) {
-	var result CandidateActivationOutcome
+) (contracts.CandidateActivationOutcome, error) {
+	var result contracts.CandidateActivationOutcome
 	err := c.withLifecycleLock(func() error {
 		if ctx == nil || build == nil || activate == nil || repository == nil || c.prepare == nil {
 			return fmt.Errorf("candidate lifecycle dependencies are required")
@@ -73,7 +74,7 @@ func (c configurationCoordinator) ApplyCandidate(
 			}
 			return err
 		}
-		result = CandidateActivationOutcome{
+		result = contracts.CandidateActivationOutcome{
 			Generation:            admission.Generation,
 			CandidateDigest:       plan.Mapping.CandidateDigest,
 			EffectiveConfigDigest: plan.Mapping.EffectiveConfigDigest,

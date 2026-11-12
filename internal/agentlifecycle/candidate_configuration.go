@@ -11,52 +11,31 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
-	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
 	"github.com/ar-imms/telemetry-agent/internal/config"
 	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
+	"github.com/ar-imms/telemetry-agent/internal/reconciliation/contracts"
 )
-
-// CandidateApplyRequest binds an S2 candidate to the desired Integration and
-// clean-baseline revisions against which it was compiled.
-type CandidateApplyRequest struct {
-	DesiredSetRevision  uint64
-	ExpectedGeneration  uint64
-	BaselineFingerprint string
-	Candidate           collectorruntime.Candidate
-}
-
-// CandidateActivationOutcome reports the lifecycle stage reached by one
-// admitted candidate. Activated is distinct from runtime-applied readiness.
-type CandidateActivationOutcome struct {
-	Generation            uint64
-	CandidateDigest       string
-	EffectiveConfigDigest string
-	Stage                 string
-	Result                string
-	RecoveryResult        string
-	AlreadyApplied        bool
-}
 
 // ApplyCollectorCandidate submits a complete S2 candidate to the existing M2
 // coordinator. Slice 1 deliberately does not wire production reconciliation.
 func ApplyCollectorCandidate(
 	ctx context.Context,
 	store agentstate.Repository,
-	request CandidateApplyRequest,
+	request contracts.CandidateApplyRequest,
 	options CollectorConfigurationOptions,
-) (CandidateActivationOutcome, error) {
+) (contracts.CandidateActivationOutcome, error) {
 	if ctx == nil {
-		return CandidateActivationOutcome{}, fmt.Errorf("candidate activation context is required")
+		return contracts.CandidateActivationOutcome{}, fmt.Errorf("candidate activation context is required")
 	}
 	if store == nil || request.Candidate.Digest() == "" || request.BaselineFingerprint == "" {
-		return CandidateActivationOutcome{}, fmt.Errorf("candidate, baseline fingerprint, and Agent state repository are required")
+		return contracts.CandidateActivationOutcome{}, fmt.Errorf("candidate, baseline fingerprint, and Agent state repository are required")
 	}
 	if options.Runner == nil || options.ConfigPath == "" || options.BinaryPath == "" {
-		return CandidateActivationOutcome{}, fmt.Errorf("Collector runner, binary path, and configuration path are required")
+		return contracts.CandidateActivationOutcome{}, fmt.Errorf("Collector runner, binary path, and configuration path are required")
 	}
 	repository, ok := store.(candidateLifecycleRepository)
 	if !ok {
-		return CandidateActivationOutcome{}, fmt.Errorf("SQLite candidate lifecycle repository is required")
+		return contracts.CandidateActivationOutcome{}, fmt.Errorf("SQLite candidate lifecycle repository is required")
 	}
 	coordinator := configurationCoordinator{
 		store:    store,

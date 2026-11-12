@@ -98,7 +98,7 @@ func TestStaleAdmissionImmediatelyReconcilesLatestDesiredRevision(t *testing.T) 
 
 func TestReconcileLatestRepeatsWhenBaselineFingerprintChangesAfterApply(t *testing.T) {
 	desired := &snapshotReader{snapshot: configuration.DesiredSnapshot{Revision: 12}}
-	baseline := &sequenceBaseline{snapshots: []agentlifecycle.CleanBaselineSnapshot{
+	baseline := &sequenceBaseline{snapshots: []BaselineSnapshot{
 		{DesiredGeneration: 4, Fingerprint: "before", Input: config.RenderInput{Platform: identity.PlatformInfo{OS: "windows", Architecture: "amd64"}}},
 		{DesiredGeneration: 4, Fingerprint: "after", Input: config.RenderInput{Platform: identity.PlatformInfo{OS: "windows", Architecture: "amd64"}}},
 		{DesiredGeneration: 4, Fingerprint: "after", Input: config.RenderInput{Platform: identity.PlatformInfo{OS: "windows", Architecture: "amd64"}}},
@@ -389,8 +389,8 @@ func (s *snapshotReader) Snapshot() (configuration.DesiredSnapshot, error) { ret
 
 type staticBaseline struct{}
 
-func (staticBaseline) Snapshot() (agentlifecycle.CleanBaselineSnapshot, error) {
-	return agentlifecycle.CleanBaselineSnapshot{DesiredGeneration: 4, Fingerprint: "fingerprint", Input: config.RenderInput{Platform: identity.PlatformInfo{OS: "windows", Architecture: "amd64"}}}, nil
+func (staticBaseline) Snapshot() (BaselineSnapshot, error) {
+	return BaselineSnapshot{DesiredGeneration: 4, Fingerprint: "fingerprint", Input: config.RenderInput{Platform: identity.PlatformInfo{OS: "windows", Architecture: "amd64"}}}, nil
 }
 
 type testResolver struct {
@@ -420,12 +420,12 @@ func (c *testCompiler) Compile(_ config.RenderInput, resolved []integration.Reso
 }
 
 type testApplier struct {
-	request agentlifecycle.CandidateApplyRequest
+	request CandidateApplyRequest
 }
 
-func (a *testApplier) ApplyCandidate(_ context.Context, request agentlifecycle.CandidateApplyRequest) (agentlifecycle.CandidateActivationOutcome, error) {
+func (a *testApplier) ApplyCandidate(_ context.Context, request CandidateApplyRequest) (CandidateActivationOutcome, error) {
 	a.request = request
-	return agentlifecycle.CandidateActivationOutcome{Generation: 5, Result: "activated"}, nil
+	return CandidateActivationOutcome{Generation: 5, Result: "activated"}, nil
 }
 
 type testAttempts struct{}
@@ -442,16 +442,16 @@ type fixedOutcome struct {
 
 type recordingApplier struct{ revisions chan<- uint64 }
 
-func (a recordingApplier) ApplyCandidate(_ context.Context, request agentlifecycle.CandidateApplyRequest) (agentlifecycle.CandidateActivationOutcome, error) {
+func (a recordingApplier) ApplyCandidate(_ context.Context, request CandidateApplyRequest) (CandidateActivationOutcome, error) {
 	a.revisions <- request.DesiredSetRevision
-	return agentlifecycle.CandidateActivationOutcome{Generation: request.ExpectedGeneration + 1, Result: "activated"}, nil
+	return CandidateActivationOutcome{Generation: request.ExpectedGeneration + 1, Result: "activated"}, nil
 }
 
 type revisionRecordingApplier struct{ generations []uint64 }
 
-func (a *revisionRecordingApplier) ApplyCandidate(_ context.Context, request agentlifecycle.CandidateApplyRequest) (agentlifecycle.CandidateActivationOutcome, error) {
+func (a *revisionRecordingApplier) ApplyCandidate(_ context.Context, request CandidateApplyRequest) (CandidateActivationOutcome, error) {
 	a.generations = append(a.generations, request.ExpectedGeneration)
-	return agentlifecycle.CandidateActivationOutcome{Generation: request.ExpectedGeneration + 1, Result: "activated"}, nil
+	return CandidateActivationOutcome{Generation: request.ExpectedGeneration + 1, Result: "activated"}, nil
 }
 
 type staleOnceApplier struct {
@@ -459,13 +459,13 @@ type staleOnceApplier struct {
 	stale     bool
 }
 
-func (a *staleOnceApplier) ApplyCandidate(_ context.Context, request agentlifecycle.CandidateApplyRequest) (agentlifecycle.CandidateActivationOutcome, error) {
+func (a *staleOnceApplier) ApplyCandidate(_ context.Context, request CandidateApplyRequest) (CandidateActivationOutcome, error) {
 	a.revisions = append(a.revisions, request.DesiredSetRevision)
 	if !a.stale {
 		a.stale = true
-		return agentlifecycle.CandidateActivationOutcome{}, agentstate.ErrStaleCandidate
+		return CandidateActivationOutcome{}, agentstate.ErrStaleCandidate
 	}
-	return agentlifecycle.CandidateActivationOutcome{Generation: request.ExpectedGeneration + 1, Result: "activated"}, nil
+	return CandidateActivationOutcome{Generation: request.ExpectedGeneration + 1, Result: "activated"}, nil
 }
 
 type sequenceReader struct {
@@ -484,16 +484,16 @@ func (s *sequenceReader) Snapshot() (configuration.DesiredSnapshot, error) {
 
 type changingBaseline struct{ generation uint64 }
 
-func (b *changingBaseline) Snapshot() (agentlifecycle.CleanBaselineSnapshot, error) {
-	return agentlifecycle.CleanBaselineSnapshot{DesiredGeneration: b.generation, Fingerprint: "baseline", Input: config.RenderInput{Platform: identity.PlatformInfo{OS: "windows", Architecture: "amd64"}}}, nil
+func (b *changingBaseline) Snapshot() (BaselineSnapshot, error) {
+	return BaselineSnapshot{DesiredGeneration: b.generation, Fingerprint: "baseline", Input: config.RenderInput{Platform: identity.PlatformInfo{OS: "windows", Architecture: "amd64"}}}, nil
 }
 
 type sequenceBaseline struct {
-	snapshots []agentlifecycle.CleanBaselineSnapshot
+	snapshots []BaselineSnapshot
 	calls     int
 }
 
-func (b *sequenceBaseline) Snapshot() (agentlifecycle.CleanBaselineSnapshot, error) {
+func (b *sequenceBaseline) Snapshot() (BaselineSnapshot, error) {
 	index := b.calls
 	if index >= len(b.snapshots) {
 		index = len(b.snapshots) - 1
@@ -510,12 +510,16 @@ type testCleanBaseline struct {
 	values       map[string]string
 }
 
-func (b testCleanBaseline) Snapshot() (agentlifecycle.CleanBaselineSnapshot, error) {
+func (b testCleanBaseline) Snapshot() (BaselineSnapshot, error) {
 	state, err := b.store.Load()
 	if err != nil {
-		return agentlifecycle.CleanBaselineSnapshot{}, err
+		return BaselineSnapshot{}, err
 	}
-	return agentlifecycle.BuildCleanBaselineSnapshot(b.platform, b.dependencies, b.layers, state, b.values)
+	snapshot, err := agentlifecycle.BuildCleanBaselineSnapshot(b.platform, b.dependencies, b.layers, state, b.values)
+	if err != nil {
+		return BaselineSnapshot{}, err
+	}
+	return BaselineSnapshot{Input: snapshot.Input, DesiredGeneration: snapshot.DesiredGeneration, Fingerprint: snapshot.Fingerprint}, nil
 }
 
 type successfulCandidateRunner struct{}
@@ -529,7 +533,7 @@ type testM2Applier struct {
 	options agentlifecycle.CollectorConfigurationOptions
 }
 
-func (a testM2Applier) ApplyCandidate(ctx context.Context, request agentlifecycle.CandidateApplyRequest) (agentlifecycle.CandidateActivationOutcome, error) {
+func (a testM2Applier) ApplyCandidate(ctx context.Context, request CandidateApplyRequest) (CandidateActivationOutcome, error) {
 	outcome, err := agentlifecycle.ApplyCollectorCandidate(ctx, a.store, request, a.options)
 	if err != nil || outcome.AlreadyApplied {
 		return outcome, err

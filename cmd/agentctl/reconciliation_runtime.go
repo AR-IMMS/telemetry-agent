@@ -27,6 +27,11 @@ type runtimeBaseline struct {
 	gateways     coreconfig.GatewayRepository
 }
 
+var (
+	_ reconciliation.BaselineReader   = runtimeBaseline{}
+	_ reconciliation.CandidateApplier = runtimeCandidateApplier{}
+)
+
 func newRuntimeBaseline(statePath string) (runtimeBaseline, error) {
 	store := agentstate.NewStore(statePath)
 	state, err := store.Load()
@@ -54,16 +59,24 @@ func newRuntimeBaseline(statePath string) (runtimeBaseline, error) {
 	}, nil
 }
 
-func (b runtimeBaseline) Snapshot() (agentlifecycle.CleanBaselineSnapshot, error) {
+func (b runtimeBaseline) Snapshot() (reconciliation.BaselineSnapshot, error) {
 	state, err := b.store.Load()
 	if err != nil {
-		return agentlifecycle.CleanBaselineSnapshot{}, err
+		return reconciliation.BaselineSnapshot{}, err
 	}
 	gateway, err := b.gateways.EffectiveGateway()
 	if err != nil {
-		return agentlifecycle.CleanBaselineSnapshot{}, err
+		return reconciliation.BaselineSnapshot{}, err
 	}
-	return agentlifecycle.BuildCleanBaselineSnapshot(b.platform, b.dependencies, b.layers, state, map[string]string{"OTEL_GATEWAY_ENDPOINT": gateway.Endpoint})
+	snapshot, err := agentlifecycle.BuildCleanBaselineSnapshot(b.platform, b.dependencies, b.layers, state, map[string]string{"OTEL_GATEWAY_ENDPOINT": gateway.Endpoint})
+	if err != nil {
+		return reconciliation.BaselineSnapshot{}, err
+	}
+	return reconciliation.BaselineSnapshot{
+		Input:             snapshot.Input,
+		DesiredGeneration: snapshot.DesiredGeneration,
+		Fingerprint:       snapshot.Fingerprint,
+	}, nil
 }
 
 type runtimeCandidateApplier struct {
@@ -71,7 +84,7 @@ type runtimeCandidateApplier struct {
 	options agentlifecycle.CollectorConfigurationOptions
 }
 
-func (a runtimeCandidateApplier) ApplyCandidate(ctx context.Context, request agentlifecycle.CandidateApplyRequest) (agentlifecycle.CandidateActivationOutcome, error) {
+func (a runtimeCandidateApplier) ApplyCandidate(ctx context.Context, request reconciliation.CandidateApplyRequest) (reconciliation.CandidateActivationOutcome, error) {
 	return agentlifecycle.ApplyCollectorCandidate(ctx, a.store, request, a.options)
 }
 
