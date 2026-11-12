@@ -8,7 +8,71 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
+	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 )
+
+type desiredEventPublisherFunc func(events.DesiredConfigurationChanged) error
+
+func (f desiredEventPublisherFunc) Publish(event events.DesiredConfigurationChanged) error {
+	return f(event)
+}
+
+func TestSQLiteMaterializationPublishesOnlyCommittedDesiredRevision(t *testing.T) {
+	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	prepareMaterializationRevisions(t, store, 1, 0)
+	var published []uint64
+	publisher := desiredEventPublisherFunc(func(event events.DesiredConfigurationChanged) error {
+		published = append(published, event.Revision)
+		snapshot, err := store.IntegrationRepository().Snapshot()
+		if err != nil {
+			return err
+		}
+		if snapshot.Revision != event.Revision {
+			t.Fatalf("event revision %d published before committed snapshot %d", event.Revision, snapshot.Revision)
+		}
+		return nil
+	})
+	repository := store.MaterializationRepositoryWithEvents(publisher)
+	batch := configuration.MaterializationBatch{
+		ExpectedInventoryWriteRevision: 1,
+		ExpectedTemplateSetRevision:    1,
+		ExpectedDesiredSetRevision:     0,
+		Upsert:                         []integration.IntegrationInstance{generatedTestInstance()},
+	}
+	if revision, err := repository.ApplyTemplateProjection(batch); err != nil || revision != 1 {
+		t.Fatalf("committed materialization revision=%d err=%v", revision, err)
+	}
+	batch.ExpectedDesiredSetRevision = 1
+	if revision, err := repository.ApplyTemplateProjection(batch); err != nil || revision != 1 {
+		t.Fatalf("no-op materialization revision=%d err=%v", revision, err)
+	}
+	batch.ExpectedInventoryWriteRevision = 2
+	if _, err := repository.ApplyTemplateProjection(batch); !errors.Is(err, configuration.ErrMaterializationConflict) {
+		t.Fatalf("stale materialization error = %v, want conflict", err)
+	}
+	if len(published) != 1 || published[0] != 1 {
+		t.Fatalf("published revisions = %v, want [1]", published)
+	}
+}
+
+func TestSQLiteMaterializationQueueFailureDoesNotUndoCommittedWrite(t *testing.T) {
+	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	prepareMaterializationRevisions(t, store, 1, 0)
+	publisher := desiredEventPublisherFunc(func(events.DesiredConfigurationChanged) error { return events.ErrQueueFull })
+	repository := store.MaterializationRepositoryWithEvents(publisher)
+	batch := configuration.MaterializationBatch{
+		ExpectedInventoryWriteRevision: 1,
+		ExpectedTemplateSetRevision:    1,
+		Upsert:                         []integration.IntegrationInstance{generatedTestInstance()},
+	}
+	if revision, err := repository.ApplyTemplateProjection(batch); err != nil || revision != 1 {
+		t.Fatalf("committed write failed because advisory queue was full: revision=%d err=%v", revision, err)
+	}
+	snapshot, err := store.IntegrationRepository().Snapshot()
+	if err != nil || snapshot.Revision != 1 || len(snapshot.Instances) != 1 {
+		t.Fatalf("durable desired state snapshot=%+v err=%v", snapshot, err)
+	}
+}
 
 func TestSQLiteMaterializationAppliesTemplateProjectionIdempotently(t *testing.T) {
 	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))

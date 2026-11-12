@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
+	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 )
 
 // MaterializationRepository returns the Configuration-owned SQLite projection adapter.
@@ -16,14 +18,32 @@ func (s SQLiteStore) MaterializationRepository() configuration.MaterializationRe
 	return materializationSQLite{store: s}
 }
 
-type materializationSQLite struct{ store SQLiteStore }
+// MaterializationRepositoryWithEvents adds an optional post-commit advisory
+// wakeup while preserving the repository's durable result if the queue is full.
+func (s SQLiteStore) MaterializationRepositoryWithEvents(publisher interface {
+	Publish(events.DesiredConfigurationChanged) error
+}) configuration.MaterializationRepository {
+	return materializationSQLite{store: s, publisher: publisher}
+}
+
+type materializationSQLite struct {
+	store     SQLiteStore
+	publisher interface {
+		Publish(events.DesiredConfigurationChanged) error
+	}
+}
 
 func (s materializationSQLite) ApplyTemplateProjection(batch configuration.MaterializationBatch) (uint64, error) {
 	if err := validateMaterializationBatch(batch); err != nil {
 		return 0, err
 	}
 	sqliteUpdateMutex.Lock()
-	defer sqliteUpdateMutex.Unlock()
+	locked := true
+	defer func() {
+		if locked {
+			sqliteUpdateMutex.Unlock()
+		}
+	}()
 	db, err := s.store.open()
 	if err != nil {
 		return 0, err
@@ -71,6 +91,13 @@ func (s materializationSQLite) ApplyTemplateProjection(batch configuration.Mater
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, fmt.Errorf("commit template materialization: %w", err)
+	}
+	sqliteUpdateMutex.Unlock()
+	locked = false
+	if changed && s.publisher != nil {
+		if err := s.publisher.Publish(events.DesiredConfigurationChanged{Revision: revision}); err != nil {
+			slog.Warn("Committed desired-state wakeup was not queued", "code", "desired_event_dropped")
+		}
 	}
 	return revision, nil
 }

@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
@@ -15,6 +17,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/dependency"
 	"github.com/ar-imms/telemetry-agent/internal/identity"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
+	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 	"github.com/ar-imms/telemetry-agent/internal/reconciliation"
 )
 
@@ -117,7 +120,19 @@ func runRuntimeWithReconciliation(ctx context.Context, statePath string, teardow
 	if err != nil {
 		return fmt.Errorf("compose monitoring proposal refresh: %w", err)
 	}
-	templateMaterializer, err := newRuntimeTemplateMaterializer(statePath)
+	dispatcher, err := events.NewDispatcher(32, func(ctx context.Context, _ events.DesiredConfigurationChanged) error {
+		_, err := controller.Reconcile(ctx)
+		if errors.Is(err, agentstate.ErrReconciliationBlocked) || errors.Is(err, agentstate.ErrReconciliationExhausted) ||
+			errors.Is(err, agentstate.ErrReconciliationBackoff) || errors.Is(err, agentstate.ErrReconciliationApplied) ||
+			errors.Is(err, agentstate.ErrReconciliationAwaitingLifecycle) {
+			return nil
+		}
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("compose desired-state event dispatcher: %w", err)
+	}
+	templateMaterializer, err := newRuntimeTemplateMaterializer(statePath, dispatcher)
 	if err != nil {
 		return fmt.Errorf("compose Integration Template materialization: %w", err)
 	}
@@ -127,6 +142,16 @@ func runRuntimeWithReconciliation(ctx context.Context, statePath string, teardow
 		teardown,
 		reporter,
 		func(ctx context.Context) error {
+			if err := dispatcher.Start(ctx); err != nil {
+				return fmt.Errorf("start desired-state event dispatcher: %w", err)
+			}
+			defer func() {
+				shutdownContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := dispatcher.Shutdown(shutdownContext); err != nil {
+					log.Printf("Desired-state event dispatcher shutdown timed out code=event_shutdown_timeout")
+				}
+			}()
 			return runRuntimeControlLoops(ctx,
 				func(ctx context.Context) error { return controller.Run(ctx, reconciliationPollInterval) },
 				inventory, proposalRefresher.Refresh, templateMaterializer.Refresh)

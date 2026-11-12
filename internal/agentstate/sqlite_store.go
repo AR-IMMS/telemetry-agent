@@ -11,12 +11,8 @@ import (
 	"sync"
 	"time"
 
-	_ "modernc.org/sqlite"
+	platformsqlite "github.com/ar-imms/telemetry-agent/internal/platform/sqlite"
 )
-
-// sqliteInitializationMutex prevents concurrent first-open schema and import
-// work from racing across SQLiteStore values in the same Agent process.
-var sqliteInitializationMutex sync.Mutex
 
 // sqliteUpdateMutex serializes in-process mutations across store values.
 // SQLite's immediate transactions and busy timeout coordinate other processes.
@@ -112,35 +108,15 @@ func (s SQLiteStore) Update(mutate StateMutation) (State, error) {
 }
 
 func (s SQLiteStore) open() (*sql.DB, error) {
-	sqliteInitializationMutex.Lock()
-	defer sqliteInitializationMutex.Unlock()
-
 	if s.path == "" {
 		return nil, fmt.Errorf("Agent SQLite database path is required")
 	}
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o750); err != nil {
-		return nil, fmt.Errorf("create Agent database directory: %w", err)
-	}
-	dsn := "file:" + filepath.ToSlash(s.path) +
-		"?_txlock=immediate&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(FULL)"
-	db, err := sql.Open("sqlite", dsn)
-	if err != nil {
-		return nil, fmt.Errorf("open Agent SQLite database: %w", err)
-	}
-	db.SetMaxOpenConns(1)
-	if err := db.Ping(); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("connect to Agent SQLite database: %w", err)
-	}
-	if err := ensureSQLiteSchema(db); err != nil {
-		db.Close()
-		return nil, err
-	}
-	if err := s.importLegacyState(db); err != nil {
-		db.Close()
-		return nil, err
-	}
-	return db, nil
+	return platformsqlite.Open(s.path, func(db *sql.DB) error {
+		if err := ensureSQLiteSchema(db); err != nil {
+			return err
+		}
+		return s.importLegacyState(db)
+	})
 }
 
 type stateQueryer interface {
