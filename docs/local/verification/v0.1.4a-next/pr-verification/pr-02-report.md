@@ -4,7 +4,8 @@
 **Status:** VERIFYING — local Windows verification passed; integration CI/merge pending<br>
 **Base:** PR-01 merge `7ba6efb86218969f539c17bea7a0a7ea6a972169` on `chore/v0.1.4a-next`<br>
 **Work branch:** `feat/v0.1.4a-next-work`<br>
-**PR / tested head:** Pending publication<br>
+**PR / code commit:** [Draft PR #21](https://github.com/AR-IMMS/telemetry-agent/pull/21) / `defa16078e7cb79e6ddff3294328b22aebe32706` (`feat(pr-02): add bounded events and sqlite foundation`)<br>
+**PR report-sync head:** Pending CI rerun<br>
 **Report date:** 2026-11-12
 
 ## Goal and scope
