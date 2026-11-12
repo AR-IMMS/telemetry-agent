@@ -298,7 +298,7 @@ func verifyNativeDockerRecovery(t *testing.T, ctx context.Context, manager strin
 	if output, err := exec.CommandContext(ctx, "docker", "start", manager).CombinedOutput(); err != nil {
 		t.Fatalf("restart isolated Docker Engine manager: %v\n%s", err, output)
 	}
-	waitForNativeDockerReady(t, ctx)
+	waitForNativeDockerReady(t, ctx, manager)
 	for _, resourceID := range resourceIDs {
 		name := nativeContainerNameForID(t, ctx, resourceID)
 		if output, err := nativeDockerCommand(ctx, "start", name).CombinedOutput(); err != nil {
@@ -382,21 +382,28 @@ func waitForNativeProviderRecovery(t *testing.T, ctx context.Context, repository
 	}
 }
 
-func waitForNativeDockerReady(t *testing.T, ctx context.Context) {
+func waitForNativeDockerReady(t *testing.T, ctx context.Context, manager string) {
 	t.Helper()
 	deadline := time.NewTimer(45 * time.Second)
 	defer deadline.Stop()
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
+	var lastPermissionError error
+	var lastDockerError error
 	for {
-		if err := nativeDockerCommand(ctx, "info").Run(); err == nil {
+		permission := exec.CommandContext(ctx, "docker", "exec", manager, "chmod", "666", "/run/host/docker.sock")
+		if output, err := permission.CombinedOutput(); err != nil {
+			lastPermissionError = fmt.Errorf("chmod isolated Docker API socket: %w: %s", err, output)
+		} else if err := nativeDockerCommand(ctx, "info").Run(); err == nil {
 			return
+		} else {
+			lastDockerError = err
 		}
 		select {
 		case <-ctx.Done():
 			t.Fatalf("context ended waiting for isolated Docker Engine: %v", ctx.Err())
 		case <-deadline.C:
-			t.Fatal("isolated Docker Engine did not become ready after restart")
+			t.Fatalf("isolated Docker Engine did not become ready after restart: socket permission error=%v; Docker API error=%v", lastPermissionError, lastDockerError)
 		case <-ticker.C:
 		}
 	}
