@@ -1,11 +1,13 @@
 # PR-02 — shared SQLite foundation and advisory events
 
 **Canonical release:** `v0.1.4a-next`<br>
-**Status:** VERIFYING — local Windows verification passed; integration CI/merge pending<br>
+**Status:** VERIFYING — local verification and both CI jobs passed; report-sync CI and merge pending<br>
 **Base:** PR-01 merge `7ba6efb86218969f539c17bea7a0a7ea6a972169` on `chore/v0.1.4a-next`<br>
 **Work branch:** `feat/v0.1.4a-next-work`<br>
 **PR / code commit:** [Draft PR #21](https://github.com/AR-IMMS/telemetry-agent/pull/21) / `defa16078e7cb79e6ddff3294328b22aebe32706` (`feat(pr-02): add bounded events and sqlite foundation`)<br>
-**PR report-sync head:** Pending CI rerun<br>
+**CI-tested PR head:** `ef6ab9d14b365e360451824eae94dcd362d5edca`<br>
+**CI run:** [43132299829](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43132299829) — Ubuntu and Windows passed<br>
+**Report-sync CI:** Pending rerun after recording the preceding results<br>
 **Report date:** 2026-11-12
 
 ## Goal and scope
@@ -34,7 +36,7 @@ PR-02 extracts the shared SQLite connection setup without changing the database 
 | Same architecture script with `GOOS=linux` | Windows host, Linux source view | PASS |
 | `git diff --check` | Worktree | PASS |
 | Markdown link validation | Four changed release documents | PASS; 8 relative links, 0 missing targets |
-| Actual pinned Collector archive/binary probe | CI | PENDING; PR-01 CI used this probe, and PR-02 CI must pass it again before merge |
+| Actual pinned Collector archive checksum, version, and component probe | PR-02 GitHub Actions, Ubuntu and Windows | PASS on head `ef6ab9d14b365e360451824eae94dcd362d5edca`, run `43132299829` |
 
 The new SQLite and dispatcher API tests were run first against the absent package APIs and failed to compile as expected; implementation then made them pass. This verifies test-first coverage was established before the new implementation.
 
@@ -72,4 +74,4 @@ The migration ledger remains version 13 in existing tests. Existing fixtures and
 
 Disable the optional materialization publisher and keep the dispatcher out of runtime composition; existing SQLite polling remains. The connection factory can be reverted to `SQLiteStore.open` without data downgrade because schema and persisted rows are unchanged.
 
-PR-02 is ready for integration CI review after the tested commit SHA and PR number are recorded here. Merge only after both Windows and Ubuntu CI pass, including the exact pinned Collector archive/component check. PR-03 remains blocked on its CLI/use-case contracts and PR-02 integration.
+Both Windows and Ubuntu CI passed, including exact pinned Collector artifact/component checks. The report-sync commit will rerun the same checks; mark PR #21 ready and merge only after that final run passes. PR-03 remains blocked on its CLI/use-case contracts and PR-02 integration.
