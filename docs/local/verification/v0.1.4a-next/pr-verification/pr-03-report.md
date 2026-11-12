@@ -6,7 +6,7 @@
 **Branch:** `feat/v0.1.4a-next-work`<br>
 **Implementation commit:** `3f88d77b68c9d18bec819d3822733fa535052ffc` (`feat(pr-03): add agent application host`)<br>
 **Draft PR:** [#22](https://github.com/AR-IMMS/telemetry-agent/pull/22) — `feat/v0.1.4a-next-work` → `chore/v0.1.4a-next`<br>
-**Final CI-tested head:** pending<br>
+**CI-tested implementation head:** `0a7c5bd408220655bc1c0b7e54f7b6dc85e1abfb`<br>
 **Report date:** 2026-11-12
 
 ## Goal and scope
@@ -38,7 +38,7 @@ Move long-running Agent Service coordination from `cmd/agentctl` into a small `i
 | Docker Engine and Compose probe | User Windows environment, elevated access | PASS; Engine 29.5.3 and Compose 5.1.4 reachable |
 | `git diff --check` | Worktree | PASS; no whitespace errors |
 | Markdown link validation | Six changed local release documents | PASS; 10 local links checked, 0 missing |
-| GitHub Actions CI | Draft PR #22, implementation head `3f88d77b68c9d18bec819d3822733fa535052ffc` | IN_PROGRESS; both Windows and Ubuntu checks started. A docs-only report sync will create a new PR head and require the final check run there. |
+| GitHub Actions CI | Draft PR #22, head `0a7c5bd408220655bc1c0b7e54f7b6dc85e1abfb` | PASS; run [43136617157](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43136617157), Ubuntu and Windows passed. This report-only sync triggers a final PR-head rerun. |
 
 ### Infrastructure limitations
 
