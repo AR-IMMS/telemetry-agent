@@ -4,7 +4,8 @@
 **Release target:** `v0.1.4a-next`
 **Review date:** 2026-11-12
 **Worktree:** `feat/v0.1.4a-next-work`, base worktree commit `59c85eed375c77653bcfcc57022ee01093467bc6`
-**Publication:** No commit or PR has been made yet. This report does not claim PASS.
+**Implementation commit:** `0f03c25` (`feat(discovery): add OTel-native Docker Redis monitoring`)
+**Publication:** Draft [PR #28](https://github.com/AR-IMMS/telemetry-agent/pull/28) targets `chore/v0.1.4a-next`. This report does not claim PASS.
 
 ## Accepted contract implemented
 
