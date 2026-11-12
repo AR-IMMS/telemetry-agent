@@ -14,6 +14,8 @@ const (
 	LabelMonitoringEnabled = "ar-imms.monitoring.enabled"
 	// LabelMonitoringProfile selects one reviewed monitoring profile.
 	LabelMonitoringProfile = "ar-imms.monitoring.profile"
+	// LabelMonitoringPort optionally overrides a workload's profile default TCP port.
+	LabelMonitoringPort = "ar-imms.monitoring.port"
 	// LabelWorkloadID is an optional stable logical identity supplied by the workload owner.
 	LabelWorkloadID = "ar-imms.workload.id"
 
@@ -22,6 +24,7 @@ const (
 )
 
 var profileIDPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
+var targetPortLabelPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.\/-]{0,127}$`)
 
 // EndpointStrategy describes one platform-specific endpoint selection rule.
 type EndpointStrategy struct {
@@ -32,7 +35,9 @@ type EndpointStrategy struct {
 	Scope      discovery.EndpointScope
 	Provenance string
 	TargetPort uint16
-	Priority   int
+	// TargetPortLabel optionally supplies a validated private TCP port override.
+	TargetPortLabel string
+	Priority        int
 }
 
 // Profile defines a reviewed provider match and native Collector receiver rule.
@@ -62,9 +67,9 @@ func RedisProfile() Profile {
 		ReceiverType:         "redis",
 		CollectionInterval:   "10s",
 		EndpointStrategies: []EndpointStrategy{
-			{ID: "alternate_port", OS: "windows", When: "alternate_port > 0 and port == 6379", Endpoint: "127.0.0.1:`alternate_port`", Scope: discovery.EndpointHost, Provenance: "published_port", TargetPort: 6379, Priority: 100},
-			{ID: "alternate_port", OS: "linux", When: "alternate_port > 0 and port == 6379", Endpoint: "127.0.0.1:`alternate_port`", Scope: discovery.EndpointHost, Provenance: "published_port", TargetPort: 6379, Priority: 100},
-			{ID: "container_endpoint", OS: "linux", When: "alternate_port == 0 and port == 6379 and host != \"\"", Endpoint: "`host`:`port`", Scope: discovery.EndpointContainer, Provenance: "container_network", TargetPort: 6379, Priority: 50},
+			{ID: "alternate_port", OS: "windows", When: "alternate_port > 0", Endpoint: "127.0.0.1:`alternate_port`", Scope: discovery.EndpointHost, Provenance: "published_port", TargetPort: 6379, TargetPortLabel: LabelMonitoringPort, Priority: 100},
+			{ID: "alternate_port", OS: "linux", When: "alternate_port > 0", Endpoint: "127.0.0.1:`alternate_port`", Scope: discovery.EndpointHost, Provenance: "published_port", TargetPort: 6379, TargetPortLabel: LabelMonitoringPort, Priority: 100},
+			{ID: "container_endpoint", OS: "linux", When: "alternate_port == 0 and host != \"\"", Endpoint: "`host`:`port`", Scope: discovery.EndpointContainer, Provenance: "container_network", TargetPort: 6379, TargetPortLabel: LabelMonitoringPort, Priority: 50},
 		},
 	}
 }
@@ -151,7 +156,7 @@ func validateProfile(profile Profile) error {
 	}
 	seen := make(map[string]struct{}, len(profile.EndpointStrategies))
 	for _, strategy := range profile.EndpointStrategies {
-		if strategy.ID == "" || (strategy.OS != "linux" && strategy.OS != "windows") || strategy.When == "" || strategy.Endpoint == "" || strategy.Priority <= 0 || strategy.Provenance == "" || (strategy.Scope != discovery.EndpointContainer && strategy.Scope != discovery.EndpointHost) {
+		if strategy.ID == "" || (strategy.OS != "linux" && strategy.OS != "windows") || strategy.When == "" || strategy.Endpoint == "" || strategy.Priority <= 0 || strategy.Provenance == "" || (strategy.Scope != discovery.EndpointContainer && strategy.Scope != discovery.EndpointHost) || (strategy.TargetPortLabel != "" && (strategy.TargetPort == 0 || !targetPortLabelPattern.MatchString(strategy.TargetPortLabel))) {
 			return fmt.Errorf("monitoring profile %q has an invalid endpoint strategy", profile.ID)
 		}
 		key := strategy.OS + "/" + strategy.ID

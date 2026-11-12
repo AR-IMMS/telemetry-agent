@@ -61,6 +61,10 @@ const (
 type Endpoint struct {
 	Address string `json:"address"`
 	Port    uint16 `json:"port"`
+	// NetworkName preserves Docker's stable network identity for profile-specific endpoint selection.
+	NetworkName string `json:"network_name,omitempty"`
+	// NetworkPriority preserves Docker's gateway selection priority when the API exposes it.
+	NetworkPriority int `json:"network_priority,omitempty"`
 	// ContainerPort links a host-published endpoint to its private container port.
 	// It is optional for older persisted inventory and non-container providers.
 	ContainerPort uint16        `json:"container_port,omitempty"`

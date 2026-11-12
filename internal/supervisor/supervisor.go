@@ -27,6 +27,8 @@ type Options struct {
 	// OnReady runs once after the Collector passes its readiness check.
 	// Returning an error stops the Collector through the normal shutdown path.
 	OnReady func() error
+	// OnOutput receives complete, bounded lines while Collector output continues to the process streams.
+	OnOutput func(string)
 }
 
 // Run starts and supervises one Collector process until it exits or ctx is
@@ -95,6 +97,7 @@ func runWith(
 			"OTEL_GATEWAY_ENDPOINT=" +
 				strings.TrimSpace(options.GatewayEndpoint),
 		},
+		OnOutput: options.OnOutput,
 	})
 }
 

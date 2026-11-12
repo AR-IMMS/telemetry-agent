@@ -9,8 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/discovery"
+	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
 )
 
 func TestInventoryCommandsReadPersistedSnapshot(t *testing.T) {
@@ -141,5 +143,16 @@ func TestInventoryCommandsRejectInvalidArgumentsAndHonorCanceledContext(t *testi
 	var stdout, stderr bytes.Buffer
 	if code := runInventory(ctx, []string{"status", "--state-path", filepath.Join(t.TempDir(), "state.db")}, &stdout, &stderr); code != 1 {
 		t.Fatalf("canceled command code=%d, stderr=%s", code, stderr.String())
+	}
+}
+
+func TestInventoryEvidenceClassifiesMatchingCollectorEndpointAsUnreachable(t *testing.T) {
+	snapshot := agenthealth.Snapshot{CollectorFailures: []agenthealth.CollectorFailure{{
+		Receiver: "redis/alternate_port", Endpoint: "127.0.0.1:16379", Code: "connection_failed", ObservedAt: time.Now().UTC().Format(time.RFC3339Nano),
+	}}}
+	evidence := collectorScrapeEvidenceFromSnapshot(snapshot)
+	endpoint := monitoringprofile.DiagnoseEndpoint(monitoringprofile.RedisProfile(), "windows", []discovery.Endpoint{{Address: "127.0.0.1", Port: 16379, ContainerPort: 6379, Protocol: "tcp", Scope: discovery.EndpointHost, Provenance: "published_port"}}, evidence)
+	if endpoint.State != monitoringprofile.EndpointUnreachable || endpoint.EvidenceCode != "connection_failed" {
+		t.Fatalf("diagnostic with matching OTel scrape failure=%+v, want unreachable with connection_failed evidence", endpoint)
 	}
 }

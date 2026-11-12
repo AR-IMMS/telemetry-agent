@@ -2,9 +2,12 @@ package monitoringprofile
 
 import (
 	"encoding/json"
+	"fmt"
 	"net"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/discovery"
 )
@@ -17,6 +20,8 @@ const (
 	EndpointMissing EndpointState = "endpoint_missing"
 	// EndpointAmbiguous means a strategy matched multiple endpoints and failed closed.
 	EndpointAmbiguous EndpointState = "endpoint_ambiguous"
+	// EndpointInvalid means an explicit profile target-port override is malformed.
+	EndpointInvalid EndpointState = "endpoint_invalid"
 	// EndpointResolved means one candidate is known, but reachability is unverified.
 	EndpointResolved EndpointState = "endpoint_resolved"
 	// EndpointUnreachable means the matching OTel receiver reported a network scrape error.
@@ -33,6 +38,7 @@ type CollectorScrapeEvidence struct {
 	ReceiverID  string
 	Endpoint    string
 	FailureCode string
+	ObservedAt  time.Time
 }
 
 // EndpointDiagnostic reports endpoint strategy selection and its evidence source.
@@ -43,11 +49,17 @@ type EndpointDiagnostic struct {
 	Endpoint       discovery.Endpoint
 	EvidenceSource string
 	EvidenceCode   string
+	EvidenceTime   time.Time
 }
 
 // DiagnoseEndpoint resolves one endpoint using the profile's ordered strategies.
 // A resolved candidate is not considered reachable without matching OTel error evidence.
 func DiagnoseEndpoint(profile Profile, osName string, endpoints []discovery.Endpoint, otelEvidence []CollectorScrapeEvidence) EndpointDiagnostic {
+	return DiagnoseEndpointWithAttributes(profile, osName, endpoints, otelEvidence, nil)
+}
+
+// DiagnoseEndpointWithAttributes resolves one profile endpoint using provider metadata such as port overrides.
+func DiagnoseEndpointWithAttributes(profile Profile, osName string, endpoints []discovery.Endpoint, otelEvidence []CollectorScrapeEvidence, attributes map[string]string) EndpointDiagnostic {
 	result := EndpointDiagnostic{ProfileID: profile.ID, State: EndpointMissing, EvidenceSource: EvidenceAgentInventory}
 	strategies := make([]EndpointStrategy, 0, len(profile.EndpointStrategies))
 	for _, strategy := range profile.EndpointStrategies {
@@ -65,17 +77,23 @@ func DiagnoseEndpoint(profile Profile, osName string, endpoints []discovery.Endp
 		}
 	}
 	for _, strategy := range strategies {
+		targetPort, err := strategyTargetPort(strategy, attributes)
+		if err != nil {
+			result.State = EndpointInvalid
+			result.EvidenceCode = "invalid_target_port"
+			return result
+		}
 		candidates := make([]discovery.Endpoint, 0, len(endpoints))
 		for _, endpoint := range endpoints {
 			if endpoint.Scope != strategy.Scope || endpoint.Provenance != strategy.Provenance || !strings.EqualFold(endpoint.Protocol, "tcp") || strings.TrimSpace(endpoint.Address) == "" {
 				continue
 			}
-			if strategy.TargetPort != 0 {
+			if targetPort != 0 {
 				containerPort := endpoint.ContainerPort
 				if containerPort == 0 && endpoint.Scope == discovery.EndpointContainer {
 					containerPort = endpoint.Port
 				}
-				if containerPort != strategy.TargetPort {
+				if containerPort != targetPort {
 					continue
 				}
 			}
@@ -86,8 +104,25 @@ func DiagnoseEndpoint(profile Profile, osName string, endpoints []discovery.Endp
 		}
 		result.CandidateCount = len(candidates)
 		if len(candidates) > 1 {
-			result.State = EndpointAmbiguous
-			return result
+			if strategy.Scope != discovery.EndpointContainer || strategy.Provenance != "container_network" {
+				result.State = EndpointAmbiguous
+				return result
+			}
+			for _, candidate := range candidates {
+				if candidate.NetworkName == "" {
+					result.State = EndpointAmbiguous
+					return result
+				}
+			}
+			sort.Slice(candidates, func(i, j int) bool {
+				if candidates[i].NetworkPriority != candidates[j].NetworkPriority {
+					return candidates[i].NetworkPriority > candidates[j].NetworkPriority
+				}
+				if candidates[i].NetworkName == candidates[j].NetworkName {
+					return candidates[i].Address < candidates[j].Address
+				}
+				return candidates[i].NetworkName < candidates[j].NetworkName
+			})
 		}
 		result.Endpoint = candidates[0]
 		result.State = EndpointResolved
@@ -97,12 +132,36 @@ func DiagnoseEndpoint(profile Profile, osName string, endpoints []discovery.Endp
 				result.State = EndpointUnreachable
 				result.EvidenceSource = EvidenceCollectorScrapeError
 				result.EvidenceCode = evidence.FailureCode
+				result.EvidenceTime = evidence.ObservedAt
 				return result
 			}
 		}
 		return result
 	}
 	return result
+}
+
+func strategyTargetPort(strategy EndpointStrategy, attributes map[string]string) (uint16, error) {
+	if strategy.TargetPortLabel == "" {
+		return strategy.TargetPort, nil
+	}
+	value := attributes["label."+strategy.TargetPortLabel]
+	if value == "" {
+		return strategy.TargetPort, nil
+	}
+	if len(value) > 5 {
+		return 0, fmt.Errorf("target port exceeds valid TCP range")
+	}
+	for _, digit := range value {
+		if digit < '0' || digit > '9' {
+			return 0, fmt.Errorf("target port must contain ASCII decimal digits")
+		}
+	}
+	port, err := strconv.ParseUint(value, 10, 16)
+	if err != nil || port == 0 {
+		return 0, fmt.Errorf("target port is outside the valid TCP range")
+	}
+	return uint16(port), nil
 }
 
 // ParseCollectorLog extracts a per-endpoint failure only from OTel's Redis scrape error record.

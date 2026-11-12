@@ -37,7 +37,7 @@ func (r Registry) DockerCollectorLayer(osName, endpoint, nodeID string) (config.
 				return config.InlineLayer{}, nil, fmt.Errorf("duplicate receiver rule %q", id)
 			}
 			receivers[id] = map[string]any{
-				"rule":   dockerProfileRule(profile) + " and " + strategy.When,
+				"rule":   dockerProfileRule(profile) + " and (" + strategy.When + ") and (" + targetPortRule(strategy) + ")",
 				"config": map[string]any{"endpoint": strategy.Endpoint, "collection_interval": profile.CollectionInterval},
 				"resource_attributes": map[string]any{
 					"node_id":          nodeID,
@@ -68,7 +68,7 @@ func (r Registry) DockerCollectorLayer(osName, endpoint, nodeID string) (config.
 	layer := config.InlineLayer{
 		Name: "docker_monitoring_profiles",
 		Document: map[string]any{
-			"extensions": map[string]any{"docker_observer": map[string]any{"endpoint": endpoint, "timeout": "5s"}},
+			"extensions": map[string]any{"docker_observer": map[string]any{"endpoint": endpoint, "timeout": "5s", "api_version": "1.44", "use_hostname_if_present": false}},
 			"receivers": map[string]any{"receiver_creator": map[string]any{
 				"watch_observers": []any{"docker_observer"},
 				"receivers":       mergedReceivers,
@@ -77,6 +77,17 @@ func (r Registry) DockerCollectorLayer(osName, endpoint, nodeID string) (config.
 		},
 	}
 	return layer, []string{"receiver_creator"}, nil
+}
+
+func targetPortRule(strategy EndpointStrategy) string {
+	if strategy.TargetPortLabel == "" {
+		if strategy.TargetPort == 0 {
+			return "true"
+		}
+		return fmt.Sprintf("port == %d", strategy.TargetPort)
+	}
+	label := fmt.Sprintf("labels[%q]", strategy.TargetPortLabel)
+	return fmt.Sprintf("(%s == \"\" and port == %d) or (%s != \"\" and port == int(%s))", label, strategy.TargetPort, label, label)
 }
 
 func dockerProfileRule(profile Profile) string {

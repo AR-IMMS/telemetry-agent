@@ -31,6 +31,57 @@ func TestDiagnoseEndpointDistinguishesMissingAmbiguousAndResolved(t *testing.T) 
 	}
 }
 
+func TestDiagnoseEndpointUsesValidatedPortOverrideAndDeterministicNetwork(t *testing.T) {
+	profile := RedisProfile()
+	attributes := map[string]string{"label." + LabelMonitoringPort: "6380"}
+	endpoints := []discovery.Endpoint{
+		{Address: "172.20.0.4", NetworkName: "zeta", NetworkPriority: 2, Port: 6380, ContainerPort: 6380, Protocol: "tcp", Scope: discovery.EndpointContainer, Provenance: "container_network"},
+		{Address: "172.19.0.4", NetworkName: "alpha", NetworkPriority: 1, Port: 6380, ContainerPort: 6380, Protocol: "tcp", Scope: discovery.EndpointContainer, Provenance: "container_network"},
+	}
+	got := DiagnoseEndpointWithAttributes(profile, "linux", endpoints, nil, attributes)
+	if got.State != EndpointResolved || got.CandidateCount != 2 || got.Endpoint.NetworkName != "zeta" || got.Endpoint.Address != "172.20.0.4" {
+		t.Fatalf("deterministic port-override diagnosis=%+v, want highest-priority zeta network at port 6380", got)
+	}
+	if defaultPort := DiagnoseEndpoint(profile, "linux", endpoints, nil); defaultPort.State != EndpointMissing {
+		t.Fatalf("default port diagnosis=%+v, want missing for port-6380-only workload", defaultPort)
+	}
+}
+
+func TestDiagnoseEndpointRejectsInvalidPortOverride(t *testing.T) {
+	for _, value := range []string{"0", "65536", "+6380", "6380x", " 6380", "１２３"} {
+		t.Run(value, func(t *testing.T) {
+			got := DiagnoseEndpointWithAttributes(RedisProfile(), "linux", nil, nil, map[string]string{"label." + LabelMonitoringPort: value})
+			if got.State != EndpointInvalid || got.EvidenceCode != "invalid_target_port" {
+				t.Fatalf("invalid target port diagnosis=%+v", got)
+			}
+		})
+	}
+}
+
+func TestDiagnoseEndpointUsesNetworkNameForPriorityTie(t *testing.T) {
+	profile := RedisProfile()
+	endpoints := []discovery.Endpoint{
+		{Address: "172.20.0.4", NetworkName: "zeta", Port: 6379, ContainerPort: 6379, Protocol: "tcp", Scope: discovery.EndpointContainer, Provenance: "container_network"},
+		{Address: "172.19.0.4", NetworkName: "alpha", Port: 6379, ContainerPort: 6379, Protocol: "tcp", Scope: discovery.EndpointContainer, Provenance: "container_network"},
+	}
+	got := DiagnoseEndpoint(profile, "linux", endpoints, nil)
+	if got.State != EndpointResolved || got.Endpoint.NetworkName != "alpha" {
+		t.Fatalf("network priority tie diagnosis=%+v, want alphabetical network alpha", got)
+	}
+}
+
+func TestDiagnoseEndpointFailsClosedWithoutNetworkIdentity(t *testing.T) {
+	profile := RedisProfile()
+	endpoints := []discovery.Endpoint{
+		{Address: "172.20.0.4", Port: 6379, ContainerPort: 6379, Protocol: "tcp", Scope: discovery.EndpointContainer, Provenance: "container_network"},
+		{Address: "172.19.0.4", Port: 6379, ContainerPort: 6379, Protocol: "tcp", Scope: discovery.EndpointContainer, Provenance: "container_network"},
+	}
+	got := DiagnoseEndpoint(profile, "linux", endpoints, nil)
+	if got.State != EndpointAmbiguous || got.CandidateCount != 2 {
+		t.Fatalf("missing network identity diagnosis=%+v, want fail-closed ambiguity", got)
+	}
+}
+
 func TestDiagnoseEndpointRequiresMatchingOTelScrapeFailureForUnreachable(t *testing.T) {
 	profile := RedisProfile()
 	endpoint := discovery.Endpoint{Address: "127.0.0.1", Port: 16379, Protocol: "tcp", Scope: discovery.EndpointHost, Provenance: "published_port", ContainerPort: 6379}

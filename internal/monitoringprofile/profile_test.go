@@ -24,6 +24,14 @@ func TestRegistryRejectsConflictingReceiverRuleKeys(t *testing.T) {
 	}
 }
 
+func TestRegistryRejectsInvalidTargetPortLabelContract(t *testing.T) {
+	profile := RedisProfile()
+	profile.EndpointStrategies[0].TargetPortLabel = `bad label`
+	if _, err := NewRegistry(profile); err == nil {
+		t.Fatal("NewRegistry accepted an invalid target-port label key")
+	}
+}
+
 func TestRedisProfileRequiresDockerOptInLabels(t *testing.T) {
 	registry, err := NewRegistry(RedisProfile())
 	if err != nil {
@@ -107,6 +115,25 @@ func TestDockerCollectorLayerUsesPlatformEndpointStrategiesAndIdentity(t *testin
 				}
 			}
 		})
+	}
+}
+
+func TestDockerCollectorLayerPinsDeterministicNetworkSelectionAndPortOverrideRule(t *testing.T) {
+	layer, _, err := DefaultRegistry().DockerCollectorLayer("linux", dockerEndpoint("linux"), "core-node-123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	observer := layer.Document["extensions"].(map[string]any)["docker_observer"].(map[string]any)
+	if observer["api_version"] != "1.44" || observer["use_hostname_if_present"] != false || observer["use_host_bindings"] != nil {
+		t.Fatalf("Docker Observer endpoint selection config=%#v, want default host binding behavior and deterministic network IP selection", observer)
+	}
+	creator := layer.Document["receivers"].(map[string]any)["receiver_creator"].(map[string]any)
+	receivers := creator["receivers"].(map[string]any)
+	for id, raw := range receivers {
+		rule := raw.(map[string]any)["rule"].(string)
+		if !strings.Contains(rule, `labels["ar-imms.monitoring.port"]`) || !strings.Contains(rule, `int(labels["ar-imms.monitoring.port"])`) || !strings.Contains(rule, `port == 6379`) {
+			t.Fatalf("receiver %q does not implement default plus validated workload target port rule: %s", id, rule)
+		}
 	}
 }
 

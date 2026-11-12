@@ -90,6 +90,9 @@ func runStatus(
 	if snapshot.LastError != "" {
 		fmt.Fprintf(stdout, "Last error: %s\n", snapshot.LastError)
 	}
+	for _, failure := range snapshot.CollectorFailures {
+		fmt.Fprintf(stdout, "Collector endpoint failure: receiver=%s endpoint=%s code=%s\n", failure.Receiver, failure.Endpoint, failure.Code)
+	}
 
 	return 0
 }

@@ -37,12 +37,21 @@ type RuntimeObservation struct {
 type Snapshot struct {
 	Status Status `json:"status"`
 
-	CollectorState      CollectorState `json:"collectorState"`
-	DesiredGeneration   uint64         `json:"desiredGeneration"`
-	ActivatedGeneration uint64         `json:"activatedGeneration"`
-	AppliedGeneration   uint64         `json:"appliedGeneration"`
-	PendingTeardowns    int            `json:"pendingTeardowns"`
-	LastError           string         `json:"lastError,omitempty"`
+	CollectorState      CollectorState     `json:"collectorState"`
+	DesiredGeneration   uint64             `json:"desiredGeneration"`
+	ActivatedGeneration uint64             `json:"activatedGeneration"`
+	AppliedGeneration   uint64             `json:"appliedGeneration"`
+	PendingTeardowns    int                `json:"pendingTeardowns"`
+	LastError           string             `json:"lastError,omitempty"`
+	CollectorFailures   []CollectorFailure `json:"collectorFailures,omitempty"`
+}
+
+// CollectorFailure is a bounded, sanitized Collector observation exposed by the local status API.
+type CollectorFailure struct {
+	Receiver   string `json:"receiver"`
+	Endpoint   string `json:"endpoint"`
+	Code       string `json:"code"`
+	ObservedAt string `json:"observedAt"`
 }
 
 // Evaluate derives local health from one runtime observation.

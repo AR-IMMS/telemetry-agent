@@ -219,7 +219,7 @@ func (w runtimeWatcher) prepareLaunch() (agentstate.State, supervisor.Options, f
 	if err != nil {
 		return agentstate.State{}, supervisor.Options{}, cleanup, fmt.Errorf("load Agent state: %w", err)
 	}
-	options := w.options
+	options := w.launchOptions()
 	if w.gatewayRuntime != nil {
 		gateway, err := w.gatewayRuntime.GatewayForGeneration(snapshot.ActivatedGeneration)
 		if err != nil {
