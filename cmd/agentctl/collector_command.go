@@ -180,6 +180,7 @@ func dependencyMetricsReceiverLayer(
 	catalog dependency.Catalog,
 	osName string,
 	state agentstate.State,
+	additional ...string,
 ) (config.InlineLayer, error) {
 	managedReceivers, err := catalog.CollectorReceivers(osName, state)
 	if err != nil {
@@ -190,6 +191,7 @@ func dependencyMetricsReceiverLayer(
 		[]string{"otlp", "hostmetrics"},
 		managedReceivers...,
 	)
+	receivers = append(receivers, additional...)
 
 	return config.MetricsReceiverLayer(receivers), nil
 }

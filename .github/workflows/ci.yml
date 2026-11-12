@@ -77,11 +77,51 @@ jobs:
       - name: Check architecture boundaries and production Go file size
         shell: pwsh
         run: ./scripts/check-architecture.ps1
+
+      - name: Start isolated Docker Engine for PR-05 recovery E2E
+        if: runner.os == 'Linux'
+        shell: pwsh
+        run: |
+          $socketDirectory = Join-Path $env:RUNNER_TEMP 'arimms-pr05-dind'
+          $dataDirectory = Join-Path $env:RUNNER_TEMP 'arimms-pr05-dind-data'
+          New-Item -ItemType Directory -Force -Path $socketDirectory | Out-Null
+          New-Item -ItemType Directory -Force -Path $dataDirectory | Out-Null
+          $manager = 'arimms-pr05-dind'
+          docker run --privileged --detach --name $manager --network host --volume "${socketDirectory}:/run/host" --volume "${dataDirectory}:/var/lib/docker" docker:29.5.3-dind --host=unix:///run/host/docker.sock --host=tcp://127.0.0.1:2375
+          if ($LASTEXITCODE -ne 0) { throw 'Could not start isolated Docker-in-Docker test daemon' }
+          $socket = Join-Path $socketDirectory 'docker.sock'
+          $dockerHost = "unix://$socket"
+          $ready = $false
+          for ($attempt = 0; $attempt -lt 90; $attempt++) {
+            if (Test-Path -LiteralPath $socket) {
+              docker exec $manager chmod 666 /run/host/docker.sock
+            }
+            docker --host $dockerHost info *> $null
+            if ($LASTEXITCODE -eq 0) { $ready = $true; break }
+            Start-Sleep -Seconds 1
+          }
+          if (-not $ready) { docker logs $manager; throw 'Isolated Docker Engine did not become ready' }
+          "AR_IMMS_PR05_FIXTURE_DOCKER_HOST=$dockerHost" | Add-Content $env:GITHUB_ENV
+          "AR_IMMS_DOCKER_DISCOVERY_ENDPOINT=$dockerHost" | Add-Content $env:GITHUB_ENV
+          "AR_IMMS_PR05_ISOLATED_DOCKER_MANAGER=$manager" | Add-Content $env:GITHUB_ENV
+
       - name: Test
         run: go test ./... -count=1
+
+      - name: Live Docker/Collector/OTLP profile E2E
+        if: runner.os == 'Linux'
+        env:
+          AR_IMMS_PR05_NATIVE_RUNTIME_E2E: '1'
+          AR_IMMS_PR05_COLLECTOR_BINARY: ${{ env.OTELCOL_CONTRIB_BINARY }}
+        run: go test ./cmd/agentctl -run '^TestLiveNativeDockerRedisProfileDeliversOTLP$' -count=1 -v
 
       - name: Vet
         run: go vet ./...
 
       - name: Build
         run: go build ./...
+
+      - name: Remove isolated Docker Engine
+        if: always() && runner.os == 'Linux'
+        shell: pwsh
+        run: docker rm --force arimms-pr05-dind

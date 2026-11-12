@@ -2,9 +2,11 @@ package supervisor
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 )
 
 // LaunchOptions contains the verified Collector executable, final config, and
@@ -13,6 +15,7 @@ type LaunchOptions struct {
 	BinaryPath  string
 	ConfigPath  string
 	Environment []string
+	OnOutput    func(string)
 }
 
 func (o LaunchOptions) validate() error {
@@ -78,8 +81,8 @@ func (s *execStarter) Start(options LaunchOptions) (Child, error) {
 	)
 	// Keep Collector diagnostics visible to the operator instead of buffering
 	// them in the supervisor.
-	command.Stdout = os.Stdout
-	command.Stderr = os.Stderr
+	command.Stdout = newObservedWriter(os.Stdout, options.OnOutput)
+	command.Stderr = newObservedWriter(os.Stderr, options.OnOutput)
 	command.Env = mergeEnvironment(os.Environ(), options.Environment)
 
 	// Platform-specific process-group setup lets graceful stop reach descendants.
@@ -98,6 +101,51 @@ func (s *execStarter) Start(options LaunchOptions) (Child, error) {
 	go child.waitForExit()
 
 	return child, nil
+}
+
+const maxObservedLineBytes = 64 * 1024
+
+type observedWriter struct {
+	mu      sync.Mutex
+	output  io.Writer
+	observe func(string)
+	line    []byte
+	discard bool
+}
+
+func newObservedWriter(output io.Writer, observe func(string)) *observedWriter {
+	return &observedWriter{output: output, observe: observe}
+}
+
+func (w *observedWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	n, err := w.output.Write(p)
+	for _, value := range p[:n] {
+		if value == '\n' {
+			w.emit()
+			continue
+		}
+		if w.discard {
+			continue
+		}
+		if len(w.line) == maxObservedLineBytes {
+			w.line = nil
+			w.discard = true
+			continue
+		}
+		w.line = append(w.line, value)
+	}
+	return n, err
+}
+
+func (w *observedWriter) emit() {
+	line := strings.TrimSpace(string(w.line))
+	w.line = w.line[:0]
+	w.discard = false
+	if line != "" && w.observe != nil {
+		w.observe(line)
+	}
 }
 
 type execChild struct {

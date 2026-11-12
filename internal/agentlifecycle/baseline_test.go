@@ -84,6 +84,35 @@ func TestCleanBaselineSnapshotIncludesManagedReceiversAndFingerprintsLayers(t *t
 	}
 }
 
+func TestCleanBaselineSnapshotIncludesNativeMonitoringInputsInConfigurationAndFingerprint(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "base.yaml")
+	if err := os.WriteFile(path, []byte("extensions: {health_check: {endpoint: 127.0.0.1:13133}}\nservice: {extensions: [health_check], pipelines: {metrics: {receivers: [otlp]}}}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	platform := identity.PlatformInfo{OS: "windows", Architecture: "amd64"}
+	layers := []config.Layer{{Name: "base", Path: path}}
+	state := agentstate.State{}
+	nativeLayer := config.InlineLayer{Name: "native_docker", Document: map[string]any{
+		"extensions": map[string]any{"docker_observer": map[string]any{"endpoint": "npipe:////./pipe/docker_engine"}},
+		"service":    map[string]any{"extensions": []any{"health_check", "docker_observer"}},
+	}}
+	first, err := BuildCleanBaselineSnapshotWithAdditionalInputs(platform, dependency.Catalog{}, layers, state, nil, []config.InlineLayer{nativeLayer}, []string{"receiver_creator"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	receivers := first.Input.InlineLayers[0].Document["service"].(map[string]any)["pipelines"].(map[string]any)["metrics"].(map[string]any)["receivers"].([]any)
+	if got, want := receivers, []any{"otlp", "hostmetrics", "receiver_creator"}; !equalAnySlice(got, want) {
+		t.Fatalf("metrics receivers=%#v, want %#v", got, want)
+	}
+	second, err := BuildCleanBaselineSnapshot(platform, dependency.Catalog{}, layers, state, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Fingerprint == second.Fingerprint {
+		t.Fatal("baseline fingerprint ignored the native monitoring policy inputs")
+	}
+}
+
 func equalAnySlice(left, right []any) bool {
 	if len(left) != len(right) {
 		return false

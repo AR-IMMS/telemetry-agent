@@ -107,6 +107,10 @@ func (f *fakeRepository) CommitProviderSnapshot(expectedWriteRevision uint64, s 
 		}
 	}
 	f.snapshot.Resources = append(filtered, resources...)
+	f.snapshot.Providers = []ProviderStatus{{
+		ProviderID: s.ProviderID, ProviderInstanceID: s.ProviderInstanceID, Enabled: true,
+		LastAttemptAt: s.ObservedAt, LastSuccessAt: s.ObservedAt, ResourceCount: len(s.Resources),
+	}}
 	if changed {
 		f.snapshot.Revision++
 	}
@@ -167,6 +171,49 @@ func TestCoordinatorProviderFailureDoesNotMarkResourcesMissing(t *testing.T) {
 	}
 	if repo.snapshot.Providers[0].LastErrorCode != "permission_denied" {
 		t.Fatalf("provider status=%+v", repo.snapshot.Providers)
+	}
+}
+
+func TestCoordinatorProviderRecoveryClearsFailureAndRefreshesInventory(t *testing.T) {
+	at := time.Now().UTC()
+	repo := &fakeRepository{}
+	initial := fakeProvider{id: "docker", instance: "local", snapshot: testSnapshot(at, observation("id", "running"))}
+	coordinator, err := NewCoordinator(repo, []DiscoveryProvider{initial}, DefaultPolicy(), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := coordinator.DiscoverOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	failed := fakeProvider{id: "docker", instance: "local", err: errors.New("permission denied")}
+	coordinator, err = NewCoordinator(repo, []DiscoveryProvider{failed}, DefaultPolicy(), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := coordinator.DiscoverOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if repo.snapshot.Resources[0].Presence != PresencePresent || repo.snapshot.Providers[0].LastErrorCode != "permission_denied" {
+		t.Fatalf("outage state did not preserve inventory and publish the error: %+v", repo.snapshot)
+	}
+
+	recoveredSnapshot := testSnapshot(at.Add(time.Minute), observation("id", "running"))
+	recoveredSnapshot.Resources[0].Endpoints = []Endpoint{{Address: "127.0.0.1", Port: 16379, ContainerPort: 6379, Protocol: "tcp", Scope: EndpointHost, Provenance: "published_port"}}
+	recovered := fakeProvider{id: "docker", instance: "local", snapshot: recoveredSnapshot}
+	coordinator, err = NewCoordinator(repo, []DiscoveryProvider{recovered}, DefaultPolicy(), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := coordinator.DiscoverOnce(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ProviderResults[0].ErrorCode != "" || repo.snapshot.Providers[0].LastErrorCode != "" {
+		t.Fatalf("recovery left a provider error: result=%+v status=%+v", result, repo.snapshot.Providers)
+	}
+	if len(repo.snapshot.Resources) != 1 || repo.snapshot.Resources[0].Presence != PresencePresent || len(repo.snapshot.Resources[0].Endpoints) != 1 || repo.snapshot.Resources[0].Endpoints[0].Port != 16379 {
+		t.Fatalf("recovery did not refresh the existing resource endpoint: %+v", repo.snapshot.Resources)
 	}
 }
 

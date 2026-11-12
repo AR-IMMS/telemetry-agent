@@ -119,11 +119,17 @@ func runBootstrap(
 
 		return 1
 	}
+	nativeLayers, nativeReceivers, err := nativeDockerMonitoringInputs(*statePath, platform.OS)
+	if err != nil {
+		fmt.Fprintf(stderr, "configure native Docker monitoring: %v\n", err)
+		return 1
+	}
 
 	receiverLayer, err := dependencyMetricsReceiverLayer(
 		catalog,
 		platform.OS,
 		state,
+		nativeReceivers...,
 	)
 	if err != nil {
 		fmt.Fprintf(
@@ -150,11 +156,9 @@ func runBootstrap(
 		InstallDir: *installDir,
 		ConfigPath: *configPath,
 		ConfigInput: config.RenderInput{
-			Platform: platform,
-			Layers:   layers,
-			InlineLayers: []config.InlineLayer{
-				receiverLayer,
-			},
+			Platform:     platform,
+			Layers:       layers,
+			InlineLayers: append([]config.InlineLayer{receiverLayer}, nativeLayers...),
 		},
 		ValidationEnvironment: []string{
 			"OTEL_GATEWAY_ENDPOINT=" + *validationEndpoint,

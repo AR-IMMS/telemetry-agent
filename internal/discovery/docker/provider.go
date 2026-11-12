@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/ar-imms/telemetry-agent/internal/discovery"
+	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
 	"github.com/distribution/reference"
 	"github.com/moby/moby/api/types/container"
 	moby "github.com/moby/moby/client"
@@ -186,7 +187,9 @@ func normalizedImageAttributes(image string) (map[string]string, error) {
 func allowedLabel(key string) bool {
 	switch key {
 	case "com.docker.compose.project", "com.docker.compose.service", "com.docker.compose.version",
-		"org.opencontainers.image.title", "org.opencontainers.image.version":
+		"org.opencontainers.image.title", "org.opencontainers.image.version",
+		monitoringprofile.LabelMonitoringEnabled, monitoringprofile.LabelMonitoringProfile, monitoringprofile.LabelWorkloadID,
+		monitoringprofile.LabelMonitoringPort:
 		return true
 	default:
 		return false
@@ -195,43 +198,55 @@ func allowedLabel(key string) bool {
 
 func mapEndpoints(item container.Summary) ([]discovery.Endpoint, error) {
 	endpoints := make([]discovery.Endpoint, 0, len(item.Ports)*2)
-	networkAddresses := make([]string, 0)
+	type networkEndpoint struct {
+		name, address string
+		priority      int
+	}
+	networkAddresses := make([]networkEndpoint, 0)
 	if item.NetworkSettings != nil {
-		for _, settings := range item.NetworkSettings.Networks {
+		for name, settings := range item.NetworkSettings.Networks {
 			if settings != nil && settings.IPAddress.IsValid() {
-				networkAddresses = append(networkAddresses, settings.IPAddress.String())
+				networkAddresses = append(networkAddresses, networkEndpoint{name: name, address: settings.IPAddress.String(), priority: settings.GwPriority})
 			}
 		}
 	}
-	sort.Strings(networkAddresses)
+	sort.Slice(networkAddresses, func(i, j int) bool {
+		if networkAddresses[i].priority != networkAddresses[j].priority {
+			return networkAddresses[i].priority > networkAddresses[j].priority
+		}
+		if networkAddresses[i].name == networkAddresses[j].name {
+			return networkAddresses[i].address < networkAddresses[j].address
+		}
+		return networkAddresses[i].name < networkAddresses[j].name
+	})
 	for _, port := range item.Ports {
 		protocol := strings.ToLower(port.Type)
 		if port.PrivatePort == 0 || (protocol != "tcp" && protocol != "udp" && protocol != "sctp") {
 			return nil, fmt.Errorf("Docker returned an invalid container port")
 		}
-		for _, address := range networkAddresses {
+		for _, network := range networkAddresses {
 			endpoints = append(endpoints, discovery.Endpoint{
-				Address: address, Port: port.PrivatePort, Protocol: protocol,
+				Address: network.address, NetworkName: network.name, NetworkPriority: network.priority, Port: port.PrivatePort, ContainerPort: port.PrivatePort, Protocol: protocol,
 				Scope: discovery.EndpointContainer, Provenance: "container_network",
 			})
 		}
 		if len(networkAddresses) == 0 {
 			endpoints = append(endpoints, discovery.Endpoint{
-				Port: port.PrivatePort, Protocol: protocol,
+				Port: port.PrivatePort, ContainerPort: port.PrivatePort, Protocol: protocol,
 				Scope: discovery.EndpointContainer, Provenance: "exposed_port",
 			})
 		}
 		if port.PublicPort > 0 && port.IP.IsValid() {
 			endpoints = append(endpoints, discovery.Endpoint{
-				Address: port.IP.String(), Port: port.PublicPort, Protocol: protocol,
+				Address: port.IP.String(), Port: port.PublicPort, ContainerPort: port.PrivatePort, Protocol: protocol,
 				Scope: discovery.EndpointHost, Provenance: "published_port",
 			})
 		}
 	}
 	if len(item.Ports) == 0 {
-		for _, address := range networkAddresses {
+		for _, network := range networkAddresses {
 			endpoints = append(endpoints, discovery.Endpoint{
-				Address: address, Scope: discovery.EndpointContainer, Provenance: "network_address",
+				Address: network.address, NetworkName: network.name, NetworkPriority: network.priority, Scope: discovery.EndpointContainer, Provenance: "network_address",
 			})
 		}
 	}

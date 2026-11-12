@@ -1,9 +1,9 @@
 # PR-04e — Reconciliation Runtime Apply Port
 
-**Status:** REVIEWED — local verification and independent review PASS; final-head CI pending<br>
+**Status:** MERGED — local verification, independent review, and final-head CI PASS<br>
 **Release target:** `v0.1.4a-next`<br>
 **Branch:** `feat/v0.1.4a-next-work`<br>
-**PR / commit:** pending<br>
+**PR / commit:** [#27](https://github.com/AR-IMMS/telemetry-agent/pull/27); implementation `2f1b6301038412bce735d099bbe0a880380298d8`; merge `beb95aa53c6b454c103fecf02b74884811c82483`<br>
 **Verification environment:** Windows 11, Go 1.25.5, Docker Engine 29.5.3, Docker Compose 5.1.4
 
 ## Implemented
@@ -36,6 +36,7 @@
 | `gofmt` on changed Go files | Windows | PASS |
 | Live `TestLiveDockerTemplateConvergesThroughAgentRuntime` | Windows, three disposable Redis 7 containers, pinned `otelcol-contrib` 0.160.0 | PASS; complete lifecycle and telemetry E2E, 95.79s. The Collector archive was verified against the repository-pinned SHA-256 and size before use. |
 | `git diff --check` and Markdown relative links | Windows | PASS |
+| PR #27 CI run `43178655519` | GitHub Actions, `ubuntu-latest` and `windows-latest` | PASS; tests, vet, build, Collector capability probe, and architecture checks passed on both platforms. |
 
 Independent review found that the initial import guard only matched the root reconciliation package; it now covers reconciliation subpackages as well. Review also corrected the documentation to describe `CleanBaselineSnapshot` as the lifecycle baseline builder's return type, not as a current CLI-consumed contract. The updated diff has no remaining actionable review findings.
 
@@ -45,7 +46,7 @@ The first live-E2E attempt supplied Docker's abbreviated container IDs and faile
 
 - Windows live Collector/Docker runtime E2E: PASS for the covered Template-to-runtime path. The test does not install the Windows SCM service.
 - Linux/amd64: cross-build PASS; native Linux runtime/E2E NOT RUN.
-- GitHub PR and final-head CI: pending.
+- PR #27 merged to `chore/v0.1.4a-next` at `beb95aa53c6b454c103fecf02b74884811c82483` after both platform CI jobs passed.
 - The unrelated untracked `cmd/agentctl/otel.yaml.lifecycle.lock` was preserved and excluded from all changes.
 - `docs/shared/` was not modified.
 

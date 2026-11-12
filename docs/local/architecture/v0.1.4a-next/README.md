@@ -12,13 +12,15 @@ proposal package is dated 2026-11-12.
 2. `architecture-overview.md`.
 3. `context-boundaries.md`, `source-structure.md`, `state-and-event-model.md`,
    `otel-integration-strategy.md`, and `opamp-integration.md`.
-4. [Repository coding policy supplement](../../development/coding-policy.md).
-5. [Complete plan index](../../plans/v0.1.4a-next/README.md),
+4. [Discovery and monitoring contracts](discovery-monitoring-contracts.md),
+   including the approved PR-05 identity, opt-in, ownership, and evidence rules.
+5. [Repository coding policy supplement](../../development/coding-policy.md).
+6. [Complete plan index](../../plans/v0.1.4a-next/README.md),
    [migration roadmap](../../plans/v0.1.4a-next/migration-roadmap.md), and
    [PR-01 plan](../../plans/v0.1.4a-next/pr-01-foundation.md).
-6. [Testbed specification](../../requirements/v0.1.4a-next/testbed-spec.md) and
+7. [Testbed specification](../../requirements/v0.1.4a-next/testbed-spec.md) and
    [test matrix](../../verification/v0.1.4a-next/test-matrix.md).
-7. [Runbook readiness](../../runbooks/v0.1.4a-next/README.md).
+8. [Runbook readiness](../../runbooks/v0.1.4a-next/README.md).
 
 ## Decision status
 

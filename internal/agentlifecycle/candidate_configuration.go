@@ -58,7 +58,11 @@ func ApplyCollectorCandidate(
 				return candidateActivationPlan{}, fmt.Errorf("active Collector configuration cannot be used as a clean baseline layer")
 			}
 		}
-		fresh, err := BuildCleanBaselineSnapshot(options.Platform, options.Catalog, options.Layers, state, values)
+		additionalLayers, additionalReceivers, err := additionalBaselineInputs(options.AdditionalBaselineInputs)
+		if err != nil {
+			return candidateActivationPlan{}, fmt.Errorf("resolve additional clean baseline inputs: %w", err)
+		}
+		fresh, err := BuildCleanBaselineSnapshotWithAdditionalInputs(options.Platform, options.Catalog, options.Layers, state, values, additionalLayers, additionalReceivers)
 		if err != nil {
 			return candidateActivationPlan{}, fmt.Errorf("refresh clean Collector baseline: %w", err)
 		}
@@ -112,6 +116,13 @@ func ApplyCollectorCandidate(
 		return bootstrap.ActivateRenderedConfig(ctx, options.Runner, options.BinaryPath, options.ConfigPath, content, environment)
 	}
 	return coordinator.ApplyCandidate(ctx, request, build, activate, repository)
+}
+
+func additionalBaselineInputs(resolve func() ([]config.InlineLayer, []string, error)) ([]config.InlineLayer, []string, error) {
+	if resolve == nil {
+		return nil, nil, nil
+	}
+	return resolve()
 }
 
 func candidateDigestMatches(content []byte, expected string) bool {

@@ -3,11 +3,13 @@ package agentlifecycle
 import (
 	"context"
 	"errors"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
@@ -15,6 +17,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/config"
 	"github.com/ar-imms/telemetry-agent/internal/dependency"
 	"github.com/ar-imms/telemetry-agent/internal/identity"
+	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
 	"github.com/ar-imms/telemetry-agent/internal/reconciliation/contracts"
 	"github.com/ar-imms/telemetry-agent/internal/supervisor"
 )
@@ -169,6 +172,164 @@ func TestApplyCollectorCandidateValidationFailurePreservesActiveConfigAndApplied
 	}
 	if state.AppliedGeneration != 0 || state.ActivatedGeneration != 0 || state.PendingActivation != nil || state.DesiredGeneration != request.ExpectedGeneration+1 {
 		t.Fatalf("validation failure state = %#v", state)
+	}
+}
+
+func TestPinnedInvalidNativeProfileCandidateRestoresPreviousConfiguration(t *testing.T) {
+	binary := strings.TrimSpace(os.Getenv("AR_IMMS_PR05_COLLECTOR_BINARY"))
+	if binary == "" {
+		t.Skip("set AR_IMMS_PR05_COLLECTOR_BINARY to induce native profile validation failure with pinned Collector v0.160.0")
+	}
+	store, _, options, activePath, _ := candidateFixture(t)
+	before, err := os.ReadFile(activePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dockerEndpoint := "unix:///var/run/docker.sock"
+	if options.Platform.OS == "windows" {
+		dockerEndpoint = "npipe:////./pipe/docker_engine"
+	}
+	layer, receiverNames, err := monitoringprofile.DefaultRegistry().DockerCollectorLayer(options.Platform.OS, dockerEndpoint, "core-node-123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	receivers := layer.Document["receivers"].(map[string]any)
+	creator := receivers["receiver_creator"].(map[string]any)
+	creator["watch_observers"] = "malformed"
+	additional := func() ([]config.InlineLayer, []string, error) {
+		return []config.InlineLayer{layer}, receiverNames, nil
+	}
+	snapshot, err := BuildCleanBaselineSnapshotWithAdditionalInputs(options.Platform, options.Catalog, options.Layers, state, options.RenderValues, []config.InlineLayer{layer}, receiverNames)
+	if err != nil {
+		t.Fatal(err)
+	}
+	capabilities, err := collectorruntime.StaticCatalog(options.Platform)
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate, err := collectorruntime.NewCompiler(capabilities).Compile(snapshot.Input, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := contracts.CandidateApplyRequest{BaselineFingerprint: snapshot.Fingerprint, ExpectedGeneration: snapshot.DesiredGeneration, Candidate: candidate}
+	options.AdditionalBaselineInputs = additional
+	options.BinaryPath = binary
+	options.Runner = bootstrap.OSCommandRunner{}
+	outcome, err := ApplyCollectorCandidate(context.Background(), store, request, options)
+	if !errors.Is(err, bootstrap.ErrNativeConfigValidation) || outcome.Stage != "final_validation" || outcome.RecoveryResult != "succeeded" {
+		t.Fatalf("profile candidate failure outcome=%+v error=%v", outcome, err)
+	}
+	after, err := os.ReadFile(activePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) || strings.Contains(string(after), "redis/alternate_port") {
+		t.Fatalf("validation failure did not restore the prior Agent-owned config:\n%s", after)
+	}
+	state, err = store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.AppliedGeneration != 0 || state.ActivatedGeneration != 0 || state.PendingActivation != nil {
+		t.Fatalf("rejected profile candidate changed activation state: %+v", state)
+	}
+}
+
+func TestPinnedNativeProfileActivationFailureRollsBackToLKG(t *testing.T) {
+	binary := strings.TrimSpace(os.Getenv("AR_IMMS_PR05_COLLECTOR_BINARY"))
+	if binary == "" {
+		t.Skip("set AR_IMMS_PR05_COLLECTOR_BINARY to induce native profile activation failure with pinned Collector v0.160.0")
+	}
+	store, _, options, activePath, _ := candidateFixture(t)
+	before, err := os.ReadFile(activePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	healthEndpoint := listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	baselineBytes, err := os.ReadFile(options.Layers[0].Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	baselineBytes = []byte(strings.Replace(string(baselineBytes), "127.0.0.1:13133", healthEndpoint, 1))
+	if err := os.WriteFile(options.Layers[0].Path, baselineBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dockerEndpoint := "unix:///tmp/ar-imms-pr05-missing-docker.sock"
+	if options.Platform.OS == "windows" {
+		dockerEndpoint = "npipe:////./pipe/ar-imms-pr05-missing-docker"
+	}
+	layer, receiverNames, err := monitoringprofile.DefaultRegistry().DockerCollectorLayer(options.Platform.OS, dockerEndpoint, "core-node-123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	additional := func() ([]config.InlineLayer, []string, error) {
+		return []config.InlineLayer{layer}, receiverNames, nil
+	}
+	snapshot, err := BuildCleanBaselineSnapshotWithAdditionalInputs(options.Platform, options.Catalog, options.Layers, state, options.RenderValues, []config.InlineLayer{layer}, receiverNames)
+	if err != nil {
+		t.Fatal(err)
+	}
+	capabilities, err := collectorruntime.StaticCatalog(options.Platform)
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate, err := collectorruntime.NewCompiler(capabilities).Compile(snapshot.Input, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := contracts.CandidateApplyRequest{BaselineFingerprint: snapshot.Fingerprint, ExpectedGeneration: snapshot.DesiredGeneration, Candidate: candidate}
+	options.AdditionalBaselineInputs = additional
+	options.BinaryPath = binary
+	options.Runner = bootstrap.OSCommandRunner{}
+	outcome, err := ApplyCollectorCandidate(context.Background(), store, request, options)
+	if err != nil || outcome.Result != "activated" {
+		t.Fatalf("apply valid but unavailable Docker profile candidate: outcome=%+v error=%v", outcome, err)
+	}
+	if !strings.Contains(string(candidate.Bytes()), "receiver_creator") || !strings.Contains(string(candidate.Bytes()), "ar-imms-pr05-missing-docker") {
+		t.Fatal("activation failure candidate did not contain the valid native profile")
+	}
+	runtimeCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	watcher := runtimeWatcher{
+		store: store, run: supervisor.Run,
+		options:      supervisor.Options{BinaryPath: binary, ConfigPath: activePath, HealthEndpoint: "http://" + healthEndpoint, StartupTimeout: 5 * time.Second, ShutdownTimeout: 5 * time.Second},
+		pollInterval: 50 * time.Millisecond, lockPath: activePath + ".lifecycle",
+		commitConfig: bootstrap.CommitLastKnownGoodConfigFrom, snapshotConfig: bootstrap.SnapshotRuntimeConfig,
+		rollback: func(ctx context.Context, path string, generation uint64) error {
+			return rollbackUnappliedConfiguration(ctx, store, path, generation)
+		},
+	}
+	if err := watcher.Run(runtimeCtx); err == nil {
+		t.Fatal("Collector unexpectedly became ready with an unavailable Docker Observer endpoint")
+	}
+	after, err := os.ReadFile(activePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) || strings.Contains(string(after), "receiver_creator") {
+		t.Fatalf("activation failure did not restore the prior config:\n%s", after)
+	}
+	state, err = store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.AppliedGeneration != 0 || state.ActivatedGeneration != 0 || state.PendingActivation != nil {
+		t.Fatalf("activation failure left candidate lifecycle state: %+v", state)
 	}
 }
 

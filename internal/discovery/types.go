@@ -59,11 +59,18 @@ const (
 
 // Endpoint records address evidence without asserting reachability.
 type Endpoint struct {
-	Address    string        `json:"address"`
-	Port       uint16        `json:"port"`
-	Protocol   string        `json:"protocol,omitempty"`
-	Scope      EndpointScope `json:"scope"`
-	Provenance string        `json:"provenance"`
+	Address string `json:"address"`
+	Port    uint16 `json:"port"`
+	// NetworkName preserves Docker's stable network identity for profile-specific endpoint selection.
+	NetworkName string `json:"network_name,omitempty"`
+	// NetworkPriority preserves Docker's gateway selection priority when the API exposes it.
+	NetworkPriority int `json:"network_priority,omitempty"`
+	// ContainerPort links a host-published endpoint to its private container port.
+	// It is optional for older persisted inventory and non-container providers.
+	ContainerPort uint16        `json:"container_port,omitempty"`
+	Protocol      string        `json:"protocol,omitempty"`
+	Scope         EndpointScope `json:"scope"`
+	Provenance    string        `json:"provenance"`
 }
 
 // ResourceKey is a provider-scoped stable identity.

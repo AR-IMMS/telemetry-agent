@@ -28,6 +28,8 @@
 
 The legacy Agent compiler materialization path and OTel Receiver Creator must not both instantiate the same receiver/resource. A feature-flagged migration must switch ownership per target and prove parity. Existing proposal/approval records/CLI retained as migration compatibility until explicit deprecation, not part of vNext routine DX.
 
+PR-05's approved Docker/Redis identity, label opt-in, endpoint strategy, ownership, rollback, and evidence semantics are specified in [discovery-monitoring-contracts.md](discovery-monitoring-contracts.md). That contract assigns dynamic receiver lifecycle to OTel only for opted-in Docker targets while preserving Agent-managed Redis receivers for the legacy path.
+
 ## Unresolved boundaries
 
 Core-vs-local config authority; precise identity mapping to OpAMP instance UID; credential attachment to protected receivers; privileged operations executor. These require ADRs prior to the relevant PR.

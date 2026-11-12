@@ -9,8 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/discovery"
+	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
 )
 
 func TestInventoryCommandsReadPersistedSnapshot(t *testing.T) {
@@ -22,8 +24,11 @@ func TestInventoryCommandsReadPersistedSnapshot(t *testing.T) {
 		Resources: []discovery.ResourceObservation{{
 			ProviderResourceID: "container-1", Kind: discovery.ResourceContainer,
 			DisplayName: "redis-test", LifecycleState: "running",
-			Attributes: map[string]string{"label.safe": "value"},
-			Endpoints:  []discovery.Endpoint{{Address: "172.18.0.2", Port: 6379, Protocol: "tcp", Scope: discovery.EndpointContainer, Provenance: "container_network"}},
+			Attributes: map[string]string{"label.safe": "value", "label.ar-imms.monitoring.enabled": "true", "label.ar-imms.monitoring.profile": "redis"},
+			Endpoints: []discovery.Endpoint{
+				{Address: "172.18.0.2", Port: 6379, ContainerPort: 6379, Protocol: "tcp", Scope: discovery.EndpointContainer, Provenance: "container_network"},
+				{Address: "127.0.0.1", Port: 16379, ContainerPort: 6379, Protocol: "tcp", Scope: discovery.EndpointHost, Provenance: "published_port"},
+			},
 		}},
 	}
 	resources, changed, err := discovery.ReconcileProviderSnapshot(nil, snapshot, discovery.DefaultPolicy())
@@ -39,7 +44,7 @@ func TestInventoryCommandsReadPersistedSnapshot(t *testing.T) {
 		want []string
 	}{
 		{[]string{"list", "--state-path", statePath}, []string{"docker", "container-1", "redis-test", "running", "present", "fresh"}},
-		{[]string{"inspect", "--state-path", statePath, "docker/local/container-1"}, []string{"Endpoint evidence:", "172.18.0.2", "container_network", "label.safe=value"}},
+		{[]string{"inspect", "--state-path", statePath, "docker/local/container-1"}, []string{"Endpoint evidence:", "172.18.0.2", "container_network", "label.safe=value", "Monitoring profile: redis", "Profile endpoint: endpoint_resolved", "Endpoint reachability: unverified"}},
 		{[]string{"status", "--state-path", statePath}, []string{"Inventory revision: 1", "Provider: docker/local", "resources: 1", "last error: none"}},
 	} {
 		var stdout, stderr bytes.Buffer
@@ -138,5 +143,16 @@ func TestInventoryCommandsRejectInvalidArgumentsAndHonorCanceledContext(t *testi
 	var stdout, stderr bytes.Buffer
 	if code := runInventory(ctx, []string{"status", "--state-path", filepath.Join(t.TempDir(), "state.db")}, &stdout, &stderr); code != 1 {
 		t.Fatalf("canceled command code=%d, stderr=%s", code, stderr.String())
+	}
+}
+
+func TestInventoryEvidenceClassifiesMatchingCollectorEndpointAsUnreachable(t *testing.T) {
+	snapshot := agenthealth.Snapshot{CollectorFailures: []agenthealth.CollectorFailure{{
+		Receiver: "redis/alternate_port", Endpoint: "127.0.0.1:16379", Code: "connection_failed", ObservedAt: time.Now().UTC().Format(time.RFC3339Nano),
+	}}}
+	evidence := collectorScrapeEvidenceFromSnapshot(snapshot)
+	endpoint := monitoringprofile.DiagnoseEndpoint(monitoringprofile.RedisProfile(), "windows", []discovery.Endpoint{{Address: "127.0.0.1", Port: 16379, ContainerPort: 6379, Protocol: "tcp", Scope: discovery.EndpointHost, Provenance: "published_port"}}, evidence)
+	if endpoint.State != monitoringprofile.EndpointUnreachable || endpoint.EvidenceCode != "connection_failed" {
+		t.Fatalf("diagnostic with matching OTel scrape failure=%+v, want unreachable with connection_failed evidence", endpoint)
 	}
 }

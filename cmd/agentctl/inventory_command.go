@@ -5,12 +5,16 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/discovery"
+	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
 )
 
 // writeInventoryHelp prints the read-only inventory command surface.
@@ -100,6 +104,16 @@ func runInventory(ctx context.Context, args []string, stdout, stderr io.Writer) 
 				for _, endpoint := range resource.Endpoints {
 					fmt.Fprintf(stdout, "  scope=%s address=%s port=%d protocol=%s provenance=%s\n", endpoint.Scope, endpoint.Address, endpoint.Port, endpoint.Protocol, endpoint.Provenance)
 				}
+				if profile, matched := monitoringprofile.DefaultRegistry().Match(string(resource.Key.Provider), resource.Attributes); matched {
+					diagnostic := monitoringprofile.DiagnoseEndpointWithAttributes(profile, runtime.GOOS, resource.Endpoints, fetchCollectorScrapeEvidence(ctx), resource.Attributes)
+					fmt.Fprintf(stdout, "Monitoring profile: %s\nProfile endpoint: %s (candidates=%d, evidence=%s)\n",
+						profile.ID, diagnostic.State, diagnostic.CandidateCount, diagnostic.EvidenceSource)
+					if diagnostic.State == monitoringprofile.EndpointResolved {
+						fmt.Fprintln(stdout, "Endpoint reachability: unverified; only a matching OTel receiver error can establish unreachable")
+					} else if diagnostic.State == monitoringprofile.EndpointUnreachable {
+						fmt.Fprintf(stdout, "Endpoint reachability: unreachable (last OTel evidence code=%s at %s)\n", diagnostic.EvidenceCode, diagnostic.EvidenceTime.UTC().Format(time.RFC3339Nano))
+					}
+				}
 				if resource.MissingSince != nil {
 					fmt.Fprintf(stdout, "Missing since: %s (%d complete snapshots)\n", resource.MissingSince.Format(time.RFC3339Nano), resource.MissingSnapshots)
 				}
@@ -125,6 +139,25 @@ func runInventory(ctx context.Context, args []string, stdout, stderr io.Writer) 
 		return 0
 	}
 	return 2
+}
+
+func fetchCollectorScrapeEvidence(ctx context.Context) []monitoringprofile.CollectorScrapeEvidence {
+	statusContext, cancel := context.WithTimeout(ctx, 400*time.Millisecond)
+	defer cancel()
+	snapshot, err := agenthealth.FetchStatus(statusContext, &http.Client{Timeout: 400 * time.Millisecond}, defaultStatusEndpoint)
+	if err != nil {
+		return nil
+	}
+	return collectorScrapeEvidenceFromSnapshot(snapshot)
+}
+
+func collectorScrapeEvidenceFromSnapshot(snapshot agenthealth.Snapshot) []monitoringprofile.CollectorScrapeEvidence {
+	evidence := make([]monitoringprofile.CollectorScrapeEvidence, 0, len(snapshot.CollectorFailures))
+	for _, failure := range snapshot.CollectorFailures {
+		observedAt, _ := time.Parse(time.RFC3339Nano, failure.ObservedAt)
+		evidence = append(evidence, monitoringprofile.CollectorScrapeEvidence{ReceiverID: failure.Receiver, Endpoint: failure.Endpoint, FailureCode: failure.Code, ObservedAt: observedAt})
+	}
+	return evidence
 }
 
 func formatInventoryTime(value time.Time) string {

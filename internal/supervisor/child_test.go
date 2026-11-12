@@ -1,11 +1,33 @@
 package supervisor
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"reflect"
+	"strings"
 	"testing"
 )
+
+func TestObservedWriterForwardsOutputAndBoundsDiagnosticLines(t *testing.T) {
+	var forwarded bytes.Buffer
+	var observed []string
+	writer := newObservedWriter(&forwarded, func(line string) { observed = append(observed, line) })
+	first := []byte("first part")
+	second := []byte(" of line\n" + strings.Repeat("x", maxObservedLineBytes+1) + "\nsecond line\n")
+	if _, err := writer.Write(first); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.Write(second); err != nil {
+		t.Fatal(err)
+	}
+	if got := forwarded.String(); got != string(append(first, second...)) {
+		t.Fatalf("forwarded output=%q, want exact child output", got)
+	}
+	if !reflect.DeepEqual(observed, []string{"first part of line", "second line"}) {
+		t.Fatalf("observed lines=%q, want bounded complete lines only", observed)
+	}
+}
 
 func TestLaunchOptionsValidateRejectsMissingRequiredPaths(t *testing.T) {
 	tests := []struct {

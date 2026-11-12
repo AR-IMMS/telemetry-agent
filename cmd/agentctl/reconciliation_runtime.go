@@ -15,16 +15,18 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/dependency"
 	"github.com/ar-imms/telemetry-agent/internal/identity"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
+	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 	"github.com/ar-imms/telemetry-agent/internal/reconciliation"
 )
 
 type runtimeBaseline struct {
-	store        agentstate.Repository
-	platform     identity.PlatformInfo
-	dependencies dependency.Catalog
-	layers       []config.Layer
-	gateways     coreconfig.GatewayRepository
+	store          agentstate.Repository
+	platform       identity.PlatformInfo
+	dependencies   dependency.Catalog
+	layers         []config.Layer
+	gateways       coreconfig.GatewayRepository
+	baselineInputs func() ([]config.InlineLayer, []string, error)
 }
 
 var (
@@ -56,6 +58,9 @@ func newRuntimeBaseline(statePath string) (runtimeBaseline, error) {
 		dependencies: dependencies,
 		layers:       layers,
 		gateways:     agentstate.NewCoreGatewayStore(statePath),
+		baselineInputs: func() ([]config.InlineLayer, []string, error) {
+			return nativeDockerMonitoringInputs(statePath, platform.OS)
+		},
 	}, nil
 }
 
@@ -68,7 +73,15 @@ func (b runtimeBaseline) Snapshot() (reconciliation.BaselineSnapshot, error) {
 	if err != nil {
 		return reconciliation.BaselineSnapshot{}, err
 	}
-	snapshot, err := agentlifecycle.BuildCleanBaselineSnapshot(b.platform, b.dependencies, b.layers, state, map[string]string{"OTEL_GATEWAY_ENDPOINT": gateway.Endpoint})
+	var additionalLayers []config.InlineLayer
+	var additionalReceivers []string
+	if b.baselineInputs != nil {
+		additionalLayers, additionalReceivers, err = b.baselineInputs()
+	}
+	if err != nil {
+		return reconciliation.BaselineSnapshot{}, fmt.Errorf("resolve native monitoring baseline: %w", err)
+	}
+	snapshot, err := agentlifecycle.BuildCleanBaselineSnapshotWithAdditionalInputs(b.platform, b.dependencies, b.layers, state, map[string]string{"OTEL_GATEWAY_ENDPOINT": gateway.Endpoint}, additionalLayers, additionalReceivers)
 	if err != nil {
 		return reconciliation.BaselineSnapshot{}, err
 	}
@@ -110,8 +123,14 @@ func newRuntimeReconciliationController(statePath string, runner bootstrap.Comma
 	if err != nil {
 		return nil, nil, err
 	}
-	resolver := integration.NewResolver(registry)
-	options := agentlifecycle.CollectorConfigurationOptions{Platform: baseline.platform, Catalog: baseline.dependencies, Layers: baseline.layers, BinaryPath: state.Collector.BinaryPath, ConfigPath: state.Collector.ConfigPath, ValidationEnvironment: []string{"OTEL_GATEWAY_ENDPOINT=" + state.Collector.GatewayEndpoint}, Runner: runner, GatewayRepository: baseline.gateways}
+	profiles := monitoringprofile.DefaultRegistry()
+	additionalBaselineInputs := baseline.baselineInputs
+	nativeLayers, _, nativeErr := additionalBaselineInputs()
+	if nativeErr != nil {
+		return nil, nil, fmt.Errorf("resolve native monitoring ownership: %w", nativeErr)
+	}
+	resolver := nativeOwnershipResolver{delegate: integration.NewResolver(registry), inventory: sqliteStore.InventoryRepository(), profiles: profiles, enabled: len(nativeLayers) > 0}
+	options := agentlifecycle.CollectorConfigurationOptions{Platform: baseline.platform, Catalog: baseline.dependencies, Layers: baseline.layers, AdditionalBaselineInputs: additionalBaselineInputs, BinaryPath: state.Collector.BinaryPath, ConfigPath: state.Collector.ConfigPath, ValidationEnvironment: []string{"OTEL_GATEWAY_ENDPOINT=" + state.Collector.GatewayEndpoint}, Runner: runner, GatewayRepository: baseline.gateways}
 	attempts := reconciliation.NewSQLiteAttemptsFromStore(sqliteStore)
 	controller := &reconciliation.Controller{Desired: sqliteStore.IntegrationRepository(), Baseline: baseline, Resolver: resolver, Compiler: collectorruntime.NewCompiler(collectorCatalog), Validator: func(ctx context.Context, candidate collectorruntime.Candidate) error {
 		return collectorruntime.ValidateCandidate(ctx, runner, state.Collector.BinaryPath, candidate, options.ValidationEnvironment)
