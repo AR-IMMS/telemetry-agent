@@ -237,7 +237,7 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 		t.Fatalf("unexpected E2E host platform %s", platformOS)
 	}
 	if manager := strings.TrimSpace(os.Getenv(nativeIsolatedDockerManagerEnv)); manager != "" {
-		verifyNativeDockerRecovery(t, ctx, manager, store, sinkOutput, collectorLogs, serviceDone, firstID, secondID, fourthID)
+		verifyNativeDockerRecovery(t, ctx, manager, store, sinkOutput, collectorLogs, serviceDone, replacementID, secondID, fourthID)
 	}
 	if runtime.GOOS == "linux" {
 		secondPort := nativeRedisPublishedPort(t, ctx, secondName, 6379)
