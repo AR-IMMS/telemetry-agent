@@ -1,4 +1,4 @@
-package agentstate
+package sqlite
 
 import (
 	"database/sql"
@@ -6,20 +6,21 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/discovery"
 )
 
-// ProposalRepository returns the SQLite adapter for durable monitoring proposals.
-func (s SQLiteStore) ProposalRepository() discovery.ProposalRepository {
-	return proposalSQLite{store: s}
+// NewProposalRepository creates the Discovery proposal adapter over the shared database.
+func NewProposalRepository(open func() (*sql.DB, error), locker sync.Locker) discovery.ProposalRepository {
+	return proposalSQLite{store: database{open: open, locker: locker}}
 }
 
-type proposalSQLite struct{ store SQLiteStore }
+type proposalSQLite struct{ store database }
 
 func (s proposalSQLite) ProposalSnapshot() ([]discovery.Proposal, error) {
-	db, err := s.store.open()
+	db, err := s.store.openDatabase()
 	if err != nil {
 		return nil, err
 	}
@@ -85,9 +86,12 @@ func (s proposalSQLite) PutProposal(proposal discovery.Proposal, expectedRevisio
 	if err != nil {
 		return fmt.Errorf("encode monitoring proposal: %w", err)
 	}
-	sqliteUpdateMutex.Lock()
-	defer sqliteUpdateMutex.Unlock()
-	db, err := s.store.open()
+	unlock, err := s.store.lockWrites()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	db, err := s.store.openDatabase()
 	if err != nil {
 		return err
 	}
@@ -134,9 +138,12 @@ func (s proposalSQLite) DismissProposal(id string, expectedRevision uint64, at t
 	if id == "" || expectedRevision == 0 || expectedRevision > math.MaxInt64 || at.IsZero() {
 		return discovery.ErrInvalidProposal
 	}
-	sqliteUpdateMutex.Lock()
-	defer sqliteUpdateMutex.Unlock()
-	db, err := s.store.open()
+	unlock, err := s.store.lockWrites()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	db, err := s.store.openDatabase()
 	if err != nil {
 		return err
 	}
