@@ -1,6 +1,6 @@
 # PR-02 — Shared SQLite Foundation & Typed Event Dispatcher
 
-**Status:** VERIFYING — implementation and local verification complete; integration CI and merge remain. **Release target:** `v0.1.4a-next`. **Evidence:** current feature branch starts at PR-01 merge `7ba6efb86218969f539c17bea7a0a7ea6a972169`.
+**Status:** PASS — merged as PR #21 at `d71f5aa39777824e29f1d06a364bb0a289373803`. **Release target:** `v0.1.4a-next`. **Evidence:** final tested PR head `21958ac9d0ca9a39dcf2029f1d46d2e6bee5eecb`; both Windows and Ubuntu CI jobs passed.
 
 ## Objective and exit boundary
 

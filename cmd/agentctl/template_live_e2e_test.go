@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/app"
 	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/discovery"
@@ -60,7 +61,7 @@ func TestLiveDockerTemplateAutoMaterializesDesiredInstance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !discoveryCycleSucceeded(cycle) {
+	if !app.DiscoveryCycleSucceeded(cycle) {
 		t.Fatalf("Docker provider cycle failed: %+v", cycle.ProviderResults)
 	}
 	inventory, err := store.InventoryRepository().Snapshot()

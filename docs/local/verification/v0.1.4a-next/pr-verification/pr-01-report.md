@@ -91,7 +91,7 @@ The isolated worktree also reports the unrelated 0-byte lock artifact noted abov
 ## Open gates before integration review/publication
 
 1. Keep the shared submodule untouched; its original checkout's local status remains unverifiable. Recheck only if a later task requires changing or depending on its local content.
-2. Continue PR-02 on the reusable feature branch. Its event/SQLite contracts are recorded in [`pr-02-events-sqlite.md`](../../../plans/v0.1.4a-next/pr-02-events-sqlite.md); finish full verification and publish a separate PR to `chore/v0.1.4a-next`.
+2. PR-02 is complete: see [`pr-02-report.md`](pr-02-report.md). Continue with PR-03 contracts on the recreated reusable feature branch.
 3. Review the `service` root-help discrepancy and transition allowances at the next appropriate CLI/architecture checkpoint; do not change them silently.
 
 The full documentation scan also found four existing historical links outside the release-doc scope: `docs/local/handoffs/2026-10-26-architecture-audit-m1-refactor.md` → `../superpowers/plans/2026-10-26-m1-refactor-plan.md`; `docs/superpowers/plans/2026-10-27-m2-local-installation-identity.md` → `../../architecture/m2-local-installation-identity-design.md` and `../../architecture/target-architecture-v0.1.4.md`; and `docs/superpowers/plans/2026-10-28-m2-core-gateway-endpoint-sync.md` → `../../architecture/m2-core-gateway-endpoint-sync-design.md`. These were not changed as part of PR-01.
@@ -99,7 +99,7 @@ The full documentation scan also found four existing historical links outside th
 Docker Engine access is a separate release gate for PR-05/06/10. The Linux Docker Desktop daemon is currently reachable with elevated read-only access, and existing Core/observability stacks are active. Establish an isolated test namespace before running Docker-backed application telemetry; run native Windows/Linux install, lifecycle, Collector, and delivery scenarios on their real hosts before making release claims.
 ## Next checkpoint readiness
 
-PR-02 is **IN_PROGRESS**. The contract is documented before implementation; focused event, SQLite, persistence and CLI regression tests pass on Windows. Full verification, independent diff review, and PR-02 checkpoint reporting remain.
+PR-02 is **PASS** and merged as PR #21 at `d71f5aa39777824e29f1d06a364bb0a289373803`; see [`pr-02-report.md`](pr-02-report.md). PR-03 is the next checkpoint.
 
 ## Rollback
 

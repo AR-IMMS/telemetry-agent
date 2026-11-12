@@ -2,14 +2,12 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"log"
-	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
 	"github.com/ar-imms/telemetry-agent/internal/agentlifecycle"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/app"
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
 	"github.com/ar-imms/telemetry-agent/internal/config"
@@ -20,8 +18,6 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 	"github.com/ar-imms/telemetry-agent/internal/reconciliation"
 )
-
-const reconciliationPollInterval = 15 * time.Second
 
 type runtimeBaseline struct {
 	store        agentstate.Repository
@@ -111,53 +107,30 @@ func newRuntimeReconciliationController(statePath string, runner bootstrap.Comma
 }
 
 func runRuntimeWithReconciliation(ctx context.Context, statePath string, teardown dependencyTeardownFunc, reporter agenthealth.ObservationReporter, runner bootstrap.CommandRunner) error {
-	controller, recordRecoveryFailure, err := newRuntimeReconciliationController(statePath, runner)
-	if err != nil {
-		return fmt.Errorf("compose Agent reconciliation: %w", err)
-	}
-	inventory := newDockerDiscoveryCoordinator(statePath)
-	proposalRefresher, err := newRuntimeProposalRefresher(statePath)
-	if err != nil {
-		return fmt.Errorf("compose monitoring proposal refresh: %w", err)
-	}
-	dispatcher, err := events.NewDispatcher(32, func(ctx context.Context, _ events.DesiredConfigurationChanged) error {
-		_, err := controller.Reconcile(ctx)
-		if errors.Is(err, agentstate.ErrReconciliationBlocked) || errors.Is(err, agentstate.ErrReconciliationExhausted) ||
-			errors.Is(err, agentstate.ErrReconciliationBackoff) || errors.Is(err, agentstate.ErrReconciliationApplied) ||
-			errors.Is(err, agentstate.ErrReconciliationAwaitingLifecycle) {
-			return nil
-		}
-		return err
-	})
-	if err != nil {
-		return fmt.Errorf("compose desired-state event dispatcher: %w", err)
-	}
-	templateMaterializer, err := newRuntimeTemplateMaterializer(statePath, dispatcher)
-	if err != nil {
-		return fmt.Errorf("compose Integration Template materialization: %w", err)
-	}
-	return agentlifecycle.RunCollectorRuntimeWithReconciliation(
-		ctx,
-		statePath,
-		teardown,
-		reporter,
-		func(ctx context.Context) error {
-			if err := dispatcher.Start(ctx); err != nil {
-				return fmt.Errorf("start desired-state event dispatcher: %w", err)
+	return app.RunRuntime(ctx, app.RuntimeOptions{
+		StatePath: statePath,
+		Teardown:  teardown,
+		Reporter:  reporter,
+		Runner:    runner,
+		Build: func(publisher events.Publisher, commandRunner bootstrap.CommandRunner) (app.RuntimeComponents, error) {
+			controller, recordRecoveryFailure, err := newRuntimeReconciliationController(statePath, commandRunner)
+			if err != nil {
+				return app.RuntimeComponents{}, fmt.Errorf("compose Agent reconciliation: %w", err)
 			}
-			defer func() {
-				shutdownContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				if err := dispatcher.Shutdown(shutdownContext); err != nil {
-					log.Printf("Desired-state event dispatcher shutdown timed out code=event_shutdown_timeout")
-				}
-			}()
-			return runRuntimeControlLoops(ctx,
-				func(ctx context.Context) error { return controller.Run(ctx, reconciliationPollInterval) },
-				inventory, proposalRefresher.Refresh, templateMaterializer.Refresh)
+			inventory := newDockerDiscoveryCoordinator(statePath)
+			proposalRefresher, err := newRuntimeProposalRefresher(statePath)
+			if err != nil {
+				return app.RuntimeComponents{}, fmt.Errorf("compose monitoring proposal refresh: %w", err)
+			}
+			templateMaterializer, err := newRuntimeTemplateMaterializer(statePath, publisher)
+			if err != nil {
+				return app.RuntimeComponents{}, fmt.Errorf("compose Integration Template materialization: %w", err)
+			}
+			return app.RuntimeComponents{
+				Reconciler: controller, Inventory: inventory,
+				RefreshProposals: proposalRefresher.Refresh, RefreshTemplates: templateMaterializer.Refresh,
+				RecordRecoveryFailure: func(state agentstate.State, _ error) error { return recordRecoveryFailure(state) },
+			}, nil
 		},
-		func(state agentstate.State, _ error) error {
-			return recordRecoveryFailure(state)
-		},
-	)
+	})
 }

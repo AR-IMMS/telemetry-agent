@@ -1,13 +1,13 @@
 # PR-02 — shared SQLite foundation and advisory events
 
 **Canonical release:** `v0.1.4a-next`<br>
-**Status:** VERIFYING — local verification and both CI jobs passed; report-sync CI and merge pending<br>
+**Status:** PASS — local gates and both final-head CI jobs passed; merged<br>
 **Base:** PR-01 merge `7ba6efb86218969f539c17bea7a0a7ea6a972169` on `chore/v0.1.4a-next`<br>
 **Work branch:** `feat/v0.1.4a-next-work`<br>
-**PR / code commit:** [Draft PR #21](https://github.com/AR-IMMS/telemetry-agent/pull/21) / `defa16078e7cb79e6ddff3294328b22aebe32706` (`feat(pr-02): add bounded events and sqlite foundation`)<br>
-**CI-tested PR head:** `ef6ab9d14b365e360451824eae94dcd362d5edca`<br>
-**CI run:** [43132299829](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43132299829) — Ubuntu and Windows passed<br>
-**Report-sync CI:** Pending rerun after recording the preceding results<br>
+**PR / code commit:** [PR #21](https://github.com/AR-IMMS/telemetry-agent/pull/21) / `defa16078e7cb79e6ddff3294328b22aebe32706` (`feat(pr-02): add bounded events and sqlite foundation`)<br>
+**Final CI-tested head:** `21958ac9d0ca9a39dcf2029f1d46d2e6bee5eecb`<br>
+**Final CI run:** [43132693523](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43132693523) — Ubuntu and Windows passed<br>
+**Merge commit:** `d71f5aa39777824e29f1d06a364bb0a289373803`<br>
 **Report date:** 2026-11-12
 
 ## Goal and scope
@@ -36,7 +36,7 @@ PR-02 extracts the shared SQLite connection setup without changing the database 
 | Same architecture script with `GOOS=linux` | Windows host, Linux source view | PASS |
 | `git diff --check` | Worktree | PASS |
 | Markdown link validation | Four changed release documents | PASS; 8 relative links, 0 missing targets |
-| Actual pinned Collector archive checksum, version, and component probe | PR-02 GitHub Actions, Ubuntu and Windows | PASS on head `ef6ab9d14b365e360451824eae94dcd362d5edca`, run `43132299829` |
+| Actual pinned Collector archive checksum, version, and component probe | PR-02 GitHub Actions, Ubuntu and Windows | PASS on final head `21958ac9d0ca9a39dcf2029f1d46d2e6bee5eecb`, run `43132693523` |
 
 The new SQLite and dispatcher API tests were run first against the absent package APIs and failed to compile as expected; implementation then made them pass. This verifies test-first coverage was established before the new implementation.
 
@@ -74,4 +74,4 @@ The migration ledger remains version 13 in existing tests. Existing fixtures and
 
 Disable the optional materialization publisher and keep the dispatcher out of runtime composition; existing SQLite polling remains. The connection factory can be reverted to `SQLiteStore.open` without data downgrade because schema and persisted rows are unchanged.
 
-Both Windows and Ubuntu CI passed, including exact pinned Collector artifact/component checks. The report-sync commit will rerun the same checks; mark PR #21 ready and merge only after that final run passes. PR-03 remains blocked on its CLI/use-case contracts and PR-02 integration.
+PR #21 was marked ready and merged after both Windows and Ubuntu passed on the final report-sync head, including exact pinned Collector artifact/component checks. PR-03 contract work may now begin; establish CLI/use-case boundaries before dependent implementation.

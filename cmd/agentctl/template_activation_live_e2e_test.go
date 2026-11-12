@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/app"
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
@@ -113,7 +114,7 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	cycle, err := discoveryCoordinator.DiscoverOnce(ctx)
-	if err != nil || !discoveryCycleSucceeded(cycle) {
+	if err != nil || !app.DiscoveryCycleSucceeded(cycle) {
 		t.Fatalf("discover live Docker resources: result=%+v err=%v", cycle, err)
 	}
 	materializer, err := newRuntimeTemplateMaterializer(statePath)
@@ -264,7 +265,7 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 	case <-ctx.Done():
 		stopService()
 		t.Fatalf("timed out observing unchanged Template runtime")
-	case <-time.After(discoveryPollInterval + reconciliationPollInterval + time.Second):
+	case <-time.After(app.DiscoveryPollInterval + app.ReconciliationPollInterval + time.Second):
 	}
 	finalSteadyState, err := store.Load()
 	finalConfig, configErr := os.ReadFile(configPath)

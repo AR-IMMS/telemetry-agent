@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/app"
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
 	"github.com/ar-imms/telemetry-agent/internal/discovery"
@@ -129,7 +130,7 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 	runDiscoveryCycle := func() discovery.InventorySnapshot {
 		t.Helper()
 		cycle, err := coordinator.DiscoverOnce(ctx)
-		if err != nil || !discoveryCycleSucceeded(cycle) {
+		if err != nil || !app.DiscoveryCycleSucceeded(cycle) {
 			t.Fatalf("complete Docker discovery cycle failed: result=%+v err=%v", cycle, err)
 		}
 		if err := materializer.Refresh(ctx); err != nil {
