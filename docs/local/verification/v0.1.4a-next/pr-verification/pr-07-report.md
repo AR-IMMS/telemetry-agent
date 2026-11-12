@@ -1,95 +1,112 @@
 # PR-07 verification report — OpAMP Supervisor and control plane
 
-**Status:** IN_PROGRESS — revised target and evidence gates documented; PR-07a
-capability tests have not been run in this update. Do not merge or transfer
-Collector lifecycle ownership on this evidence.
+**Status:** IN_PROGRESS — Windows Supervisor v0.160.0 fallback, local/remote
+composition, APPLIED status, and OTLP endpoint update passed in an isolated
+smoke E2E. Mandatory profile parity, crash/recovery, rollback, and native Linux
+gates remain open. Do not merge or transfer Collector lifecycle ownership on
+this evidence.
 **Release target:** `v0.1.4a-next`
-**Current branch at report update:** `feat/pr-07-opamp`
-**Current documentation base:** `3d30268` plus the scoped documentation changes
-listed in the release progress tracker; implementation baseline is PR-06 merge
+**Branch:** `feat/pr-07-opamp`
+**Implementation baseline:** PR-06 merge
 `af2f5db4c6b8832bc7bcc87d332d899dad01b452`.
 
 ## Target change reviewed
 
-The new proposal supersedes the earlier NestJS OpAMP adapter / Agent Go client
-plan. It proposes three gated slices: (07a) exact-version OTel OpAMP Supervisor
-capability spike without ownership transfer; (07b) reviewed Core/Agent contracts
-plus Go OpAMP server and Go Mock Core; (07c) controlled runtime ownership
-transfer and native platform E2E after parity. The immediate proposed Core policy
-scope is only a versioned OTLP Gateway endpoint. Production Core changes and
-shared-contract publication remain separate approval gates.
+The accepted target is staged: (07a) exact-version Supervisor capability spike
+without ownership transfer; (07b) reviewed versioned contracts plus Go OpAMP
+server and Go Mock Core; (07c) controlled runtime adoption after parity. The
+Agent Runtime remains the only production Collector lifecycle owner throughout
+07a/07b. Production Core changes and shared-contract publication are outside
+this implementation branch's authorized scope.
 
 ## Verified documentation and current-state facts
 
-- Agent source/docs identify existing `internal/supervisor` and
-  `internal/agentlifecycle` as the current Collector process/runtime path. They
-  are distinct from the proposed OTel OpAMP Supervisor.
-- Agent-repository filename search did not find the referenced
-  `agent-enrollment.openapi.yaml` or Core API Baseline. Those authoritative
-  artifacts must be located and reviewed before adding contracts; do not infer
-  their schemas from the pasted proposal.
-- The previous read-only readiness check inspected Core `dev` at
-  `9420437b532f667375736027df8f02024e3e9e0d`; its Agent Management README said
-  Agent Control APIs were not implemented. That is historical evidence, not a
-  fresh current-Core audit or proof about the proposed Mock Core.
-- Current official Collector Contrib Supervisor documentation describes
-  server endpoints with `ws`, `wss`, `http`, and `https`; remote config is
-  opt-in, is merged with an optional local config, written to the Collector
-  config, and causes a Collector restart. Automatic remote-config rollback is
-  configurable and disabled by default, and the described trigger is Collector
-  failure to start. Reference: [OpAMP Supervisor specification](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/cmd/opampsupervisor/specification).
-  These are upstream documentation findings, not pinned v0.160.0 artifact
-  verification. Validate actual behavior and broader LKG guarantees in 07a.
+- Existing `internal/supervisor` and `internal/agentlifecycle` own the current
+  Agent Collector process/runtime path. They are distinct from OTel OpAMP
+  Supervisor, and the production runtime was not modified in PR-07a.
+- Authoritative enrollment OpenAPI blob
+  `5ce0f6a3d94401c2adf65eaf9ad524a37b868571` and Core `api/baseline.yaml` blob
+  `4f4166f2a4d1770f5142618d58b1997092d289c0` were fetched from the user-named
+  repositories. Enrollment uses a single-use bootstrap token with a 10-minute
+  initial window and bounded same-attempt credential recovery; it does not
+  define an Agent bearer-authenticated control endpoint. Core reserves the
+  `agentBearer` scheme, but the baseline defines no Agent control operation.
+  PR-07b must define the smallest supported control API contract without
+  changing enrollment semantics. Production Core interoperability remains
+  unverified.
+- Official Supervisor v0.160.0 docs describe remote configuration as opt-in,
+  merged with local config, and applied through Collector restart. Startup
+  fallback is standalone; automatic rollback is opt-in and described for
+  Collector startup failure. The Windows test below confirms only the scenario
+  it actually executed; profile, crash, rollback, and Linux behavior remain
+  unverified. See the [pinned Supervisor README](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.160.0/cmd/opampsupervisor/README.md)
+  and [pinned specification](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.160.0/cmd/opampsupervisor/specification/README.md).
 
 ## Contract and compatibility gates still open
 
-1. Locate authoritative enrollment OpenAPI and Core API Baseline; confirm
-   existing request/response, error, credential, revocation, cache and
-   request-ID semantics.
-2. Define installation/binding ↔ OpAMP `instance_uid` identity and secure
-   Supervisor credential provisioning, storage, rotation, revocation and
+1. Define installation/binding ↔ OpAMP `instance_uid` identity and authenticated
+   Supervisor credential provisioning, storage, rotation, revocation, and
    session invalidation. `instance_uid` is not authentication.
-3. Define schema/version, target, desired/applied revision, hash canonicalization,
+2. Define schema/version, target, desired/applied revision, hash canonicalization,
    local/remote field ownership, merge order, deletion and stale/conflict rules
-   for the proposed Gateway endpoint policy.
-4. Map protocol/runtime evidence to truthful received, validated, applying,
+   for the Gateway endpoint policy.
+3. Map protocol/runtime evidence to truthful received, validated, applying,
    applied, failed, recovered and unknown statuses. Readiness is not scrape or
    OTLP delivery evidence; an older applied hash after rollback is not success
    for a newer desired revision.
-5. Establish exact Supervisor artifact existence/provenance/SHA, Windows/Linux
-   support, compatibility with Collector Contrib v0.160.0, config composition,
-   local updates, offline fallback and rollback behavior.
-6. Review the migration/rollback design so the Agent Runtime remains sole
-   lifecycle owner until a single reversible transfer after parity.
+4. Test existing Redis, PostgreSQL, Prometheus, and host monitoring profile
+   configs with Supervisor on Windows and Linux.
+5. Induce invalid remote candidate, Collector crash/restart, Supervisor restart,
+   fallback recovery, and automatic rollback; compare behavior with Agent LKG.
+6. Verify native Linux execution, not only Linux artifact checksum or a Windows
+   host running Linux containers.
+7. Review migration/rollback so the Agent Runtime remains the sole owner until
+   one reversible ownership transfer after parity.
 
-## Verification log
+## PR-07a verification log
 
 | Gate | Status | Evidence / note |
 |---|---|---|
-| Proposal-to-doc reconciliation | PASS | Architecture, plan index, migration roadmap, release scope, acceptance, test matrix, diagrams, report and progress tracker updated. |
-| Exact Windows Supervisor artifact and checksum | NOT RUN | No artifact downloaded or verified in this documentation update. |
-| Exact Linux Supervisor artifact and checksum | NOT RUN | No native Linux artifact/runtime check in this documentation update. |
-| Collector v0.160.0 compatibility | NOT RUN | No binary interoperability check run. |
-| Local+remote config composition / local update semantics | NOT RUN | Upstream docs describe optional local merge, config write and Collector restart; pinned artifact behavior remains unknown. |
-| Startup fallback, offline/reconnect, Supervisor/Collector crash | NOT RUN | No test run. |
-| Candidate failure and rollback/LKG | NOT RUN | Upstream rollback is opt-in and documented for startup failure; Agent LKG parity is unverified. |
-| Actual OTLP delivery | NOT RUN | No endpoint-change test or sink evidence. |
-| Windows native E2E | NOT RUN | No PR-07a live run. |
-| Native Linux E2E | NOT RUN | No PR-07a live run. |
+| Exact Windows Supervisor artifact and checksum | PASS | Official v0.160.0 Windows amd64 artifact SHA-256 `df2dfae96d6b711db31675d2deb8493d3dbada8561b25fe575fd90bd7cac8449`; executable `--help` returned successfully. |
+| Exact Linux Supervisor artifact and checksum | PASS | Official v0.160.0 Linux amd64 artifact SHA-256 `7967e3210e0252f25f41a96b15758dd2e03feb0aecbe85a945f1e2e6e71865c9`. Native execution remains NOT RUN. |
+| Collector v0.160.0 artifact hashes | PASS | Official Windows archive SHA-256 `d8de67cf9dc3ffe928610d52b192cb029365bb42dc79a23e0586c040c83293cf`; Linux archive SHA-256 `7bb60c584c241c86261c2b8697cd3725dd8c56691f5ad5d98454eaa005b47b0c`; both match repository manifests. |
+| Pinned Supervisor/Collector interoperability | PASS / LIMITED | Windows Supervisor managed the exact pinned Windows Collector and delivered metrics for the tested hostmetrics config. Linux interoperability remains NOT RUN. |
+| Local/remote config composition | PASS / LIMITED | Windows E2E composed a local `hostmetrics` pipeline with an OpAMP remote override of the OTLP exporter endpoint. Collector restarted, then reported the matching remote config hash APPLIED. Dynamic local-file update semantics remain NOT RUN. |
+| Offline startup fallback and reconnect | PASS / LIMITED | Windows Supervisor started Collector from standalone fallback while OpAMP was unavailable, connected when the test server started, and applied remote config. Reconnect-after-established-session-loss remains NOT RUN. |
+| Collector crash recovery | PASS / LIMITED | Test killed the managed Collector after successful config; Supervisor started a new Collector process and OTLP output resumed at sink B. Supervisor process crash recovery remains NOT RUN. |
+| Invalid candidate rejection and recovery | PASS / LIMITED | A syntactically valid remote config using an already-bound OTLP receiver port caused activation failure and an OpAMP `FAILED` status. The test server restored the prior config; the Supervisor reported that hash `APPLIED` and sink B delivery resumed. |
+| Automatic config rollback / Agent LKG parity | PASS / LIMITED | With the desired-state test server sending only changed config hashes, the pinned Supervisor reported `FAILED` for an activation-failing config, automatically restored the previous working remote config, and emitted `APPLIED` for its hash within the 20-second observation window. OTLP resumed. The test server had to avoid replaying the same failed hash. Agent Runtime LKG parity remains NOT RUN. |
+| Actual OTLP delivery | PASS / LIMITED | Windows hostmetrics reached isolated sink A during fallback, sink B after remote exporter update, and sink B again after failure recovery and Collector crash restart. Redis/PostgreSQL/Prometheus profiles under Supervisor remain NOT RUN. |
+| Windows native E2E | PASS / LIMITED | Focused Windows live test with exact binaries, local `opamp-go` server, and two isolated Collector OTLP sinks. This is a smoke test, not complete PR-05/06 parity. OS build number was not captured. |
+| Native Linux E2E | NOT RUN | No native Linux runner used. |
 | Mock Core contract interoperability | NOT RUN | Not implemented or tested. |
-| Production NestJS Core interoperability | BLOCKED | Separate Core implementation/contract approval gate; not implied by mock results. |
+| Production NestJS Core interoperability | BLOCKED | Core control operations are absent from inspected API baseline; requires reviewed contract and a separate Core implementation. |
 | Lifecycle ownership transfer / rollback | BLOCKED | Must wait for 07a parity and 07b contract gates; no transfer occurred. |
 
-No production code, runtime config, schema, database migration, Core source, or
-`docs/shared` submodule was changed as part of the documentation update. No
-PR-07 implementation, capability, or E2E test was run. The pre-existing
-untracked `cmd/agentctl/otel.yaml.lifecycle.lock` remains preserved and excluded.
+## Reproduction and retained evidence
+
+- Focused test:
+  `go test ./cmd/agentctl -run '^TestPR07ASupervisorRemoteConfigAndFallbackDelivery$' -count=1 -v`
+- Variables: `AR_IMMS_PR07A_LIVE_E2E=1`,
+  `AR_IMMS_PR07A_SUPERVISOR_BINARY=<verified Windows Supervisor>`,
+  `AR_IMMS_PR05_COLLECTOR_BINARY=<verified Windows Collector>`, and
+  `AR_IMMS_PR07A_EVIDENCE_DIR=<directory>`.
+- The passing run reported remote config SHA-256
+  `a1547e7f8bbf20001b4c9ec665a1ae88f2f4a8fa35955dae99cda930ea543c9f` and
+  delivered `system.memory.usage` from Collector Contrib `0.160.0` to both
+  endpoints. Raw captured output is retained locally under ignored
+  `tmp/pr07a/evidence/windows/` (`supervisor.log`, both sink logs, and
+  `test-summary.txt`); re-running regenerates it. Verified downloads and
+  extracted binaries are under ignored `tmp/pr07a/artifacts/`.
+- `go test ./cmd/agentctl -run '^TestPR07A' -count=1` passed on Windows after
+  the addition of the executable harness.
+- The test-only harness does not change production installation, runtime
+  ownership, config, or lifecycle behavior. The pre-existing untracked
+  `cmd/agentctl/otel.yaml.lifecycle.lock` remains preserved and excluded.
 
 ## Merge audit requirement
 
-Before opening/merging an implementation checkpoint, replace `NOT RUN` only with
-reproducible evidence tied to exact commit and platform. Audit CI after the
-final code, docs, and verification-log changes; include raw evidence locations,
-artifact hashes, commands, environment versions, failure-injection results,
-single-owner/rollback result, and actual OTLP sink evidence. Keep mandatory
-gates open and checkpoint draft while any are unresolved.
+Before merging a checkpoint, tie evidence to the exact commit and platform. Run
+CI after final code/docs/report edits; record environment versions, failure
+injection, single-owner/rollback result, and sink evidence. Keep mandatory
+gates open and the checkpoint draft while any are unresolved.

@@ -14,7 +14,7 @@
 | E08 | Observer + Receiver Creator owner migration | NOT RUN | NOT RUN | Actual pinned components; no duplicate scrape |
 | E09 | Discovery provider error / partial snapshot | NOT RUN | NOT RUN | no false resource deletion; recovery |
 | E10 | Mock cooling or power profile/provider | NOT RUN | NOT RUN | new adapter without engine changes |
-| E11a | Pinned OpAMP Supervisor capability + config composition | NOT RUN | NOT RUN | artifact SHA/provenance, exact Collector compatibility, local+remote merge/restart semantics, no ownership transfer |
+| E11a | Pinned OpAMP Supervisor capability + config composition | NOT RUN | NOT RUN | Partial Windows evidence is in the [PR-07 report](pr-verification/pr-07-report.md): exact artifact, fallback, local+remote composition, APPLIED status, invalid candidate reporting, automatic rollback, Collector crash restart, and OTLP delivery passed. Existing Redis/PostgreSQL/Prometheus profiles and native Linux remain NOT RUN. No ownership transfer. |
 | E11b | Mock-backed OpAMP targeted update + status | NOT RUN | NOT RUN | contract revision/hash, identity binding, apply/failure mapping; mock result only |
 | E12 | Core/Mock Core offline / reconnect / replay | NOT RUN | NOT RUN | cached/fallback config, no duplicate activation, reconverges after restart |
 | E13 | Invalid remote Collector config / crash / rollback | NOT RUN | NOT RUN | actual rollback setting and evidence, LKG preserved, diagnostics truthful |

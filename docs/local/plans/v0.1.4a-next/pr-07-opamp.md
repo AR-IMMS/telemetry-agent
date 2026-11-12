@@ -1,6 +1,6 @@
 # PR-07 — OpAMP Supervisor Adoption & Control Plane Integration
 
-**Status:** revised proposal / PR-07a capability verification not yet recorded.
+**Status:** IN_PROGRESS — PR-07a Windows smoke interoperability passed; mandatory profile, failure/recovery, rollback, and native Linux gates remain open.
 **Release target:** `v0.1.4a-next`. **Baseline:** PR-06 merge
 `af2f5db4c6b8832bc7bcc87d332d899dad01b452`; check current `HEAD` before each
 slice. See [target contracts and ownership](../../architecture/v0.1.4a-next/opamp-integration.md), [verification report](../../verification/v0.1.4a-next/pr-verification/pr-07-report.md), and [release progress](release-progress.md).
@@ -27,11 +27,11 @@ reviewable and avoid unrelated formatting or worktree changes.
 
 ### PR-07a — Capability spike (no runtime ownership transfer)
 
-1. Capture source/Git/test baseline and preservation invariants. Verify existing
-   Agent runtime and PR-05/06 evidence against current `HEAD`.
-2. Locate and record exact Windows/Linux amd64 Supervisor artifacts, version,
-   SHA-256, provenance, license, and compatibility with pinned Collector
-   Contrib v0.160.0. Do not infer compatibility from matching version strings.
+1. Preserve the PR-06 merge baseline and current Agent Runtime. Keep the
+   capability harness opt-in and test-only; no lifecycle ownership transfer.
+2. Verify exact Windows/Linux amd64 Supervisor artifacts, version, SHA-256,
+   provenance, license, and compatibility with pinned Collector Contrib
+   v0.160.0. Do not infer compatibility from matching version strings.
 3. Verify OpAMP extension and config support, existing host/Redis/PostgreSQL/
    Prometheus profiles, local config updates and deterministic composition.
 4. Test valid and invalid remote config, startup with no server, offline
@@ -47,9 +47,13 @@ reviewable and avoid unrelated formatting or worktree changes.
 ### PR-07b — Contracts and control-plane vertical slice
 
 Before dependent implementation, inspect the authoritative `agent-enrollment`
-OpenAPI and Core API Baseline. The user-provided proposal references these, but
-their locations and current contents are not yet verified. Reuse actual Core
-response/error/request conventions; do not invent or publish shared contracts.
+OpenAPI and Core API Baseline. The authoritative files have been read at
+`agent-enrollment.openapi.yaml` blob `5ce0f6a3d94401c2adf65eaf9ad524a37b868571`
+and Core `api/baseline.yaml` blob `4f4166f2a4d1770f5142618d58b1997092d289c0`.
+The enrollment spec defines single-use bootstrap semantics and recovery, not an
+Agent bearer-authenticated control route. Core reserves `agentBearer`, but the
+baseline defines no Agent control API. Reuse those conventions; do not infer or
+implement unsupported production Core routes, nor publish shared contracts.
 
 Define and review explicit contracts for installation authentication and
 binding, Supervisor credential provisioning/rotation/revocation, OpAMP
