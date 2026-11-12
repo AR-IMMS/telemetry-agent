@@ -1,4 +1,4 @@
-package agentstate
+package sqlite
 
 import (
 	"database/sql"
@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
@@ -13,21 +14,23 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 )
 
-// MaterializationRepository returns the Configuration-owned SQLite projection adapter.
-func (s SQLiteStore) MaterializationRepository() configuration.MaterializationRepository {
-	return materializationSQLite{store: s}
+// NewMaterializationRepository creates the projection adapter over the shared database.
+// The opener and write lock are required; repository operations return an error if either is missing.
+func NewMaterializationRepository(open func() (*sql.DB, error), locker sync.Locker) configuration.MaterializationRepository {
+	return materializationSQLite{store: database{open: open, locker: locker}}
 }
 
-// MaterializationRepositoryWithEvents adds an optional post-commit advisory
-// wakeup while preserving the repository's durable result if the queue is full.
-func (s SQLiteStore) MaterializationRepositoryWithEvents(publisher interface {
+// NewMaterializationRepositoryWithEvents adds an optional post-commit advisory
+// wakeup while preserving the durable result if the queue is full.
+// The opener and write lock are required; the publisher may be nil.
+func NewMaterializationRepositoryWithEvents(open func() (*sql.DB, error), locker sync.Locker, publisher interface {
 	Publish(events.DesiredConfigurationChanged) error
 }) configuration.MaterializationRepository {
-	return materializationSQLite{store: s, publisher: publisher}
+	return materializationSQLite{store: database{open: open, locker: locker}, publisher: publisher}
 }
 
 type materializationSQLite struct {
-	store     SQLiteStore
+	store     database
 	publisher interface {
 		Publish(events.DesiredConfigurationChanged) error
 	}
@@ -37,14 +40,17 @@ func (s materializationSQLite) ApplyTemplateProjection(batch configuration.Mater
 	if err := validateMaterializationBatch(batch); err != nil {
 		return 0, err
 	}
-	sqliteUpdateMutex.Lock()
+	unlock, err := s.store.lockWrites()
+	if err != nil {
+		return 0, err
+	}
 	locked := true
 	defer func() {
 		if locked {
-			sqliteUpdateMutex.Unlock()
+			unlock()
 		}
 	}()
-	db, err := s.store.open()
+	db, err := s.store.openDatabase()
 	if err != nil {
 		return 0, err
 	}
@@ -92,7 +98,7 @@ func (s materializationSQLite) ApplyTemplateProjection(batch configuration.Mater
 	if err := tx.Commit(); err != nil {
 		return 0, fmt.Errorf("commit template materialization: %w", err)
 	}
-	sqliteUpdateMutex.Unlock()
+	unlock()
 	locked = false
 	if changed && s.publisher != nil {
 		if err := s.publisher.Publish(events.DesiredConfigurationChanged{Revision: revision}); err != nil {

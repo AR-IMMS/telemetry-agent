@@ -1,4 +1,4 @@
-package agentstate
+package sqlite
 
 import (
 	"database/sql"
@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
@@ -13,20 +14,24 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 )
 
-// ApprovalRepository returns the SQLite adapter for atomic proposal approval and desired-state mutation.
-func (s SQLiteStore) ApprovalRepository() configuration.ApprovalRepository {
-	return approvalSQLite{store: s}
+// NewApprovalRepository creates the atomic proposal-approval adapter over the shared database.
+// The opener and write lock are required; repository operations return an error if either is missing.
+func NewApprovalRepository(open func() (*sql.DB, error), locker sync.Locker) configuration.ApprovalRepository {
+	return approvalSQLite{store: database{open: open, locker: locker}}
 }
 
-type approvalSQLite struct{ store SQLiteStore }
+type approvalSQLite struct{ store database }
 
 func (s approvalSQLite) CommitApproval(commit configuration.ApprovalCommit) (integration.IntegrationInstance, uint64, error) {
 	if commit.ProposalID == "" || commit.ProposalRevision == 0 || commit.ProposalRevision > math.MaxInt64 {
 		return integration.IntegrationInstance{}, 0, discovery.ErrInvalidProposal
 	}
-	sqliteUpdateMutex.Lock()
-	defer sqliteUpdateMutex.Unlock()
-	db, err := s.store.open()
+	unlock, err := s.store.lockWrites()
+	if err != nil {
+		return integration.IntegrationInstance{}, 0, err
+	}
+	defer unlock()
+	db, err := s.store.openDatabase()
 	if err != nil {
 		return integration.IntegrationInstance{}, 0, err
 	}

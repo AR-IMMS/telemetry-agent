@@ -1,22 +1,24 @@
-package agentstate
+package sqlite
 
 import (
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 )
 
-// IntegrationRepository returns the SQLite adapter for desired integrations.
-func (s SQLiteStore) IntegrationRepository() configuration.IntegrationRepository {
-	return integrationSQLite{store: s}
+// NewIntegrationRepository creates the desired-Integration adapter over the shared database.
+// The opener and write lock are required; repository operations return an error if either is missing.
+func NewIntegrationRepository(open func() (*sql.DB, error), locker sync.Locker) configuration.IntegrationRepository {
+	return integrationSQLite{store: database{open: open, locker: locker}}
 }
 
-type integrationSQLite struct{ store SQLiteStore }
+type integrationSQLite struct{ store database }
 
 func (s integrationSQLite) Put(instance integration.IntegrationInstance, expected uint64) (integration.IntegrationInstance, uint64, error) {
 	if instance.Source == integration.SourceTemplate {
@@ -30,9 +32,12 @@ func (s integrationSQLite) Put(instance integration.IntegrationInstance, expecte
 	if err != nil {
 		return integration.IntegrationInstance{}, 0, fmt.Errorf("encode Integration instance: %w", err)
 	}
-	sqliteUpdateMutex.Lock()
-	defer sqliteUpdateMutex.Unlock()
-	db, err := s.store.open()
+	unlock, err := s.store.lockWrites()
+	if err != nil {
+		return integration.IntegrationInstance{}, 0, err
+	}
+	defer unlock()
+	db, err := s.store.openDatabase()
 	if err != nil {
 		return integration.IntegrationInstance{}, 0, err
 	}
@@ -126,9 +131,12 @@ func sameIntegrationIntent(stored, requested []byte) bool {
 }
 
 func (s integrationSQLite) Delete(id string, expected uint64) (uint64, error) {
-	sqliteUpdateMutex.Lock()
-	defer sqliteUpdateMutex.Unlock()
-	db, err := s.store.open()
+	unlock, err := s.store.lockWrites()
+	if err != nil {
+		return 0, err
+	}
+	defer unlock()
+	db, err := s.store.openDatabase()
 	if err != nil {
 		return 0, err
 	}
@@ -178,7 +186,7 @@ func (s integrationSQLite) Delete(id string, expected uint64) (uint64, error) {
 }
 
 func (s integrationSQLite) Snapshot() (configuration.DesiredSnapshot, error) {
-	db, err := s.store.open()
+	db, err := s.store.openDatabase()
 	if err != nil {
 		return configuration.DesiredSnapshot{}, err
 	}
