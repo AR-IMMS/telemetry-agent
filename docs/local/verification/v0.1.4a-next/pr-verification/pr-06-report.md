@@ -1,10 +1,10 @@
 # PR-06 verification report — application monitoring profiles
 
-**Status:** VERIFYING — Windows live delivery passes; native Linux exact-binary and Docker/OTLP E2E are pending CI on the proposed PR head.
+**Status:** PASS — all required Windows/Linux unit, pinned Collector, architecture, and live Docker/OTLP gates passed. PR #29 is still draft pending merge preparation.
 **Release target:** `v0.1.4a-next`
 **Branch:** `feat/pr-06-monitoring-profiles`
 **Base:** `chore/v0.1.4a-next` at PR-05 merge `11fdd1e720c542898ba9c0c673063b1d698d7451`
-**PR / commit:** [Draft PR #29](https://github.com/AR-IMMS/telemetry-agent/pull/29), head `d4136c870186be2ca405f490d0678a8955ad63f2`.
+**PR / commit:** [Draft PR #29](https://github.com/AR-IMMS/telemetry-agent/pull/29), verified implementation head `adcab1e6fc47fb97e67830d93e2c5dc3e69870f9`.
 
 ## Scope delivered
 
@@ -50,9 +50,9 @@ The retained command output is [pr-06-windows-live-output.txt](./pr-06-windows-l
 | `go build ./...` | PASS on Windows. |
 | `GOOS=linux GOARCH=amd64 go build ./...` | PASS from Windows; this is a cross-build, not Linux E2E evidence. |
 | Architecture/import/450-line guard | PASS; 32 source directories and 293 production Go files checked. |
-| Native Linux full tests and live Docker/Collector/OTLP | PENDING PR CI; Windows build is not Linux E2E evidence. |
+| Native Linux full tests and live Docker/Collector/OTLP | PASS on implementation head; CI run [43274154511](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43274154511). |
 
-Exact-head CI run [43272599179](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43272599179) passed Windows, the Linux full suite, and the PR-05 live Redis gate, but failed the Linux application-profile E2E before Collector activation: the empty isolated Docker daemon did not have `postgres:17-alpine` when the test inspected fixture image IDs. Windows had cached the image, which masked this fixture dependency. The E2E now explicitly pulls Redis, PostgreSQL, and Python fixture images before recording their image IDs; the updated Windows live E2E passed in 55.85 seconds. The PR remains draft pending a fresh exact-head CI run of the corrected fixture, including native Linux application-profile OTLP delivery.
+The initial Linux CI attempt [43272599179](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43272599179) passed the full suite and PR-05 live Redis gate, but failed the Linux application-profile E2E before Collector activation because the empty isolated Docker daemon did not have `postgres:17-alpine` when the test inspected fixture image IDs. Windows had cached the image, which masked this fixture dependency. The E2E now explicitly pulls Redis, PostgreSQL, and Python fixture images before recording their image IDs. Fresh Windows and native Linux reruns passed; final code-head CI [43274154511](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43274154511) passed both platforms, including isolated Docker, Collector v0.160.0, and live OTLP delivery for the application profiles on Linux.
 
 The full Go suite was rerun with normal host filesystem and loopback access after a sandbox-restricted run failed to create SQLite state and bind test sockets. The host run passed all packages. The opt-in Windows Docker E2E was rerun against the pinned binary and passed in 33.84 seconds, delivering all four expected metric families and checking receiver uniqueness, duplicate samples, and churn convergence.
 
@@ -60,10 +60,10 @@ The full Go suite was rerun with normal host filesystem and loopback access afte
 
 - Core-versus-local profile/config precedence and remote secret delivery remain OPEN; this checkpoint only reads local files and the Agent service environment.
 - Operators must provision the PostgreSQL environment variables to the Agent service. The Agent does not add a credential CLI or define remote secret lifecycle.
-- Native Linux E2E and Linux pinned binary component/config validation must pass before merge. If the isolated Linux fixture or artifact gate fails, keep the PR unmerged and update this report with exact evidence.
+- Core-versus-local configuration authority and remote secret delivery remain OPEN for their dependent checkpoints. They do not block this local-profile checkpoint.
 
 ## Rollback and next checkpoint readiness
 
 Rollback is a PR revert plus removal of the local profile files; Collector candidate validation and existing LKG recovery protect the active configuration. No SQLite migration, shared-submodule edit, or Core change was made.
 
-PR-06 is not PASS until native Linux full tests, pinned PostgreSQL/Prometheus component and config validation, and real Linux Docker-to-OTLP evidence pass on the exact proposed PR head. Keep the PR draft until those mandatory gates pass. PR-07 may begin only after the verified PR-06 merge.
+PR-06 is PASS: native Linux full tests, pinned PostgreSQL/Prometheus component and config validation, and real Linux Docker-to-OTLP evidence passed on implementation head `adcab1e`. The report/tracker update is documentation-only and will receive CI on its final PR head before merge. PR-07 may begin only after PR #29 is merged; its Core authority/status/error contracts remain unresolved and must not be invented.
