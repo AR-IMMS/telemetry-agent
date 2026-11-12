@@ -2,6 +2,7 @@ package opampserver_test
 
 import (
 	"context"
+	"encoding/hex"
 	"net"
 	"net/http/httptest"
 	"os"
@@ -152,5 +153,52 @@ func TestLiveAuthenticatedSupervisorToMockCorePolicyAndStatus(t *testing.T) {
 	if len(observed) == 0 || observed[0].Report.AppliedRevision != 1 || observed[0].Report.Status != "APPLIED" {
 		t.Fatalf("Mock Core status evidence = %+v", observed)
 	}
+
+	// Advancing Core's policy revision without changing the rendered endpoint
+	// keeps the OpAMP config hash stable. The same applied hash must now map to
+	// revision 2 rather than remaining attributed to revision 1.
+	if err := mock.SetPolicy("11111111-2222-4333-8444-555555555555", coreapi.DesiredGatewayPolicy{
+		SchemaVersion: "ar-imms/gateway-policy/v1", Revision: 2, GatewayEndpoint: "127.0.0.1:4317",
+	}); err != nil {
+		t.Fatalf("advance Core policy revision without changing endpoint: %v", err)
+	}
+	appliedHash, err := hex.DecodeString(observed[0].Report.ConfigHash)
+	if err != nil {
+		t.Fatalf("decode applied config hash: %v", err)
+	}
+	if err := protocolClient.SetRemoteConfigStatus(&protobufs.RemoteConfigStatus{
+		LastRemoteConfigHash: appliedHash,
+		Status:               protobufs.RemoteConfigStatuses_RemoteConfigStatuses_APPLYING,
+	}); err != nil {
+		t.Fatalf("report unchanged config applying for new policy revision: %v", err)
+	}
+	deadline = time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		for _, status := range mock.Statuses() {
+			if status.Report.Status == "APPLYING" && status.Report.DesiredRevision == 2 {
+				goto applyingObserved
+			}
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatalf("unchanged config APPLYING status was not attributed to policy revision 2; statuses=%+v", mock.Statuses())
+
+applyingObserved:
+	if err := protocolClient.SetRemoteConfigStatus(&protobufs.RemoteConfigStatus{
+		LastRemoteConfigHash: appliedHash,
+		Status:               protobufs.RemoteConfigStatuses_RemoteConfigStatuses_APPLIED,
+	}); err != nil {
+		t.Fatalf("report unchanged applied config for new policy revision: %v", err)
+	}
+	deadline = time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		for _, status := range mock.Statuses() {
+			if status.Report.Status == "APPLIED" && status.Report.AppliedRevision == 2 {
+				return
+			}
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatalf("unchanged applied config hash was not attributed to policy revision 2; statuses=%+v", mock.Statuses())
 
 }

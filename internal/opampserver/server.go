@@ -21,6 +21,11 @@ import (
 	opamptypes "github.com/open-telemetry/opamp-go/server/types"
 )
 
+const (
+	maxTrackedInstances               = 64
+	maxConfigHashesPerTrackedInstance = 32
+)
+
 // ManagementClientFactory constructs a Core client bound to the supplied
 // existing enrollment bearer credential.
 type ManagementClientFactory func(string) (coreapi.AgentManagementAPI, error)
@@ -37,10 +42,12 @@ type Options struct {
 // Server exposes authenticated native OpAMP while keeping Core policy outside
 // the protocol adapter.
 type Server struct {
-	options Options
-	server  server.OpAMPServer
-	mu      sync.Mutex
-	sent    map[string]map[string]int64
+	options  Options
+	server   server.OpAMPServer
+	mu       sync.Mutex
+	sent     map[string]map[string]int64
+	lastUsed map[string]uint64
+	sequence uint64
 }
 
 // New validates server dependencies and rejects non-loopback cleartext binds.
@@ -61,7 +68,10 @@ func New(options Options) (*Server, error) {
 	if options.Logger == nil {
 		options.Logger = slog.Default()
 	}
-	return &Server{options: options, server: server.New(nil), sent: make(map[string]map[string]int64)}, nil
+	return &Server{
+		options: options, server: server.New(nil), sent: make(map[string]map[string]int64),
+		lastUsed: make(map[string]uint64),
+	}, nil
 }
 
 // Start begins accepting authenticated OpAMP sessions.
@@ -154,29 +164,39 @@ func (s *Server) handleMessage(ctx context.Context, client coreapi.AgentManageme
 		s.options.Logger.Warn("OpAMP instance UID does not match authenticated installation")
 		return &protobufs.ServerToAgent{InstanceUid: uidBytes}
 	}
-	s.reportRemoteStatus(ctx, client, uid, session.DesiredPolicy.Revision, message.GetRemoteConfigStatus())
 	body, hash, err := RenderGatewayConfig(session.DesiredPolicy)
 	if err != nil {
+		s.reportRemoteStatus(ctx, client, uid, message.GetRemoteConfigStatus())
 		s.options.Logger.Warn("Core Gateway policy is invalid", "error", err)
 		return &protobufs.ServerToAgent{InstanceUid: uidBytes}
 	}
 	hashText := hex.EncodeToString(hash[:])
-	if s.wasSent(uid, hashText) {
+	wasSent := s.wasSent(uid, hashText)
+	// The OpAMP hash identifies config content, not the Core policy revision.
+	// Refresh this association before interpreting status so an unchanged
+	// endpoint at a newer revision is credited to the current desired policy.
+	s.markSent(uid, hashText, session.DesiredPolicy.Revision)
+	s.reportRemoteStatus(ctx, client, uid, message.GetRemoteConfigStatus())
+	if wasSent {
 		return response
 	}
 	response.RemoteConfig = &protobufs.AgentRemoteConfig{
 		Config:     &protobufs.AgentConfigMap{ConfigMap: map[string]*protobufs.AgentConfigFile{"": {Body: body}}},
 		ConfigHash: hash[:],
 	}
-	s.markSent(uid, hashText, session.DesiredPolicy.Revision)
 	return response
 }
 
-func (s *Server) reportRemoteStatus(ctx context.Context, client coreapi.AgentManagementAPI, uid string, desiredRevision int64, status *protobufs.RemoteConfigStatus) {
+func (s *Server) reportRemoteStatus(ctx context.Context, client coreapi.AgentManagementAPI, uid string, status *protobufs.RemoteConfigStatus) {
 	if status == nil || len(status.GetLastRemoteConfigHash()) != 32 {
 		return
 	}
 	configHash := hex.EncodeToString(status.GetLastRemoteConfigHash())
+	revision := s.revisionForHash(uid, configHash)
+	if revision < 1 {
+		s.options.Logger.Debug("OpAMP remote config status has no observed desired revision", "instance_uid", uid)
+		return
+	}
 	statusName := ""
 	switch status.GetStatus() {
 	case protobufs.RemoteConfigStatuses_RemoteConfigStatuses_APPLYING:
@@ -188,9 +208,9 @@ func (s *Server) reportRemoteStatus(ctx context.Context, client coreapi.AgentMan
 	default:
 		return
 	}
-	report := coreapi.SupervisorStatusReport{InstanceUID: uid, DesiredRevision: desiredRevision, Status: statusName, ConfigHash: configHash}
+	report := coreapi.SupervisorStatusReport{InstanceUID: uid, DesiredRevision: revision, Status: statusName, ConfigHash: configHash}
 	if statusName == "APPLIED" {
-		report.AppliedRevision = s.revisionForHash(uid, configHash)
+		report.AppliedRevision = revision
 	}
 	callCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -203,22 +223,74 @@ func (s *Server) wasSent(uid, hash string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, found := s.sent[uid][hash]
+	if found {
+		s.touchLocked(uid)
+	}
 	return found
 }
 
 func (s *Server) markSent(uid, hash string, revision int64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.sent == nil {
+		s.sent = make(map[string]map[string]int64)
+	}
+	if s.lastUsed == nil {
+		s.lastUsed = make(map[string]uint64)
+	}
+	if _, exists := s.sent[uid]; !exists && len(s.sent) >= maxTrackedInstances {
+		s.evictLeastRecentlyUsedLocked()
+	}
 	if s.sent[uid] == nil {
 		s.sent[uid] = make(map[string]int64)
 	}
+	if _, exists := s.sent[uid][hash]; !exists && len(s.sent[uid]) >= maxConfigHashesPerTrackedInstance {
+		s.evictOldestRevisionLocked(uid)
+	}
 	s.sent[uid][hash] = revision
+	s.touchLocked(uid)
 }
 
 func (s *Server) revisionForHash(uid, hash string) int64 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.sent[uid][hash]
+	revision := s.sent[uid][hash]
+	if revision > 0 {
+		s.touchLocked(uid)
+	}
+	return revision
+}
+
+func (s *Server) touchLocked(uid string) {
+	s.sequence++
+	s.lastUsed[uid] = s.sequence
+}
+
+func (s *Server) evictLeastRecentlyUsedLocked() {
+	oldestUID := ""
+	var oldestSequence uint64
+	for uid, sequence := range s.lastUsed {
+		if oldestUID == "" || sequence < oldestSequence {
+			oldestUID, oldestSequence = uid, sequence
+		}
+	}
+	if oldestUID != "" {
+		delete(s.sent, oldestUID)
+		delete(s.lastUsed, oldestUID)
+	}
+}
+
+func (s *Server) evictOldestRevisionLocked(uid string) {
+	oldestHash := ""
+	var oldestRevision int64
+	for hash, revision := range s.sent[uid] {
+		if oldestHash == "" || revision < oldestRevision || revision == oldestRevision && hash < oldestHash {
+			oldestHash, oldestRevision = hash, revision
+		}
+	}
+	if oldestHash != "" {
+		delete(s.sent[uid], oldestHash)
+	}
 }
 
 func bearerToken(header string) (string, bool) {
