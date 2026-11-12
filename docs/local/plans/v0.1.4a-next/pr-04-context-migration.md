@@ -1,6 +1,6 @@
 # PR-04 — Bounded Context Ownership & Repository Migration
 
-**Status:** PR-04a identity and PR-04b enrollment adapters PASS and merged; overall PR-04 remains IN_PROGRESS. **Release target:** `v0.1.4a-next`. **PR-04a merge:** `4bdfff72ea1bcc6b344ced4fdc65f5d0b3df3301`; **PR-04b merge:** `bdc656acc8f6c6cfa3fb09f8cf4cc3d3a8e8e9cc`.
+**Status:** PR-04a identity, PR-04b enrollment, and PR-04c inventory/proposal adapters PASS and merged; overall PR-04 remains IN_PROGRESS. **Release target:** `v0.1.4a-next`. **PR-04a merge:** `4bdfff72ea1bcc6b344ced4fdc65f5d0b3df3301`; **PR-04b merge:** `bdc656acc8f6c6cfa3fb09f8cf4cc3d3a8e8e9cc`; **PR-04c merge:** `7bec19a5dae675778e1670037a8770b8285d5a86`.
 
 ## Objective and exit boundary
 
@@ -44,7 +44,7 @@ The current source confirms a broad persistence and orchestration seam; the owne
 - Added adapter-package regressions for provider failure evidence/write-CAS behavior and proposal CAS dismissal/reopen behavior. Existing agentstate migration, concurrency, approval, and runtime coverage remains in place.
 - Local Windows verification passed: `go test ./... -count=1`; race tests for Discovery SQLite, agentstate, discovery, and configuration; `go vet ./...`; Windows build; Linux/amd64 cross-build; architecture import/package documentation/450-line checks; and `git diff --check`.
 - Independent standards and spec reviews found no findings. The code graph found six affected flows and no test gaps. Docker/Collector E2E and native Linux execution were not run because this persistence-only extraction changes no receiver, runtime, or platform behavior; the Linux cross-build is not Linux E2E.
-- This is local verification only; final-head Windows/Ubuntu CI and merge evidence are recorded in the checkpoint report after submission.
+- PR #25 targeted `chore/v0.1.4a-next` and merged at `7bec19a5dae675778e1670037a8770b8285d5a86`. Final-head CI run `43146754385` passed on Ubuntu (46s) and Windows (1m49s). Independent standards and spec reviews found no findings. The reusable work branch was recreated from the merge. See [PR-04c verification report](../../verification/v0.1.4a-next/pr-verification/pr-04c-report.md).
 
 ## Contract audit ruling and migration order
 
@@ -89,7 +89,7 @@ Use `docs/local/architecture/v0.1.4a-next/context-boundaries.md` and `source-str
 
 1. Confirm exact domain ownership from source and contracts; record remaining ownership decisions without inventing them. **Audit complete at the base recorded above; open decisions remain.**
 2. **Identity adapter slice complete and merged:** use the existing shared SQLite open/migration provider contract and extract identity persistence through compatibility facades; old schema, shared transaction reads, and repeated initialization passed Windows tests and final-head CI. Enrollment remains a separate slice gated on its recovery and protected-store contract.
-3. **Inventory/proposal adapters implemented and locally verified:** extract complete repository operations; preserve complete-successful-snapshot and stale/missing semantics. Final-head CI/merge closeout remains.
+3. **Inventory/proposal adapter slice complete and merged:** extract complete repository operations; preserve complete-successful-snapshot and stale/missing semantics. Local Windows verification and final-head CI passed.
 4. Extract configuration desired-state/Template/approval adapters; keep approval and desired-state mutation in ONE atomic transaction.
 5. Decide the canonical candidate-apply port/DTO owner before altering imports; move generation journal/recovery storage only with the runtime owner and its transaction contract.
 6. Extract health projections and platform dependency adapters without changing installation ownership, checksums, retry or teardown semantics.
