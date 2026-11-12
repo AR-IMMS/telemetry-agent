@@ -1,17 +1,17 @@
 # PR-01 — foundation checkpoint report
 
 **Canonical release:** `v0.1.4a-next`<br>
-**Status:** BLOCKED<br>
+**Status:** VERIFYING<br>
 **Base commit:** `1a32602bd1d655c1bdfbf8d477f55b42ac27b49a`<br>
-**Branch / PR / Commit SHA:** `feat/v0.1.4a-next-work` → `chore/v0.1.4a-next` / PR not created (GitHub integration 403) / head `5a0032242a1de8554c5af3c716b0be703cc8382b`; implementation commit `75aaf9a36f95778effb70a06750b743d2b3f562e`; base `1a32602bd1d655c1bdfbf8d477f55b42ac27b49a`<br>
+**Branch / PR / Commit SHA:** `feat/v0.1.4a-next-work` → `chore/v0.1.4a-next` / [draft PR #20](https://github.com/AR-IMMS/telemetry-agent/pull/20) / verified head before this report sync `0f9096044c558441f73432d3dc5016085c51bdd4`; implementation commit `75aaf9a36f95778effb70a06750b743d2b3f562e`; base `1a32602bd1d655c1bdfbf8d477f55b42ac27b49a`<br>
 **Integration branch:** `chore/v0.1.4a-next` (local, still at the base commit)<br>
 **Report date:** 2026-11-12
 
 ## Summary
 
-PR-01 establishes the reviewed release documentation, preserves current runtime contracts, documents the source baseline, adds a narrow CI architecture/package-documentation/file-size guard, and enables CI for pull requests targeting the approved integration branch. No runtime behavior, SQLite schema, Collector artifact, dependency ownership, enrollment behavior, or shared-submodule content changed. The implementation and report updates are committed locally; both refs were pushed without force. A draft PR creation attempt through the connected GitHub integration returned 403 `Resource not accessible by integration`, so no PR or remote review exists.
+PR-01 establishes the reviewed release documentation, preserves current runtime contracts, documents the source baseline, adds a narrow CI architecture/package-documentation/file-size guard, and enables CI for pull requests targeting the approved integration branch. No runtime behavior, SQLite schema, Collector artifact, dependency ownership, enrollment behavior, or shared-submodule content changed. The implementation and report updates are committed locally; both refs were pushed without force. Draft PR #20 is open against the approved integration branch. Both CI matrix jobs passed for head `0f9096044c558441f73432d3dc5016085c51bdd4`; the report synchronization will create a new head requiring a final CI rerun before merge.
 
-The user-authorized PR-01 preparation is complete in the isolated worktree. The connected GitHub integration verified the repository and accepted the new branch refs, but denied draft PR creation with 403 `Resource not accessible by integration`; the CLI also has an invalid token and cannot reach the API. The shared gitlink remains unchanged at `c4cd59a9bcaaf0735c3107424f1be98fc498670a`, which exists in the shared-docs repository. The policy was reviewed; the original checkout's submodule worktree status could not be established. Docker Engine is available, but no isolated PR-01 infrastructure scenario was defined or run. PR-01 remains BLOCKED pending PR creation/review and remote verification.
+The user-authorized PR-01 preparation is complete in the isolated worktree and draft PR #20 is open. In the user's Windows environment, `gh api user --jq .login` returned `iSenity1812`; `gh auth status`, `gh repo view`, and PR creation succeeded. Both CI jobs passed on the current pre-report-sync head. The shared gitlink remains unchanged at `c4cd59a9bcaaf0735c3107424f1be98fc498670a`, which exists in the shared-docs repository. The policy was reviewed; the original checkout's submodule worktree status could not be established. Docker Engine is available, but no isolated PR-01 infrastructure scenario was defined or run. PR-01 remains VERIFYING until the final report commit's CI passes and the PR is merged.
 
 ## Work completed
 
@@ -44,11 +44,12 @@ The user-authorized PR-01 preparation is complete in the isolated worktree. The 
 | `git diff --check` | Isolated worktree | No whitespace errors | No errors | PASS |
 | Markdown link scan | Release docs + entrypoints; full `docs/` audit | New/updated release-doc paths resolve | Scoped: 33 Markdown files / 60 local links, 0 broken; 2 shared-submodule links unavailable. Full audit: 101 files / 137 local links, 4 pre-existing broken historical links and the same 2 unavailable shared links | PARTIAL |
 | `go run ./cmd/agentctl help` and `go run ./cmd/agentctl --help` | Windows worktree | Capture existing command output and exit behavior | `help`: exit 0; `--help`: exit 2, unknown command. Output is in `pr-01-baseline.md` | PASS |
-| Read shared coding policy | Original checkout; target gitlink inspected | Read and compare policy | Policy text was readable in the original checkout and is consistent with the local supplement; target gitlink is `c4cd59a9bcaaf0735c3107424f1be98fc498670a`, but checked-out submodule worktree status could not be verified | PARTIAL |
-| GitHub CLI checks | `gh` 2.96.0 | CLI authentication and repo/API access | `GH_TOKEN` exists but is invalid; saved account token invalid; `gh repo view` and `gh api user --jq .login` cannot connect | BLOCKED |
-| GitHub integration access | Connected GitHub app | Read repository, publish target refs, create draft PR | Authenticated login `iSenity1812`; repository read succeeded; both refs published; PR create denied with 403 `Resource not accessible by integration` | PARTIAL |
+| GitHub Actions PR checks | `https://github.com/AR-IMMS/telemetry-agent/pull/20` | Ubuntu and Windows matrix: manifest probe, architecture guard, tests, vet, build | Both jobs passed for head `0f9096044c558441f73432d3dc5016085c51bdd4`; new report-sync commit requires rerun | PASS for recorded head; final head pending |
+| Read shared coding policy | GitHub at pinned target gitlink; original checkout | Read and compare policy | Policy at `c4cd59a9bcaaf0735c3107424f1be98fc498670a` was reviewed and matches the text previously read in the original checkout; it is consistent with the local supplement. Original submodule worktree status remains unverified | PARTIAL |
+| GitHub CLI checks | `gh` in user Windows environment | CLI authentication and repo/API access | `gh api user --jq .login` returned `iSenity1812`; `gh auth status` and `gh repo view` succeeded | PASS |
+| GitHub PR access | `AR-IMMS/telemetry-agent` | Open PR against approved integration branch | Draft PR #20 created from `feat/v0.1.4a-next-work` to `chore/v0.1.4a-next` | PASS |
 | Remote refs | Git protocol + GitHub API | Confirm approved base and resulting branch heads | `dev` and `chore/v0.1.4a-next` at `1a32602bd1d655c1bdfbf8d477f55b42ac27b49a`; feature head at `5a0032242a1de8554c5af3c716b0be703cc8382b` | PASS |
-| Remote CI / PR review | GitHub Actions | Required checks and review on PR-01 | No workflow run or PR review exists because PR creation was denied | BLOCKED |
+| Remote CI / PR review | GitHub Actions / PR #20 | Required checks and review on PR-01 | Ubuntu and Windows checks passed on `0f9096044c558441f73432d3dc5016085c51bdd4`; final report-sync head is pending its CI rerun; PR remains draft | VERIFYING |
 | Docker engine probe (release readiness) | Windows host; elevated read-only access | Docker client and engine available for later infrastructure checkpoints | CLI 29.5.3, Compose 5.1.4, Engine 29.5.3; Linux Docker Desktop daemon reachable. Existing Core MongoDB and observability Compose services are running. Normal sandbox access is denied | PASS — capability confirmed; isolated test fixture still required |
 
 ## E2E
@@ -64,7 +65,7 @@ The user-authorized PR-01 preparation is complete in the isolated worktree. The 
 - The original `dev` checkout remains at `1a32602` and still has its original staged lock file, modified entrypoints/architecture, historical verification folder, and untracked v0.1.4a-next documents. Its state was rechecked after preparation. No original files were removed or rewritten.
 - The shared submodule was not modified. The target worktree and index both record gitlink `c4cd59a9bcaaf0735c3107424f1be98fc498670a`. The policy text was read from the original checkout and is consistent with the local supplement, but Git could not verify the submodule working tree/status; the earlier original-checkout inspection reported submodule dirtiness, so exact content and clean-state assertions remain unverified.
 - A 0-byte `cmd/agentctl/otel.yaml.lifecycle.lock` is also present as untracked in the isolated worktree. Its creation/source could not be established; it was left untouched and is excluded from PR-01 changes.
-- Only reviewed PR-01 files were staged; the unexplained lock artifact was excluded. The feature branch contains implementation commit `75aaf9a36f95778effb70a06750b743d2b3f562e`, report commit `f0fda191e253783c392e8b7155af581e2b422454`, and evidence refresh `5a0032242a1de8554c5af3c716b0be703cc8382b`. Branch refs were pushed; draft PR creation failed with 403, and no merge occurred.
+- Only reviewed PR-01 files were staged; the unexplained lock artifact was excluded. The feature branch contains implementation commit `75aaf9a36f95778effb70a06750b743d2b3f562e`, report commit `f0fda191e253783c392e8b7155af581e2b422454`, evidence refresh `5a0032242a1de8554c5af3c716b0be703cc8382b`, and PR-state update commit `0f9096044c558441f73432d3dc5016085c51bdd4`. Branch refs were pushed; draft PR #20 is open and no merge occurred.
 
 ## Changed-file list
 
@@ -90,7 +91,7 @@ The isolated worktree also reports the unrelated 0-byte lock artifact noted abov
 ## Open gates before integration review/publication
 
 1. Restore reliable `docs/shared` submodule metadata/status access and verify the checked-out content against gitlink `c4cd59a9bcaaf0735c3107424f1be98fc498670a`. The policy text currently readable in the original checkout is consistent with the local supplement.
-2. Restore a GitHub integration with pull-request write access or valid CLI authentication; create PR-01 against `chore/v0.1.4a-next`, then verify its checks and review state. Do not retarget to `dev` or `main`.
+2. Commit and push the synchronized checkpoint report, verify both CI jobs on the resulting PR head, then mark PR #20 ready and merge into `chore/v0.1.4a-next` after checks pass. Do not retarget to `dev` or `main`.
 3. Review the `service` root-help discrepancy and transition allowances at the next appropriate CLI/architecture checkpoint; do not change them silently in PR-01.
 
 The full documentation scan also found four existing historical links outside the release-doc scope: `docs/local/handoffs/2026-10-26-architecture-audit-m1-refactor.md` → `../superpowers/plans/2026-10-26-m1-refactor-plan.md`; `docs/superpowers/plans/2026-10-27-m2-local-installation-identity.md` → `../../architecture/m2-local-installation-identity-design.md` and `../../architecture/target-architecture-v0.1.4.md`; and `docs/superpowers/plans/2026-10-28-m2-core-gateway-endpoint-sync.md` → `../../architecture/m2-core-gateway-endpoint-sync-design.md`. These were not changed as part of PR-01.
