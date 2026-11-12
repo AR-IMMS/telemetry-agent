@@ -1,6 +1,6 @@
 # PR-04b — Enrollment SQLite adapter
 
-**Checkpoint status:** Local implementation and verification PASS; independent review PASS; GitHub CI and merge pending.
+**Checkpoint status:** PASS — merged after local verification, independent review, and final-head GitHub CI.
 
 **Release target:** `v0.1.4a-next`
 
@@ -9,6 +9,10 @@
 **Base SHA:** `376b8526b0132d3dca1f9eabb9c9ffe9a9f01f5d` (PR-04a post-merge documentation sync)
 
 **Implementation commit:** `d708433b0a2e2d672ed5332794727d2d48543060`
+
+**Pull request:** [#24](https://github.com/AR-IMMS/telemetry-agent/pull/24), base `chore/v0.1.4a-next`, final head `ce9250ac72b811a1f74208f44eab38cda1197f55`
+
+**Merge commit:** `bdc656acc8f6c6cfa3fb09f8cf4cc3d3a8e8e9cc`
 
 ## Scope and contract
 
@@ -43,7 +47,7 @@ The unrelated zero-byte `cmd/agentctl/otel.yaml.lifecycle.lock` remains untracke
 | Architecture guard | PASS | Direct invocation `& ./scripts/check-architecture.ps1`: 28 source directories/packages and 277 production files within configured limits. |
 | Windows SQLite + CredentialStore integration | SKIPPED | Explicit run `go test ./internal/enrollment -run '^TestSQLiteAndCredentialStoreKeepEnrollmentSecretsSeparated$' -count=1 -v`; fixture reported that this process is not elevated. No credential-store integration PASS is claimed. |
 | Independent code review | PASS | No Critical, Important, or Minor findings. |
-| GitHub final-head CI | NOT RUN | Checkpoint is not yet submitted. |
+| GitHub final-head CI | PASS | Run `43144356317`: Ubuntu passed in 53s; Windows passed in 2m5s on PR head `ce9250ac72b811a1f74208f44eab38cda1197f55`. |
 | Native Linux E2E | NOT RUN | Linux cross-build only. |
 
 ## Risks and remaining decisions
@@ -54,4 +58,4 @@ The unrelated zero-byte `cmd/agentctl/otel.yaml.lifecycle.lock` remains untracke
 
 ## Rollback and next step
 
-Revert the enrollment adapter/facade extraction as one unit. No persisted schema or data migration occurred, so rollback requires no database restoration. Continue to final review, PR CI, and merge only after those gates pass.
+Revert merge `bdc656acc8f6c6cfa3fb09f8cf4cc3d3a8e8e9cc` as a unit if needed. No persisted schema or data migration occurred, so rollback requires no database restoration. PR-04b is complete; continue with the remaining PR-04 slices.

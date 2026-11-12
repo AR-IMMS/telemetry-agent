@@ -1,25 +1,25 @@
-package agentstate
+package sqlite
 
 import (
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/discovery"
 )
 
-// InventoryRepository returns the SQLite adapter for read-only inventory diagnostics
-// and atomic provider snapshot persistence.
-func (s SQLiteStore) InventoryRepository() discovery.InventoryRepository {
-	return inventorySQLite{store: s}
+// NewInventoryRepository creates the Discovery inventory adapter over the shared database.
+func NewInventoryRepository(open func() (*sql.DB, error), locker sync.Locker) discovery.InventoryRepository {
+	return inventorySQLite{store: database{open: open, locker: locker}}
 }
 
-type inventorySQLite struct{ store SQLiteStore }
+type inventorySQLite struct{ store database }
 
 func (s inventorySQLite) Snapshot() (discovery.InventorySnapshot, error) {
-	db, err := s.store.open()
+	db, err := s.store.openDatabase()
 	if err != nil {
 		return discovery.InventorySnapshot{}, err
 	}
@@ -100,9 +100,12 @@ func (s inventorySQLite) CommitProviderSnapshot(expectedWriteRevision uint64, sn
 			return fmt.Errorf("inventory update contains another provider instance")
 		}
 	}
-	sqliteUpdateMutex.Lock()
-	defer sqliteUpdateMutex.Unlock()
-	db, err := s.store.open()
+	unlock, err := s.store.lockWrites()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	db, err := s.store.openDatabase()
 	if err != nil {
 		return err
 	}
@@ -171,9 +174,12 @@ func (s inventorySQLite) RecordProviderFailure(status discovery.ProviderStatus) 
 	if status.ProviderID == "" || status.ProviderInstanceID == "" || status.LastErrorCode == "" {
 		return fmt.Errorf("provider failure identity and safe error code are required")
 	}
-	sqliteUpdateMutex.Lock()
-	defer sqliteUpdateMutex.Unlock()
-	db, err := s.store.open()
+	unlock, err := s.store.lockWrites()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	db, err := s.store.openDatabase()
 	if err != nil {
 		return err
 	}
