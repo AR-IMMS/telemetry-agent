@@ -20,6 +20,8 @@ Events carry IDs/revision/fingerprint only, never credentials, full config or mu
 
 - Config stages: received → validated/persisted → pending apply → applied-ready OR failed/restored. Native OpAMP statuses are separate from richer AR-IMMS projections.
 - Collector generation and candidate journal track validation, activation, readiness and LKG. Ready does **not** assert OTLP delivery.
+- Under the proposed PR-07 migration, track Core desired revision separately from Supervisor/Collector effective config evidence. Do not map an older config reported applied after rollback to success for a newer desired revision. Exact status mapping and persistence ownership remain open until contracts and pinned Supervisor behavior are verified.
+- OTel OpAMP Supervisor remote-config rollback is a separate capability from current Agent LKG. Upstream docs describe rollback as opt-in for Collector startup failure; verify exact pinned behavior and failure coverage before changing lifecycle ownership.
 - Resource provider snapshot error is not equivalent to resource deletion. Complete successful missing observations control presence transitions.
 - Mutating operations (if approved) require durable records and idempotency; **never** use the in-memory event dispatcher as a command queue.
 

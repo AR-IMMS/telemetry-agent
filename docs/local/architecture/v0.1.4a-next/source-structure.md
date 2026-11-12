@@ -138,6 +138,11 @@ internal/app → Wires all dependencies
 | `agenthealth` | `health/` |
 | `agentstate` | Context-owned SQLite adapters + `platform/sqlite` |
 
+The current `internal/supervisor` is the Agent's Collector process supervisor;
+it is not OTel OpAMP Supervisor. Treat any future OpAMP server adapter and
+Supervisor provisioning as explicit boundaries, not a reason to mechanically
+rename or move existing packages. See the [PR-07 migration contract](opamp-integration.md).
+
 Preserve compatibility facades during migration. Do not mechanically move packages or change SQLite schema while reorganizing ownership.
 
 ## 5. Refactoring & Compatibility Rules

@@ -1,18 +1,23 @@
 sequenceDiagram
     actor Admin
-    participant Core as NestJS OpAMP Server
-    participant Agent as Go OpAMP Client
-    participant Config as Agent Configuration
-    participant Run as Collector Runtime
-    Admin->>Core: Publish targeted profile revision
-    Agent->>Core: Authenticated OpAMP poll/status
-    Core-->>Agent: RemoteConfig document + hash
-    Agent->>Config: Schema/capability/revision validation + persist
-    Config->>Run: Apply candidate if effective fingerprint changed
-    alt Valid and ready
-      Run-->>Agent: Generation applied
-      Agent->>Core: remote_config_status APPLIED
+    participant Core as Core Backend / Go Mock Core
+    participant Server as Go OpAMP Server adapter
+    participant Supervisor as OTel OpAMP Supervisor
+    participant Agent as AR-IMMS Agent
+    participant Collector as OTel Collector
+    Admin->>Core: Publish targeted versioned policy (proposed)
+    Supervisor->>Server: Native OpAMP session
+    Server->>Core: Authenticate, bind identity, fetch desired policy
+    Core-->>Server: Typed policy snapshot + revision (contract pending)
+    Server-->>Supervisor: Native RemoteConfig
+    Supervisor->>Collector: Compose configured local + remote config; restart
+    Collector-->>Supervisor: Runtime health/config evidence
+    Supervisor-->>Server: Native status/health evidence
+    Server->>Core: Report observed status
+    Collector-->>Agent: Diagnostic evidence
+    alt Valid and healthy (exact status mapping pending)
+      Server->>Core: Report supported applied evidence
     else Failure
-      Run-->>Agent: LKG restored + error
-      Agent->>Core: remote_config_status FAILED
+      Supervisor->>Collector: Roll back if exact version/config enables supported rollback
+      Server->>Core: Report failure/recovery evidence
     end

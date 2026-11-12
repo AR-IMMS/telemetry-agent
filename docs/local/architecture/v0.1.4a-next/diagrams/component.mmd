@@ -1,14 +1,18 @@
 flowchart TB
-    Admin[Engineer / Core UI] --> Core[Core NestJS: IAM, Registry, Policy]
-    Core <-->|OpAMP Protobuf HTTP poll| Identity[Identity and Connectivity / Go OpAMP Client]
+    Admin[Engineer / Core UI] --> Core[Core Backend: IAM, Registry, Policy]
+    Core <-->|Versioned internal HTTP contracts| OpAMPServer[Go OpAMP Server adapter]
+    Mock[Go Mock Core / isolated testbed] <-->|Same contracts in tests| OpAMPServer
+    OpAMPServer <-->|Native OpAMP| OTelSupervisor[OTel OpAMP Supervisor]
+    Core <-->|Enrollment and business APIs| Agent[AR-IMMS Agent]
     Core <-->|Separate authorized operations transport| Operations[Remote Operations]
     subgraph Host[Windows / Linux Host]
-      Identity --> Configuration[Configuration & Policy]
+      Agent -->|Provision / local config| OTelSupervisor
+      Agent --> Configuration[Agent Configuration & Policy]
       Docker[Docker + host metadata] --> Inventory[Discovery Providers / Metadata Registry]
       Inventory --> Monitoring[Monitoring Capabilities / Provisioner]
       Monitoring --> Configuration
-      Configuration --> Runtime[Collector Runtime / LKG]
-      Runtime --> OTel[OTel Collector]
+      Configuration -.->|Current runtime until parity; transfer once| OTelSupervisor
+      OTelSupervisor -->|sole process owner after transfer| OTel[OTel Collector]
       Docker --> Observer[OTel Docker/Host Observer]
       Observer --> Creator[OTel Receiver Creator]
       Creator --> Receivers[OTel Receivers]
@@ -16,7 +20,8 @@ flowchart TB
       State[(SQLite durable state)] <--> Configuration
       State <--> Inventory
       Events[Typed events - advisory] -.-> Monitoring
-      Events -.-> Runtime
-      Health[Health & Reporting] --> Identity
+      Events -.-> OTelSupervisor
+      Health[Health & Reporting] --> Agent
+      OTel -.->|diagnostic evidence| Health
     end
     Receivers --> Gateway[OTLP Gateway / Metrics Logs Traces]
