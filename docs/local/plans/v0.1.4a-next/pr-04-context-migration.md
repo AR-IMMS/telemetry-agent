@@ -1,6 +1,6 @@
 # PR-04 — Bounded Context Ownership & Repository Migration
 
-**Status:** PR-04a identity adapter PASS and merged; PR-04b enrollment adapter local verification and independent review PASS, GitHub CI pending. **Release target:** `v0.1.4a-next`. **PR-04a merge:** `4bdfff72ea1bcc6b344ced4fdc65f5d0b3df3301`.
+**Status:** PR-04a identity and PR-04b enrollment adapters PASS and merged; overall PR-04 remains IN_PROGRESS. **Release target:** `v0.1.4a-next`. **PR-04a merge:** `4bdfff72ea1bcc6b344ced4fdc65f5d0b3df3301`; **PR-04b merge:** `bdc656acc8f6c6cfa3fb09f8cf4cc3d3a8e8e9cc`.
 
 ## Objective and exit boundary
 
@@ -54,7 +54,7 @@ The current source confirms a broad persistence and orchestration seam; the owne
 - Atomic operations retained: installation-ID check and initial attempt creation; failed-attempt replacement; explicit re-enrollment preserving old binding metadata; terminal completion plus credential reference; permanent failure; clearing the prior credential reference only after external deletion succeeds.
 - RED: `go test ./internal/enrollment/sqlite -count=1` failed because the new adapter package had no implementation. GREEN: the focused new adapter test plus existing enrollment persistence tests passed.
 - Full Windows suite `go test ./... -count=1`, focused race, `go vet ./...`, Windows build, Linux/amd64 cross-build, and direct `scripts/check-architecture.ps1` invocation passed. The existing Windows SQLite+CredentialStore integration test was explicitly run and SKIPPED because this process is not elevated; no credential-store integration pass is claimed for this slice.
-- Independent code review completed with no Critical, Important, or Minor findings. GitHub final-head CI and merge remain pending. No schema migration, Docker/Collector test, or native Linux E2E was part of this persistence-only slice.
+- Independent code review completed with no Critical, Important, or Minor findings. PR #24 targeted `chore/v0.1.4a-next` and merged at `bdc656acc8f6c6cfa3fb09f8cf4cc3d3a8e8e9cc`; CI run `43144356317` passed on Ubuntu and Windows. The reusable branch was recreated from the integration head. No schema migration, Docker/Collector test, or native Linux E2E was part of this persistence-only slice.
 
 ### Open decisions (not resolved by this audit)
 
