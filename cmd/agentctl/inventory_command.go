@@ -75,6 +75,14 @@ func runInventory(ctx context.Context, args []string, stdout, stderr io.Writer) 
 		fmt.Fprintf(stderr, "inventory %s: %v\n", command, err)
 		return 1
 	}
+	profileRegistry := monitoringprofile.DefaultRegistry()
+	if state, stateErr := agentstate.NewStore(*statePath).Load(); stateErr == nil {
+		profileRegistry, err = monitoringprofile.LoadDirectory(state.Collector.ConfigRoot)
+		if err != nil {
+			fmt.Fprintf(stderr, "load local monitoring profiles: %v\n", err)
+			return 1
+		}
+	}
 	switch command {
 	case "list":
 		fmt.Fprintln(stdout, "PROVIDER\tRESOURCE\tKIND\tNAME\tSTATE\tPRESENCE\tFRESHNESS")
@@ -104,7 +112,10 @@ func runInventory(ctx context.Context, args []string, stdout, stderr io.Writer) 
 				for _, endpoint := range resource.Endpoints {
 					fmt.Fprintf(stdout, "  scope=%s address=%s port=%d protocol=%s provenance=%s\n", endpoint.Scope, endpoint.Address, endpoint.Port, endpoint.Protocol, endpoint.Provenance)
 				}
-				if profile, matched := monitoringprofile.DefaultRegistry().Match(string(resource.Key.Provider), resource.Attributes); matched {
+				if profile, matched := profileRegistry.Match(string(resource.Key.Provider), resource.Attributes); matched {
+					if !monitoringprofile.CredentialsConfigured(profile) {
+						fmt.Fprintln(stdout, "Monitoring configuration: requires_configuration (PostgreSQL credential values are unavailable to the Agent service)")
+					}
 					diagnostic := monitoringprofile.DiagnoseEndpointWithAttributes(profile, runtime.GOOS, resource.Endpoints, fetchCollectorScrapeEvidence(ctx), resource.Attributes)
 					fmt.Fprintf(stdout, "Monitoring profile: %s\nProfile endpoint: %s (candidates=%d, evidence=%s)\n",
 						profile.ID, diagnostic.State, diagnostic.CandidateCount, diagnostic.EvidenceSource)

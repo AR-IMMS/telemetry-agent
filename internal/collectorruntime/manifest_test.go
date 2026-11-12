@@ -113,6 +113,12 @@ func TestStaticManifestMatchesActualCollectorBinaryWhenProvided(t *testing.T) {
 	if catalogHasCapability(staticCatalogEntriesForPlatform(runtime.GOOS), "otel.receiver.redis.metrics") && !strings.Contains(modules["receiver/redis"], "receiver/redisreceiver v0.160.0") {
 		t.Fatalf("Redis receiver module identity=%q, want receiver/redisreceiver v0.160.0", modules["receiver/redis"])
 	}
+	if catalogHasCapability(staticCatalogEntriesForPlatform(runtime.GOOS), "otel.receiver.postgresql.metrics") && !strings.Contains(modules["receiver/postgresql"], "receiver/postgresqlreceiver v0.160.0") {
+		t.Fatalf("PostgreSQL receiver module identity=%q, want receiver/postgresqlreceiver v0.160.0", modules["receiver/postgresql"])
+	}
+	if catalogHasCapability(staticCatalogEntriesForPlatform(runtime.GOOS), "otel.receiver.prometheus.metrics") && !strings.Contains(modules["receiver/prometheus"], "receiver/prometheusreceiver v0.160.0") {
+		t.Fatalf("Prometheus receiver module identity=%q, want receiver/prometheusreceiver v0.160.0", modules["receiver/prometheus"])
+	}
 }
 
 func TestRedisCapabilityIsEnabledOnlyForVerifiedArtifactPlatforms(t *testing.T) {
@@ -130,6 +136,20 @@ func TestRedisCapabilityIsEnabledOnlyForVerifiedArtifactPlatforms(t *testing.T) 
 	}
 	if !catalogHasCapability(linux.Manifest(), "otel.receiver.redis.metrics") {
 		t.Fatal("verified Linux catalog is missing the Redis metrics receiver")
+	}
+}
+
+func TestPostgreSQLAndPrometheusCapabilitiesAreEnabledForPinnedPlatforms(t *testing.T) {
+	for _, platform := range []identity.PlatformInfo{{OS: "windows", Architecture: "amd64"}, {OS: "linux", Architecture: "amd64"}} {
+		catalog, err := StaticCatalog(platform)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, capability := range []string{"otel.receiver.postgresql.metrics", "otel.receiver.prometheus.metrics"} {
+			if !catalogHasCapability(catalog.Manifest(), capability) {
+				t.Errorf("%s catalog is missing %s", platform.OS, capability)
+			}
+		}
 	}
 }
 

@@ -7,7 +7,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/identity"
 )
 
-const manifestVersion = "otelcol-contrib-0.160.0-artifacts-v3"
+const manifestVersion = "otelcol-contrib-0.160.0-artifacts-v4"
 
 var manifestArtifacts = map[string]string{
 	"linux/amd64":   "7bb60c584c241c86261c2b8697cd3725dd8c56691f5ad5d98454eaa005b47b0c",
@@ -24,6 +24,9 @@ var staticCatalogEntries = []Capability{
 	// Redis is enabled for Linux and Windows amd64 after artifact inventory and
 	// native candidate validation against both exact shipped binaries.
 	{ID: "otel.receiver.redis.metrics", NativeName: "redis", Kind: "receiver", OS: []string{"linux", "windows"}, Signals: []string{"metrics"}, Pipeline: "metrics"},
+	// PostgreSQL and Prometheus are enabled after artifact inventory and native
+	// candidate validation against both exact shipped binaries.
+	{ID: "otel.receiver.postgresql.metrics", NativeName: "postgresql", Kind: "receiver", OS: []string{"linux", "windows"}, Signals: []string{"metrics"}, Pipeline: "metrics"},
 }
 
 // StaticCatalog returns the reviewed manifest for an exact platform artifact.

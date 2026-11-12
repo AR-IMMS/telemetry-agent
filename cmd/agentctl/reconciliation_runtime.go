@@ -26,6 +26,7 @@ type runtimeBaseline struct {
 	dependencies   dependency.Catalog
 	layers         []config.Layer
 	gateways       coreconfig.GatewayRepository
+	profiles       monitoringprofile.Registry
 	baselineInputs func() ([]config.InlineLayer, []string, error)
 }
 
@@ -52,14 +53,19 @@ func newRuntimeBaseline(statePath string) (runtimeBaseline, error) {
 	if err != nil {
 		return runtimeBaseline{}, err
 	}
+	profiles, err := monitoringprofile.LoadDirectory(state.Collector.ConfigRoot)
+	if err != nil {
+		return runtimeBaseline{}, fmt.Errorf("load local monitoring profiles: %w", err)
+	}
 	return runtimeBaseline{
 		store:        store,
 		platform:     platform,
 		dependencies: dependencies,
 		layers:       layers,
 		gateways:     agentstate.NewCoreGatewayStore(statePath),
+		profiles:     profiles,
 		baselineInputs: func() ([]config.InlineLayer, []string, error) {
-			return nativeDockerMonitoringInputs(statePath, platform.OS)
+			return nativeDockerMonitoringInputsWithProfiles(statePath, platform.OS, profiles)
 		},
 	}, nil
 }
@@ -123,7 +129,7 @@ func newRuntimeReconciliationController(statePath string, runner bootstrap.Comma
 	if err != nil {
 		return nil, nil, err
 	}
-	profiles := monitoringprofile.DefaultRegistry()
+	profiles := baseline.profiles
 	additionalBaselineInputs := baseline.baselineInputs
 	nativeLayers, _, nativeErr := additionalBaselineInputs()
 	if nativeErr != nil {

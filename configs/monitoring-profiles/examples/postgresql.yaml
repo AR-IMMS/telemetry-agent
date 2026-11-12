@@ -1,0 +1,15 @@
+api_version: ar-imms/v1alpha1
+profiles:
+  - id: postgres
+    provider: docker
+    receiver_type: postgresql
+    required_capabilities:
+      - otel.receiver.postgresql.metrics
+    match_labels:
+      ar-imms.monitoring.enabled: "true"
+      ar-imms.monitoring.profile: postgres
+    collection_interval: 30s
+    target_port: 5432
+    target_port_label: ar-imms.monitoring.port
+    username_env: AR_IMMS_POSTGRESQL_USERNAME
+    password_env: AR_IMMS_POSTGRESQL_PASSWORD

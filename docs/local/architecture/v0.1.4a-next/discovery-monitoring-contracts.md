@@ -1,6 +1,6 @@
 # Discovery and monitoring contracts
 
-**Status:** APPROVED FOR PR-05 IMPLEMENTATION
+**Status:** APPROVED FOR PR-05; PR-06 extension contract recorded below
 **Release target:** `v0.1.4a-next`
 
 ## Identity
@@ -28,6 +28,17 @@ The Agent inventory retains the provider key `(provider, provider_instance, reso
 A provider returns a normalized, provider-scoped snapshot containing runtime identity, display metadata, allowlisted attributes, endpoint evidence, observation time, and an explicit completeness result. A provider error, invalid snapshot, or incomplete snapshot records diagnostics and does not mark prior resources missing. Discovered endpoints are evidence, not a reachability assertion.
 
 A monitoring profile declares its profile ID, provider match, required labels, required pinned Collector capabilities, endpoint strategy by platform/provider, and receiver configuration. PR-05 ships a small built-in Docker/Redis profile. A profile registry is a composition list with validation; it is not a dynamic plugin loader. New providers and profiles extend that registry without changing Docker snapshot normalization or reconciliation rules.
+
+### PR-06 local profile extension contract
+
+- Profile documents are local configuration under `<config-root>/monitoring-profiles/`; they use a versioned, bounded Agent schema and cannot contain arbitrary Collector YAML, expressions, or executable hooks. The Agent translates approved profile fields to pinned OTel components.
+- A profile selects a provider, exact opt-in labels, a Collector capability, a profile-owned target port (with optional validated label override), and receiver-specific typed settings. Generic discovery records observations only; it does not know profile IDs or private-port defaults.
+- Initial native receiver types are Redis, PostgreSQL, and Prometheus. Prometheus profiles may set a bounded metrics path and interval. Adding another Prometheus endpoint, including a test facilities exporter, is a data-only profile change after the generic typed profile loader is installed.
+- PostgreSQL profile files name username/password environment-variable references; they contain no secret values. The Agent omits the PostgreSQL receiver rule until both values are present in the Agent service environment, while `inventory inspect` reports `requires_configuration`. The Collector process resolves references through its normal environment expansion. `tls_ca_file` may name a trusted local CA file; no insecure TLS bypass is exposed. These local references do not define Core/OpAMP secret authority.
+- The profile registry rejects unknown schema fields, unsupported receiver/capability combinations, duplicate identities or receiver rules, unsafe path/interval/port values, and a profile that cannot be represented by the pinned binary manifest. A rejected change leaves the active Collector candidate and LKG unchanged.
+- Docker Observer and Receiver Creator remain the only dynamic discovery/receiver lifecycle engines. Agent inventory and profile policy determine intent; exactly one owner is selected for each target. Existing non-profile Redis behavior remains compatible.
+
+Open: configuration authority precedence between Core and local files remains unresolved and is not changed by PR-06. The local loader is a release-local composition input, not a remote configuration API.
 
 ## Ownership and activation
 

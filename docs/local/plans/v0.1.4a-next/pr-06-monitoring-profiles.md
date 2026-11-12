@@ -1,6 +1,6 @@
 # PR-06 — Application Monitoring Profiles & Extensible Provisioning
 
-**Status:** PRE-IMPLEMENTATION PLAN / implementation not started. **Release target:** `v0.1.4a-next`. **Evidence:** required from actual target-repository HEAD, not assumed.
+**Status:** IN_PROGRESS — implementation on `feat/pr-06-monitoring-profiles`. **Release target:** `v0.1.4a-next`. PR-05 merged at `11fdd1e720c542898ba9c0c673063b1d698d7451`.
 
 ## Objective and exit boundary
 
@@ -9,6 +9,17 @@ Ship Docker application monitoring for Redis, PostgreSQL and Python `/metrics`, 
 ## Baseline / current architecture constraints
 
 Built-in Windows Exporter/LHM/LHM Exporter, Linux hostmetrics/optional Node Exporter, Redis Integration and pinned receiver capabilities must remain functional. Profiles are AR-IMMS schema, NOT raw receiver_creator config.
+
+## Verified implementation direction
+
+- Local data-only profiles are read from `<config-root>/monitoring-profiles/`; versioned typed fields are parsed with unknown-field rejection and file/profile limits. The `examples/` child directory is not loaded automatically.
+- Existing Redis remains the built-in default. Custom profiles use only the pinned Redis, PostgreSQL, and Prometheus native receiver mappings; Docker discovery and the Observer/Receiver Creator lifecycle are reused.
+- PostgreSQL credential fields are environment-variable references only. No values enter profile files, state, or logs. Core/OpAMP authority and remote secret delivery remain out of scope.
+- Implemented so far: profile loader, typed endpoint/receiver projection, PostgreSQL and Prometheus capability declarations, credential/TLS handling, runtime ownership wiring, profile diagnostics, profile tests, operator examples, and Windows live E2E. Linux exact-binary verification and isolated Docker/OTLP E2E remain mandatory before merge.
+
+## Actual paths touched to date
+
+`internal/monitoringprofile/{profile.go,loader.go,loader_test.go,docker_config.go,diagnostics_test.go}`, `internal/collectorruntime/{manifest.go,manifest_test.go}`, `cmd/agentctl/{native_monitoring_runtime.go,native_monitoring_runtime_test.go,bootstrap_command.go,reconciliation_runtime.go,template_materialization_runtime.go,inventory_command.go,application_profiles_live_e2e_test.go}`, `.github/workflows/ci.yml`, `configs/monitoring-profiles/`, and the local PR-05/PR-06 architecture and progress documents.
 
 ## Affected contexts and anticipated code areas
 

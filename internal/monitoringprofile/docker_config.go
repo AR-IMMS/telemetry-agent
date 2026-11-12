@@ -27,6 +27,9 @@ func (r Registry) DockerCollectorLayer(osName, endpoint, nodeID string) (config.
 		if profile.Provider != "docker" {
 			continue
 		}
+		if !CredentialsConfigured(profile) {
+			continue
+		}
 		receivers := make(map[string]any)
 		for _, strategy := range profile.EndpointStrategies {
 			if strategy.OS != osName {
@@ -38,7 +41,7 @@ func (r Registry) DockerCollectorLayer(osName, endpoint, nodeID string) (config.
 			}
 			receivers[id] = map[string]any{
 				"rule":   dockerProfileRule(profile) + " and (" + strategy.When + ") and (" + targetPortRule(strategy) + ")",
-				"config": map[string]any{"endpoint": strategy.Endpoint, "collection_interval": profile.CollectionInterval},
+				"config": receiverConfiguration(profile, strategy),
 				"resource_attributes": map[string]any{
 					"node_id":          nodeID,
 					"resource_id":      "`container_id`",
@@ -77,6 +80,37 @@ func (r Registry) DockerCollectorLayer(osName, endpoint, nodeID string) (config.
 		},
 	}
 	return layer, []string{"receiver_creator"}, nil
+}
+
+func receiverConfiguration(profile Profile, strategy EndpointStrategy) map[string]any {
+	switch profile.ReceiverType {
+	case "redis":
+		return map[string]any{"endpoint": strategy.Endpoint, "collection_interval": profile.CollectionInterval}
+	case "postgresql":
+		configuration := map[string]any{
+			"endpoint": strategy.Endpoint, "collection_interval": profile.CollectionInterval,
+			"username": "${env:" + profile.Settings.UsernameEnv + "}",
+			"password": "${env:" + profile.Settings.PasswordEnv + "}",
+		}
+		if profile.Settings.TLSCAFile != "" {
+			configuration["tls"] = map[string]any{"ca_file": profile.Settings.TLSCAFile}
+		}
+		return configuration
+	case "prometheus":
+		path := profile.Settings.MetricsPath
+		if path == "" {
+			path = "/metrics"
+		}
+		return map[string]any{"config": map[string]any{
+			"scrape_configs": []any{map[string]any{
+				"job_name": profile.ID, "scrape_interval": profile.CollectionInterval,
+				"metrics_path":   path,
+				"static_configs": []any{map[string]any{"targets": []any{strategy.Endpoint}}},
+			}},
+		}}
+	default:
+		return nil
+	}
 }
 
 func targetPortRule(strategy EndpointStrategy) string {
