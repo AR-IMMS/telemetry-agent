@@ -1,0 +1,16 @@
+flowchart LR
+    CLI[cmd/agentctl] --> App[app composition]
+    App --> ID[identity]
+    App --> INV[inventory]
+    App --> MON[monitoring]
+    App --> CFG[configuration]
+    App --> RUN[runtime]
+    App --> H[health]
+    App --> OPS[operations]
+    INV -->|Read-only inventory contract| MON
+    MON -->|Monitoring intent DTO| CFG
+    CFG -->|ApplyCandidate port| RUN
+    ID -->|Versioned remote policy DTO| CFG
+    RUN -->|Runtime evidence DTO| H
+    App --> SQL[platform/sqlite]
+    App --> EV[platform/events]

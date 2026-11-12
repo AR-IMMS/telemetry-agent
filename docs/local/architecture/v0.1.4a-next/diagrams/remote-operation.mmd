@@ -1,0 +1,19 @@
+sequenceDiagram
+    actor Engineer
+    participant Core
+    participant Agent as Operations Executor
+    participant Store as SQLite
+    participant Docker
+    Engineer->>Core: Inspect or request scoped restart
+    Core->>Core: Authn/RBAC/resource/approval check
+    Core->>Agent: Signed/authorized typed request + idempotency key
+    Agent->>Store: Validate, persist admission / dedup
+    alt Valid and not previously executed
+      Agent->>Docker: Exact target operation
+      Docker-->>Agent: Result or uncertain timeout
+      Agent->>Store: Persist outcome / UNKNOWN
+    else Stale/unauthorized/duplicate
+      Agent-->>Core: Reject or return durable prior result
+    end
+    Agent-->>Core: Operation outcome/evidence
+    Core-->>Engineer: Result + recovery evidence separately

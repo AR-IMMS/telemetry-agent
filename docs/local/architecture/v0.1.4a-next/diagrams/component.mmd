@@ -1,0 +1,22 @@
+flowchart TB
+    Admin[Engineer / Core UI] --> Core[Core NestJS: IAM, Registry, Policy]
+    Core <-->|OpAMP Protobuf HTTP poll| Identity[Identity and Connectivity / Go OpAMP Client]
+    Core <-->|Separate authorized operations transport| Operations[Remote Operations]
+    subgraph Host[Windows / Linux Host]
+      Identity --> Configuration[Configuration & Policy]
+      Docker[Docker + host metadata] --> Inventory[Discovery Providers / Metadata Registry]
+      Inventory --> Monitoring[Monitoring Capabilities / Provisioner]
+      Monitoring --> Configuration
+      Configuration --> Runtime[Collector Runtime / LKG]
+      Runtime --> OTel[OTel Collector]
+      Docker --> Observer[OTel Docker/Host Observer]
+      Observer --> Creator[OTel Receiver Creator]
+      Creator --> Receivers[OTel Receivers]
+      OTel --> Receivers
+      State[(SQLite durable state)] <--> Configuration
+      State <--> Inventory
+      Events[Typed events - advisory] -.-> Monitoring
+      Events -.-> Runtime
+      Health[Health & Reporting] --> Identity
+    end
+    Receivers --> Gateway[OTLP Gateway / Metrics Logs Traces]
