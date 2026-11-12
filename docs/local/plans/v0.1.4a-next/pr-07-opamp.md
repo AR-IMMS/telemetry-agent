@@ -1,6 +1,6 @@
 # PR-07 — OpAMP Supervisor Adoption & Control Plane Integration
 
-**Status:** IN_PROGRESS — PR-07a Windows smoke interoperability passed; mandatory profile, failure/recovery, rollback, and native Linux gates remain open.
+**Status:** IN_PROGRESS — PR-07a Windows and Ubuntu WSL live Supervisor/Collector and profile-parity tests pass with Docker Desktop caveat; PR-07b Go Mock Core and pinned Supervisor auth pass on Windows and WSL. Native Linux Docker Engine verification, Agent-owned process-tree recovery/credential provisioning, and controlled lifecycle transfer remain open.
 **Release target:** `v0.1.4a-next`. **Baseline:** PR-06 merge
 `af2f5db4c6b8832bc7bcc87d332d899dad01b452`; check current `HEAD` before each
 slice. See [target contracts and ownership](../../architecture/v0.1.4a-next/opamp-integration.md), [verification report](../../verification/v0.1.4a-next/pr-verification/pr-07-report.md), and [release progress](release-progress.md).

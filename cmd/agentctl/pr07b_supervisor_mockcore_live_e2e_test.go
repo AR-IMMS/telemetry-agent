@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http/httptest"
 	"os"
@@ -34,11 +35,18 @@ func TestPR07BSupervisorAuthenticatesAndAppliesMockCorePolicy(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
-	root, err := os.MkdirTemp("", "pr07b-supervisor-core-e2e-")
+	root, err := os.MkdirTemp(filepath.Join("..", "..", "tmp", "pr07b"), "supervisor-core-e2e-")
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = os.RemoveAll(root) })
+	t.Cleanup(func() {
+		if t.Failed() {
+			_ = os.Remove(filepath.Join(root, "supervisor-opamp.token"))
+			t.Logf("preserving failed PR-07b live E2E directory: %s", root)
+			return
+		}
+		_ = os.RemoveAll(root)
+	})
 
 	const token = "pr07b-local-test-bearer-never-use-in-production"
 	core, err := mockcore.New(mockcore.ProvisionedInstallation{
@@ -62,7 +70,9 @@ func TestPR07BSupervisorAuthenticatesAndAppliesMockCorePolicy(t *testing.T) {
 	if err := listener.Close(); err != nil {
 		t.Fatal(err)
 	}
-	adapter, err := opampserver.New(opampserver.Options{ListenEndpoint: opampEndpoint, ListenPath: "/v1/opamp", CoreClient: coreFactory})
+	adapterOutput := &lockedTemplateE2EBuffer{}
+	adapterLogger := slog.New(slog.NewTextHandler(adapterOutput, nil))
+	adapter, err := opampserver.New(opampserver.Options{ListenEndpoint: opampEndpoint, ListenPath: "/v1/opamp", CoreClient: coreFactory, Logger: adapterLogger})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,6 +95,20 @@ func TestPR07BSupervisorAuthenticatesAndAppliesMockCorePolicy(t *testing.T) {
 	collectorFallback := filepath.Join(root, "fallback.yaml")
 	writePR07ACollectorConfig(t, collectorConfig, "127.0.0.1:4317")
 	writePR07ACollectorConfig(t, collectorFallback, "127.0.0.1:4317")
+	for _, configPath := range []string{collectorConfig, collectorFallback} {
+		contents, err := os.ReadFile(configPath)
+		if err != nil {
+			t.Fatalf("read Collector test config %s: %v", configPath, err)
+		}
+		updated := strings.Replace(string(contents), "service:\n  pipelines:", "service:\n  telemetry:\n    metrics:\n      level: none\n  pipelines:", 1)
+		if updated == string(contents) {
+			t.Fatalf("Collector test config %s has no service.pipelines section", configPath)
+		}
+		contents = []byte(updated)
+		if err := os.WriteFile(configPath, contents, 0600); err != nil {
+			t.Fatalf("disable Collector internal metrics for isolated E2E: %v", err)
+		}
+	}
 	supervisorConfig := fmt.Sprintf(`server:
   endpoint: ws://%s/v1/opamp
   auth: bearertokenauth
@@ -93,12 +117,14 @@ capabilities:
   reports_remote_config: true
 agent:
   executable: %q
+  bootstrap_timeout: 15s
   config_files:
     - %q
     - $REMOTE_CONFIG
   startup_fallback_configs:
     - %q
   automatic_config_rollback: true
+  collector_crash_log_snippet_kib: 4
 storage:
   directory: %q
 extensions:
@@ -106,7 +132,7 @@ extensions:
     filename: %q
 telemetry:
   logs:
-    level: info
+    level: debug
 `, opampEndpoint, collectorBinary, collectorConfig, collectorFallback, filepath.Join(root, "supervisor-state"), tokenPath)
 	configPath := filepath.Join(root, "supervisor.yaml")
 	if err := os.WriteFile(configPath, []byte(supervisorConfig), 0600); err != nil {
@@ -145,6 +171,10 @@ telemetry:
 	for {
 		statuses := core.Statuses()
 		for _, observation := range statuses {
+			if observation.Report.Status == "FAILED" {
+				writePR07BSupervisorEvidence(t, strings.TrimSpace(os.Getenv("AR_IMMS_PR07B_EVIDENCE_DIR")), output.String(), observation.Report)
+				t.Fatalf("valid remote policy was rejected by Collector: %+v; adapter=%s logs: %s", observation.Report, adapterOutput.String(), redactPR07BToken(output.String(), token))
+			}
 			if observation.Report.Status == "APPLIED" && observation.Report.AppliedRevision == 1 {
 				if observation.Report.InstanceUID == "" {
 					t.Fatal("status was not bound to an OpAMP instance UID")
@@ -155,9 +185,9 @@ telemetry:
 		}
 		select {
 		case <-done:
-			t.Fatalf("Supervisor exited before applying authenticated policy (exit=%v); logs: %s", processErr, redactPR07BToken(output.String(), token))
+			t.Fatalf("Supervisor exited before applying authenticated policy (exit=%v); statuses=%+v adapter=%s logs: %s", processErr, core.Statuses(), adapterOutput.String(), redactPR07BToken(output.String(), token))
 		case <-deadline.C:
-			t.Fatalf("timed out waiting for authenticated Supervisor policy status; logs: %s", redactPR07BToken(output.String(), token))
+			t.Fatalf("timed out waiting for authenticated Supervisor policy status; statuses=%+v adapter=%s logs: %s", core.Statuses(), adapterOutput.String(), redactPR07BToken(output.String(), token))
 		case <-ticker.C:
 		}
 	}
