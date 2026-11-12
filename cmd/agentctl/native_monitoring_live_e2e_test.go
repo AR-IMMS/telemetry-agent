@@ -272,6 +272,7 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 
 func verifyNativeDockerRecovery(t *testing.T, ctx context.Context, manager string, store agentstate.SQLiteStore, sink *lockedTemplateE2EBuffer, logs *nativeCollectorLogReporter, serviceDone <-chan error, resourceIDs ...string) {
 	t.Helper()
+	waitForNativeInventoryPresent(t, ctx, store, resourceIDs...)
 	stateBefore, err := store.Load()
 	if err != nil {
 		t.Fatal(err)
@@ -292,8 +293,8 @@ func verifyNativeDockerRecovery(t *testing.T, ctx context.Context, manager strin
 		t.Fatalf("stop isolated Docker Engine manager: %v\n%s", err, output)
 	}
 	outageAt := waitForNativeProviderOutage(t, ctx, store.InventoryRepository())
-	if !nativeInventoryContainsAll(store, resourceIDs...) {
-		t.Fatal("Agent inventory lost present Redis resources during failed Docker observations")
+	if missing := nativeInventoryMissingResources(store, resourceIDs...); len(missing) != 0 {
+		t.Fatalf("Agent inventory did not preserve present Redis resources during failed Docker observations: %v", missing)
 	}
 	if output, err := exec.CommandContext(ctx, "docker", "start", manager).CombinedOutput(); err != nil {
 		t.Fatalf("restart isolated Docker Engine manager: %v\n%s", err, output)
@@ -430,27 +431,31 @@ func waitForNativeInventoryPresent(t *testing.T, ctx context.Context, store agen
 }
 
 func nativeInventoryContainsAll(store agentstate.SQLiteStore, resourceIDs ...string) bool {
+	return len(nativeInventoryMissingResources(store, resourceIDs...)) == 0
+}
+
+func nativeInventoryMissingResources(store agentstate.SQLiteStore, resourceIDs ...string) []string {
 	snapshot, err := store.InventoryRepository().Snapshot()
 	if err != nil {
-		return false
+		return []string{"inventory_snapshot_error=" + err.Error()}
 	}
-	present := make(map[string]bool, len(resourceIDs))
+	presence := make(map[string]discovery.Presence, len(resourceIDs))
 	for _, resourceID := range resourceIDs {
-		present[resourceID] = false
+		presence[resourceID] = "absent"
 	}
 	for _, resource := range snapshot.Resources {
-		if resource.Presence == discovery.PresencePresent {
-			if _, expected := present[resource.Key.ProviderResourceID]; expected {
-				present[resource.Key.ProviderResourceID] = true
-			}
+		if _, expected := presence[resource.Key.ProviderResourceID]; expected {
+			presence[resource.Key.ProviderResourceID] = resource.Presence
 		}
 	}
-	for _, found := range present {
-		if !found {
-			return false
+	var missing []string
+	for resourceID, state := range presence {
+		if state != discovery.PresencePresent {
+			missing = append(missing, fmt.Sprintf("%s=%s", resourceID, state))
 		}
 	}
-	return true
+	sort.Strings(missing)
+	return missing
 }
 
 func waitForNativeNewMetrics(t *testing.T, ctx context.Context, serviceDone <-chan error, sink *lockedTemplateE2EBuffer, before map[string]int) {
