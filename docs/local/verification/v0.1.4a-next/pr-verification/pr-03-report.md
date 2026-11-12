@@ -4,7 +4,9 @@
 **Status:** VERIFYING — local code gates pass; isolated live Docker E2E and checkpoint CI remain outstanding<br>
 **Base:** PR-02 merge `d71f5aa39777824e29f1d06a364bb0a289373803`<br>
 **Branch:** `feat/v0.1.4a-next-work`<br>
-**Worktree HEAD at review:** `d71f5aa39777824e29f1d06a364bb0a289373803` (implementation not yet committed)<br>
+**Implementation commit:** `3f88d77b68c9d18bec819d3822733fa535052ffc` (`feat(pr-03): add agent application host`)<br>
+**Draft PR:** [#22](https://github.com/AR-IMMS/telemetry-agent/pull/22) — `feat/v0.1.4a-next-work` → `chore/v0.1.4a-next`<br>
+**Final CI-tested head:** pending<br>
 **Report date:** 2026-11-12
 
 ## Goal and scope
@@ -36,6 +38,7 @@ Move long-running Agent Service coordination from `cmd/agentctl` into a small `i
 | Docker Engine and Compose probe | User Windows environment, elevated access | PASS; Engine 29.5.3 and Compose 5.1.4 reachable |
 | `git diff --check` | Worktree | PASS; no whitespace errors |
 | Markdown link validation | Six changed local release documents | PASS; 10 local links checked, 0 missing |
+| GitHub Actions CI | Draft PR #22, implementation head `3f88d77b68c9d18bec819d3822733fa535052ffc` | IN_PROGRESS; both Windows and Ubuntu checks started. A docs-only report sync will create a new PR head and require the final check run there. |
 
 ### Infrastructure limitations
 
@@ -68,4 +71,4 @@ The independent review found no Critical or Important defect. It noted one minor
 
 ## Rollback and next checkpoint readiness
 
-Revert the app package and restore `runRuntimeControlLoops` plus dispatcher lifecycle to `cmd/agentctl`; persisted data and schema require no rollback. Keep PR-03 in VERIFYING until final-head CI passes and the live runtime test runs against an isolated Redis fixture with the checksum-verified Collector executable. PR-04 is not ready to start until PR-03 is merged and its context contracts are reviewed.
+Revert PR #22, restore `runRuntimeControlLoops` plus dispatcher lifecycle to `cmd/agentctl`, and retain the PR-02 event publisher contract if its other callers remain; persisted data and schema require no rollback. Keep PR-03 in VERIFYING until final-head CI passes and the live runtime test runs against an isolated Redis fixture with the checksum-verified Collector executable. PR-04 is not ready to start until PR-03 is merged and its context contracts are reviewed.
