@@ -1,6 +1,6 @@
 # PR-05 — OTel-Native Discovery Spike & Gated Receiver Ownership
 
-**Status:** IN_PROGRESS. **Release target:** `v0.1.4a-next`. The spike is accepted and implementation is authorized against the [approved discovery and monitoring contracts](../../architecture/v0.1.4a-next/discovery-monitoring-contracts.md). The checkpoint must not be marked PASS until Windows and native Linux parity gates pass.
+**Status:** VERIFYING. **Release target:** `v0.1.4a-next`. Windows and native Linux parity, outage/recovery, diagnostics, and regression gates now pass; final documentation review and draft-PR merge remain.
 
 ## Objective and exit boundary
 
@@ -71,9 +71,9 @@ evidence below; retain it as historical context, not as the current status.
 ## Implementation evidence and current ruling (2026-11-12)
 
 - The native Docker/Redis profile is now composed into the Agent when its explicit Docker endpoint, registered Core Node ID, and pinned Redis capability are available. Agent inventory remains active, while Agent-generated Redis contributions are suppressed only for opted-in native-owned targets.
-- The latest Windows/amd64 live test used real Docker Redis containers, the pinned v0.160.0 Collector, the Agent runtime, and an isolated OTLP sink. It verified private port 6380, Receiver Creator uniqueness, duplicate-point absence, identity attributes, and unchanged rendered config/generation across churn.
-- Windows full Go tests, vet, build, exact profile validation, architecture guard, SQLite polling stress, and Linux/amd64 cross-build pass. The cross-build is not native Linux verification. Pinned Collector candidate validation and activation failures restore the previous LKG state.
-- PR-05 remains **IN_PROGRESS / CONDITIONAL**. Updated native Linux Docker daemon outage/recovery, post-recovery delivery, and live endpoint failure diagnostics remain open. See the [PR-05 verification report](../../verification/v0.1.4a-next/pr-verification/pr-05-report.md) for commands, versions, evidence levels, and untested cases.
+- Windows live E2E verified private port 6380, Receiver Creator uniqueness, duplicate-point absence, identity attributes, and unchanged rendered config/generation across churn. Native Linux run [43260591828](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43260591828) verified real OTLP delivery, inventory preservation across isolated Docker outage, recovery without Collector restart, and live endpoint failure diagnostics.
+- Windows full Go tests, vet, build, exact profile validation, architecture guard, SQLite polling stress, Linux/amd64 cross-build, and native Windows/Linux CI pass. Pinned Collector candidate validation and activation failures restore the previous LKG state.
+- PR-05 is **PASS**, pending merge of draft PR #28 into `chore/v0.1.4a-next`. See the [PR-05 verification report](../../verification/v0.1.4a-next/pr-verification/pr-05-report.md) for commands, versions, evidence levels, prior harness failures, and scope limits.
 
 ## Implementation plan
 
@@ -90,10 +90,10 @@ The user accepted Windows/Linux live OTLP delivery and LKG verification. PR-05 r
 
 | Closure gate | Status | Evidence |
 |---|---|---|
-| Receiver uniqueness and duplicate telemetry | VERIFYING | Final Windows live E2E asserts one active receiver per Collector instance/endpoint and no duplicate OTLP points; native Linux rerun remains required. |
-| Isolated Docker daemon outage/recovery | VERIFYING | Linux DinD CI harness stops/restarts only its isolated engine and checks inventory, receiver/telemetry convergence, config generation, and Collector instance identity; updated workflow is pending CI. |
-| Live endpoint diagnostics | VERIFYING | Sanitized Collector scrape evidence with UTC observation time feeds the status API and `inventory inspect`; Linux E2E pauses Redis and requires `endpoint_unreachable`; updated workflow is pending CI. |
-| Validated per-profile target port | VERIFYING | Redis defaults to 6379 and supports `ar-imms.monitoring.port`; invalid values fail closed and Windows E2E delivers from private port 6380. Native Linux parity remains required. |
+| Receiver uniqueness and duplicate telemetry | PASS | Final Windows and native Linux E2E assert one active receiver per Collector instance/endpoint and no duplicate OTLP points. |
+| Isolated Docker daemon outage/recovery | PASS | Linux run `43260591828` preserved inventory, recovered observation and OTLP delivery, and retained the Collector instance set/config generation across the isolated daemon restart. |
+| Live endpoint diagnostics | PASS | Linux run `43260591828` paused Redis and verified matching timestamped Collector scrape evidence surfaced as `endpoint_unreachable`; other inventory endpoint states have focused profile tests. |
+| Validated per-profile target port | PASS | Redis defaults to 6379 and supports `ar-imms.monitoring.port`; invalid values fail closed and Windows/Linux live E2E deliver from private port 6380. |
 | Windows SQLite polling investigation | PASS (flaky test classified) | Run 43239629059 failed once at the test's one-second startup-reconciliation wait; its CI retry and host-access `-count=100` rerun passed. The failure is consistent with runner scheduling sensitivity; no product regression reproduced and no code change was justified. |
 
 ### Task 1: Profile contract and generated Collector rule
