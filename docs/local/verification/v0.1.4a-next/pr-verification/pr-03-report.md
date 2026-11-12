@@ -1,12 +1,12 @@
 # PR-03 — Agent Service application host and CLI adapter
 
 **Canonical release:** `v0.1.4a-next`<br>
-**Status:** VERIFYING — local and Windows/Ubuntu CI gates pass; isolated live Docker E2E remains outstanding<br>
+**Status:** VERIFYING — local and isolated Windows Docker/Collector runtime E2E passed; final report-head CI rerun and integration merge pending<br>
 **Base:** PR-02 merge `d71f5aa39777824e29f1d06a364bb0a289373803`<br>
 **Branch:** `feat/v0.1.4a-next-work`<br>
 **Implementation commit:** `3f88d77b68c9d18bec819d3822733fa535052ffc` (`feat(pr-03): add agent application host`)<br>
 **Draft PR:** [#22](https://github.com/AR-IMMS/telemetry-agent/pull/22) — `feat/v0.1.4a-next-work` → `chore/v0.1.4a-next`<br>
-**CI-tested PR head:** `2936c8435aa75f62f8f7956ed571283c146f278d`<br>
+**CI-tested PR head:** `8b66c93d3e8702d0114d426a9cde2ce5bda36a78`<br>
 **Report date:** 2026-11-12
 
 ## Goal and scope
@@ -36,17 +36,18 @@ Move long-running Agent Service coordination from `cmd/agentctl` into a small `i
 | `scripts/check-architecture.ps1` | Windows source view | PASS; package docs, import boundaries, and production file-size limits passed for 26 packages / 273 production files |
 | Fresh PR-03 code review | Read-only independent review | No Critical/Important findings; see noted minor coverage gap below |
 | Docker Engine and Compose probe | User Windows environment, elevated access | PASS; Engine 29.5.3 and Compose 5.1.4 reachable |
+| `TestLiveDockerTemplateConvergesThroughAgentRuntime` | Native Windows; Docker Desktop; three disposable Redis 7 containers; pinned Collector | PASS in 110.104s; Template discovery/materialization, reconciliation, Collector activation/restart, and per-endpoint OTLP metrics passed. Archive SHA-256 matched `d8de67cf9dc3ffe928610d52b192cb029365bb42dc79a23e0586c040c83293cf`. |
 | `git diff --check` | Worktree | PASS; no whitespace errors |
 | Markdown link validation | Six changed local release documents | PASS; 10 local links checked, 0 missing |
-| GitHub Actions CI | Draft PR #22, head `2936c8435aa75f62f8f7956ed571283c146f278d` | PASS; run [43137014512](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43137014512), Ubuntu and Windows passed. This report-only status update triggers a final PR-head rerun. |
+| GitHub Actions CI | Draft PR #22, head `8b66c93d3e8702d0114d426a9cde2ce5bda36a78` | PASS; run [43137402492](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43137402492), Ubuntu and Windows passed. This E2E evidence sync triggers one final report-head rerun. |
 
 ### Infrastructure limitations
 
-The live `TestLiveDockerTemplateConvergesThroughAgentRuntime` regression was NOT RUN. Docker is reachable, but the configured live-test variables and disposable Redis container IDs are absent, and no pinned Windows `otelcol-contrib.exe` was found in the standard AR-IMMS install locations or on `PATH`. The running Docker containers belong to the existing MongoDB/observability stacks; they were not changed. Existing documentation records prior live E2E evidence for the pre-refactor composition, but that evidence is not claimed as verification of this PR-03 change.
+The live Agent runtime regression ran against only the three newly created containers labeled `ar-imms.fixture=pr03-e2e`; the Collector archive was downloaded to a fresh temporary directory, verified against the committed SHA-256, and version-probed as 0.160.0. After the test, each container ID and label was checked before removal, and the temporary directory was removed. Existing MongoDB/observability stacks were only inspected and left unchanged.
 
-Native Windows SCM/service lifecycle E2E and native Linux E2E are also NOT RUN. The Linux cross-build does not substitute for Linux execution. Final Windows/Ubuntu CI has not yet run for the PR-03 head.
+The live test exercised the Agent Service runtime and restart path on Windows, but did not install or start the Windows SCM service. Existing Windows service-adapter tests passed in the full Go suite. Native Linux end-to-end execution remains NOT RUN; Ubuntu CI and the Linux/amd64 cross-build are not Linux runtime E2E evidence. Both are release-level gates outside this app-host checkpoint.
 
-The independent review found no Critical or Important defect. It noted one minor coverage gap: no isolated unit test exercises `RunRuntime` dispatcher wiring and shutdown as one complete host flow. The gated live Agent runtime test covers that composition path but is NOT RUN here; retain this as a review follow-up alongside the live E2E gate.
+The independent review found no Critical or Important defect. It noted one minor coverage gap: no isolated unit test exercises `RunRuntime` dispatcher wiring and shutdown as one complete host flow. The successful live Agent runtime E2E covers that composition path; retain the unit-test gap as a minor follow-up.
 
 ## Regression, security, and persistence review
 
@@ -71,4 +72,4 @@ The independent review found no Critical or Important defect. It noted one minor
 
 ## Rollback and next checkpoint readiness
 
-Revert PR #22, restore `runRuntimeControlLoops` plus dispatcher lifecycle to `cmd/agentctl`, and retain the PR-02 event publisher contract if its other callers remain; persisted data and schema require no rollback. Keep PR-03 in VERIFYING until final-head CI passes and the live runtime test runs against an isolated Redis fixture with the checksum-verified Collector executable. PR-04 is not ready to start until PR-03 is merged and its context contracts are reviewed.
+Revert PR #22, restore `runRuntimeControlLoops` plus dispatcher lifecycle to `cmd/agentctl`, and retain the PR-02 event publisher contract if its other callers remain; persisted data and schema require no rollback. The scoped PR-03 implementation and verification gates pass. Merge after the report-only final-head CI passes; PR-04 starts only from the updated integration branch with its context contracts reviewed. Native Linux E2E remains a release-level gate.
