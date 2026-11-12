@@ -28,9 +28,7 @@ type runtimeTemplateMaterializer struct {
 	matcher   integration.Matcher
 }
 
-func newRuntimeTemplateMaterializer(statePath string, publisher ...interface {
-	Publish(events.DesiredConfigurationChanged) error
-}) (runtimeTemplateMaterializer, error) {
+func newRuntimeTemplateMaterializer(statePath string, publisher ...events.Publisher) (runtimeTemplateMaterializer, error) {
 	store := agentstate.NewSQLiteStore(statePath)
 	registry, err := productionIntegrationRegistry()
 	if err != nil {

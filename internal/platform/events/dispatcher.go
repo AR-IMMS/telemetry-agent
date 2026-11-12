@@ -28,6 +28,11 @@ type DesiredConfigurationChanged struct {
 // Handler processes one desired-state wakeup. It must honor ctx for shutdown.
 type Handler func(context.Context, DesiredConfigurationChanged) error
 
+// Publisher admits a typed advisory event without blocking on queue capacity.
+type Publisher interface {
+	Publish(DesiredConfigurationChanged) error
+}
+
 // Dispatcher delivers desired-state wakeups in FIFO order to one serial handler.
 type Dispatcher struct {
 	queue   chan DesiredConfigurationChanged
