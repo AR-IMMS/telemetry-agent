@@ -33,6 +33,11 @@ func NewSQLiteStore(path string) SQLiteStore {
 	return SQLiteStore{path: path, legacyPath: legacy}
 }
 
+// OpenDatabase opens the operational database after initializing its shared schema.
+func (s SQLiteStore) OpenDatabase() (*sql.DB, error) {
+	return s.open()
+}
+
 // Save atomically replaces the persisted Agent state.
 func (s SQLiteStore) Save(state State) error {
 	_, err := s.Update(func(current *State) error {
