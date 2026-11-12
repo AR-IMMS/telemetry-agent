@@ -4,7 +4,7 @@
 **Release target:** `v0.1.4a-next`
 **Branch:** `feat/pr-06-monitoring-profiles`
 **Base:** `chore/v0.1.4a-next` at PR-05 merge `11fdd1e720c542898ba9c0c673063b1d698d7451`
-**PR / commit:** PR creation and implementation commit pending final local gates.
+**PR / commit:** [Draft PR #29](https://github.com/AR-IMMS/telemetry-agent/pull/29), head `d4136c870186be2ca405f490d0678a8955ad63f2`.
 
 ## Scope delivered
 
@@ -51,6 +51,8 @@ The retained command output is [pr-06-windows-live-output.txt](./pr-06-windows-l
 | `GOOS=linux GOARCH=amd64 go build ./...` | PASS from Windows; this is a cross-build, not Linux E2E evidence. |
 | Architecture/import/450-line guard | PASS; 32 source directories and 293 production Go files checked. |
 | Native Linux full tests and live Docker/Collector/OTLP | PENDING PR CI; Windows build is not Linux E2E evidence. |
+
+Exact-head CI run [43272442212](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43272442212) is running on both Ubuntu and Windows. The PR remains draft while these checks, including isolated Linux Docker/Collector/OTLP delivery, execute.
 
 The full Go suite was rerun with normal host filesystem and loopback access after a sandbox-restricted run failed to create SQLite state and bind test sockets. The host run passed all packages. The opt-in Windows Docker E2E was rerun against the pinned binary and passed in 33.84 seconds, delivering all four expected metric families and checking receiver uniqueness, duplicate samples, and churn convergence.
 
