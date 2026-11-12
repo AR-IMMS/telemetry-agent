@@ -1,6 +1,6 @@
 # PR-04 — Bounded Context Ownership & Repository Migration
 
-**Status:** PR-04a IDENTITY ADAPTER SLICE IN PROGRESS / verified locally, not yet submitted. **Release target:** `v0.1.4a-next`. **Base:** `6a5fcf9324bb5acb291034a4dc3ab84d6ce7429e` on `feat/v0.1.4a-next-work`.
+**Status:** PR-04a identity adapter PASS and merged; overall PR-04 remains IN_PROGRESS. **Release target:** `v0.1.4a-next`. **PR-04a base:** `6a5fcf9324bb5acb291034a4dc3ab84d6ce7429e`; **merge:** `4bdfff72ea1bcc6b344ced4fdc65f5d0b3df3301`.
 
 ## Objective and exit boundary
 
@@ -44,6 +44,7 @@ The current source confirms a broad persistence and orchestration seam; the owne
 - GREEN: `go test ./internal/identity/sqlite ./internal/agentstate -run 'TestRepositoryUsesSharedStateDatabaseAndKeepsFirstInstallationID|TestSQLiteIdentity' -count=1` passed on Windows.
 - Full Windows suite: `go test ./... -count=1` PASS. Additional gates: `go test -race ./internal/identity/sqlite ./internal/agentstate -count=1`, `go vet ./...`, `go build ./...`, `GOOS=linux GOARCH=amd64 go build ./...`, and `scripts/check-architecture.ps1` PASS. The architecture script must be invoked directly from the active PowerShell shell; launching it through nested `powershell -File` produced a Go template argument parsing error before the script check ran.
 - The sandboxed SQLite test attempt failed with SQLite error 14 while creating temporary databases; the same focused tests and full suite passed with the user's normal Windows filesystem access. Linux cross-build is not Linux E2E. No native service/E2E, Docker, Collector, schema migration, or enrollment adapter migration was part of this slice.
+- PR #23 targeted `chore/v0.1.4a-next` and merged at `4bdfff72ea1bcc6b344ced4fdc65f5d0b3df3301`. Final-head CI run `43142122120` passed on Ubuntu and Windows. Independent code review found no Critical, Important, or Minor findings. The reusable development branch was recreated and pushed from the merged integration head.
 
 ### Open decisions (not resolved by this audit)
 
@@ -60,7 +61,7 @@ Use `docs/local/architecture/v0.1.4a-next/context-boundaries.md` and `source-str
 ## Implementation steps (ordered)
 
 1. Confirm exact domain ownership from source and contracts; record remaining ownership decisions without inventing them. **Audit complete at the base recorded above; open decisions remain.**
-2. **Identity adapter slice complete locally:** use the existing shared SQLite open/migration provider contract and extract identity persistence through compatibility facades; old schema, shared transaction reads, and repeated initialization passed current Windows tests. Enrollment remains a separate slice gated on its recovery and protected-store contract.
+2. **Identity adapter slice complete and merged:** use the existing shared SQLite open/migration provider contract and extract identity persistence through compatibility facades; old schema, shared transaction reads, and repeated initialization passed Windows tests and final-head CI. Enrollment remains a separate slice gated on its recovery and protected-store contract.
 3. Extract inventory and monitoring proposal repositories as complete operations; preserve complete-successful-snapshot and stale/missing semantics.
 4. Extract configuration desired-state/Template/approval adapters; keep approval and desired-state mutation in ONE atomic transaction.
 5. Decide the canonical candidate-apply port/DTO owner before altering imports; move generation journal/recovery storage only with the runtime owner and its transaction contract.

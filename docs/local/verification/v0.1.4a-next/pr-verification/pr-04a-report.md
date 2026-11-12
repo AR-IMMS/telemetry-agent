@@ -1,6 +1,6 @@
 # PR-04a — Installation identity SQLite adapter
 
-**Checkpoint status:** Local implementation and verification PASS; GitHub CI and merge NOT RUN.
+**Checkpoint status:** PASS — merged after local verification and final-head GitHub CI.
 
 **Release target:** `v0.1.4a-next`
 
@@ -8,6 +8,10 @@
 
 **Base SHA:** `6a5fcf9324bb5acb291034a4dc3ab84d6ce7429e`
 **Implementation commit:** `35ef087e0a50447fe93418addf558f71ff3a3ba0`
+
+**Pull request:** [#23](https://github.com/AR-IMMS/telemetry-agent/pull/23), base `chore/v0.1.4a-next`, final head `1e5dd8314d10e64ace81091c93fd590d0f903bfb`
+
+**Merge commit:** `4bdfff72ea1bcc6b344ced4fdc65f5d0b3df3301`
 
 ## Scope and contract
 
@@ -45,7 +49,7 @@ The unrelated zero-byte `cmd/agentctl/otel.yaml.lifecycle.lock` remains untracke
 | Documentation links and whitespace | PASS | Changed Markdown relative links: 0 missing; `git diff --check` clean. |
 | Independent code review | PASS | No Critical, Important, or Minor findings. |
 | Windows/Linux native service E2E | NOT RUN | Outside this persistence-only slice. Linux cross-build is not Linux E2E. |
-| GitHub final-head CI | NOT RUN | Checkpoint branch has not yet been submitted. |
+| GitHub final-head CI | PASS | Run `43142122120`: Ubuntu passed in 46s; Windows passed in 2m1s on PR head `1e5dd8314d10e64ace81091c93fd590d0f903bfb`. |
 
 The sandboxed SQLite test attempt failed with SQLite error 14 while creating temporary databases. The same focused tests and full suite passed in the user's normal Windows environment. Launching the architecture script through a nested PowerShell process also produced a Go template argument parsing error; direct invocation in the active shell passed.
 
@@ -58,4 +62,4 @@ The sandboxed SQLite test attempt failed with SQLite error 14 while creating tem
 
 ## Rollback and next step
 
-Revert the identity adapter/facade code changes as a unit. No persisted schema or data migration occurred, so rollback requires no database restoration. Keep the checkpoint open until final-head GitHub CI and branch review are complete; then continue with the separately gated enrollment persistence slice.
+Revert merge `4bdfff72ea1bcc6b344ced4fdc65f5d0b3df3301` as a unit if needed. No persisted schema or data migration occurred, so rollback requires no database restoration. PR-04a is complete; continue with the separately gated enrollment persistence slice.
