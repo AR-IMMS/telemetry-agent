@@ -1,17 +1,17 @@
 # PR-01 — foundation checkpoint report
 
 **Canonical release:** `v0.1.4a-next`<br>
-**Status:** VERIFYING<br>
+**Status:** PASS — merged after final Windows and Ubuntu CI passed<br>
 **Base commit:** `1a32602bd1d655c1bdfbf8d477f55b42ac27b49a`<br>
-**Branch / PR / Commit SHA:** `feat/v0.1.4a-next-work` → `chore/v0.1.4a-next` / [draft PR #20](https://github.com/AR-IMMS/telemetry-agent/pull/20) / verified head before this report sync `0f9096044c558441f73432d3dc5016085c51bdd4`; implementation commit `75aaf9a36f95778effb70a06750b743d2b3f562e`; base `1a32602bd1d655c1bdfbf8d477f55b42ac27b49a`<br>
-**Integration branch:** `chore/v0.1.4a-next` (local, still at the base commit)<br>
+**Branch / PR / Commit SHA:** `feat/v0.1.4a-next-work` → `chore/v0.1.4a-next` / [PR #20](https://github.com/AR-IMMS/telemetry-agent/pull/20) / final tested PR head `fa9051eb2734a19296c35d9b13c37c18877affa7` / merge commit `7ba6efb86218969f539c17bea7a0a7ea6a972169`<br>
+**Integration branch:** `chore/v0.1.4a-next` at merge commit `7ba6efb86218969f539c17bea7a0a7ea6a972169` at checkpoint completion<br>
 **Report date:** 2026-11-12
 
 ## Summary
 
-PR-01 establishes the reviewed release documentation, preserves current runtime contracts, documents the source baseline, adds a narrow CI architecture/package-documentation/file-size guard, and enables CI for pull requests targeting the approved integration branch. No runtime behavior, SQLite schema, Collector artifact, dependency ownership, enrollment behavior, or shared-submodule content changed. The implementation and report updates are committed locally; both refs were pushed without force. Draft PR #20 is open against the approved integration branch. Both CI matrix jobs passed for head `0f9096044c558441f73432d3dc5016085c51bdd4`; the report synchronization will create a new head requiring a final CI rerun before merge.
+PR-01 establishes the reviewed release documentation, preserves current runtime contracts, documents the source baseline, adds a narrow CI architecture/package-documentation/file-size guard, and enables CI for pull requests targeting the approved integration branch. No runtime behavior, SQLite schema, Collector artifact, dependency ownership, enrollment behavior, or shared-submodule content changed. PR #20 was merged after both Windows and Ubuntu CI jobs passed on final head `fa9051eb2734a19296c35d9b13c37c18877affa7`; merge commit is `7ba6efb86218969f539c17bea7a0a7ea6a972169`.
 
-The user-authorized PR-01 preparation is complete in the isolated worktree and draft PR #20 is open. In the user's Windows environment, `gh api user --jq .login` returned `iSenity1812`; `gh auth status`, `gh repo view`, and PR creation succeeded. Both CI jobs passed on the current pre-report-sync head. The shared gitlink remains unchanged at `c4cd59a9bcaaf0735c3107424f1be98fc498670a`, which exists in the shared-docs repository. The policy was reviewed; the original checkout's submodule worktree status could not be established. Docker Engine is available, but no isolated PR-01 infrastructure scenario was defined or run. PR-01 remains VERIFYING until the final report commit's CI passes and the PR is merged.
+PR-01 completed in the isolated worktree and PR #20 is merged. The user's Windows environment returned `iSenity1812` for `gh api user --jq .login`; `gh auth status`, `gh repo view`, and PR operations succeeded. Both CI jobs passed on the final PR head. The shared gitlink remains unchanged at `c4cd59a9bcaaf0735c3107424f1be98fc498670a`; the original checkout's submodule worktree status could not be established and was left untouched. Docker Engine is available, but no isolated PR-01 infrastructure scenario was defined or run. Native Windows/Linux release E2E remains a later gate.
 
 ## Work completed
 
@@ -61,11 +61,11 @@ The user-authorized PR-01 preparation is complete in the isolated worktree and d
 | Native Linux install/service/Collector/gateway verification | Native Linux host | Lifecycle and telemetry acceptance evidence | Not run; only Linux/amd64 cross-build and Linux-target import view ran | NOT_TESTED |
 ## Git and preservation state
 
-- Local and remote branches `chore/v0.1.4a-next` and `feat/v0.1.4a-next-work` were created from the recorded baseline. The integration branch remains at `1a32602bd1d655c1bdfbf8d477f55b42ac27b49a`; the feature branch points to `5a0032242a1de8554c5af3c716b0be703cc8382b` and is active locally. Their remote refs were verified after a non-forced push.
+- PR #20 merged `feat/v0.1.4a-next-work` into `chore/v0.1.4a-next` at `7ba6efb86218969f539c17bea7a0a7ea6a972169`. After merge, the reusable feature branch was recreated from the integration branch and pushed without force; PR-02 work starts from that merge commit.
 - The original `dev` checkout remains at `1a32602` and still has its original staged lock file, modified entrypoints/architecture, historical verification folder, and untracked v0.1.4a-next documents. Its state was rechecked after preparation. No original files were removed or rewritten.
 - The shared submodule was not modified. The target worktree and index both record gitlink `c4cd59a9bcaaf0735c3107424f1be98fc498670a`. The policy text was read from the original checkout and is consistent with the local supplement, but Git could not verify the submodule working tree/status; the earlier original-checkout inspection reported submodule dirtiness, so exact content and clean-state assertions remain unverified.
 - A 0-byte `cmd/agentctl/otel.yaml.lifecycle.lock` is also present as untracked in the isolated worktree. Its creation/source could not be established; it was left untouched and is excluded from PR-01 changes.
-- Only reviewed PR-01 files were staged; the unexplained lock artifact was excluded. The feature branch contains implementation commit `75aaf9a36f95778effb70a06750b743d2b3f562e`, report commit `f0fda191e253783c392e8b7155af581e2b422454`, evidence refresh `5a0032242a1de8554c5af3c716b0be703cc8382b`, and PR-state update commit `0f9096044c558441f73432d3dc5016085c51bdd4`. Branch refs were pushed; draft PR #20 is open and no merge occurred.
+- Only reviewed PR-01 files were staged; the unexplained lock artifact was excluded. PR #20 was merged; no force push was used. The reusable feature branch was recreated at the merge commit.
 
 ## Changed-file list
 
@@ -90,16 +90,16 @@ The isolated worktree also reports the unrelated 0-byte lock artifact noted abov
 - No telemetry-delivery, service lifecycle, or remote-operation security claim is made from the local Go suite.
 ## Open gates before integration review/publication
 
-1. Restore reliable `docs/shared` submodule metadata/status access and verify the checked-out content against gitlink `c4cd59a9bcaaf0735c3107424f1be98fc498670a`. The policy text currently readable in the original checkout is consistent with the local supplement.
-2. Commit and push the synchronized checkpoint report, verify both CI jobs on the resulting PR head, then mark PR #20 ready and merge into `chore/v0.1.4a-next` after checks pass. Do not retarget to `dev` or `main`.
-3. Review the `service` root-help discrepancy and transition allowances at the next appropriate CLI/architecture checkpoint; do not change them silently in PR-01.
+1. Keep the shared submodule untouched; its original checkout's local status remains unverifiable. Recheck only if a later task requires changing or depending on its local content.
+2. Continue PR-02 on the reusable feature branch. Its event/SQLite contracts are recorded in [`pr-02-events-sqlite.md`](../../../plans/v0.1.4a-next/pr-02-events-sqlite.md); finish full verification and publish a separate PR to `chore/v0.1.4a-next`.
+3. Review the `service` root-help discrepancy and transition allowances at the next appropriate CLI/architecture checkpoint; do not change them silently.
 
 The full documentation scan also found four existing historical links outside the release-doc scope: `docs/local/handoffs/2026-10-26-architecture-audit-m1-refactor.md` → `../superpowers/plans/2026-10-26-m1-refactor-plan.md`; `docs/superpowers/plans/2026-10-27-m2-local-installation-identity.md` → `../../architecture/m2-local-installation-identity-design.md` and `../../architecture/target-architecture-v0.1.4.md`; and `docs/superpowers/plans/2026-10-28-m2-core-gateway-endpoint-sync.md` → `../../architecture/m2-core-gateway-endpoint-sync-design.md`. These were not changed as part of PR-01.
 
 Docker Engine access is a separate release gate for PR-05/06/10. The Linux Docker Desktop daemon is currently reachable with elevated read-only access, and existing Core/observability stacks are active. Establish an isolated test namespace before running Docker-backed application telemetry; run native Windows/Linux install, lifecycle, Collector, and delivery scenarios on their real hosts before making release claims.
 ## Next checkpoint readiness
 
-PR-02 is **BLOCKED** until PR-01 can be reviewed and merged into `chore/v0.1.4a-next`. Before PR-02 code, define the event delivery, transaction/commit ordering, process-crash recovery, duplicate delivery, and SQLite compatibility contracts. No PR-02 implementation or contract decision is included in this checkpoint.
+PR-02 is **IN_PROGRESS**. The contract is documented before implementation; focused event, SQLite, persistence and CLI regression tests pass on Windows. Full verification, independent diff review, and PR-02 checkpoint reporting remain.
 
 ## Rollback
 

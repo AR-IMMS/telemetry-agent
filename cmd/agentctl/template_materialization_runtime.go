@@ -15,6 +15,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/discovery"
 	"github.com/ar-imms/telemetry-agent/internal/identity"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
+	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 )
 
 const materializationCASAttempts = 3
@@ -27,7 +28,9 @@ type runtimeTemplateMaterializer struct {
 	matcher   integration.Matcher
 }
 
-func newRuntimeTemplateMaterializer(statePath string) (runtimeTemplateMaterializer, error) {
+func newRuntimeTemplateMaterializer(statePath string, publisher ...interface {
+	Publish(events.DesiredConfigurationChanged) error
+}) (runtimeTemplateMaterializer, error) {
 	store := agentstate.NewSQLiteStore(statePath)
 	registry, err := productionIntegrationRegistry()
 	if err != nil {
@@ -38,9 +41,13 @@ func newRuntimeTemplateMaterializer(statePath string) (runtimeTemplateMaterializ
 	if catalog, catalogErr := collectorruntime.StaticCatalog(platform); catalogErr == nil {
 		assessor = catalogCapabilityAssessor{catalog: catalog, platform: platform.OS + "/" + platform.Architecture}
 	}
+	materializationRepository := store.MaterializationRepository()
+	if len(publisher) > 0 && publisher[0] != nil {
+		materializationRepository = store.MaterializationRepositoryWithEvents(publisher[0])
+	}
 	return runtimeTemplateMaterializer{
 		inventory: store.InventoryRepository(), templates: store.TemplateRepository(), desired: store.IntegrationRepository(),
-		service: configuration.NewMaterializationService(store.MaterializationRepository()),
+		service: configuration.NewMaterializationService(materializationRepository),
 		matcher: integration.NewMatcher(registry, assessor),
 	}, nil
 }
