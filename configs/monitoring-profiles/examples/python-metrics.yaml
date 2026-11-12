@@ -1,0 +1,14 @@
+api_version: ar-imms/v1alpha1
+profiles:
+  - id: python-metrics
+    provider: docker
+    receiver_type: prometheus
+    required_capabilities:
+      - otel.receiver.prometheus.metrics
+    match_labels:
+      ar-imms.monitoring.enabled: "true"
+      ar-imms.monitoring.profile: python-metrics
+    collection_interval: 15s
+    target_port: 9108
+    target_port_label: ar-imms.monitoring.port
+    metrics_path: /metrics

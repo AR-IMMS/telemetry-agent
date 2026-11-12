@@ -5,7 +5,7 @@
 **Review date:** 2026-11-12
 **Worktree:** `feat/v0.1.4a-next-work`, tested implementation commit `cfeca136b4f595b2cb2e4980269efe857174dd3d`
 **Implementation commit:** `0f03c25` (`feat(discovery): add OTel-native Docker Redis monitoring`)
-**Publication:** Draft [PR #28](https://github.com/AR-IMMS/telemetry-agent/pull/28) targets `chore/v0.1.4a-next`; keep draft through final documentation commit and CI confirmation, then merge the verified checkpoint.
+**Publication:** [PR #28](https://github.com/AR-IMMS/telemetry-agent/pull/28) merged into `chore/v0.1.4a-next` as `11fdd1e720c542898ba9c0c673063b1d698d7451` after final documentation commit and CI confirmation.
 **Previously verified PR head:** `300d6b1`; GitHub Actions run [43238401049](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43238401049) passed on Windows and Ubuntu, including Linux live Docker/Collector/OTLP E2E. Final closure changes are being prepared for the draft PR and require a fresh CI run.
 **Final CI:** GitHub Actions run [43260591828](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43260591828) passed on Windows and Ubuntu. Ubuntu ran the isolated Docker outage/recovery, live endpoint failure, Docker/Collector/OTLP, vet, and build gates. The tested code commit is `cfeca13`; the documentation-only closure update follows it.
 
@@ -93,4 +93,4 @@ Coordinator tests cover provider error and recovery transitions, but they are un
 
 Agent Go source and tests, local architecture/plan/progress documentation, and this verification report are the intended PR-05 changes. No database migration or `docs/shared` content was added. The pre-existing untracked `cmd/agentctl/otel.yaml.lifecycle.lock` is preserved and excluded from PR-05. Temporary Collector/test artifacts are excluded from Git and removed after verification; reproducible commands and scenario evidence are retained in this report and [Windows live evidence](./pr-05-windows-live-evidence.md).
 
-**Checkpoint ruling:** PR-05 is **PASS**. Windows and native Linux live OTLP delivery, private port 6380, single Receiver Creator ownership, no duplicate points, inventory preservation, Docker recovery without unnecessary Collector restart, live `endpoint_unreachable`, LKG rollback, SQLite polling stress, and all full CI gates passed. PR #28 remains draft until the final documentation-only update receives CI confirmation; merge it into `chore/v0.1.4a-next` before starting PR-06.
+**Checkpoint ruling:** PR-05 is **PASS**. Windows and native Linux live OTLP delivery, private port 6380, single Receiver Creator ownership, no duplicate points, inventory preservation, Docker recovery without unnecessary Collector restart, live `endpoint_unreachable`, LKG rollback, SQLite polling stress, and all full CI gates passed. PR #28 merged to `chore/v0.1.4a-next`; final-head CI run `43261742475` passed on Windows and Ubuntu.

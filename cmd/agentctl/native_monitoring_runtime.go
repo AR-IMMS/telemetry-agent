@@ -20,7 +20,29 @@ import (
 // nativeDockerMonitoringInputs opts into OTel-native profile discovery only
 // when an explicit local Docker endpoint and a registered Core node are known.
 func nativeDockerMonitoringInputs(statePath, osName string) ([]config.InlineLayer, []string, error) {
-	return nativeDockerMonitoringInputsWithProfiles(statePath, osName, monitoringprofile.DefaultRegistry())
+	if strings.TrimSpace(os.Getenv(dockerDiscoveryEndpointEnv)) == "" {
+		return nil, nil, nil
+	}
+	state, err := agentstate.NewStore(statePath).Load()
+	if err != nil {
+		return nil, nil, fmt.Errorf("load Collector config root for native Docker monitoring: %w", err)
+	}
+	profiles, err := monitoringprofile.LoadDirectory(state.Collector.ConfigRoot)
+	if err != nil {
+		return nil, nil, err
+	}
+	return nativeDockerMonitoringInputsWithProfiles(statePath, osName, profiles)
+}
+
+func nativeDockerMonitoringInputsWithConfigRoot(statePath, osName, configRoot string) ([]config.InlineLayer, []string, error) {
+	if strings.TrimSpace(os.Getenv(dockerDiscoveryEndpointEnv)) == "" {
+		return nil, nil, nil
+	}
+	profiles, err := monitoringprofile.LoadDirectory(configRoot)
+	if err != nil {
+		return nil, nil, err
+	}
+	return nativeDockerMonitoringInputsWithProfiles(statePath, osName, profiles)
 }
 
 func nativeDockerMonitoringInputsWithProfiles(statePath, osName string, profiles monitoringprofile.Registry) ([]config.InlineLayer, []string, error) {

@@ -2,6 +2,8 @@ package monitoringprofile
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -21,6 +23,10 @@ const (
 
 	// RedisCapability identifies the pinned Collector Redis metrics receiver.
 	RedisCapability = "otel.receiver.redis.metrics"
+	// PostgresqlCapability identifies the pinned Collector PostgreSQL metrics receiver.
+	PostgresqlCapability = "otel.receiver.postgresql.metrics"
+	// PrometheusCapability identifies the pinned Collector Prometheus metrics receiver.
+	PrometheusCapability = "otel.receiver.prometheus.metrics"
 )
 
 var profileIDPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
@@ -49,6 +55,16 @@ type Profile struct {
 	ReceiverType         string
 	CollectionInterval   string
 	EndpointStrategies   []EndpointStrategy
+	Settings             ReceiverSettings
+}
+
+// ReceiverSettings contains the deliberately small set of typed settings
+// supported by the built-in native receiver adapters.
+type ReceiverSettings struct {
+	MetricsPath string
+	UsernameEnv string
+	PasswordEnv string
+	TLSCAFile   string
 }
 
 // Registry contains validated built-in monitoring profiles.
@@ -149,6 +165,27 @@ func (r Registry) Match(provider string, attributes map[string]string) (Profile,
 }
 
 func validateProfile(profile Profile) error {
+	if len(profile.RequiredCapabilities) != 1 {
+		return fmt.Errorf("monitoring profile %q must declare exactly one supported Collector capability", profile.ID)
+	}
+	expectedCapability := map[string]string{
+		"redis": RedisCapability, "postgresql": PostgresqlCapability, "prometheus": PrometheusCapability,
+	}[profile.ReceiverType]
+	if expectedCapability == "" || profile.RequiredCapabilities[0] != expectedCapability {
+		return fmt.Errorf("monitoring profile %q has an unsupported receiver/capability combination", profile.ID)
+	}
+	if profile.ReceiverType == "postgresql" && (!environmentNamePattern.MatchString(profile.Settings.UsernameEnv) || !environmentNamePattern.MatchString(profile.Settings.PasswordEnv)) {
+		return fmt.Errorf("monitoring profile %q requires valid PostgreSQL credential environment references", profile.ID)
+	}
+	if profile.ReceiverType != "postgresql" && profile.Settings.TLSCAFile != "" {
+		return fmt.Errorf("monitoring profile %q uses PostgreSQL TLS settings with a non-PostgreSQL receiver", profile.ID)
+	}
+	if profile.Settings.TLSCAFile != "" && (!filepath.IsAbs(profile.Settings.TLSCAFile) || strings.ContainsAny(profile.Settings.TLSCAFile, "\x00\r\n")) {
+		return fmt.Errorf("monitoring profile %q requires an absolute, valid PostgreSQL TLS CA file path", profile.ID)
+	}
+	if profile.ReceiverType == "prometheus" && (profile.Settings.MetricsPath == "" || !strings.HasPrefix(profile.Settings.MetricsPath, "/") || len(profile.Settings.MetricsPath) > 256 || strings.ContainsAny(profile.Settings.MetricsPath, "?#\x00\r\n")) {
+		return fmt.Errorf("monitoring profile %q has an invalid Prometheus metrics path", profile.ID)
+	}
 	for key, value := range profile.MatchLabels {
 		if strings.TrimSpace(key) != key || key == "" || strings.ContainsAny(key+value, "\x00\r\n") {
 			return fmt.Errorf("monitoring profile %q has an invalid label match", profile.ID)
@@ -177,4 +214,15 @@ func cloneProfile(profile Profile) Profile {
 	clone.RequiredCapabilities = append([]string(nil), profile.RequiredCapabilities...)
 	clone.EndpointStrategies = append([]EndpointStrategy(nil), profile.EndpointStrategies...)
 	return clone
+}
+
+// CredentialsConfigured reports whether all local credential references needed
+// by a profile resolve to non-empty values. It never returns or logs a value.
+func CredentialsConfigured(profile Profile) bool {
+	if profile.ReceiverType != "postgresql" {
+		return true
+	}
+	username, usernameOK := os.LookupEnv(profile.Settings.UsernameEnv)
+	password, passwordOK := os.LookupEnv(profile.Settings.PasswordEnv)
+	return usernameOK && strings.TrimSpace(username) != "" && passwordOK && strings.TrimSpace(password) != ""
 }

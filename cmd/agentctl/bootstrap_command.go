@@ -119,7 +119,7 @@ func runBootstrap(
 
 		return 1
 	}
-	nativeLayers, nativeReceivers, err := nativeDockerMonitoringInputs(*statePath, platform.OS)
+	nativeLayers, nativeReceivers, err := nativeDockerMonitoringInputsWithConfigRoot(*statePath, platform.OS, *configRoot)
 	if err != nil {
 		fmt.Fprintf(stderr, "configure native Docker monitoring: %v\n", err)
 		return 1

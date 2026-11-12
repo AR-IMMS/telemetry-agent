@@ -33,6 +33,14 @@ type runtimeTemplateMaterializer struct {
 
 func newRuntimeTemplateMaterializer(statePath string, publisher ...events.Publisher) (runtimeTemplateMaterializer, error) {
 	store := agentstate.NewSQLiteStore(statePath)
+	state, err := agentstate.NewStore(statePath).Load()
+	if err != nil {
+		return runtimeTemplateMaterializer{}, fmt.Errorf("load Agent config root for template materialization: %w", err)
+	}
+	profiles, err := monitoringprofile.LoadDirectory(state.Collector.ConfigRoot)
+	if err != nil {
+		return runtimeTemplateMaterializer{}, fmt.Errorf("load local monitoring profiles: %w", err)
+	}
 	registry, err := productionIntegrationRegistry()
 	if err != nil {
 		return runtimeTemplateMaterializer{}, err
@@ -54,7 +62,7 @@ func newRuntimeTemplateMaterializer(statePath string, publisher ...events.Publis
 		inventory: store.InventoryRepository(), templates: store.TemplateRepository(), desired: store.IntegrationRepository(),
 		service:          configuration.NewMaterializationService(materializationRepository),
 		matcher:          integration.NewMatcher(registry, assessor),
-		nativeMonitoring: len(nativeLayers) > 0, nativeProfiles: monitoringprofile.DefaultRegistry(),
+		nativeMonitoring: len(nativeLayers) > 0, nativeProfiles: profiles,
 	}, nil
 }
 

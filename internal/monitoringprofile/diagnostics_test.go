@@ -122,11 +122,14 @@ func TestParseCollectorReceiverCreatorFailureUsesDynamicReceiverName(t *testing.
 }
 
 func TestRegistryExtendsDockerProfilesWithoutChangingDiscoveryProvider(t *testing.T) {
+	t.Setenv("AR_IMMS_PG_USER", "metrics_reader")
+	t.Setenv("AR_IMMS_PG_PASSWORD", "test-only-secret")
 	redis := RedisProfile()
 	postgres := Profile{
 		ID: "postgres", Provider: "docker", MatchLabels: map[string]string{LabelMonitoringEnabled: "true", LabelMonitoringProfile: "postgres"},
 		RequiredCapabilities: []string{"otel.receiver.postgresql.metrics"}, ReceiverType: "postgresql", CollectionInterval: "10s",
 		EndpointStrategies: []EndpointStrategy{{ID: "alternate_port", OS: "windows", When: "alternate_port > 0", Endpoint: "127.0.0.1:`alternate_port`", Scope: discovery.EndpointHost, Provenance: "published_port", Priority: 100}},
+		Settings:           ReceiverSettings{UsernameEnv: "AR_IMMS_PG_USER", PasswordEnv: "AR_IMMS_PG_PASSWORD"},
 	}
 	registry, err := NewRegistry(redis, postgres)
 	if err != nil {
