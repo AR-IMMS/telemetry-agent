@@ -5,12 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/discovery"
+	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
 )
 
 // writeInventoryHelp prints the read-only inventory command surface.
@@ -99,6 +101,14 @@ func runInventory(ctx context.Context, args []string, stdout, stderr io.Writer) 
 				fmt.Fprintln(stdout, "Endpoint evidence:")
 				for _, endpoint := range resource.Endpoints {
 					fmt.Fprintf(stdout, "  scope=%s address=%s port=%d protocol=%s provenance=%s\n", endpoint.Scope, endpoint.Address, endpoint.Port, endpoint.Protocol, endpoint.Provenance)
+				}
+				if profile, matched := monitoringprofile.DefaultRegistry().Match(string(resource.Key.Provider), resource.Attributes); matched {
+					diagnostic := monitoringprofile.DiagnoseEndpoint(profile, runtime.GOOS, resource.Endpoints, nil)
+					fmt.Fprintf(stdout, "Monitoring profile: %s\nProfile endpoint: %s (candidates=%d, evidence=%s)\n",
+						profile.ID, diagnostic.State, diagnostic.CandidateCount, diagnostic.EvidenceSource)
+					if diagnostic.State == monitoringprofile.EndpointResolved {
+						fmt.Fprintln(stdout, "Endpoint reachability: unverified; only a matching OTel receiver error can establish unreachable")
+					}
 				}
 				if resource.MissingSince != nil {
 					fmt.Fprintf(stdout, "Missing since: %s (%d complete snapshots)\n", resource.MissingSince.Format(time.RFC3339Nano), resource.MissingSnapshots)

@@ -15,17 +15,20 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/discovery"
 	"github.com/ar-imms/telemetry-agent/internal/identity"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
+	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 )
 
 const materializationCASAttempts = 3
 
 type runtimeTemplateMaterializer struct {
-	inventory discovery.InventoryRepository
-	templates configuration.TemplateRepository
-	desired   configuration.IntegrationRepository
-	service   configuration.MaterializationService
-	matcher   integration.Matcher
+	inventory        discovery.InventoryRepository
+	templates        configuration.TemplateRepository
+	desired          configuration.IntegrationRepository
+	service          configuration.MaterializationService
+	matcher          integration.Matcher
+	nativeMonitoring bool
+	nativeProfiles   monitoringprofile.Registry
 }
 
 func newRuntimeTemplateMaterializer(statePath string, publisher ...events.Publisher) (runtimeTemplateMaterializer, error) {
@@ -43,10 +46,15 @@ func newRuntimeTemplateMaterializer(statePath string, publisher ...events.Publis
 	if len(publisher) > 0 && publisher[0] != nil {
 		materializationRepository = store.MaterializationRepositoryWithEvents(publisher[0])
 	}
+	nativeLayers, _, err := nativeDockerMonitoringInputs(statePath, platform.OS)
+	if err != nil {
+		return runtimeTemplateMaterializer{}, fmt.Errorf("resolve native monitoring for template materialization: %w", err)
+	}
 	return runtimeTemplateMaterializer{
 		inventory: store.InventoryRepository(), templates: store.TemplateRepository(), desired: store.IntegrationRepository(),
-		service: configuration.NewMaterializationService(materializationRepository),
-		matcher: integration.NewMatcher(registry, assessor),
+		service:          configuration.NewMaterializationService(materializationRepository),
+		matcher:          integration.NewMatcher(registry, assessor),
+		nativeMonitoring: len(nativeLayers) > 0, nativeProfiles: monitoringprofile.DefaultRegistry(),
 	}, nil
 }
 
@@ -69,6 +77,16 @@ func (r runtimeTemplateMaterializer) Refresh(ctx context.Context) error {
 		}
 		asOf := time.Now().UTC()
 		matchSnapshot := projectInventory(inventory, asOf)
+		if r.nativeMonitoring {
+			filtered := matchSnapshot.Resources[:0]
+			for _, resource := range matchSnapshot.Resources {
+				if _, native := r.nativeProfiles.Match(resource.Provider, resource.Attributes); native {
+					continue
+				}
+				filtered = append(filtered, resource)
+			}
+			matchSnapshot.Resources = filtered
+		}
 		matches, err := r.matcher.MatchTemplates(matchSnapshot, templates.Templates)
 		if err != nil {
 			return fmt.Errorf("match Templates against inventory: %w", err)

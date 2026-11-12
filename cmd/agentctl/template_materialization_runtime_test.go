@@ -11,6 +11,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/discovery"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
+	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
 )
 
 type supportedTemplateCapability struct{}
@@ -123,6 +124,63 @@ func TestRuntimeTemplateMaterializerProjectsStableInstancesAndNoOps(t *testing.T
 			t.Fatalf("re-enabled Template did not restore generated instances: %+v", instance)
 		}
 	}
+}
+
+func TestNativeRedisProfileDoesNotCreateAgentInstancesDuringContainerChurn(t *testing.T) {
+	store := agentstate.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	registry, err := productionIntegrationRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	templates := store.TemplateRepository()
+	service := configuration.NewTemplateService(registry, templates)
+	if _, _, err := service.Put(redisRuntimeTemplate(), 0); err != nil {
+		t.Fatal(err)
+	}
+	provider := &mutableTemplateProvider{snapshot: nativeRedisProviderSnapshot("container-a")}
+	coordinator, err := discovery.NewCoordinator(store.InventoryRepository(), []discovery.DiscoveryProvider{provider}, discovery.DefaultPolicy(), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	materializer := runtimeTemplateMaterializer{
+		inventory: store.InventoryRepository(), templates: templates, desired: store.IntegrationRepository(),
+		service:          configuration.NewMaterializationService(store.MaterializationRepository()),
+		matcher:          integration.NewMatcher(registry, supportedTemplateCapability{}),
+		nativeMonitoring: true, nativeProfiles: monitoringprofile.DefaultRegistry(),
+	}
+	for _, ids := range [][]string{{"container-a"}, {"container-a", "container-b"}, {"container-b"}, {"container-a-recreated", "container-b"}} {
+		provider.snapshot = nativeRedisProviderSnapshot(ids...)
+		if _, err := coordinator.DiscoverOnce(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if err := materializer.Refresh(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	desired, err := store.IntegrationRepository().Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(desired.Instances) != 0 || desired.Revision != 0 {
+		t.Fatalf("native Redis container churn changed Agent desired state: %+v", desired)
+	}
+}
+
+func nativeRedisProviderSnapshot(ids ...string) discovery.ProviderSnapshot {
+	resources := make([]discovery.ResourceObservation, 0, len(ids))
+	for _, id := range ids {
+		resources = append(resources, discovery.ResourceObservation{
+			ProviderResourceID: id, Kind: discovery.ResourceContainer, LifecycleState: "running",
+			Attributes: map[string]string{
+				"container.image.repository":       "docker.io/library/redis",
+				"label.ar-imms.monitoring.enabled": "true",
+				"label.ar-imms.monitoring.profile": "redis",
+				"label.ar-imms.workload.id":        "cache-service",
+			},
+			Endpoints: []discovery.Endpoint{{Address: "127.0.0.1", Port: 6379, Protocol: "tcp", Scope: discovery.EndpointHost, Provenance: "published_port"}},
+		})
+	}
+	return discovery.ProviderSnapshot{ProviderID: "docker", ProviderInstanceID: "local", Complete: true, Resources: resources}
 }
 
 func TestRuntimeTemplateUpdateChangesGeneratedInstancesButPreservesManualState(t *testing.T) {

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/ar-imms/telemetry-agent/internal/discovery"
+	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
 	"github.com/distribution/reference"
 	"github.com/moby/moby/api/types/container"
 	moby "github.com/moby/moby/client"
@@ -186,7 +187,8 @@ func normalizedImageAttributes(image string) (map[string]string, error) {
 func allowedLabel(key string) bool {
 	switch key {
 	case "com.docker.compose.project", "com.docker.compose.service", "com.docker.compose.version",
-		"org.opencontainers.image.title", "org.opencontainers.image.version":
+		"org.opencontainers.image.title", "org.opencontainers.image.version",
+		monitoringprofile.LabelMonitoringEnabled, monitoringprofile.LabelMonitoringProfile, monitoringprofile.LabelWorkloadID:
 		return true
 	default:
 		return false
@@ -211,19 +213,19 @@ func mapEndpoints(item container.Summary) ([]discovery.Endpoint, error) {
 		}
 		for _, address := range networkAddresses {
 			endpoints = append(endpoints, discovery.Endpoint{
-				Address: address, Port: port.PrivatePort, Protocol: protocol,
+				Address: address, Port: port.PrivatePort, ContainerPort: port.PrivatePort, Protocol: protocol,
 				Scope: discovery.EndpointContainer, Provenance: "container_network",
 			})
 		}
 		if len(networkAddresses) == 0 {
 			endpoints = append(endpoints, discovery.Endpoint{
-				Port: port.PrivatePort, Protocol: protocol,
+				Port: port.PrivatePort, ContainerPort: port.PrivatePort, Protocol: protocol,
 				Scope: discovery.EndpointContainer, Provenance: "exposed_port",
 			})
 		}
 		if port.PublicPort > 0 && port.IP.IsValid() {
 			endpoints = append(endpoints, discovery.Endpoint{
-				Address: port.IP.String(), Port: port.PublicPort, Protocol: protocol,
+				Address: port.IP.String(), Port: port.PublicPort, ContainerPort: port.PrivatePort, Protocol: protocol,
 				Scope: discovery.EndpointHost, Provenance: "published_port",
 			})
 		}
@@ -231,7 +233,7 @@ func mapEndpoints(item container.Summary) ([]discovery.Endpoint, error) {
 	if len(item.Ports) == 0 {
 		for _, address := range networkAddresses {
 			endpoints = append(endpoints, discovery.Endpoint{
-				Address: address, Scope: discovery.EndpointContainer, Provenance: "network_address",
+			Address: address, Scope: discovery.EndpointContainer, Provenance: "network_address",
 			})
 		}
 	}

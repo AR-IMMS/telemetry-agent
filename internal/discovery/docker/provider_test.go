@@ -52,6 +52,8 @@ func TestProviderMapsCompleteContainerInventoryWithoutSensitiveMetadata(t *testi
 		State: "running", Labels: map[string]string{
 			"com.docker.compose.service": "redis", "secret": "must-not-persist",
 			"org.opencontainers.image.version": "7.4",
+			"ar-imms.monitoring.enabled":       "true", "ar-imms.monitoring.profile": "redis",
+			"ar-imms.workload.id": "cache-service",
 		},
 		Ports: []container.PortSummary{{IP: netip.MustParseAddr("127.0.0.1"), PrivatePort: 6379, PublicPort: 16379, Type: "tcp"}},
 	}}}}
@@ -73,8 +75,19 @@ func TestProviderMapsCompleteContainerInventoryWithoutSensitiveMetadata(t *testi
 	if resource.Attributes["secret"] != "" || resource.Attributes["label.com.docker.compose.service"] != "redis" || resource.Attributes["label.org.opencontainers.image.version"] != "7.4" {
 		t.Fatalf("attributes leaked or missing: %+v", resource.Attributes)
 	}
+	for key, value := range map[string]string{
+		"label.ar-imms.monitoring.enabled": "true", "label.ar-imms.monitoring.profile": "redis",
+		"label.ar-imms.workload.id": "cache-service",
+	} {
+		if resource.Attributes[key] != value {
+			t.Errorf("allowlisted monitoring attribute %q=%q, want %q", key, resource.Attributes[key], value)
+		}
+	}
 	if len(resource.Endpoints) != 2 {
 		t.Fatalf("endpoints=%+v", resource.Endpoints)
+	}
+	if resource.Endpoints[0].ContainerPort != 6379 || resource.Endpoints[1].ContainerPort != 6379 {
+		t.Fatalf("endpoint container-port mapping=%+v, want private port 6379 on both network and published evidence", resource.Endpoints)
 	}
 }
 

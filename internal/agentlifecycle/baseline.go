@@ -45,10 +45,26 @@ func BuildCleanBaselineSnapshot(
 	state agentstate.State,
 	values map[string]string,
 ) (CleanBaselineSnapshot, error) {
+	return BuildCleanBaselineSnapshotWithAdditionalInputs(platform, catalog, layers, state, values, nil, nil)
+}
+
+// BuildCleanBaselineSnapshotWithAdditionalInputs assembles the clean baseline
+// with reviewed in-memory layers and receiver names supplied by the composition
+// root. Additional inputs are fingerprinted so candidate freshness includes
+// native monitoring policy.
+func BuildCleanBaselineSnapshotWithAdditionalInputs(
+	platform identity.PlatformInfo,
+	catalog dependency.Catalog,
+	layers []config.Layer,
+	state agentstate.State,
+	values map[string]string,
+	additionalLayers []config.InlineLayer,
+	additionalMetricsReceivers []string,
+) (CleanBaselineSnapshot, error) {
 	if len(layers) == 0 {
 		return CleanBaselineSnapshot{}, fmt.Errorf("clean configuration baseline requires at least one layer")
 	}
-	input, err := cleanBaselineInput(platform, catalog, layers, state, values)
+	input, err := cleanBaselineInput(platform, catalog, layers, state, values, additionalLayers, additionalMetricsReceivers)
 	if err != nil {
 		return CleanBaselineSnapshot{}, err
 	}
@@ -91,7 +107,7 @@ func BuildCleanBaselineSnapshot(
 	}, nil
 }
 
-func cleanBaselineInput(platform identity.PlatformInfo, catalog dependency.Catalog, layers []config.Layer, state agentstate.State, values map[string]string) (config.RenderInput, error) {
+func cleanBaselineInput(platform identity.PlatformInfo, catalog dependency.Catalog, layers []config.Layer, state agentstate.State, values map[string]string, additionalLayers []config.InlineLayer, additionalMetricsReceivers []string) (config.RenderInput, error) {
 	if len(layers) == 0 {
 		return config.RenderInput{}, fmt.Errorf("clean configuration baseline requires at least one layer")
 	}
@@ -100,10 +116,13 @@ func cleanBaselineInput(platform identity.PlatformInfo, catalog dependency.Catal
 		return config.RenderInput{}, fmt.Errorf("resolve managed dependency receivers: %w", err)
 	}
 	receivers = append([]string{"otlp", "hostmetrics"}, receivers...)
+	receivers = append(receivers, additionalMetricsReceivers...)
+	inlineLayers := []config.InlineLayer{config.MetricsReceiverLayer(receivers)}
+	inlineLayers = append(inlineLayers, additionalLayers...)
 	return config.RenderInput{
 		Platform:     platform,
 		Layers:       append([]config.Layer(nil), layers...),
-		InlineLayers: []config.InlineLayer{config.MetricsReceiverLayer(receivers)},
+		InlineLayers: inlineLayers,
 		Values:       cloneStringMap(values),
 	}, nil
 }

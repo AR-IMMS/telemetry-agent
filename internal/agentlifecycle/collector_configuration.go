@@ -16,10 +16,11 @@ import (
 // collectorConfigurationActivator renders and activates the Collector
 // configuration represented by one desired dependency-state snapshot.
 type collectorConfigurationActivator struct {
-	platform     identity.PlatformInfo
-	catalog      dependency.Catalog
-	layers       []config.Layer
-	renderValues map[string]string
+	platform       identity.PlatformInfo
+	catalog        dependency.Catalog
+	layers         []config.Layer
+	renderValues   map[string]string
+	baselineInputs func() ([]config.InlineLayer, []string, error)
 
 	binaryPath            string
 	configPath            string
@@ -36,6 +37,9 @@ type CollectorConfigurationOptions struct {
 	Layers   []config.Layer
 	// RenderValues contains deterministic substitutions used by the clean baseline.
 	RenderValues map[string]string
+	// AdditionalBaselineInputs returns reviewed inline Collector layers and
+	// metrics receivers that belong to the clean baseline.
+	AdditionalBaselineInputs func() ([]config.InlineLayer, []string, error)
 
 	BinaryPath            string
 	ConfigPath            string
@@ -51,7 +55,11 @@ func (a collectorConfigurationActivator) Activate(
 	ctx context.Context,
 	state agentstate.State,
 ) error {
-	baseline, err := cleanBaselineInput(a.platform, a.catalog, a.layers, state, a.renderValues)
+	additionalLayers, additionalReceivers, err := a.additionalBaselineInputs()
+	if err != nil {
+		return fmt.Errorf("resolve additional clean baseline inputs: %w", err)
+	}
+	baseline, err := cleanBaselineInput(a.platform, a.catalog, a.layers, state, a.renderValues, additionalLayers, additionalReceivers)
 	if err != nil {
 		return fmt.Errorf("build clean Collector baseline: %w", err)
 	}
@@ -98,6 +106,13 @@ func (a collectorConfigurationActivator) Activate(
 	return nil
 }
 
+func (a collectorConfigurationActivator) additionalBaselineInputs() ([]config.InlineLayer, []string, error) {
+	if a.baselineInputs == nil {
+		return nil, nil, nil
+	}
+	return a.baselineInputs()
+}
+
 // ApplyDesiredConfiguration renders, validates, activates, and acknowledges
 // the current desired dependency configuration as one generation.
 func ApplyDesiredConfiguration(
@@ -114,6 +129,7 @@ func ApplyDesiredConfiguration(
 		catalog:               options.Catalog,
 		layers:                options.Layers,
 		renderValues:          options.RenderValues,
+		baselineInputs:        options.AdditionalBaselineInputs,
 		binaryPath:            options.BinaryPath,
 		configPath:            options.ConfigPath,
 		validationEnvironment: options.ValidationEnvironment,
