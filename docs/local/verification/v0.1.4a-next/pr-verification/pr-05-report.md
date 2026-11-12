@@ -1,12 +1,13 @@
 # PR-05 verification report — OTel-native Docker/Redis discovery
 
-**Status:** IN_PROGRESS — expanded Windows live delivery and profile-composed LKG validation/activation rollback verified; mandatory daemon, receiver uniqueness, unreachable-diagnostic, and native Linux gates remain.
+**Status:** IN_PROGRESS — Windows and Linux Docker-to-OTLP live delivery and profile-composed LKG validation/activation rollback verified; daemon recovery, receiver uniqueness, and live unreachable diagnostics remain.
 **Release target:** `v0.1.4a-next`
 **Review date:** 2026-11-12
 **Worktree:** `feat/v0.1.4a-next-work`, base worktree commit `59c85eed375c77653bcfcc57022ee01093467bc6`
 **Implementation commit:** `0f03c25` (`feat(discovery): add OTel-native Docker Redis monitoring`)
 **Publication:** Draft [PR #28](https://github.com/AR-IMMS/telemetry-agent/pull/28) targets `chore/v0.1.4a-next`. This report does not claim PASS.
-**Current verified code/test head:** `9c74bfb`; GitHub Actions run [43237050133](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43237050133) passed on Windows and Ubuntu (test, vet, build).
+**Current verified code/test head:** `300d6b1`; GitHub Actions run [43238401049](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43238401049) passed on Windows and Ubuntu, including Linux live Docker/Collector/OTLP E2E.
+**Linux live E2E:** GitHub Actions run [43238401049](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43238401049) passed on `ubuntu-latest`, including the real Docker/Collector/OTLP profile E2E.
 
 ## Accepted contract implemented
 
@@ -37,6 +38,10 @@ go test ./cmd/agentctl -run '^TestLiveNativeDockerRedisProfileDeliversOTLP$' -co
 
 Result: PASS (14.83 seconds). The test removes its disposable containers and network. Final scenario facts are retained in [PR-05 Windows live evidence](./pr-05-windows-live-evidence.md). The separate pinned-binary profile configuration validation also passed.
 
+## Native Linux evidence
+
+The workflow runs the same live test on GitHub's `ubuntu-latest` Linux runner after downloading and checksum-verifying the pinned Linux Collector archive. Run [43238401049](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43238401049) passed the Ubuntu test, live E2E, vet, and build steps. The live test passed in 17.04 seconds with a Docker-assigned host port of `32770`, a target attached to two Docker networks, an unpublished target, distinct resource identities, container recreation, and isolated OTLP delivery. The full run logs include Receiver Creator start/stop events and no scrape errors. See [PR-05 Linux live evidence](./pr-05-linux-live-evidence.md).
+
 ## Build and test gates
 
 On the same Windows worktree, all passed:
@@ -48,11 +53,11 @@ go build ./...
 GOOS=linux GOARCH=amd64 go build ./...
 ```
 
-The Linux build above is a cross-build only. Ubuntu WSL2 is installed but has no Go toolchain; it is not a native Linux E2E host. Earlier WSL2 probes established Docker Desktop `alternate_port` behavior but do not substitute for this checkpoint's required native Linux Agent/Collector delivery run.
+The local Windows `GOOS=linux` build is a cross-build only. Ubuntu WSL2 is installed but has no Go toolchain; the native Linux E2E was therefore run on the GitHub-hosted Ubuntu Linux runner instead.
 
 After the endpoint diagnostics, CLI inspection, provider recovery test, and profile-composed failure injections were added, the full Windows suite, vet, build, and Linux/amd64 cross-build were rerun and passed. The full suite run set `AR_IMMS_PR05_COLLECTOR_BINARY` to the checksum-verified v0.160.0 Windows binary, enabling both profile failure tests.
 
-GitHub CI on PR #28 head `9c74bfb` passed on `windows-latest` and `ubuntu-latest`; both jobs completed test, vet, and build. Ubuntu CI is Linux runner evidence for Go checks, not native Linux Docker/Collector/OTLP E2E.
+GitHub CI run `43238401049` on head `300d6b1` passed on `windows-latest` and `ubuntu-latest`; both jobs completed test, vet, and build. Ubuntu additionally ran the live Docker/Collector/OTLP E2E.
 
 ## Profile candidate failure and LKG evidence
 
@@ -69,7 +74,6 @@ The invalid Receiver Creator observer configuration is rejected at final validat
 
 These items remain open and prevent PASS:
 
-- Native Linux unit/suite/vet/build and real Docker + pinned Collector + isolated OTLP E2E, including recreation and attribution.
 - Actual Docker daemon outage followed by recovery and convergence of Agent inventory and OTel Observer. A new coordinator unit test covers provider failure followed by recovery and endpoint refresh, but it does not stop or isolate Docker Desktop and cannot establish receiver recovery.
 - End-to-end diagnostics for every state. `agentctl inventory inspect` reports `endpoint_missing`, `endpoint_ambiguous`, and `endpoint_resolved`; resolved means reachability is unverified. A parser unit test accepts the pinned Receiver Creator dynamic error record and maps it to unreachable evidence. No live scrape failure was induced, and runtime Collector output is not yet routed into the Agent diagnostic surface.
 - Nondefault private Redis port behavior. PR-05's initial Redis profile explicitly supports private port `6379`; a nondefault published host port is verified, but alternate private Redis ports are unsupported and were not tested.
@@ -83,4 +87,4 @@ Coordinator tests verify that failed observations preserve present inventory and
 
 Agent Go source and tests, local architecture/plan/progress documentation, and this verification report are the intended PR-05 changes. No production configuration, schema, database migration, `docs/shared` content, or runtime artifact was added. The pre-existing untracked `cmd/agentctl/otel.yaml.lifecycle.lock` is preserved and is not part of PR-05. Temporary Collector/test artifacts are removed after verification.
 
-**Checkpoint ruling:** Windows coverage includes multi-network observations, nondefault published host port, an unpublished target, inventory diagnosis, profile extensibility, profile-composed LKG recovery after validation and activation failures, and OTLP delivery. PR-05 remains **IN_PROGRESS / CONDITIONAL** because actual daemon recovery, live unreachable reporting, multi-network receiver uniqueness/duplicate points, nondefault private Redis ports, and native Linux E2E remain open. PR-06 remains blocked by PR-05.
+**Checkpoint ruling:** Windows and native Ubuntu runner coverage includes multi-network observations, nondefault published host ports, an unpublished target, inventory diagnosis, profile extensibility, profile-composed LKG recovery after validation and activation failures, and OTLP delivery. PR-05 remains **IN_PROGRESS / CONDITIONAL** because actual daemon recovery, live unreachable reporting, Windows multi-network receiver uniqueness/duplicate points, and nondefault private Redis ports remain open. PR-06 remains blocked by PR-05.
