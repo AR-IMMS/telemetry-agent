@@ -26,6 +26,7 @@ import (
 )
 
 const applicationProfilesE2EEnv = "AR_IMMS_PR06_APPLICATION_PROFILE_E2E"
+const pr07aSupervisorProfileParityEnv = "AR_IMMS_PR07A_SUPERVISOR_PROFILE_PARITY"
 
 // TestLiveDockerApplicationProfilesDeliverOTLP verifies native Redis,
 // PostgreSQL, and Prometheus profile delivery through the local Collector.
@@ -134,10 +135,14 @@ func TestLiveDockerApplicationProfilesDeliverOTLP(t *testing.T) {
 	collectorLogs := &nativeCollectorLogReporter{health: agenthealth.NewReporter(agenthealth.RuntimeObservation{CollectorState: agenthealth.CollectorStateStarting})}
 	serviceCtx, stopService := context.WithCancel(ctx)
 	serviceDone := make(chan error, 1)
+	runtimeStopped := false
 	go func() {
 		serviceDone <- runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, agentstate.TeardownAction, []agentstate.OwnedResource) error { return nil }, collectorLogs, bootstrap.OSCommandRunner{})
 	}()
 	t.Cleanup(func() {
+		if runtimeStopped {
+			return
+		}
 		stopService()
 		select {
 		case <-serviceDone:
@@ -212,6 +217,23 @@ func TestLiveDockerApplicationProfilesDeliverOTLP(t *testing.T) {
 	}
 	if runtime.GOOS != "windows" && runtime.GOOS != "linux" {
 		t.Fatalf("unsupported E2E host %s", runtime.GOOS)
+	}
+	if os.Getenv(pr07aSupervisorProfileParityEnv) == "1" {
+		supervisorBinary := strings.TrimSpace(os.Getenv("AR_IMMS_PR07A_SUPERVISOR_BINARY"))
+		if supervisorBinary == "" {
+			t.Fatal("AR_IMMS_PR07A_SUPERVISOR_BINARY is required for Supervisor profile parity")
+		}
+		stopService()
+		select {
+		case runtimeErr := <-serviceDone:
+			if runtimeErr != nil {
+				t.Fatalf("stop Agent Runtime before Supervisor profile parity: %v", runtimeErr)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("Agent Runtime did not stop before Supervisor profile parity")
+		}
+		runtimeStopped = true
+		runPR07ASupervisorApplicationProfileParity(t, ctx, root, supervisorBinary, binary, configPath, sinkEndpoint, sinkOutput, nodeID, resources, newPythonID)
 	}
 }
 

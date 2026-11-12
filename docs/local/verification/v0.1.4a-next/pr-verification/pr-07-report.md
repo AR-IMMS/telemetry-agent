@@ -1,10 +1,11 @@
 # PR-07 verification report — OpAMP Supervisor and control plane
 
 **Status:** IN_PROGRESS — Windows Supervisor v0.160.0 fallback, local/remote
-composition, APPLIED status, and OTLP endpoint update passed in an isolated
-smoke E2E. Mandatory profile parity, crash/recovery, rollback, and native Linux
-gates remain open. Do not merge or transfer Collector lifecycle ownership on
-this evidence.
+composition, APPLIED status, activation failure, automatic rollback, Collector
+crash recovery, and actual OTLP delivery passed. Windows Docker profile parity
+also passed for Redis, PostgreSQL, Python Prometheus, and a recreated cooling
+workload. Supervisor-process crash recovery and native Linux gates remain open.
+Do not merge or transfer Collector lifecycle ownership on this evidence.
 **Release target:** `v0.1.4a-next`
 **Branch:** `feat/pr-07-opamp`
 **Implementation baseline:** PR-06 merge
@@ -37,8 +38,8 @@ this implementation branch's authorized scope.
 - Official Supervisor v0.160.0 docs describe remote configuration as opt-in,
   merged with local config, and applied through Collector restart. Startup
   fallback is standalone; automatic rollback is opt-in and described for
-  Collector startup failure. The Windows test below confirms only the scenario
-  it actually executed; profile, crash, rollback, and Linux behavior remain
+  Collector startup failure. The Windows tests below confirm only the scenarios
+  they actually executed; Supervisor-process recovery and Linux behavior remain
   unverified. See the [pinned Supervisor README](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.160.0/cmd/opampsupervisor/README.md)
   and [pinned specification](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.160.0/cmd/opampsupervisor/specification/README.md).
 
@@ -54,8 +55,9 @@ this implementation branch's authorized scope.
    applied, failed, recovered and unknown statuses. Readiness is not scrape or
    OTLP delivery evidence; an older applied hash after rollback is not success
    for a newer desired revision.
-4. Test existing Redis, PostgreSQL, Prometheus, and host monitoring profile
-   configs with Supervisor on Windows and Linux.
+4. Profile parity is verified on Windows for Redis, PostgreSQL, Python
+   Prometheus, and a recreated cooling workload; verify the same on native Linux
+   and add host-profile coverage under Supervisor.
 5. Induce invalid remote candidate, Collector crash/restart, Supervisor restart,
    fallback recovery, and automatic rollback; compare behavior with Agent LKG.
 6. Verify native Linux execution, not only Linux artifact checksum or a Windows
@@ -76,7 +78,8 @@ this implementation branch's authorized scope.
 | Collector crash recovery | PASS / LIMITED | Test killed the managed Collector after successful config; Supervisor started a new Collector process and OTLP output resumed at sink B. Supervisor process crash recovery remains NOT RUN. |
 | Invalid candidate rejection and recovery | PASS / LIMITED | A syntactically valid remote config using an already-bound OTLP receiver port caused activation failure and an OpAMP `FAILED` status. The test server restored the prior config; the Supervisor reported that hash `APPLIED` and sink B delivery resumed. |
 | Automatic config rollback / Agent LKG parity | PASS / LIMITED | With the desired-state test server sending only changed config hashes, the pinned Supervisor reported `FAILED` for an activation-failing config, automatically restored the previous working remote config, and emitted `APPLIED` for its hash within the 20-second observation window. OTLP resumed. The test server had to avoid replaying the same failed hash. Agent Runtime LKG parity remains NOT RUN. |
-| Actual OTLP delivery | PASS / LIMITED | Windows hostmetrics reached isolated sink A during fallback, sink B after remote exporter update, and sink B again after failure recovery and Collector crash restart. Redis/PostgreSQL/Prometheus profiles under Supervisor remain NOT RUN. |
+| Actual OTLP delivery | PASS / LIMITED | Windows hostmetrics reached isolated sink A during fallback, sink B after remote exporter update, and sink B again after failure recovery and Collector crash restart. Redis, PostgreSQL, Python Prometheus, and mock-cooling profiles also reached the isolated sink under Supervisor fallback and after OpAMP reconnect. |
+| Existing application-profile parity | PASS / LIMITED | Windows Docker E2E reused PR-06 Redis, PostgreSQL, Python Prometheus, and mock-cooling profiles. Agent Runtime emitted all four streams; after stopping it, Supervisor emitted the same profiles from startup fallback and after OpAMP reconnection. Docker container recreation delivered the new cooling `resource_id`. The candidate had no Agent-created duplicate receiver and all observed samples reached the isolated OTLP sink. Native Linux and hostmetrics in the profile-parity run remain NOT RUN. |
 | Windows native E2E | PASS / LIMITED | Focused Windows live test with exact binaries, local `opamp-go` server, and two isolated Collector OTLP sinks. This is a smoke test, not complete PR-05/06 parity. OS build number was not captured. |
 | Native Linux E2E | NOT RUN | No native Linux runner used. |
 | Mock Core contract interoperability | NOT RUN | Not implemented or tested. |
@@ -87,6 +90,11 @@ this implementation branch's authorized scope.
 
 - Focused test:
   `go test ./cmd/agentctl -run '^TestPR07ASupervisorRemoteConfigAndFallbackDelivery$' -count=1 -v`
+- Windows Docker profile parity:
+  `go test ./cmd/agentctl -run '^TestLiveDockerApplicationProfilesDeliverOTLP$' -count=1 -v`
+  with `AR_IMMS_PR06_APPLICATION_PROFILE_E2E=1`,
+  `AR_IMMS_PR07A_SUPERVISOR_PROFILE_PARITY=1`, verified Supervisor/Collector
+  binary paths, and `AR_IMMS_PR07A_EVIDENCE_DIR=<directory>`.
 - Variables: `AR_IMMS_PR07A_LIVE_E2E=1`,
   `AR_IMMS_PR07A_SUPERVISOR_BINARY=<verified Windows Supervisor>`,
   `AR_IMMS_PR05_COLLECTOR_BINARY=<verified Windows Collector>`, and
@@ -100,6 +108,13 @@ this implementation branch's authorized scope.
   extracted binaries are under ignored `tmp/pr07a/artifacts/`.
 - `go test ./cmd/agentctl -run '^TestPR07A' -count=1` passed on Windows after
   the addition of the executable harness.
+- The Windows Docker profile-parity run passed on 2026-11-13 with Redis,
+  PostgreSQL, Python Prometheus, mock-cooling churn, offline startup fallback,
+  OpAMP reconnect, and OTLP sink verification. Reproducible local evidence is
+  retained under ignored `tmp/pr07a/evidence/windows/application-profiles/`
+  (`supervisor.log`, `otlp-sink.log`, and `profile-parity-summary.txt`). Docker
+  was accessed through the elevated Windows test environment; this is not
+  native Linux verification.
 - The test-only harness does not change production installation, runtime
   ownership, config, or lifecycle behavior. The pre-existing untracked
   `cmd/agentctl/otel.yaml.lifecycle.lock` remains preserved and excluded.

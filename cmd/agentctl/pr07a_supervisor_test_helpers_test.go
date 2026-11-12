@@ -43,14 +43,22 @@ type pr07aOpAMPHarness struct {
 	config       []byte
 	lastSentHash []byte
 	status       chan *protobufs.RemoteConfigStatus
+	connected    chan struct{}
 }
 
 func startPR07AOpAMPServer(t *testing.T, endpoint string, initialConfig []byte) *pr07aOpAMPHarness {
 	t.Helper()
-	harness := &pr07aOpAMPHarness{config: append([]byte(nil), initialConfig...), status: make(chan *protobufs.RemoteConfigStatus, 32)}
+	harness := &pr07aOpAMPHarness{config: append([]byte(nil), initialConfig...), status: make(chan *protobufs.RemoteConfigStatus, 32), connected: make(chan struct{})}
 	harness.server = server.New(nil)
 	callbacks := opamptypes.Callbacks{OnConnecting: func(*http.Request) opamptypes.ConnectionResponse {
 		return opamptypes.ConnectionResponse{Accept: true, ConnectionCallbacks: opamptypes.ConnectionCallbacks{
+			OnConnected: func(context.Context, opamptypes.Connection) {
+				select {
+				case <-harness.connected:
+				default:
+					close(harness.connected)
+				}
+			},
 			OnMessage: func(_ context.Context, _ opamptypes.Connection, message *protobufs.AgentToServer) *protobufs.ServerToAgent {
 				if message.GetRemoteConfigStatus() != nil {
 					select {
