@@ -1,7 +1,7 @@
 # v0.1.4a-next — release progress
 
 **Canonical target:** `v0.1.4a-next`<br>
-**Execution state:** IN_PROGRESS — PR-01 (#20) through PR-06 are merged to `chore/v0.1.4a-next`. PR-07 remains IN_PROGRESS in draft PR #30 on `feat/pr-07-opamp`; latest implementation/test head `eb188d396969b564f3576e84a1c5f500cfba41e5`. Exact-head CI run [43428314136](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43428314136) passed on Windows and Ubuntu, including managed enrollment/control, local configuration update/no-op, LKG equivalence, crash recovery, publication attribution, rollback, full Go tests, vet, and build. Ubuntu also passed isolated Docker recovery and Agent-managed Redis/PostgreSQL/Python Prometheus/mock-cooling parity with churn and duplicate-sample checks. Hosted Windows Docker steps were explicitly skipped. Sanitized artifacts are retained under `tmp/pr07c-ci-43428314136/`. Still open: native Windows/Linux service installation/migration/upgrade/uninstall, Windows Agent-managed Docker-profile parity, and native service restart. Supervisor remains opt-in; existing installations remain unchanged pending explicit migration. Production NestJS Core interoperability is tracked separately. See the [PR-07 report](../../verification/v0.1.4a-next/pr-verification/pr-07-report.md).<br>
+**Execution state:** IN_PROGRESS — PR-01 (#20) through PR-06 are merged to `chore/v0.1.4a-next`. PR-07 remains IN_PROGRESS in draft PR #30 on `feat/pr-07-opamp`; latest PR head `e159c9e63c0c525bf37d61bcc336ba481e3625d6` (documentation-only after implementation/test head `eb188d396969b564f3576e84a1c5f500cfba41e5`). Exact-head CI run [43429611905, attempt 2](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43429611905) passed on Windows and Ubuntu; its first attempt had an intermittent Linux managed-control OTLP wait timeout after the policy revision was applied. The earlier implementation-head run [43428314136](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43428314136) passed managed enrollment/control, local configuration update/no-op, LKG equivalence, crash recovery, publication attribution, rollback, full Go tests, vet, and build. Ubuntu also passed isolated Docker recovery and Agent-managed Redis/PostgreSQL/Python Prometheus/mock-cooling parity with churn and duplicate-sample checks. Hosted Windows Docker steps were explicitly skipped. Sanitized implementation-head artifacts are retained under `tmp/pr07c-ci-43428314136/`. Still open: native Windows/Linux service installation/migration/upgrade/uninstall, Windows Agent-managed Docker-profile parity, and direct native service restart. Supervisor remains opt-in; existing installations remain unchanged pending explicit migration. Production NestJS Core interoperability is tracked separately. See the [PR-07 report](../../verification/v0.1.4a-next/pr-verification/pr-07-report.md).<br>
 **Checkpoint rule:** PR-01–PR-10 are verified checkpoints; they do not require ten separate GitHub PRs. Keep each submitted checkpoint targeted at the approved integration branch.<br>
 **Last updated:** 2026-11-13
 
@@ -15,6 +15,30 @@ runtime temp root and puts sink Collectors outside it; the failure remains
 unverified pending exact-head rerun. The opt-in live test could not start
 locally because this Windows token lacks protected credential-store access.
 PR #30 remains draft and Supervisor remains opt-in.
+
+## PR-07c final-head CI update — 2026-11-13
+
+- The documentation-updated PR head `e159c9e63c0c525bf37d61bcc336ba481e3625d6`
+  completed Windows and Ubuntu CI in run
+  [`43429611905`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43429611905),
+  attempt 2. Both full test, managed runtime/control E2E, vet, and build jobs
+  passed. Linux Docker and application-profile E2E passed. The first attempt
+  timed out waiting for post-restart OTLP telemetry after policy revision 4
+  had been applied; retrying the failed Linux job on the same head passed. Keep
+  the intermittent timeout visible as a test-stability issue.
+- Local `go test ./internal/agentlifecycle -count=1` passed when `TEMP` and
+  `TMP` pointed to an isolated directory under the writable workspace. The
+  default sandbox temp path produced SQLite `unable to open database file`
+  failures; this was an environment limitation, not a code change. Local Docker
+  access is denied on `dockerDesktopLinuxEngine`, and the current Windows token
+  has the Administrators group deny-only. Native service installation or
+  removal was not attempted on the developer host.
+- The open gates remain native Windows/Linux service install, migration,
+  upgrade, restart, and uninstall, plus Windows Docker profile parity. Hosted
+  Windows CI skips the Docker profile tests, so Linux Docker E2E does not close
+  Windows parity. PR #30 stays draft, Supervisor stays opt-in, and PR-07 stays
+  IN_PROGRESS. No merge, ownership transfer, or PR-08 start is authorized by
+  these results.
 
 ## Preservation invariants
 

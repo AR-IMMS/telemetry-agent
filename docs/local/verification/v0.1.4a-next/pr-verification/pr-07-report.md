@@ -456,3 +456,32 @@ gates open and the checkpoint draft while any are unresolved.
   remains opt-in, and PR #30 remains draft. No default-owner transfer or merge
   is authorized until those gates pass. Production NestJS Core interoperability
   remains a separately tracked gate.
+
+## Documentation-updated exact-head CI and local capability check — 2026-11-13
+
+- The documentation-updated PR head
+  `e159c9e63c0c525bf37d61bcc336ba481e3625d6` completed Windows and Ubuntu CI in
+  run [`43429611905`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43429611905),
+  attempt 2. Both jobs passed full Go tests, managed runtime/control E2E,
+  `go vet ./...`, and `go build ./...`. Ubuntu Docker recovery and Agent-managed
+  application-profile E2E passed. Windows Docker/profile steps are skipped on
+  the hosted runner. The first attempt timed out waiting for post-restart OTLP
+  telemetry after policy revision 4 had applied; the failed Linux job passed
+  when retried on the same head. Keep this as an intermittent test-stability
+  signal rather than erasing it from the evidence.
+- Local `go test ./internal/agentlifecycle -count=1` initially failed because
+  SQLite could not create files under the sandbox-provided default `%TEMP%`.
+  The same command passed after setting `TEMP` and `TMP` to an isolated
+  workspace directory. This is a local sandbox filesystem limitation; hosted
+  native Windows and Linux test jobs passed.
+- A fresh local capability check confirms Docker CLI access is denied on the
+  `dockerDesktopLinuxEngine` named pipe. The Administrators group is deny-only
+  in the current Windows token, and the local process cannot query or control
+  the Agent service through SCM. No native service installation, migration,
+  upgrade, restart, or uninstall was attempted on this developer machine.
+- Mandatory adoption gates remain native Windows/Linux service install,
+  migration, upgrade, restart, and uninstall, and Windows Docker profile
+  parity. Hosted Windows explicitly skips the latter. PR #30 remains draft,
+  Supervisor remains opt-in, and PR-07 remains IN_PROGRESS. Do not merge,
+  transfer default ownership, or start PR-08 until these gates pass. Production
+  NestJS Core interoperability remains separately tracked.
