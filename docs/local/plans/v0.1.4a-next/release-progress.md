@@ -8,10 +8,13 @@
 PR-07 follow-up: a test-only managed-runtime failure injection now exercises
 Collector crash replacement, Supervisor crash process-tree cleanup, and Agent
 runtime restart with OTLP recovery. Native Windows full tests, vet, build, and
-the architecture guard passed. The opt-in live test could not start locally
-because this Windows token lacks protected credential-store access. Exact-head
-Windows/Ubuntu CI must pass before counting these gates as verified. PR #30
-remains draft and Supervisor remains opt-in.
+the architecture guard passed. CI run `43419406085` ran the E2E on both OSes but
+exposed a test selector assumption: the Agent launches a snapshot config under
+`.collector-launch-*`, not the stable path. The fixture now uses a unique
+runtime temp root and puts sink Collectors outside it; the failure remains
+unverified pending exact-head rerun. The opt-in live test could not start
+locally because this Windows token lacks protected credential-store access.
+PR #30 remains draft and Supervisor remains opt-in.
 
 ## Preservation invariants
 

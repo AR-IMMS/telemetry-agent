@@ -338,3 +338,12 @@ gates open and the checkpoint draft while any are unresolved.
   on native Windows and Ubuntu. Crash recovery and process-tree evidence remain
   NOT VERIFIED until that exact-head workflow completes successfully. PR #30
   remains draft; Supervisor remains opt-in.
+- Exact-head run [`43419406085`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43419406085)
+  executed the crash-enabled E2E on both operating systems but timed out while
+  looking for the managed Collector. The runtime launches a snapshot under a
+  `.collector-launch-*` directory, so matching the original config file path
+  was incorrect. The fix moves all four sink Collector configs to independent
+  temp directories and matches the unique Agent runtime temp root, which is
+  present in its snapshot path. Both jobs passed full tests; Ubuntu also passed
+  the PR-05 Docker recovery and PR-06 application profile steps. The crash gate
+  remains open until a new exact-head run passes.

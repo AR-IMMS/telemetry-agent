@@ -68,27 +68,19 @@ func TestManagedSupervisorEnrollmentAndRemoteGatewayE2E(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	defer cancel()
 	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, "initial-sink"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(root, "updated-sink"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(root, "rotated-sink"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(root, "restarted-sink"), 0700); err != nil {
-		t.Fatal(err)
-	}
+	initialSinkDirectory := t.TempDir()
+	updatedSinkDirectory := t.TempDir()
+	rotatedSinkDirectory := t.TempDir()
+	restartedSinkDirectory := t.TempDir()
 	cert, certPEM := newManagedRuntimeTestCertificate(t)
 	serverCAFile := filepath.Join(root, "opamp-server-ca.pem")
 	if err := os.WriteFile(serverCAFile, certPEM, 0600); err != nil {
 		t.Fatal(err)
 	}
-	initialSink, initialSinkURL := startSupervisorRuntimeSink(t, ctx, collectorPath, filepath.Join(root, "initial-sink"))
-	updatedSink, updatedSinkURL := startSupervisorRuntimeSink(t, ctx, collectorPath, filepath.Join(root, "updated-sink"))
-	rotatedSink, rotatedSinkURL := startSupervisorRuntimeSink(t, ctx, collectorPath, filepath.Join(root, "rotated-sink"))
-	restartedSink, restartedSinkURL := startSupervisorRuntimeSink(t, ctx, collectorPath, filepath.Join(root, "restarted-sink"))
+	initialSink, initialSinkURL := startSupervisorRuntimeSink(t, ctx, collectorPath, initialSinkDirectory)
+	updatedSink, updatedSinkURL := startSupervisorRuntimeSink(t, ctx, collectorPath, updatedSinkDirectory)
+	rotatedSink, rotatedSinkURL := startSupervisorRuntimeSink(t, ctx, collectorPath, rotatedSinkDirectory)
+	restartedSink, restartedSinkURL := startSupervisorRuntimeSink(t, ctx, collectorPath, restartedSinkDirectory)
 	initialEndpoint := strings.TrimPrefix(initialSinkURL, "http://")
 	updatedEndpoint := strings.TrimPrefix(updatedSinkURL, "http://")
 	rotatedEndpoint := strings.TrimPrefix(rotatedSinkURL, "http://")
@@ -290,10 +282,10 @@ service:
 	}
 	waitForSupervisorCorePolicy(t, ctx, runtimeDone, core, 1)
 	waitForSupervisorSinkTelemetry(t, ctx, runtimeDone, initialSink)
-	collectorPIDs := waitForManagedProcessCount(t, ctx, runtimeDone, collectorPath, collectorConfig, 1)
+	collectorPIDs := waitForManagedProcessCount(t, ctx, runtimeDone, collectorPath, root, 1)
 	collectorSinkBytes := len(initialSink.String())
 	killManagedProcess(t, collectorPIDs[0])
-	replacementCollectorPIDs := waitForManagedProcessReplacement(t, ctx, runtimeDone, collectorPath, collectorConfig, collectorPIDs[0])
+	replacementCollectorPIDs := waitForManagedProcessReplacement(t, ctx, runtimeDone, collectorPath, root, collectorPIDs[0])
 	waitForSupervisorSinkGrowth(t, ctx, runtimeDone, initialSink, collectorSinkBytes)
 	if len(replacementCollectorPIDs) != 1 {
 		t.Fatalf("Collector owners after managed crash recovery = %v, want exactly one process", replacementCollectorPIDs)
@@ -310,7 +302,7 @@ service:
 		t.Fatalf("Agent runtime did not detect the Supervisor crash: %v", ctx.Err())
 	}
 	waitForManagedProcessCount(t, ctx, runtimeDone, supervisorPath, managed.ConfigurationPath, 0)
-	waitForManagedProcessCount(t, ctx, runtimeDone, collectorPath, collectorConfig, 0)
+	waitForManagedProcessCount(t, ctx, runtimeDone, collectorPath, root, 0)
 	crashSinkBytes := len(initialSink.String())
 	time.Sleep(1500 * time.Millisecond)
 	if got := len(initialSink.String()); got != crashSinkBytes {
@@ -325,7 +317,7 @@ service:
 	waitForSupervisorRuntimeReadiness(t, ctx, runtimeDone, healthEndpoint)
 	recoverySinkBytes := len(initialSink.String())
 	waitForSupervisorSinkGrowth(t, ctx, runtimeDone, initialSink, recoverySinkBytes)
-	waitForManagedProcessCount(t, ctx, runtimeDone, collectorPath, collectorConfig, 1)
+	waitForManagedProcessCount(t, ctx, runtimeDone, collectorPath, root, 1)
 	if err := core.SetPolicy(installationID.String(), coreapi.DesiredGatewayPolicy{
 		SchemaVersion: "ar-imms/gateway-policy/v1", Revision: 2, GatewayEndpoint: updatedEndpoint,
 	}); err != nil {
