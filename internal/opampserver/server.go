@@ -22,8 +22,9 @@ import (
 )
 
 const (
-	maxTrackedInstances               = 64
-	maxConfigHashesPerTrackedInstance = 32
+	maxTrackedInstances                = 64
+	maxConfigHashesPerTrackedInstance  = 32
+	defaultSessionRevalidationInterval = 30 * time.Second
 )
 
 // ManagementClientFactory constructs a Core client bound to the supplied
@@ -42,12 +43,13 @@ type Options struct {
 // Server exposes authenticated native OpAMP while keeping Core policy outside
 // the protocol adapter.
 type Server struct {
-	options  Options
-	server   server.OpAMPServer
-	mu       sync.Mutex
-	sent     map[string]map[string]int64
-	lastUsed map[string]uint64
-	sequence uint64
+	options        Options
+	server         server.OpAMPServer
+	mu             sync.Mutex
+	sent           map[string]map[string]int64
+	lastUsed       map[string]uint64
+	sessionCancels map[opamptypes.Connection]context.CancelFunc
+	sequence       uint64
 }
 
 // New validates server dependencies and rejects non-loopback cleartext binds.
@@ -70,7 +72,7 @@ func New(options Options) (*Server, error) {
 	}
 	return &Server{
 		options: options, server: server.New(nil), sent: make(map[string]map[string]int64),
-		lastUsed: make(map[string]uint64),
+		lastUsed: make(map[string]uint64), sessionCancels: make(map[opamptypes.Connection]context.CancelFunc),
 	}, nil
 }
 
@@ -91,7 +93,18 @@ func (s *Server) Stop(ctx context.Context) error {
 	if s == nil || s.server == nil {
 		return nil
 	}
-	return s.server.Stop(ctx)
+	err := s.server.Stop(ctx)
+	s.mu.Lock()
+	cancels := make([]context.CancelFunc, 0, len(s.sessionCancels))
+	for connection, cancel := range s.sessionCancels {
+		cancels = append(cancels, cancel)
+		delete(s.sessionCancels, connection)
+	}
+	s.mu.Unlock()
+	for _, cancel := range cancels {
+		cancel()
+	}
+	return err
 }
 
 // Addr returns the listener address after Start succeeds.
@@ -121,10 +134,61 @@ func (s *Server) onConnecting(request *http.Request) opamptypes.ConnectionRespon
 		return rejectConnection(http.StatusServiceUnavailable)
 	}
 	return opamptypes.ConnectionResponse{Accept: true, ConnectionCallbacks: opamptypes.ConnectionCallbacks{
+		OnConnected: func(_ context.Context, connection opamptypes.Connection) {
+			s.startSessionMonitor(connection, client)
+		},
+		OnConnectionClose: s.stopSessionMonitor,
 		OnMessage: func(ctx context.Context, _ opamptypes.Connection, message *protobufs.AgentToServer) *protobufs.ServerToAgent {
 			return s.handleMessage(ctx, client, message)
 		},
 	}}
+}
+
+func (s *Server) startSessionMonitor(connection opamptypes.Connection, client coreapi.AgentManagementAPI) {
+	ctx, cancel := context.WithCancel(context.Background())
+	s.mu.Lock()
+	s.sessionCancels[connection] = cancel
+	s.mu.Unlock()
+	go s.monitorSession(ctx, connection, client, defaultSessionRevalidationInterval)
+}
+
+func (s *Server) stopSessionMonitor(connection opamptypes.Connection) {
+	s.mu.Lock()
+	cancel := s.sessionCancels[connection]
+	delete(s.sessionCancels, connection)
+	s.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
+func (s *Server) monitorSession(ctx context.Context, connection opamptypes.Connection, client coreapi.AgentManagementAPI, interval time.Duration) {
+	if ctx == nil || connection == nil || client == nil || interval <= 0 {
+		return
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			requestContext, cancel := context.WithTimeout(ctx, 5*time.Second)
+			_, err := client.GetSession(requestContext)
+			cancel()
+			var apiError *coreapi.ControlAPIError
+			if errors.As(err, &apiError) && (apiError.Status == http.StatusUnauthorized || apiError.Status == http.StatusForbidden) {
+				s.options.Logger.Warn("OpAMP installation authorization was revoked; disconnecting session")
+				_ = connection.Disconnect()
+				return
+			}
+			if err != nil {
+				// Preserve the existing local Collector session during a Core outage.
+				// Message handling still fails closed before delivering new policy.
+				s.options.Logger.Debug("OpAMP session revalidation unavailable", "error", err)
+			}
+		}
+	}
 }
 
 func (s *Server) handleMessage(ctx context.Context, client coreapi.AgentManagementAPI, message *protobufs.AgentToServer) *protobufs.ServerToAgent {
