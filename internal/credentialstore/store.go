@@ -17,6 +17,8 @@ type Store struct {
 	directory string
 }
 
+const supervisorTokenFileName = "opamp-supervisor.token"
+
 // New creates a Store beside the operational database, in a dedicated
 // credentials directory shared by the interactive enrollment command and Agent.
 func New(statePath string) Store {
@@ -51,29 +53,70 @@ func (s Store) Put(reference, value string) error {
 // Get reads and opens a protected secret. It rejects files with unsafe type,
 // ownership, or permission metadata before returning their contents.
 func (s Store) Get(reference string) (string, error) {
-	if err := s.validate(reference, "present"); err != nil {
+	plain, err := s.getBytes(reference)
+	if err != nil {
 		return "", err
 	}
+	defer clear(plain)
+	return string(plain), nil
+}
+
+// ProvisionSupervisorToken writes the existing enrollment bearer to the fixed
+// token-file path protected by the same OS ACLs or permissions as this store.
+func (s Store) ProvisionSupervisorToken(reference string) (string, error) {
+	plain, err := s.getBytes(reference)
+	if err != nil {
+		return "", err
+	}
+	defer clear(plain)
+	path := filepath.Join(s.directory, supervisorTokenFileName)
+	if err := writeAtomicFile(s.directory, path, plain); err != nil {
+		return "", fmt.Errorf("provision protected Supervisor token file: %w", err)
+	}
+	return path, nil
+}
+
+// DeleteSupervisorToken removes the materialized bearer token file idempotently.
+func (s Store) DeleteSupervisorToken() error {
+	if strings.TrimSpace(s.directory) == "" {
+		return fmt.Errorf("credential directory is required")
+	}
 	if err := secureDirectory(s.directory); err != nil {
-		return "", fmt.Errorf("secure credential directory: %w", err)
+		return fmt.Errorf("secure credential directory: %w", err)
+	}
+	if err := os.Remove(filepath.Join(s.directory, supervisorTokenFileName)); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("delete protected Supervisor token file: %w", err)
+	}
+	if err := syncDirectory(s.directory); err != nil {
+		return fmt.Errorf("sync credential directory after token removal: %w", err)
+	}
+	return nil
+}
+
+func (s Store) getBytes(reference string) ([]byte, error) {
+	if err := s.validate(reference, "present"); err != nil {
+		return nil, err
+	}
+	if err := secureDirectory(s.directory); err != nil {
+		return nil, fmt.Errorf("secure credential directory: %w", err)
 	}
 	content, err := readSecretFile(s.directory, s.path(reference))
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "", enrollment.ErrCredentialNotFound
+			return nil, enrollment.ErrCredentialNotFound
 		}
-		return "", fmt.Errorf("read protected credential: %w", err)
+		return nil, fmt.Errorf("read protected credential: %w", err)
 	}
 	defer clear(content)
 	plain, err := unprotectSecret(content)
 	if err != nil {
-		return "", fmt.Errorf("unprotect credential")
+		return nil, fmt.Errorf("unprotect credential")
 	}
-	defer clear(plain)
 	if len(plain) == 0 {
-		return "", fmt.Errorf("protected credential is empty")
+		clear(plain)
+		return nil, fmt.Errorf("protected credential is empty")
 	}
-	return string(plain), nil
+	return plain, nil
 }
 
 // Delete removes a credential idempotently and synchronizes the directory entry.
