@@ -17,8 +17,11 @@ Supervisor profile subcase. The managed E2E has since been extended to exercise
 Agent re-enrollment, protected credential replacement, old-bearer rejection,
 a new authenticated WSS policy revision, and post-rotation OTLP. Focused Mock
 Core persistence and active-session revocation tests pass locally; this
-expanded managed slice is pending final-head native CI. Run `43400294752` does
-not cover it. Durable restart/rollback attribution in the managed runtime, local
+Run `43400294752` does not cover the expanded slice; first expanded run
+`43404200589` failed waiting for revision 3 because it reused revision 2's
+config hash. Commit `261d332` now uses a distinct third sink and awaits rerun.
+The Agent-managed profile ownership path in `1e7c23d` also awaits native Linux
+Docker CI. Durable restart/rollback attribution in the managed runtime, local
 config no-op behavior, managed crash recovery, Agent LKG equivalence, managed
 application-profile ownership, or native service migration lifecycle. Keep
 Supervisor opt-in and PR #30 draft until every mandatory adoption gate passes.
@@ -26,7 +29,10 @@ Supervisor opt-in and PR #30 draft until every mandatory adoption gate passes.
 **Branch:** `feat/pr-07-opamp`
 **Implementation baseline:** PR-06 merge
 `af2f5db4c6b8832bc7bcc87d332d899dad01b452`.
-**Expanded credential-rotation test commit:** `882e450` (native managed E2E CI pending).
+**Expanded credential-rotation test commits:** `882e450` adds the rotation path;
+`261d332` corrects post-rotation delivery to a distinct third Gateway;
+`1e7c23d` moves the profile parity subcase under Agent-managed Supervisor
+ownership. These follow-up native CI checks are pending.
 
 ## Target change reviewed
 
@@ -81,6 +87,8 @@ after run `43369909210` exposed the production file-size guard. The unrelated pr
 | Second final-head vertical-slice CI | FAIL / FIX IN FOLLOW-UP | Run `43393916687` passed enrollment identity initialization but Collector config validation rejected a literal tab introduced by whitespace before the closing raw-string delimiter. The tab is removed in the next follow-up, and config validation errors now include the generated test YAML. Ubuntu fallback smoke and both PR-05/06 Docker E2Es passed; vet/build were skipped after the failed live step. Windows was still running when recorded. Do not count the managed vertical slice as verified until a corrected rerun passes on both platforms. |
 | Corrected final-head vertical-slice CI | PASS / NATIVE WINDOWS + UBUNTU; LIMITED SCOPE | Run [`43400294752`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43400294752) at `d6729066668e7f49797ee39c78b55623e5c284be` passed `TestManagedSupervisorEnrollmentAndRemoteGatewayE2E` on both platforms: actual Agent enrollment, protected credential store/secret-free SQLite, authenticated WSS, Mock Core policy revisions 1 and 2, and OTLP at both initial and updated Gateway sinks (Windows 37.23s; Ubuntu 36.17s). Both jobs passed the full test suite, `go vet ./...`, and `go build ./...`. Ubuntu also passed isolated Docker/Collector Redis E2E and the enabled Supervisor profile fallback/reconnect/OTLP parity subcase for Redis, PostgreSQL, Prometheus and mock cooling. Sanitized artifacts `pr07c-managed-supervisor-Windows`, `pr07c-managed-supervisor-Linux`, and `pr07a-supervisor-profile-parity` were uploaded. Earlier Windows runs exposed a trust-store API hang; `server.tls.ca_file` now supplies the test CA without trust-store mutation. Rotation/revocation, managed restart/rollback/no-op, crash recovery, managed profile ownership, LKG, and service lifecycle gates remain open. |
 | Local credential-rotation follow-up regression | PASS / NATIVE WINDOWS; EXPANDED MANAGED E2E SKIPPED | On 2026-11-13, `go test ./... -count=1`, `go vet ./...`, and `go build ./...` passed in the authorized Windows host environment. The persistent Mock Core rotation test and live HTTPS active-session revocation test passed. The expanded Agent-managed E2E compiled but skipped because the pinned binary paths and `AR_IMMS_PR07C_CONTROL_E2E=1` are unavailable locally; its Windows/Linux result must come from final-head CI. |
+| Expanded credential-rotation CI | FAIL / FIX IN FOLLOW-UP | Run [`43404200589`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43404200589) executed the managed enrollment E2E on native Windows and Ubuntu but both timed out waiting for `APPLIED` revision 3. Windows logs show the replacement Supervisor process reconnecting. Revision 3 used the same Gateway endpoint as revision 2, so the rendered config hash was unchanged and the OpAMP server correctly did not resend identical content. Commit `261d332` changes revision 3 to a third isolated OTLP sink, requiring a distinct config hash and direct post-rotation delivery. The full test step passed; vet/build were skipped after the managed E2E failed. Rerun required. |
+| Agent-managed profile parity harness | IMPLEMENTED / NATIVE LINUX CI PENDING | Commit `1e7c23d` changes the existing Redis/PostgreSQL/Python Prometheus/mock-cooling live test to enable Supervisor in persisted Agent state before runtime startup. It now exercises actual Agent → managed Supervisor → Collector → OTLP, then checks profile metrics and container churn. The older `43400294752` profile artifact came from the direct Supervisor subcase and does not verify this new ownership path. Ubuntu Docker CI must execute the updated harness. |
 | Supervisor TLS CA configuration | PASS / UNIT + PINNED WINDOWS/UBUNTU E2E | Optional CA path persists in `SupervisorContext` and renders as `server.tls.ca_file`; invalid blank/control-character paths are rejected. The pinned v0.160.0 [`OpAMPServer.TLS`](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/cmd/opampsupervisor/v0.160.0/cmd/opampsupervisor/supervisor/config/config.go) uses Collector `configtls.ClientConfig`. The exact binary accepted and used this setting on both platforms in run `43400294752`; TLS verification remained enabled. |
 | Full Windows regression after CA-file change | PASS / WINDOWS HOST; LIVE E2E NOT RUN LOCALLY | `go test ./... -count=1`, `go vet ./...`, and `go build ./...` completed successfully in the authorized Windows environment after the CA-file implementation. A sandboxed attempt was stopped after expected SQLite and loopback permission failures. The opt-in WSS E2E still requires final-head CI because local protected credential-store elevation is unavailable. |
 | Windows test/helper regression | PASS / HOST SUITE + LIVE CI | Full Windows suite, vet/build, and architecture guard passed locally. The opt-in E2E is unavailable in this local process without elevated credential-store access; native Windows CI executed and passed the managed test in 37.23s. |
