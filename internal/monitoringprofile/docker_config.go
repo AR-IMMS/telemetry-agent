@@ -68,10 +68,18 @@ func (r Registry) DockerCollectorLayer(osName, endpoint, nodeID string) (config.
 			mergedReceivers[id] = receiver
 		}
 	}
+	dockerObserver := map[string]any{"endpoint": endpoint, "timeout": "5s", "api_version": "1.44", "use_hostname_if_present": false}
+	if osName == "linux" {
+		// Use only host-published endpoints. The pinned Docker Observer assigns
+		// one endpoint ID per container port, so unbound multi-network endpoints
+		// can otherwise race as duplicate Receiver Creator targets.
+		dockerObserver["use_host_bindings"] = true
+		dockerObserver["ignore_non_host_bindings"] = true
+	}
 	layer := config.InlineLayer{
 		Name: "docker_monitoring_profiles",
 		Document: map[string]any{
-			"extensions": map[string]any{"docker_observer": map[string]any{"endpoint": endpoint, "timeout": "5s", "api_version": "1.44", "use_hostname_if_present": false}},
+			"extensions": map[string]any{"docker_observer": dockerObserver},
 			"receivers": map[string]any{"receiver_creator": map[string]any{
 				"watch_observers": []any{"docker_observer"},
 				"receivers":       mergedReceivers,
@@ -114,14 +122,18 @@ func receiverConfiguration(profile Profile, strategy EndpointStrategy) map[strin
 }
 
 func targetPortRule(strategy EndpointStrategy) string {
+	privatePort := strategy.PrivatePortVariable
+	if privatePort == "" {
+		privatePort = "port"
+	}
 	if strategy.TargetPortLabel == "" {
 		if strategy.TargetPort == 0 {
 			return "true"
 		}
-		return fmt.Sprintf("port == %d", strategy.TargetPort)
+		return fmt.Sprintf("%s == %d", privatePort, strategy.TargetPort)
 	}
 	label := fmt.Sprintf("labels[%q]", strategy.TargetPortLabel)
-	return fmt.Sprintf("(%s == \"\" and port == %d) or (%s != \"\" and port == int(%s))", label, strategy.TargetPort, label, label)
+	return fmt.Sprintf("(%s == \"\" and %s == %d) or (%s != \"\" and %s == int(%s))", label, privatePort, strategy.TargetPort, label, privatePort, label)
 }
 
 func dockerProfileRule(profile Profile) string {

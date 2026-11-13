@@ -299,6 +299,9 @@ func verifyNativeDockerRecovery(t *testing.T, ctx context.Context, manager strin
 	if output, err := exec.CommandContext(ctx, "docker", "start", manager).CombinedOutput(); err != nil {
 		t.Fatalf("restart isolated Docker Engine manager: %v\n%s", err, output)
 	}
+	if output, err := exec.CommandContext(ctx, "docker", "exec", manager, "chmod", "666", "/run/host/docker.sock").CombinedOutput(); err != nil {
+		t.Fatalf("restore isolated Docker Engine socket access after restart: %v\n%s", err, output)
+	}
 	waitForNativeDockerReady(t, ctx, manager)
 	for _, resourceID := range resourceIDs {
 		name := nativeContainerNameForID(t, ctx, resourceID)
