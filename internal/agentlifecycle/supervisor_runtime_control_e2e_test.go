@@ -80,7 +80,8 @@ func TestManagedSupervisorEnrollmentAndRemoteGatewayE2E(t *testing.T) {
 
 	const agentToken = "pr07c-e2e-agent-token-never-use-in-production"
 	const nodeID = "33333333-4444-4555-8666-777777777777"
-	installationID, err := identity.NewInstallationID(rand.Reader)
+	statePath := filepath.Join(root, "agent-state.db")
+	installationID, err := identity.EnsureInstallationIdentity(agentstate.NewIdentityStore(statePath), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +133,6 @@ func TestManagedSupervisorEnrollmentAndRemoteGatewayE2E(t *testing.T) {
 		}
 	}()
 
-	statePath := filepath.Join(root, "agent-state.db")
 	origin, err := enrollment.ParseCoreOrigin(coreHTTP.URL)
 	if err != nil {
 		t.Fatal(err)
