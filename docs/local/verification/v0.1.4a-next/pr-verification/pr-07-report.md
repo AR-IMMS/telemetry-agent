@@ -379,3 +379,38 @@ gates open and the checkpoint draft while any are unresolved.
   installation, migration, upgrade, and uninstall. The CI process-recovery test
   does not establish OS service migration lifecycle. PR #30 remains draft and
   PR-07 remains IN_PROGRESS; Supervisor remains opt-in.
+
+## Final implementation-head verification and remaining adoption gates
+
+- Implementation head `e5aa9fafd6e18577d9d8020b0706417bc1717dd1` passed CI run
+  [`43421992274`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43421992274).
+  The Windows and Ubuntu jobs both passed the full Go test step, managed
+  enrollment/control/crash E2E, `go vet ./...`, and `go build ./...`. Ubuntu
+  executed and passed isolated Docker recovery, live Collector/OTLP, and
+  Agent-managed Redis, PostgreSQL, Python/Prometheus, and mock-cooling profile
+  checks. Windows Docker recovery and profile steps were explicitly skipped;
+  that run is not Windows Docker-profile evidence.
+- Sanitized artifacts for the exact-head run:
+  Windows managed runtime `14034522704`
+  (`sha256:beb203f88ae6fa2ba49938a633e08ad78579dac29c692edfea24d7e8f5d34a0d`),
+  Linux managed runtime `14033879428`
+  (`sha256:abcb14ad4c7ad528263066df783bde4f76f3546084b254cc6b9d0d423c626399`),
+  and Ubuntu profile parity `14033774498`
+  (`sha256:515912de3fa4873e336e1aa08c3d83870de813ddfcaed1c8412e3e42abfc9b2f`).
+- Native Windows host capability checks show Docker CLI is installed, but access
+  to `dockerDesktopLinuxEngine` is denied. The current process token has the
+  Administrators group marked deny-only, and querying the Service Control
+  Manager is denied. Therefore this host cannot provide local live Docker or
+  native service install/migration/upgrade/uninstall evidence. These limits do
+  not change the CI evidence above; they leave the corresponding adoption gates
+  open.
+- PR #30 is still open and draft at this head. Remaining mandatory gates are
+  managed local configuration content update and unchanged-config no-op,
+  Agent LKG equivalence, Windows Agent-managed profile E2E, and native
+  Windows/Linux installation, migration, upgrade, and uninstall. Supervisor
+  remains opt-in and existing installations remain unchanged pending explicit
+  migration. Production NestJS Core interoperability remains separately
+  tracked. PR-07 is IN_PROGRESS; no merge or default-owner transfer is allowed
+  until these gates pass.
+- This report/tracker update is documentation-only; the updated PR head still
+  needs its own CI run before it can be called the final-head verification.
