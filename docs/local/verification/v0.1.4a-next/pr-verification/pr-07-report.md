@@ -347,3 +347,35 @@ gates open and the checkpoint draft while any are unresolved.
   present in its snapshot path. Both jobs passed full tests; Ubuntu also passed
   the PR-05 Docker recovery and PR-06 application profile steps. The crash gate
   remains open until a new exact-head run passes.
+
+## Final managed crash-injection verification
+
+- Exact PR head `6429d4bef925d6cabd5b14ea25565df0c5f6f517` passed CI run
+  [`43420887371`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43420887371)
+  on native Windows and Ubuntu. `TestManagedSupervisorEnrollmentAndRemoteGatewayE2E`
+  executed and passed in 70.53s on Windows and 66.98s on Ubuntu; both full Go
+  test steps, `go vet ./...`, and `go build ./...` passed. Ubuntu also executed
+  isolated Docker recovery, application profiles, and profile parity; these
+  steps were skipped on Windows because the hosted Windows runner has no Docker.
+- Failure injection terminated the Agent-managed Collector, observed exactly
+  one replacement Collector, and verified OTLP resumed. Terminating the
+  Agent-managed Supervisor caused the Agent runtime to return an error, cleaned
+  up both managed processes, and stopped sink delivery. Restarting the Agent
+  runtime restored readiness and OTLP delivery. Evidence summaries explicitly
+  report `collector_crash_recovery=verified_single_replacement_and_otlp`,
+  `supervisor_crash_process_tree_cleanup=verified`, and
+  `agent_runtime_restart_after_supervisor_crash=verified`.
+- Sanitized evidence is downloaded under
+  `tmp/pr07c-ci-43420887371/`. Windows managed-runtime artifact `14033099323`
+  has GitHub SHA-256 `6a03268a756fbdc74734386c9031d82b314bdc7e83112373bb08a0d355cda3bf`;
+  Ubuntu artifact `14034381146` has SHA-256
+  `7e4f2a74072b2b04b12d6ee4ef7dfbce2cca6149218809c1aace0f0912c97f97`.
+  Ubuntu profile parity artifact `14032864851` has SHA-256
+  `cf87dae6147ab0df4e53b35bd06391a58f1717bfab884a2e7de213437f3885c3`.
+- This closes the managed Collector/Supervisor crash and Agent runtime restart
+  gate for the E2E harness. Remaining mandatory adoption gates: managed local
+  configuration content update and direct unchanged-config no-op, Agent LKG
+  equivalence, Windows Agent-managed profile E2E, and native Windows/Linux
+  installation, migration, upgrade, and uninstall. The CI process-recovery test
+  does not establish OS service migration lifecycle. PR #30 remains draft and
+  PR-07 remains IN_PROGRESS; Supervisor remains opt-in.
