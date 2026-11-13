@@ -3,11 +3,13 @@
 **Status:** IN_PROGRESS — PR-07c connects pinned Supervisor installation,
 protected credential/config/state provisioning, opt-in single-owner runtime
 selection, credential-reference restart handling, and Windows Job Object/Linux
-process-group containment. Final-head CI run `43373790016` passed on Windows
-and Ubuntu at `2a7eff13251ec31c2a90be5169d90f219eb51340`; full tests, the
-Agent-managed fallback-to-OTLP smoke, `go vet`, and `go build` executed. Ubuntu
-also ran the Docker/Collector Redis and application-profile E2Es. This proves
-the smoke's test configuration fix, not full managed-runtime parity. Agent
+process-group containment. CI run `43373790016` passed on Windows and Ubuntu
+at implementation head `2a7eff13251ec31c2a90be5169d90f219eb51340`; after the
+documentation-only follow-up, final-head run `43374665764` also passed both
+platform jobs at `3df00f0d794b8c12e470b6dc2a9eecff6e65711f`. Both runs executed
+full tests, the Agent-managed fallback-to-OTLP smoke, `go vet`, and `go build`;
+Ubuntu also ran the Docker/Collector Redis and application-profile E2Es. This
+proves the smoke's test configuration fix, not full managed-runtime parity. Agent
 enrollment, authenticated managed OpAMP delivery, credential rotation/revocation,
 managed profile parity, recovery/no-duplicate telemetry, LKG equivalence, and
 native service migration lifecycle remain unverified. Do not mark ownership
@@ -64,7 +66,7 @@ after run `43369909210` exposed the production file-size guard. The unrelated pr
 | Native Linux / Docker | BLOCKED / LOCAL ENVIRONMENT | `wsl.exe --list --quiet` returned `Wsl/E_ACCESSDENIED`; Docker Desktop reports access denied opening its Linux Engine named pipe. Native Linux service, process-group, Docker Engine, and managed-runtime E2E remain unverified. |
 | Full vertical-slice coverage | NOT IMPLEMENTED / GATE OPEN | The current Agent-managed live test is a local hostmetrics fallback-to-OTLP smoke test. It does not perform real Agent enrollment with Mock Core, authenticated WSS Supervisor policy delivery, credential replacement/revocation, durable revision/hash recovery, profile parity under managed ownership, or service install/migration/upgrade/uninstall. Earlier independent PR-07a/07b spike evidence does not cover these Agent-managed paths. |
 | Workflow/report hygiene | PASS | `.github/workflows/ci.yml` YAML and the changed Go test file were checked; `git diff --check` passed. |
-| Draft PR and final-head CI | PASS / LIMITED; PR REMAINS DRAFT | Branch `feat/pr-07-opamp` is pushed at `2a7eff13251ec31c2a90be5169d90f219eb51340`; PR #30 targets `chore/v0.1.4a-next`. CI run `43373790016` completed successfully on Windows and Ubuntu. Both ran the full Go test suite, managed Supervisor fallback-to-OTLP E2E, `go vet ./...`, and `go build ./...`; Ubuntu additionally ran the isolated Docker/Collector Redis and application-profile E2Es. PR #30 remains draft and no merge was attempted. Remaining managed-runtime gates listed above prevent PASS/merge. |
+| Draft PR and final-head CI | PASS / LIMITED; PR REMAINS DRAFT | Branch `feat/pr-07-opamp` is pushed; implementation head `2a7eff13251ec31c2a90be5169d90f219eb51340` passed run `43373790016`, and documentation-updated head `3df00f0d794b8c12e470b6dc2a9eecff6e65711f` passed run [`43374665764`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43374665764) on Windows and Ubuntu. Both ran the full Go test suite, managed Supervisor fallback-to-OTLP E2E, `go vet ./...`, and `go build ./...`; Ubuntu additionally ran the isolated Docker/Collector Redis and application-profile E2Es. PR #30 remains draft and no merge was attempted. Remaining managed-runtime gates listed above prevent PASS/merge. |
 
 The CI gates added in this checkpoint verify the pinned Supervisor executable
 digest on each runner, run the real Agent-managed hostmetrics fallback through
