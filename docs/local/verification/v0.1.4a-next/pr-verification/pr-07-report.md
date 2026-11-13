@@ -947,3 +947,41 @@ parity was blocked and that new installations still used legacy ownership.
   installations preserve their persisted runtime owner; new installations
   default to managed Supervisor with the required OpAMP URL and explicit
   legacy rollback option.
+
+## Final adoption gate closure — 2026-11-14
+
+- **Status: PASS.** Documentation-updated PR head
+  `4951dd176abf2743452bc477f37cd864fde3e1e1` passed both jobs in final-head CI
+  run [43509130191](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43509130191).
+- Ubuntu passed the full tests, native service migration/upgrade/rollback/
+  restart/uninstall, isolated Docker recovery, Docker/Collector/OTLP profile
+  E2E, Agent-managed Redis/PostgreSQL/Python/mock-cooling profile E2E, managed
+  Supervisor E2E, vet, build, and isolated Docker teardown.
+- Windows passed the full tests, native service migration/upgrade/rollback/
+  restart/uninstall, managed Supervisor E2E, vet, and build. CI intentionally
+  skipped Windows Docker tests; the separately elevated workstation run
+  recorded in [Windows profile parity](pr-07-windows-profile-parity.md)
+  passed the actual Windows Docker-to-OTLP managed profile test with all four
+  profiles, verified binaries, elevated token, identity attribution, churn,
+  uniqueness, and cleanup.
+- Artifacts from final-head CI run `43509130191`:
+  - Ubuntu profile/recovery `14078046622`, SHA-256
+    `89b9d035b3b0a4c14a524b96fefbfca4111ce94b7c96e870e62f84ab3cba8184`.
+  - Managed Supervisor Linux `14077363870`, SHA-256
+    `30d3f4e6250968bffdb20241400b4300bea494a5ad36dc179601e6eb88125eac`.
+  - Managed Supervisor Windows `14078066984`, SHA-256
+    `42a8d75c17d30a9b2785da492df6a1f60f8fb988cafaae5de1f116cbad0a86ac`.
+  - Native service Linux `14078360160`, SHA-256
+    `65627d5d401a284264f519c8b84f2d7db2964c7aa7088d5a4b2841a68a903cc9`.
+  - Native service Windows `14076503670`, SHA-256
+    `7310a7cc4e4711a8e1f747e8e8892c27e1a3b8dd76bb19b27b884a3b5caf2cf1`.
+- Runtime ownership transfer is complete for new installations: managed
+  Supervisor is the default and requires the OpAMP endpoint. Explicit legacy
+  ownership remains the controlled rollback path. Existing installations keep
+  their persisted owner unless explicitly migrated; dual Collector lifecycle
+  ownership is prohibited.
+- Production NestJS Core interoperability remains separately tracked and was
+  not a gate for this Mock Core implementation checkpoint.
+- Next: review draft PR #30, mark it ready, merge into
+  `chore/v0.1.4a-next`, verify the merge commit and target branch, then begin
+  PR-08. Do not conflate PR-07 verification PASS with PR merge state.
