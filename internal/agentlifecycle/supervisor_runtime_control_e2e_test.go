@@ -72,7 +72,10 @@ func TestManagedSupervisorEnrollmentAndRemoteGatewayE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	cert, certPEM := newManagedRuntimeTestCertificate(t)
-	trustManagedRuntimeCertificate(t, certPEM)
+	serverCAFile := filepath.Join(root, "opamp-server-ca.pem")
+	if err := os.WriteFile(serverCAFile, certPEM, 0600); err != nil {
+		t.Fatal(err)
+	}
 	initialSink, initialSinkURL := startSupervisorRuntimeSink(t, ctx, collectorPath, filepath.Join(root, "initial-sink"))
 	updatedSink, updatedSinkURL := startSupervisorRuntimeSink(t, ctx, collectorPath, filepath.Join(root, "updated-sink"))
 	initialEndpoint := strings.TrimPrefix(initialSinkURL, "http://")
@@ -206,7 +209,7 @@ service:
 		BinaryPath:        supervisorPath,
 		ConfigurationPath: filepath.Join(root, "credentials", "opamp-supervisor.yaml"),
 		StateDirectory:    filepath.Join(root, "credentials", "opamp-supervisor-state"),
-		OpAMPServerURL:    endpoint, Enabled: true,
+		OpAMPServerURL:    endpoint, ServerCAFile: serverCAFile, Enabled: true,
 	}
 	if _, err := agentstate.NewStore(statePath).Update(func(state *agentstate.State) error {
 		state.Collector = agentstate.CollectorContext{

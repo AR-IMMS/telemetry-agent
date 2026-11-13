@@ -35,6 +35,7 @@ type SupervisorContext struct {
 	ConfigurationPath string `json:"configurationPath,omitempty"`
 	StateDirectory    string `json:"stateDirectory,omitempty"`
 	OpAMPServerURL    string `json:"opampServerUrl,omitempty"`
+	ServerCAFile      string `json:"serverCaFile,omitempty"`
 	Enabled           bool   `json:"enabled,omitempty"`
 }
 

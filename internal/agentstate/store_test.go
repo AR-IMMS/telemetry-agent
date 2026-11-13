@@ -51,6 +51,7 @@ func TestFileStorePersistsSupervisorRuntimeContext(t *testing.T) {
 		ConfigurationPath: "supervisor.yaml",
 		StateDirectory:    "supervisor-state",
 		OpAMPServerURL:    "wss://opamp.example.test/v1/opamp",
+		ServerCAFile:      "opamp-server-ca.pem",
 		Enabled:           true,
 	}}
 	if err := store.Save(want); err != nil {

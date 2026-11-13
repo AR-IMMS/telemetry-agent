@@ -44,3 +44,40 @@ func TestRenderRejectsMissingEndpointAndRequiredPaths(t *testing.T) {
 		t.Fatal("token file containing a line break was accepted")
 	}
 }
+
+func TestRenderUsesExplicitServerTrustRoot(t *testing.T) {
+	content, err := Render(Config{
+		ServerEndpoint: "wss://opamp.example.test/v1/opamp",
+		ServerCAFile:   "C:/ProgramData/AR-IMMS/credentials/opamp-server-ca.pem",
+		CollectorPath:  "collector",
+		LocalConfig:    "local.yaml",
+		FallbackConfig: "fallback.yaml",
+		StateDirectory: "state",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rendered struct {
+		Server struct {
+			TLS struct {
+				CAFile string `yaml:"ca_file"`
+			} `yaml:"tls"`
+		} `yaml:"server"`
+	}
+	if err := yaml.Unmarshal(content, &rendered); err != nil {
+		t.Fatal(err)
+	}
+	if got := rendered.Server.TLS.CAFile; got != "C:/ProgramData/AR-IMMS/credentials/opamp-server-ca.pem" {
+		t.Fatalf("Supervisor server TLS CA file = %q", got)
+	}
+}
+
+func TestRenderRejectsInvalidServerTrustRootPath(t *testing.T) {
+	base := Config{ServerEndpoint: "wss://opamp.example.test/v1/opamp", CollectorPath: "collector", LocalConfig: "local.yaml", FallbackConfig: "fallback.yaml", StateDirectory: "state"}
+	for _, path := range []string{" \t", "ca.pem\nextra", "ca.pem\x00"} {
+		base.ServerCAFile = path
+		if _, err := Render(base); err == nil {
+			t.Fatalf("CA path %q was accepted", path)
+		}
+	}
+}

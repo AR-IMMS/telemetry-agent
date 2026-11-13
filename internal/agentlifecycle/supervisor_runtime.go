@@ -57,6 +57,7 @@ func runManagedSupervisorOnce(ctx context.Context, statePath, credentialReferenc
 	}
 	configBytes, err := opampsupervisorconfig.Render(opampsupervisorconfig.Config{
 		ServerEndpoint: managed.OpAMPServerURL,
+		ServerCAFile:   managed.ServerCAFile,
 		TokenFile:      tokenPath,
 		CollectorPath:  collector.BinaryPath,
 		LocalConfig:    collector.ConfigPath,

@@ -12,6 +12,7 @@ import (
 // Config contains the small set of local fields the Agent owns for Supervisor.
 type Config struct {
 	ServerEndpoint string
+	ServerCAFile   string
 	TokenFile      string
 	CollectorPath  string
 	LocalConfig    string
@@ -29,8 +30,13 @@ type supervisorConfig struct {
 }
 
 type serverConfig struct {
-	Endpoint string `yaml:"endpoint"`
-	Auth     string `yaml:"auth,omitempty"`
+	Endpoint string           `yaml:"endpoint"`
+	Auth     string           `yaml:"auth,omitempty"`
+	TLS      *serverTLSConfig `yaml:"tls,omitempty"`
+}
+
+type serverTLSConfig struct {
+	CAFile string `yaml:"ca_file"`
 }
 
 type capabilityConfig struct {
@@ -87,6 +93,9 @@ func Render(config Config) ([]byte, error) {
 		Storage:   storageConfig{Directory: config.StateDirectory},
 		Telemetry: telemetryConfig{Logs: logConfig{Level: "info"}},
 	}
+	if config.ServerCAFile != "" {
+		result.Server.TLS = &serverTLSConfig{CAFile: config.ServerCAFile}
+	}
 	if config.TokenFile != "" {
 		result.Server.Auth = "bearertokenauth"
 		result.Extensions = &extensionConfig{BearerTokenAuth: bearerTokenAuth{Filename: config.TokenFile}}
@@ -122,6 +131,9 @@ func validate(config Config) error {
 	}
 	if strings.ContainsAny(config.TokenFile, "\r\n\x00") {
 		return fmt.Errorf("Supervisor token-file path is invalid")
+	}
+	if config.ServerCAFile != "" && (strings.TrimSpace(config.ServerCAFile) == "" || strings.ContainsAny(config.ServerCAFile, "\r\n\x00")) {
+		return fmt.Errorf("Supervisor server CA-file path is invalid")
 	}
 	return nil
 }

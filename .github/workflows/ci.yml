@@ -143,8 +143,19 @@ jobs:
         if: runner.os == 'Linux'
         env:
           AR_IMMS_PR06_APPLICATION_PROFILE_E2E: '1'
+          AR_IMMS_PR07A_SUPERVISOR_PROFILE_PARITY: '1'
           AR_IMMS_PR05_COLLECTOR_BINARY: ${{ env.OTELCOL_CONTRIB_BINARY }}
+          AR_IMMS_PR07A_SUPERVISOR_BINARY: ${{ env.AR_IMMS_PR07A_SUPERVISOR_BINARY }}
+          AR_IMMS_PR07A_EVIDENCE_DIR: ${{ runner.temp }}/pr07a-evidence
         run: go test ./cmd/agentctl -run '^TestLiveDockerApplicationProfilesDeliverOTLP$' -count=1 -v
+
+      - name: Upload PR-07a profile parity evidence
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v6
+        with:
+          name: pr07a-supervisor-profile-parity
+          path: ${{ runner.temp }}/pr07a-evidence/
+          if-no-files-found: warn
 
       - name: Agent-managed Supervisor fallback and OTLP E2E
         env:
