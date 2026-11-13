@@ -16,6 +16,7 @@
 | E10 | Mock cooling or power profile/provider | NOT RUN | NOT RUN | new adapter without engine changes |
 | E11a | Pinned OpAMP Supervisor capability + config composition | NOT RUN | NOT RUN | Partial Windows evidence is in the [PR-07 report](pr-verification/pr-07-report.md): exact artifact, fallback, local+remote composition, APPLIED status, invalid candidate reporting, automatic rollback, Collector crash restart, and OTLP delivery passed. Existing Redis/PostgreSQL/Prometheus profiles and native Linux remain NOT RUN. No ownership transfer. |
 | E11b | Mock-backed OpAMP targeted update + status | NOT RUN | NOT RUN | contract revision/hash, identity binding, apply/failure mapping; mock result only |
+| E11c | Managed enrollment + authenticated WSS + remote Gateway change | NOT RUN | NOT RUN | New opt-in native E2E is wired into CI; local compile-only invocation skipped. Record PASS only after final-head Ubuntu and Windows jobs execute it and retain sanitized evidence. |
 | E12 | Core/Mock Core offline / reconnect / replay | NOT RUN | NOT RUN | cached/fallback config, no duplicate activation, reconverges after restart |
 | E13 | Invalid remote Collector config / crash / rollback | NOT RUN | NOT RUN | actual rollback setting and evidence, LKG preserved, diagnostics truthful |
 | E13a | Single-owner migration and rollback | NOT RUN | NOT RUN | no overlapping lifecycle owners; reversible transfer after parity |

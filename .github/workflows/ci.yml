@@ -149,8 +149,9 @@ jobs:
       - name: Agent-managed Supervisor fallback and OTLP E2E
         env:
           AR_IMMS_PR07C_RUNTIME_E2E: '1'
+          AR_IMMS_PR07C_CONTROL_E2E: '1'
           AR_IMMS_PR07C_EVIDENCE_DIR: ${{ runner.temp }}/pr07c-evidence
-        run: go test ./internal/agentlifecycle -run '^TestManagedSupervisorRuntimeDeliversOTLP$' -count=1 -v
+        run: go test ./internal/agentlifecycle -run '^(TestManagedSupervisorRuntimeDeliversOTLP|TestManagedSupervisorEnrollmentAndRemoteGatewayE2E)$' -count=1 -v
 
       - name: Upload PR-07c runtime evidence
         if: always()
