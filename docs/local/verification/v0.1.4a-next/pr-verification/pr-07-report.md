@@ -3,7 +3,11 @@
 **Status:** IN_PROGRESS — Windows and Ubuntu WSL live Supervisor/Collector
 fallback, local/remote composition, rollback, Collector crash recovery, and
 actual OTLP delivery passed. The pinned Linux Supervisor/Collector E2E also
-passed on Ubuntu 24.04 WSL. A raw Supervisor kill/restart failed because the
+passed on Ubuntu 24.04 WSL. PR-07c has begun with an isolated managed artifact
+installer for Supervisor v0.160.0; focused Windows tests cover platform pins,
+checksum rejection, verified reuse, unsupported architecture, and preservation
+of an unverified target. This primitive is not yet wired into installation or
+runtime selection. A raw Supervisor kill/restart failed because the
 Collector child remained alive; the coordinated case passed when the outer
 manager terminated that child before restart. The Agent process-tree manager
 is not implemented yet. Windows Docker profile parity passed. Linux Agent and
@@ -25,6 +29,15 @@ server and Go Mock Core; (07c) controlled runtime adoption after parity. The
 Agent Runtime remains the only production Collector lifecycle owner throughout
 07a/07b. Production Core changes and shared-contract publication are outside
 this implementation branch's authorized scope.
+
+## PR-07c implementation progress
+
+| Slice | Result | Evidence / limit |
+|---|---|---|
+| Pinned Supervisor artifact selection | IMPLEMENTED / WINDOWS UNIT TESTS | `internal/bootstrap/supervisor_artifact.go` selects official v0.160.0 Windows/Linux amd64 release binaries and the digests already verified by the PR-07a spike. Unsupported platforms fail closed. |
+| Staged installation and reuse | IMPLEMENTED / WINDOWS UNIT TESTS | `InstallSupervisorBinary` bounds download size, verifies SHA-256 before atomic publication, stores version/platform/digest metadata, re-hashes installed bytes before reuse, and refuses to overwrite an unverified version directory. Repro: `go test ./internal/bootstrap -run 'Test(SelectSupervisorArtifact|InstallSupervisorBinary)' -count=1`. |
+| Packaged installer integration | NOT IMPLEMENTED | The verified artifact primitive is not called by `agentinstallation.Installer`; Supervisor is not yet a required dependency. Existing Agent Runtime remains the only active Collector lifecycle owner. |
+| Supervisor runtime, credential provisioning, durable publication, process containment | NOT IMPLEMENTED | No production runtime ownership change has been made. Required Windows/Linux service, authorization, restart, LKG, and Mock Core durable-history gates remain open. |
 
 ## Verified documentation and current-state facts
 
