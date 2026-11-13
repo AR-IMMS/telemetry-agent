@@ -76,6 +76,9 @@ extensions:
   health_check:
     endpoint: %q
 service:
+  telemetry:
+    metrics:
+      level: none
   extensions: [health_check]
   pipelines:
     metrics:
@@ -141,6 +144,9 @@ exporters:
   debug:
     verbosity: detailed
 service:
+  telemetry:
+    metrics:
+      level: none
   pipelines:
     metrics:
       receivers: [otlp]
