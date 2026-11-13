@@ -312,3 +312,29 @@ gates open and the checkpoint draft while any are unresolved.
   current PR head. PR #30 remains draft and PR-07 remains IN_PROGRESS. The
   report does not treat CI's skipped Windows Docker tests as Windows profile
   verification.
+
+## Managed process crash gate added for exact-head CI
+
+- A test-only extension to `TestManagedSupervisorEnrollmentAndRemoteGatewayE2E`
+  now kills the Agent-managed Collector by matching its pinned executable and
+  exact managed config path, then requires one replacement process and renewed
+  OTLP delivery. Sink Collectors use different config paths and are excluded.
+- The same test kills the Agent-managed Supervisor, requires the Agent runtime
+  to report the unexpected exit, waits for both Supervisor and its Collector
+  process to disappear, and checks that the isolated sink stops receiving data.
+  It then restarts the Agent runtime and requires readiness plus renewed OTLP.
+- Local verification: `go test ./internal/agentlifecycle -run
+  '^TestManagedSupervisorEnrollmentAndRemoteGatewayE2E$' -count=1` passed with
+  the live E2E skipped because `AR_IMMS_PR07C_CONTROL_E2E` and the protected
+  credential-store runtime prerequisites are unavailable in this process.
+  The full `go test ./... -count=1`, `go vet ./...`, `go build ./...`, and
+  `./scripts/check-architecture.ps1` passed in the authorized native Windows
+  environment after the test change. A sandboxed full-suite attempt failed on
+  denied SQLite temp files and loopback sockets; this is not the native run's
+  result. The opt-in live test was attempted in the current process but this
+  Windows token is not elevated, so protected credential provisioning stopped
+  before runtime startup.
+- The workflow explicitly sets `AR_IMMS_PR07C_CONTROL_E2E=1` and runs this test
+  on native Windows and Ubuntu. Crash recovery and process-tree evidence remain
+  NOT VERIFIED until that exact-head workflow completes successfully. PR #30
+  remains draft; Supervisor remains opt-in.

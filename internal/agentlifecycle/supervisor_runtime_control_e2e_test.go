@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -289,6 +290,42 @@ service:
 	}
 	waitForSupervisorCorePolicy(t, ctx, runtimeDone, core, 1)
 	waitForSupervisorSinkTelemetry(t, ctx, runtimeDone, initialSink)
+	collectorPIDs := waitForManagedProcessCount(t, ctx, runtimeDone, collectorPath, collectorConfig, 1)
+	collectorSinkBytes := len(initialSink.String())
+	killManagedProcess(t, collectorPIDs[0])
+	replacementCollectorPIDs := waitForManagedProcessReplacement(t, ctx, runtimeDone, collectorPath, collectorConfig, collectorPIDs[0])
+	waitForSupervisorSinkGrowth(t, ctx, runtimeDone, initialSink, collectorSinkBytes)
+	if len(replacementCollectorPIDs) != 1 {
+		t.Fatalf("Collector owners after managed crash recovery = %v, want exactly one process", replacementCollectorPIDs)
+	}
+	supervisorPIDs := waitForManagedProcessCount(t, ctx, runtimeDone, supervisorPath, managed.ConfigurationPath, 1)
+	killManagedProcess(t, supervisorPIDs[0])
+	select {
+	case runtimeErr := <-runtimeDone:
+		runtimeStopped = true
+		if runtimeErr == nil {
+			t.Fatal("Agent-managed runtime returned success after an unexpected Supervisor exit")
+		}
+	case <-ctx.Done():
+		t.Fatalf("Agent runtime did not detect the Supervisor crash: %v", ctx.Err())
+	}
+	waitForManagedProcessCount(t, ctx, runtimeDone, supervisorPath, managed.ConfigurationPath, 0)
+	waitForManagedProcessCount(t, ctx, runtimeDone, collectorPath, collectorConfig, 0)
+	crashSinkBytes := len(initialSink.String())
+	time.Sleep(1500 * time.Millisecond)
+	if got := len(initialSink.String()); got != crashSinkBytes {
+		t.Fatalf("OTLP continued after Supervisor crash cleanup: sink bytes %d -> %d", crashSinkBytes, got)
+	}
+	runContext, stopRuntime = context.WithCancel(ctx)
+	runtimeDone = make(chan error, 1)
+	runtimeStopped = false
+	go func() {
+		runtimeDone <- RunCollectorRuntimeWithReconciliation(runContext, statePath, noOpTeardown, nil, nil, nil)
+	}()
+	waitForSupervisorRuntimeReadiness(t, ctx, runtimeDone, healthEndpoint)
+	recoverySinkBytes := len(initialSink.String())
+	waitForSupervisorSinkGrowth(t, ctx, runtimeDone, initialSink, recoverySinkBytes)
+	waitForManagedProcessCount(t, ctx, runtimeDone, collectorPath, collectorConfig, 1)
 	if err := core.SetPolicy(installationID.String(), coreapi.DesiredGatewayPolicy{
 		SchemaVersion: "ar-imms/gateway-policy/v1", Revision: 2, GatewayEndpoint: updatedEndpoint,
 	}); err != nil {
@@ -560,7 +597,7 @@ func writeManagedControlE2EEvidence(t *testing.T, installationID, nodeID string)
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		t.Fatalf("create managed control-plane evidence directory: %v", err)
 	}
-	contents := fmt.Sprintf("result=PASS\nos=%s\narchitecture=%s\ncommit=%s\nenrollment=actual-agent-service\ncredential=protected-store-and-secret-free-sqlite\ncredential_replacement=previous_revoked_new_wss_session_verified\ntransport=authenticated-wss\noffline_startup_fallback_reconnect=verified\npolicy_revisions=1,2,3,4,5\nmock_core_restart=verified\nrevision3_publication_resolved_after_restart=verified\nopamp_server_restart=verified\nagent_runtime_restart=verified\nrollback_reuses_revision3_config_hash_at_revision5=verified\nrollback_gateway_otlp=verified\ninitial_gateway_otlp=verified\nupdated_gateway_otlp=verified\npost_rotation_gateway_otlp=verified\npost_restart_gateway_otlp=verified\ninstallation_identity=%s\nnode_identity=%s\n", runtime.GOOS, runtime.GOARCH, os.Getenv("GITHUB_SHA"), installationID, nodeID)
+	contents := fmt.Sprintf("result=PASS\nos=%s\narchitecture=%s\ncommit=%s\nenrollment=actual-agent-service\ncredential=protected-store-and-secret-free-sqlite\ncredential_replacement=previous_revoked_new_wss_session_verified\ntransport=authenticated-wss\noffline_startup_fallback_reconnect=verified\ncollector_crash_recovery=verified_single_replacement_and_otlp\nsupervisor_crash_process_tree_cleanup=verified\nagent_runtime_restart_after_supervisor_crash=verified\npolicy_revisions=1,2,3,4,5\nmock_core_restart=verified\nrevision3_publication_resolved_after_restart=verified\nopamp_server_restart=verified\nagent_runtime_restart=verified\nrollback_reuses_revision3_config_hash_at_revision5=verified\nrollback_gateway_otlp=verified\ninitial_gateway_otlp=verified\nupdated_gateway_otlp=verified\npost_rotation_gateway_otlp=verified\npost_restart_gateway_otlp=verified\ninstallation_identity=%s\nnode_identity=%s\n", runtime.GOOS, runtime.GOARCH, os.Getenv("GITHUB_SHA"), installationID, nodeID)
 	if err := os.WriteFile(filepath.Join(directory, "managed-enrollment-opamp-e2e.txt"), []byte(contents), 0600); err != nil {
 		t.Fatalf("write sanitized managed control-plane evidence: %v", err)
 	}
@@ -605,4 +642,106 @@ func waitForSupervisorSinkGrowth(t *testing.T, ctx context.Context, done <-chan 
 		case <-ticker.C:
 		}
 	}
+}
+
+func waitForManagedProcessCount(t *testing.T, ctx context.Context, runtimeDone <-chan error, executablePath, commandMarker string, expected int) []int {
+	t.Helper()
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		processIDs, err := managedProcessIDs(executablePath, commandMarker)
+		if err != nil {
+			t.Fatalf("inspect managed process %q: %v", executablePath, err)
+		}
+		if len(processIDs) == expected {
+			return processIDs
+		}
+		select {
+		case runtimeErr := <-runtimeDone:
+			t.Fatalf("Agent runtime exited while waiting for %d process(es) %q: %v", expected, executablePath, runtimeErr)
+		case <-ctx.Done():
+			t.Fatalf("timed out waiting for %d process(es) %q; found %v: %v", expected, executablePath, processIDs, ctx.Err())
+		case <-ticker.C:
+		}
+	}
+}
+
+func waitForManagedProcessReplacement(t *testing.T, ctx context.Context, runtimeDone <-chan error, executablePath, commandMarker string, previousPID int) []int {
+	t.Helper()
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		processIDs, err := managedProcessIDs(executablePath, commandMarker)
+		if err != nil {
+			t.Fatalf("inspect replacement managed process %q: %v", executablePath, err)
+		}
+		if len(processIDs) == 1 && processIDs[0] != previousPID {
+			return processIDs
+		}
+		select {
+		case runtimeErr := <-runtimeDone:
+			t.Fatalf("Agent runtime exited before managed process recovery: %v", runtimeErr)
+		case <-ctx.Done():
+			t.Fatalf("timed out waiting for replacement of process %d; current processes=%v: %v", previousPID, processIDs, ctx.Err())
+		case <-ticker.C:
+		}
+	}
+}
+
+func killManagedProcess(t *testing.T, processID int) {
+	t.Helper()
+	process, err := os.FindProcess(processID)
+	if err != nil {
+		t.Fatalf("open managed process %d: %v", processID, err)
+	}
+	if err := process.Kill(); err != nil {
+		t.Fatalf("kill managed process %d: %v", processID, err)
+	}
+}
+
+func managedProcessIDs(executablePath, commandMarker string) ([]int, error) {
+	if runtime.GOOS == "windows" {
+		command := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", `$image = $env:AR_IMMS_TEST_PROCESS_IMAGE; $marker = $env:AR_IMMS_TEST_PROCESS_MARKER; Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -ieq $image -and $_.CommandLine -like ("*" + $marker + "*") } | ForEach-Object { [Console]::WriteLine($_.ProcessId) }`)
+		command.Env = append(os.Environ(), "AR_IMMS_TEST_PROCESS_IMAGE="+executablePath, "AR_IMMS_TEST_PROCESS_MARKER="+commandMarker)
+		output, err := command.CombinedOutput()
+		if err != nil {
+			return nil, fmt.Errorf("query Windows process list: %w (%s)", err, strings.TrimSpace(string(output)))
+		}
+		return parseManagedProcessIDs(string(output))
+	}
+	if runtime.GOOS != "linux" {
+		return nil, fmt.Errorf("managed process inspection is unsupported on %s", runtime.GOOS)
+	}
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return nil, fmt.Errorf("read Linux process table: %w", err)
+	}
+	processIDs := make([]int, 0, 1)
+	for _, entry := range entries {
+		processID, err := strconv.Atoi(entry.Name())
+		if err != nil {
+			continue
+		}
+		processPath, err := os.Readlink(filepath.Join("/proc", entry.Name(), "exe"))
+		if err != nil || !samePath(processPath, executablePath) {
+			continue
+		}
+		commandLine, err := os.ReadFile(filepath.Join("/proc", entry.Name(), "cmdline"))
+		if err == nil && strings.Contains(string(commandLine), commandMarker) {
+			processIDs = append(processIDs, processID)
+		}
+	}
+	return processIDs, nil
+}
+
+func parseManagedProcessIDs(output string) ([]int, error) {
+	processIDs := make([]int, 0, 1)
+	for _, line := range strings.Fields(output) {
+		processID, err := strconv.Atoi(line)
+		if err != nil {
+			return nil, fmt.Errorf("parse process ID %q: %w", line, err)
+		}
+		processIDs = append(processIDs, processID)
+	}
+	return processIDs, nil
 }

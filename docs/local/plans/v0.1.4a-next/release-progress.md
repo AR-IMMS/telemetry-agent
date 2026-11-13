@@ -5,6 +5,14 @@
 **Checkpoint rule:** PR-01–PR-10 are verified checkpoints; they do not require ten separate GitHub PRs. Keep each submitted checkpoint targeted at the approved integration branch.<br>
 **Last updated:** 2026-11-13
 
+PR-07 follow-up: a test-only managed-runtime failure injection now exercises
+Collector crash replacement, Supervisor crash process-tree cleanup, and Agent
+runtime restart with OTLP recovery. Native Windows full tests, vet, build, and
+the architecture guard passed. The opt-in live test could not start locally
+because this Windows token lacks protected credential-store access. Exact-head
+Windows/Ubuntu CI must pass before counting these gates as verified. PR #30
+remains draft and Supervisor remains opt-in.
+
 ## Preservation invariants
 
 - The original `dev` checkout at `D:\Study\FPTU\FPTU\WDP301\projects\telemetry-agent` remains untouched by this preparation. Its staged, unstaged, untracked, and submodule state is preserved as found.
