@@ -206,6 +206,12 @@ func TestManagedSupervisorEnrollmentAndRemoteGatewayE2E(t *testing.T) {
 	collectorConfig := filepath.Join(root, "collector.yaml")
 	healthURL := reserveSupervisorRuntimeEndpoint(t)
 	collectorYAML := fmt.Sprintf(`receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 127.0.0.1:4317
+      http:
+        endpoint: 127.0.0.1:4318
   hostmetrics:
     collection_interval: 1s
     scrapers:
