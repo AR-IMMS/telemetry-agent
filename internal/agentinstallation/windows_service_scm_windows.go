@@ -121,6 +121,47 @@ func configureWindowsServiceRecovery(service *mgr.Service) error {
 	return nil
 }
 
+func (windowsSCMServiceManager) Stop(
+	ctx context.Context,
+	serviceName string,
+) error {
+	if ctx == nil {
+		return fmt.Errorf("Windows service context is required")
+	}
+	if strings.TrimSpace(serviceName) == "" {
+		return fmt.Errorf("Windows service name is required")
+	}
+	transitionContext, cancel := context.WithTimeout(ctx, windowsServiceTransitionTimeout)
+	defer cancel()
+	serviceManager, err := mgr.Connect()
+	if err != nil {
+		return fmt.Errorf("connect to Windows Service Control Manager: %w", err)
+	}
+	defer serviceManager.Disconnect()
+	service, err := serviceManager.OpenService(serviceName)
+	if errors.Is(err, windowsErrorServiceDoesNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("open Windows service %q: %w", serviceName, err)
+	}
+	defer service.Close()
+	status, err := service.Query()
+	if err != nil {
+		return fmt.Errorf("query Windows service %q: %w", serviceName, err)
+	}
+	if status.State == svc.Stopped {
+		return nil
+	}
+	if _, err := service.Control(svc.Stop); err != nil {
+		return fmt.Errorf("stop Windows service %q: %w", serviceName, err)
+	}
+	if err := waitForWindowsServiceState(transitionContext, service, svc.Stopped); err != nil {
+		return fmt.Errorf("wait for Windows service %q to stop: %w", serviceName, err)
+	}
+	return nil
+}
+
 func (windowsSCMServiceManager) Restart(
 	ctx context.Context,
 	serviceName string,

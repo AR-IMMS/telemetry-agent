@@ -40,6 +40,10 @@ type serviceInstaller interface {
 	Install(context.Context, Layout) error
 }
 
+type serviceStopper interface {
+	Stop(context.Context, Layout) error
+}
+
 type serviceInstallerFunc func(context.Context, Layout) error
 
 // ValidateOpAMPServerURL accepts secure WSS URLs and loopback-only WS URLs.
@@ -157,14 +161,6 @@ func (i Installer) Install(
 		return Layout{}, fmt.Errorf("load Agent state before installation update: %w", previousErr)
 	}
 
-	if err := i.copyAgentBinary(
-		ctx,
-		options.SourceBinaryPath,
-		layout.AgentBinaryPath,
-	); err != nil {
-		return Layout{}, fmt.Errorf("stage Agent binary: %w", err)
-	}
-
 	result, err := i.bootstrap(ctx, bootstrap.Options{
 		Platform:    options.Platform,
 		InstallDir:  layout.CollectorInstallDirectory,
@@ -189,6 +185,23 @@ func (i Installer) Install(
 		if err != nil {
 			return Layout{}, fmt.Errorf("install OpAMP Supervisor: %w", err)
 		}
+	}
+	if previousState.Installation != nil {
+		stopper, ok := service.(serviceStopper)
+		if !ok {
+			return Layout{}, fmt.Errorf("Agent service stop capability is required to replace an installed binary")
+		}
+		if err := stopper.Stop(ctx, layout); err != nil {
+			return Layout{}, fmt.Errorf("stop existing Agent service before binary replacement: %w", err)
+		}
+	}
+	if err := i.copyAgentBinary(ctx, options.SourceBinaryPath, layout.AgentBinaryPath); err != nil {
+		if previousState.Installation != nil {
+			if restartErr := service.Install(ctx, layout); restartErr != nil {
+				return Layout{}, fmt.Errorf("stage Agent binary: %w; restart previous Agent service: %v", err, restartErr)
+			}
+		}
+		return Layout{}, fmt.Errorf("stage Agent binary: %w", err)
 	}
 
 	_, err = store.Update(func(state *agentstate.State) error {

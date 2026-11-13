@@ -15,12 +15,14 @@ type windowsServiceDefinition struct {
 
 type windowsServiceManager interface {
 	Ensure(context.Context, windowsServiceDefinition) error
+	Stop(context.Context, string) error
 	Restart(context.Context, string) error
 	Remove(context.Context, string) error
 }
 
 type windowsServiceManagerFunc struct {
 	ensure  func(context.Context, windowsServiceDefinition) error
+	stop    func(context.Context, string) error
 	restart func(context.Context, string) error
 	remove  func(context.Context, string) error
 }
@@ -51,8 +53,40 @@ func (f windowsServiceManagerFunc) Restart(
 	return f.restart(ctx, serviceName)
 }
 
+func (f windowsServiceManagerFunc) Stop(
+	ctx context.Context,
+	serviceName string,
+) error {
+	if f.stop == nil {
+		return fmt.Errorf("Windows service stop function is required")
+	}
+	return f.stop(ctx, serviceName)
+}
+
 type windowsServiceInstaller struct {
 	manager windowsServiceManager
+}
+
+func (i windowsServiceInstaller) Stop(
+	ctx context.Context,
+	layout Layout,
+) error {
+	if ctx == nil {
+		return fmt.Errorf("Windows service stop context is required")
+	}
+	if !strings.EqualFold(strings.TrimSpace(layout.Platform), "windows") {
+		return fmt.Errorf("Windows service requires Windows layout, got %q", layout.Platform)
+	}
+	if i.manager == nil {
+		return fmt.Errorf("Windows service manager is required")
+	}
+	if strings.TrimSpace(layout.ServiceName) == "" {
+		return fmt.Errorf("Windows service name is required")
+	}
+	if err := i.manager.Stop(ctx, layout.ServiceName); err != nil {
+		return fmt.Errorf("stop Windows service %q before binary replacement: %w", layout.ServiceName, err)
+	}
+	return nil
 }
 
 func (f windowsServiceManagerFunc) Remove(

@@ -122,7 +122,7 @@ func TestInstallerStagesAgentPersistsStateThenStartsService(
 	}
 
 	if got, want := steps,
-		[]string{"copy-agent", "bootstrap", "install-supervisor", "start-service"}; !reflect.DeepEqual(got, want) {
+		[]string{"bootstrap", "install-supervisor", "copy-agent", "start-service"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("steps = %v, want %v", got, want)
 	}
 
@@ -179,9 +179,17 @@ func TestInstallerExplicitLegacyRollbackDisablesManagedSupervisor(t *testing.T) 
 		},
 		Dependencies: map[string]agentstate.DependencyState{},
 	}}
+	serviceRunning := true
+	var serviceSteps []string
 	installer := Installer{
-		layoutFor:       DefaultLayout,
-		copyAgentBinary: func(context.Context, string, string) error { return nil },
+		layoutFor: DefaultLayout,
+		copyAgentBinary: func(context.Context, string, string) error {
+			serviceSteps = append(serviceSteps, "copy")
+			if serviceRunning {
+				t.Fatal("Agent binary was replaced while the installed service was running")
+			}
+			return nil
+		},
 		bootstrap: func(context.Context, bootstrap.Options) (bootstrap.Result, error) {
 			return bootstrap.Result{BinaryPath: "/collector", ConfigPath: "/collector.yaml"}, nil
 		},
@@ -191,7 +199,18 @@ func TestInstallerExplicitLegacyRollbackDisablesManagedSupervisor(t *testing.T) 
 		},
 		newStateStore: func(string) stateStore { return store },
 		serviceFor: func(Layout) (serviceInstaller, error) {
-			return serviceInstallerFunc(func(context.Context, Layout) error { return nil }), nil
+			return stoppingServiceInstaller{
+				stop: func(context.Context, Layout) error {
+					serviceSteps = append(serviceSteps, "stop")
+					serviceRunning = false
+					return nil
+				},
+				install: func(context.Context, Layout) error {
+					serviceSteps = append(serviceSteps, "restart")
+					serviceRunning = true
+					return nil
+				},
+			}, nil
 		},
 	}
 	_, err := installer.Install(context.Background(), Options{
@@ -209,6 +228,22 @@ func TestInstallerExplicitLegacyRollbackDisablesManagedSupervisor(t *testing.T) 
 	if store.state.Supervisor.BinaryPath == "" {
 		t.Fatal("rollback discarded the pinned Supervisor path needed to support a later migration")
 	}
+	if !reflect.DeepEqual(serviceSteps, []string{"stop", "copy", "restart"}) {
+		t.Fatalf("service and binary sequence = %v, want stop, copy, restart", serviceSteps)
+	}
+}
+
+type stoppingServiceInstaller struct {
+	stop    func(context.Context, Layout) error
+	install func(context.Context, Layout) error
+}
+
+func (s stoppingServiceInstaller) Stop(ctx context.Context, layout Layout) error {
+	return s.stop(ctx, layout)
+}
+
+func (s stoppingServiceInstaller) Install(ctx context.Context, layout Layout) error {
+	return s.install(ctx, layout)
 }
 
 type recordingStateStore struct {

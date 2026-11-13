@@ -39,6 +39,37 @@ func newSystemdServiceInstaller() systemdServiceInstaller {
 	}
 }
 
+// Stop stops an existing Agent unit before replacing its executable. A missing
+// unit is a normal first-install state.
+func (i systemdServiceInstaller) Stop(
+	ctx context.Context,
+	layout Layout,
+) error {
+	if ctx == nil {
+		return fmt.Errorf("systemd stop context is required")
+	}
+	if strings.TrimSpace(i.unitDirectory) == "" {
+		return fmt.Errorf("systemd unit directory is required")
+	}
+	if i.run == nil {
+		return fmt.Errorf("systemd command runner is required")
+	}
+	serviceName := strings.TrimSpace(layout.ServiceName)
+	if serviceName == "" || filepath.Base(serviceName) != serviceName {
+		return fmt.Errorf("systemd service name is invalid: %q", serviceName)
+	}
+	unitName := serviceName + ".service"
+	if _, err := os.Stat(path.Join(i.unitDirectory, unitName)); os.IsNotExist(err) {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("inspect systemd unit %q: %w", unitName, err)
+	}
+	if err := i.run(ctx, systemdCommand{Executable: "systemctl", Args: []string{"stop", unitName}}); err != nil {
+		return fmt.Errorf("stop systemd service %q: %w", unitName, err)
+	}
+	return nil
+}
+
 // Install writes the Agent systemd unit, reloads systemd, then enables and
 // restarts the service so a reinstallation uses the staged Agent binary.
 func (i systemdServiceInstaller) Install(
