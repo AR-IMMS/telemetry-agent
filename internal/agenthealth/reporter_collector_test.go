@@ -1,6 +1,9 @@
 package agenthealth
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestReporterRetainsOnlySanitizedCollectorNetworkFailures(t *testing.T) {
 	reporter := NewReporter(RuntimeObservation{})
@@ -16,6 +19,14 @@ func TestReporterRetainsOnlySanitizedCollectorNetworkFailures(t *testing.T) {
 	if failure.Receiver != "redis/alternate_port" || failure.Endpoint != "127.0.0.1:16379" || failure.Code != "connection_failed" || failure.ObservedAt != "2026-11-12T10:00:00Z" {
 		t.Fatalf("collector failure=%+v, want receiver, endpoint, and normalized code only", failure)
 	}
+	collection := componentEvidence(t, snapshot.Assessment, ComponentTelemetryCollection)
+	if collection.State != EvidenceDegraded || collection.Freshness != FreshnessUnknown || collection.ReasonCode != "collector_scrape_failure_observed" {
+		t.Fatalf("collection evidence=%+v, want degraded failure evidence with unknown freshness", collection)
+	}
+	delivery := componentEvidence(t, snapshot.Assessment, ComponentTelemetryDelivery)
+	if delivery.State != EvidenceUnknown {
+		t.Fatalf("delivery evidence=%+v, want unknown despite scrape failure", delivery)
+	}
 }
 
 func TestReporterBoundsCollectorFailures(t *testing.T) {
@@ -25,5 +36,22 @@ func TestReporterBoundsCollectorFailures(t *testing.T) {
 	}
 	if got := len(reporter.Snapshot().CollectorFailures); got != maxCollectorFailures {
 		t.Fatalf("collector failures retained=%d, want bounded at %d", got, maxCollectorFailures)
+	}
+}
+
+func TestReporterRedactsCollectorEndpointUserInfo(t *testing.T) {
+	reporter := NewReporter(RuntimeObservation{})
+	reporter.ReportCollectorOutput(`2026-11-12T10:00:00Z error Error scraping metrics {"otelcol.component.id":"redis/alternate_port","otelcol.signal":"metrics","error":"dial tcp private-password@127.0.0.1:16379: connect: connection refused"}`)
+
+	snapshot := reporter.Snapshot()
+	if len(snapshot.CollectorFailures) != 1 {
+		t.Fatalf("collector failures=%+v, want one parsed network failure", snapshot.CollectorFailures)
+	}
+	failure := snapshot.CollectorFailures[0]
+	if failure.Endpoint != "127.0.0.1:16379" {
+		t.Fatalf("endpoint=%q, want userinfo-free host and port", failure.Endpoint)
+	}
+	if strings.Contains(failure.Endpoint, "private-password") {
+		t.Fatalf("collector endpoint exposed userinfo: %+v", failure)
 	}
 }

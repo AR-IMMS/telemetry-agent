@@ -275,6 +275,7 @@ func (w runtimeWatcher) reportHealth(
 	if err != nil {
 		w.healthReporter.Report(agenthealth.RuntimeObservation{
 			CollectorState: agenthealth.CollectorStateFailed,
+			ObservedAt:     time.Now().UTC(),
 			LastError: fmt.Sprintf(
 				"load Agent state for health: %v",
 				err,
@@ -292,11 +293,13 @@ func (w runtimeWatcher) reportHealth(
 	}
 
 	w.healthReporter.Report(agenthealth.RuntimeObservation{
-		CollectorState:      collectorState,
-		DesiredGeneration:   state.DesiredGeneration,
-		ActivatedGeneration: state.ActivatedGeneration,
-		AppliedGeneration:   state.AppliedGeneration,
-		PendingTeardowns:    pendingTeardowns,
-		LastError:           lastError,
+		CollectorState:       collectorState,
+		DesiredGeneration:    state.DesiredGeneration,
+		ActivatedGeneration:  state.ActivatedGeneration,
+		AppliedGeneration:    state.AppliedGeneration,
+		PendingTeardowns:     pendingTeardowns,
+		LastError:            lastError,
+		ObservedAt:           time.Now().UTC(),
+		SupervisorConfigured: state.Supervisor.Enabled,
 	})
 }

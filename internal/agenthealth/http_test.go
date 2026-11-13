@@ -53,6 +53,16 @@ func TestStatusHandlerReturnsLatestSnapshot(t *testing.T) {
 			snapshot.AppliedGeneration,
 		)
 	}
+	if snapshot.Assessment.State != EvidenceUnknown {
+		t.Fatalf("assessment state = %q, want unknown while external evidence is absent", snapshot.Assessment.State)
+	}
+	if snapshot.Assessment.GeneratedAt.IsZero() {
+		t.Fatal("assessment generatedAt is zero")
+	}
+	delivery := componentEvidence(t, snapshot.Assessment, ComponentTelemetryDelivery)
+	if delivery.State != EvidenceUnknown || delivery.ReasonCode != "backend_receipt_not_measured" {
+		t.Fatalf("delivery evidence=%+v, want explicit unknown", delivery)
+	}
 }
 
 func TestStatusHandlerRejectsNonGetRequests(t *testing.T) {

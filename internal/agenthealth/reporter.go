@@ -28,14 +28,20 @@ type ObservationReporter interface {
 // Reporter stores the latest evaluated health snapshot for local runtime
 // consumers such as CLI, HTTP, and future heartbeat adapters.
 type Reporter struct {
-	mu       sync.RWMutex
-	snapshot Snapshot
+	mu          sync.RWMutex
+	observation RuntimeObservation
+	snapshot    Snapshot
 }
 
 // NewReporter creates a reporter with an initial runtime observation.
 func NewReporter(observation RuntimeObservation) *Reporter {
+	if observation.ObservedAt.IsZero() {
+		observation.ObservedAt = time.Now().UTC()
+	}
+	observation.LastError = sanitizeError(observation.LastError)
 	return &Reporter{
-		snapshot: Evaluate(observation),
+		observation: observation,
+		snapshot:    Evaluate(observation),
 	}
 }
 
@@ -44,10 +50,15 @@ func (r *Reporter) Report(observation RuntimeObservation) {
 	if r == nil {
 		return
 	}
+	if observation.ObservedAt.IsZero() {
+		observation.ObservedAt = time.Now().UTC()
+	}
+	observation.LastError = sanitizeError(observation.LastError)
 
 	snapshot := Evaluate(observation)
 
 	r.mu.Lock()
+	r.observation = observation
 	snapshot.CollectorFailures = append([]CollectorFailure(nil), r.snapshot.CollectorFailures...)
 	r.snapshot = snapshot
 	r.mu.Unlock()
@@ -56,17 +67,44 @@ func (r *Reporter) Report(observation RuntimeObservation) {
 // Snapshot returns the latest published health snapshot.
 func (r *Reporter) Snapshot() Snapshot {
 	if r == nil {
-		return Snapshot{
-			Status: StatusDegraded,
+		snapshot := EvaluateAt(RuntimeObservation{}, time.Now().UTC())
+		for index := range snapshot.Assessment.Components {
+			if snapshot.Assessment.Components[index].Component == ComponentAgentRuntime {
+				snapshot.Assessment.Components[index] = unknownEvidence(ComponentAgentRuntime, "health_reporter_unavailable")
+			}
 		}
+		snapshot.Assessment.State = EvidenceUnknown
+		return snapshot
 	}
 
 	r.mu.RLock()
-	snapshot := r.snapshot
+	observation := r.observation
+	snapshot := EvaluateAt(observation, time.Now().UTC())
 	snapshot.CollectorFailures = append([]CollectorFailure(nil), r.snapshot.CollectorFailures...)
+	applyCollectorFailureEvidence(&snapshot)
 	r.mu.RUnlock()
 
 	return snapshot
+}
+
+func applyCollectorFailureEvidence(snapshot *Snapshot) {
+	if snapshot == nil || len(snapshot.CollectorFailures) == 0 {
+		return
+	}
+	for index := range snapshot.Assessment.Components {
+		component := &snapshot.Assessment.Components[index]
+		if component.Component != ComponentTelemetryCollection {
+			continue
+		}
+		component.State = EvidenceDegraded
+		component.Freshness = FreshnessUnknown
+		component.Completeness = CompletenessPartial
+		component.ReasonCode = "collector_scrape_failure_observed"
+		if snapshot.Assessment.State != EvidenceDegraded {
+			snapshot.Assessment.State = EvidenceDegraded
+		}
+		return
+	}
 }
 
 // ReportCollectorOutput extracts bounded network scrape evidence without retaining raw Collector logs.
@@ -116,19 +154,25 @@ func collectorNetworkFailure(line string) (CollectorFailure, bool) {
 	}
 	endpoint := message[strings.Index(strings.ToLower(message), "dial tcp ")+len("dial tcp "):]
 	end := strings.Index(endpoint, ": ")
-	if end < 0 || netSplitHostPort(endpoint[:end]) == false {
+	if end < 0 {
 		return CollectorFailure{}, false
 	}
+	host, port, err := net.SplitHostPort(endpoint[:end])
+	if err != nil {
+		return CollectorFailure{}, false
+	}
+	if separator := strings.LastIndexByte(host, '@'); separator >= 0 {
+		host = host[separator+1:]
+	}
+	if host == "" || strings.ContainsAny(host, "/?#@") {
+		return CollectorFailure{}, false
+	}
+	endpointText := net.JoinHostPort(host, port)
 	observedAt := time.Now().UTC()
 	if fields := strings.Fields(line); len(fields) > 0 {
 		if parsed, err := time.Parse(time.RFC3339Nano, fields[0]); err == nil {
 			observedAt = parsed.UTC()
 		}
 	}
-	return CollectorFailure{Receiver: receiver, Endpoint: endpoint[:end], Code: "connection_failed", ObservedAt: observedAt.Format(time.RFC3339Nano)}, true
-}
-
-func netSplitHostPort(value string) bool {
-	_, _, err := net.SplitHostPort(value)
-	return err == nil
+	return CollectorFailure{Receiver: boundDiagnosticText(sanitizeError(receiver)), Endpoint: boundDiagnosticText(endpointText), Code: "connection_failed", ObservedAt: observedAt.Format(time.RFC3339Nano)}, true
 }

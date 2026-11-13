@@ -1054,6 +1054,47 @@ parity was blocked and that new installations still used legacy ownership.
   review and merge PR #30 into `chore/v0.1.4a-next`, verify the merge, then
   start PR-08.
 
+## Merged-head Windows profile parity rerun — 2026-11-14
+
+This entry supersedes the preceding next-step note. PR #30 is merged at
+`700768dff651e73a2e457aa20d94845bc326d971`; its exact head was
+`3441c5a705c1d9577e2c1ee683622b562d040296`. A fresh elevated Windows run used
+the clean merged worktree. The PR head and merge commit have no differences in
+the profile E2E test or health/runtime source files.
+
+- Genuine RunAs/UAC token: High Mandatory Level present, Administrators SID
+  enabled, Administrator role enabled.
+- Docker Desktop `desktop-linux` connected to Linux Engine 29.5.3 x86_64.
+- Collector archive SHA-256:
+  `d8de67cf9dc3ffe928610d52b192cb029365bb42dc79a23e0586c040c83293cf`;
+  Collector executable SHA-256:
+  `43a7d3eb2b759281b6297a91c830988be39c16e538e8f55aeb4ea31ab7a612cd`;
+  Supervisor v0.160.0 SHA-256:
+  `df2dfae96d6b711db31675d2deb8493d3dbada8561b25fe575fd90bd7cac8449`.
+- `go test ./cmd/agentctl -run
+  '^TestLiveDockerApplicationProfilesDeliverOTLP$' -count=1 -v` passed in
+  40.48 seconds with exit code 0. The harness verified startup fallback,
+  receiver uniqueness, no Agent-owned duplicate receiver instances, churn
+  without Collector config/generation change, no duplicate samples, stable
+  node identity, and the test cleanup hooks.
+- Redis `redis.clients.connected` resource ID
+  `983b34cadc2fdfe05d4ddcbd1bb9bc3fba3210555a47b83d208a9c4c67a043a2`;
+  PostgreSQL `postgresql.backends` resource ID
+  `c79af4e589c0f9d88779b98353fdfc17e526d59f5652fa54196e67d03b573f93`;
+  Python/Prometheus `python_app_requests_total` resource ID
+  `5cfa3982e75b8b8ffc6133ee0e232ac6fa2abc722894b6cd1959b7a1fc553aa8`;
+  mock-cooling `ar_imms_test_cooling_celsius` resource ID
+  `b7961529245cff7d61f85ec1cf314ef9a5b294cb992849bd429acbaf098311a6`.
+  Each profile delivered to the isolated OTLP sink with Node ID
+  `33333333-4444-4555-8666-777777777777`.
+- Sanitized local log SHA-256:
+  `9B4C6F4FE7EE545499ACE0506BEBB25647BC87864519CAED3F8F4DDBF6B3A084`;
+  ignored local evidence: `tmp/pr07-win-profile-merged-head-20261114/`.
+
+This rerun confirms the already-merged PR-07 source on the current base. It
+does not alter the PASS gate or replace native Windows/Ubuntu CI run
+`43519741680`.
+
 ## Final documentation-head CI artifacts — 2026-11-14
 
 Documentation checkpoint `cd5e7aeddfc96c88a771d71dc68736d1c4da305e` passed

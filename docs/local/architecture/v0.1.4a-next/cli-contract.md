@@ -136,7 +136,7 @@ The examples describe **target UX**, not verified executable syntax for new subc
 
 ## 6. Status/doctor semantics
 
-`status` is a concise summary. `doctor` explains *why*, and `monitoring explain` diagnoses a specific resource. They must not duplicate entire outputs.
+`status` is a concise summary. `doctor` explains *why*, and `monitoring explain` diagnoses a specific resource. They must not duplicate entire outputs. PR-08 adds `doctor` and extends the existing local `/v1/status` response with an additive `assessment` object; the existing top-level fields remain for compatibility.
 
 Suggested stable categories (exact machine-readable schema pending review):
 
@@ -145,6 +145,10 @@ Suggested stable categories (exact machine-readable schema pending review):
 - Collector: `READY | NOT_READY | RECOVERING | FAILED | UNKNOWN`.
 - Config: `RECEIVED | VALIDATING | APPLYING | APPLIED | FAILED | UNKNOWN` as **AR-IMMS presentation**; map accurately to the actual OpAMP protocol status instead of claiming all are OpAMP enum values.
 - Monitoring path: `DISCOVERED | ELIGIBLE | CONFIGURED | APPLIED | SCRAPING | EXPORTING | DELIVERY_VERIFIED` are **distinct evidence stages**, not a single boolean.
+
+The local `/v1/status` `assessment` contains `state`, `generatedAt`, and an ordered `components` list. Each component reports `component`, `state`, `freshness`, `completeness`, optional `observedAt`, optional `validUntil`, and a bounded `reasonCode`. Component states are `healthy`, `degraded`, `unknown`, or `unsupported`; freshness is `fresh`, `stale`, or `unknown`; completeness is `complete`, `partial`, or `unknown`. A stale result requires an evidence owner to supply both an observation time and a validity deadline; no global age threshold is inferred. Missing evidence remains `unknown`.
+
+The `agent_runtime=healthy` observation means the local status snapshot was generated. The existing top-level `status` remains the Collector/configuration runtime projection. `status` prints a compact component summary; `doctor` prints the component evidence, timestamps, reason codes, and existing Collector endpoint failure records. An explicit Collector scrape failure marks collection evidence degraded with unknown freshness; absence of a failure is not positive collection evidence. Neither command reports collection or backend delivery as healthy without the corresponding evidence. Core health-report transmission is not implemented because no approved Core reporting contract exists. The CLI does not add JSON output in this checkpoint.
 
 **Non-equivalence:** Collector readiness ≠ successful scrape ≠ OTLP delivery. Agent must report `UNVERIFIED` if backend receipt was not measured.
 

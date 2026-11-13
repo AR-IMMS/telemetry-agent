@@ -927,6 +927,7 @@ func TestRuntimeWatcherReportsHealthySnapshotAfterCollectorReady(
 		DesiredGeneration:   3,
 		ActivatedGeneration: 3,
 		AppliedGeneration:   2,
+		Supervisor:          agentstate.SupervisorContext{Enabled: true},
 		Dependencies:        map[string]agentstate.DependencyState{},
 	}); err != nil {
 		t.Fatalf("Save() error = %v", err)
@@ -983,6 +984,15 @@ func TestRuntimeWatcherReportsHealthySnapshotAfterCollectorReady(
 			snapshot.AppliedGeneration,
 		)
 	}
+	for _, evidence := range snapshot.Assessment.Components {
+		if evidence.Component == agenthealth.ComponentSupervisor {
+			if evidence.State != agenthealth.EvidenceHealthy || evidence.ReasonCode != "managed_supervisor_collector_ready" {
+				t.Fatalf("Supervisor evidence=%+v, want managed runtime readiness", evidence)
+			}
+			return
+		}
+	}
+	t.Fatal("health assessment lacks Supervisor evidence")
 }
 
 func TestRuntimeWatcherReportsFailedSnapshotWhenCollectorExitsWithError(
