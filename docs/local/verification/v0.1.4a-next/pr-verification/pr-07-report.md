@@ -841,3 +841,23 @@ gates open and the checkpoint draft while any are unresolved.
   boundaries and 313 production files checked). The mandatory live Windows
   profile gate remains blocked by the protected credential ACL/elevation
   requirement; this test-only correction does not close it.
+
+## Latest pushed head CI — 2026-11-14
+
+- Push of `196dbefa62a0d99784b5a20d5f68e001f2c5fb48` triggered Actions run
+  [`43471042444`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43471042444).
+  Both Ubuntu and Windows jobs completed successfully.
+- Ubuntu executed and passed architecture checks, full tests, native service
+  lifecycle, live Docker/Collector/OTLP profile tests, Agent-managed
+  Redis/PostgreSQL/Python/Prometheus/mock-cooling profiles, managed Supervisor
+  fallback/OTLP E2E, evidence uploads, vet, build, and Docker teardown.
+- Windows executed and passed architecture checks, full tests, native service
+  lifecycle, managed Supervisor fallback/OTLP E2E, vet, and build. The workflow
+  explicitly skipped isolated Docker startup, live Docker/Collector/OTLP,
+  Agent-managed Docker profile parity, and profile evidence upload. Those
+  skips do not verify Windows Docker profile parity.
+- The run confirms the completion-signal fix is green on both CI platforms and
+  the supported Linux Docker/profile path remains green. PR-07 is still
+  IN_PROGRESS, PR #30 remains draft, Supervisor remains opt-in, and the only
+  outstanding adoption gate remains native Windows Docker/profile parity with
+  the protected Supervisor credential ACL intact.
