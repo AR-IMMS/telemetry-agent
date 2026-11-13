@@ -149,11 +149,10 @@ func TestLiveDockerApplicationProfilesDeliverOTLP(t *testing.T) {
 	}
 	collectorLogs := &nativeCollectorLogReporter{health: agenthealth.NewReporter(agenthealth.RuntimeObservation{CollectorState: agenthealth.CollectorStateStarting})}
 	serviceCtx, stopService := context.WithCancel(ctx)
-	serviceDone := make(chan error, 1)
+	serviceDone := startRuntimeE2E(func() error {
+		return runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, agentstate.TeardownAction, []agentstate.OwnedResource) error { return nil }, collectorLogs, bootstrap.OSCommandRunner{})
+	})
 	runtimeStopped := false
-	go func() {
-		serviceDone <- runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, agentstate.TeardownAction, []agentstate.OwnedResource) error { return nil }, collectorLogs, bootstrap.OSCommandRunner{})
-	}()
 	t.Cleanup(func() {
 		if runtimeStopped {
 			return
