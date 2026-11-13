@@ -609,3 +609,23 @@ gates open and the checkpoint draft while any are unresolved.
   migration, rollback, restarts, and uninstall pass on native Windows. Do not
   merge, transfer default ownership, or start PR-08 while required adoption
   gates remain open.
+
+## Native service exact-head verification passed — 2026-11-13
+
+- Exact-head CI run [43450425177](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43450425177)
+  passed on Windows and Ubuntu at `939835c6346ec97d564eeca3d9918c057e92ceaf`.
+- The native Windows service lifecycle test passed in 18.38s and the native
+  Linux lifecycle test passed. Both verify PR-06 install, managed Supervisor
+  migration, service restart, explicit rollback to legacy ownership, another
+  restart, and uninstall with service/path/process cleanup. Sanitized service
+  evidence artifacts are retained as Windows `14051765071` and Linux
+  `14050646612`.
+- Both jobs passed the full Go suite, managed-runtime E2E, `go vet ./...`, and
+  `go build ./...`. Ubuntu also passed isolated Docker recovery and
+  Agent-managed Redis, PostgreSQL, Python/Prometheus, and mock-cooling profile
+  E2Es. Hosted Windows CI skips Docker and therefore does not close Windows
+  Agent-managed Docker-profile parity.
+- PR-07 remains IN_PROGRESS and PR #30 remains draft. Keep Supervisor opt-in
+  and existing installations legacy-owned until Windows managed-profile parity
+  and the remaining mandatory adoption gates pass. Production NestJS Core
+  interoperability remains separately tracked.
