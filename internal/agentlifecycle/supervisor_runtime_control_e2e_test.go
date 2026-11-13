@@ -192,15 +192,14 @@ service:
   pipelines:
     metrics:
       receivers: [hostmetrics]
-      exporters: [otlp/gateway]
-	`, initialEndpoint, strings.TrimPrefix(healthURL, "http://"))
+      exporters: [otlp/gateway]`, initialEndpoint, strings.TrimPrefix(healthURL, "http://"))
 	if err := os.WriteFile(collectorConfig, []byte(collectorYAML), 0600); err != nil {
 		t.Fatal(err)
 	}
 	healthEndpoint := healthURL
 	collectorValidation := exec.CommandContext(ctx, collectorPath, "validate", "--config", collectorConfig)
 	if output, err := collectorValidation.CombinedOutput(); err != nil {
-		t.Fatalf("validate Collector config: %v\n%s", err, output)
+		t.Fatalf("validate Collector config: %v\n%s\nconfig:\n%s", err, output, collectorYAML)
 	}
 	endpoint := "wss://" + opamp.Addr().String() + "/v1/opamp"
 	managed := agentstate.SupervisorContext{
