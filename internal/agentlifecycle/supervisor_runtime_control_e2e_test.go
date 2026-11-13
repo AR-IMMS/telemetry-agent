@@ -138,9 +138,17 @@ func TestManagedSupervisorEnrollmentAndRemoteGatewayE2E(t *testing.T) {
 	coreClient := func(token string) (coreapi.AgentManagementAPI, error) {
 		return coreapi.NewAgentManagementClient(coreHTTP.URL, token, coreHTTP.Client())
 	}
+	opampReservation, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	opampListenEndpoint := opampReservation.Addr().String()
+	if err := opampReservation.Close(); err != nil {
+		t.Fatal(err)
+	}
 	startOpAMP := func() (*opampserver.Server, error) {
 		server, err := opampserver.New(opampserver.Options{
-			ListenEndpoint: "127.0.0.1:0", ListenPath: "/v1/opamp",
+			ListenEndpoint: opampListenEndpoint, ListenPath: "/v1/opamp",
 			TLSConfig:  &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12},
 			CoreClient: coreClient,
 		})
@@ -160,10 +168,7 @@ func TestManagedSupervisorEnrollmentAndRemoteGatewayE2E(t *testing.T) {
 		defer stopCancel()
 		return server.Stop(stopCtx)
 	}
-	opamp, err := startOpAMP()
-	if err != nil {
-		t.Fatal(err)
-	}
+	var opamp *opampserver.Server
 	defer func() {
 		if err := stopOpAMP(opamp); err != nil {
 			t.Errorf("stop OpAMP server: %v", err)
@@ -238,7 +243,7 @@ service:
 	if output, err := collectorValidation.CombinedOutput(); err != nil {
 		t.Fatalf("validate Collector config: %v\n%s\nconfig:\n%s", err, output, collectorYAML)
 	}
-	endpoint := "wss://" + opamp.Addr().String() + "/v1/opamp"
+	endpoint := "wss://" + opampListenEndpoint + "/v1/opamp"
 	managed := agentstate.SupervisorContext{
 		BinaryPath:        supervisorPath,
 		ConfigurationPath: filepath.Join(root, "credentials", "opamp-supervisor.yaml"),
@@ -277,6 +282,11 @@ service:
 		runtimeDone <- RunCollectorRuntimeWithReconciliation(runContext, statePath, noOpTeardown, nil, nil, nil)
 	}()
 	waitForSupervisorRuntimeReadiness(t, ctx, runtimeDone, healthEndpoint)
+	waitForSupervisorSinkTelemetry(t, ctx, runtimeDone, initialSink)
+	opamp, err = startOpAMP()
+	if err != nil {
+		t.Fatalf("start OpAMP after offline Agent-managed fallback: %v", err)
+	}
 	waitForSupervisorCorePolicy(t, ctx, runtimeDone, core, 1)
 	waitForSupervisorSinkTelemetry(t, ctx, runtimeDone, initialSink)
 	if err := core.SetPolicy(installationID.String(), coreapi.DesiredGatewayPolicy{
@@ -442,7 +452,7 @@ service:
 		t.Fatal("initial, updated, post-rotation, and post-restart Gateway sinks must receive OTLP")
 	}
 	writeManagedControlE2EEvidence(t, result.InstallationID, result.Binding.NodeID)
-	t.Logf("verified enrollment identity=%s Node=%s; policy revisions=1,2,3,4,5; replacement credential revoked the prior bearer; durable revision-3 publication resolved after Mock Core restart; restarted OpAMP and Agent runtime applied revision 4; revision-5 rollback re-attributed the prior applied hash and continued OTLP delivery", result.InstallationID, result.Binding.NodeID)
+	t.Logf("verified enrollment identity=%s Node=%s; offline Agent-managed fallback delivered before OpAMP connected; authenticated reconnect applied policy revisions=1,2,3,4,5; replacement credential revoked the prior bearer; durable revision-3 publication resolved after Mock Core restart; restarted OpAMP and Agent runtime applied revision 4; revision-5 rollback re-attributed the prior applied hash and continued OTLP delivery", result.InstallationID, result.Binding.NodeID)
 }
 
 func managedRuntimeEnrollmentHandler(t *testing.T, corePointer *atomic.Pointer[mockcore.Server], accessToken, replacementToken, bootstrapToken, replacementBootstrap, nodeID string) http.Handler {
@@ -550,7 +560,7 @@ func writeManagedControlE2EEvidence(t *testing.T, installationID, nodeID string)
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		t.Fatalf("create managed control-plane evidence directory: %v", err)
 	}
-	contents := fmt.Sprintf("result=PASS\nos=%s\narchitecture=%s\ncommit=%s\nenrollment=actual-agent-service\ncredential=protected-store-and-secret-free-sqlite\ncredential_replacement=previous_revoked_new_wss_session_verified\ntransport=authenticated-wss\npolicy_revisions=1,2,3,4,5\nmock_core_restart=verified\nrevision3_publication_resolved_after_restart=verified\nopamp_server_restart=verified\nagent_runtime_restart=verified\nrollback_reuses_revision3_config_hash_at_revision5=verified\nrollback_gateway_otlp=verified\ninitial_gateway_otlp=verified\nupdated_gateway_otlp=verified\npost_rotation_gateway_otlp=verified\npost_restart_gateway_otlp=verified\ninstallation_identity=%s\nnode_identity=%s\n", runtime.GOOS, runtime.GOARCH, os.Getenv("GITHUB_SHA"), installationID, nodeID)
+	contents := fmt.Sprintf("result=PASS\nos=%s\narchitecture=%s\ncommit=%s\nenrollment=actual-agent-service\ncredential=protected-store-and-secret-free-sqlite\ncredential_replacement=previous_revoked_new_wss_session_verified\ntransport=authenticated-wss\noffline_startup_fallback_reconnect=verified\npolicy_revisions=1,2,3,4,5\nmock_core_restart=verified\nrevision3_publication_resolved_after_restart=verified\nopamp_server_restart=verified\nagent_runtime_restart=verified\nrollback_reuses_revision3_config_hash_at_revision5=verified\nrollback_gateway_otlp=verified\ninitial_gateway_otlp=verified\nupdated_gateway_otlp=verified\npost_rotation_gateway_otlp=verified\npost_restart_gateway_otlp=verified\ninstallation_identity=%s\nnode_identity=%s\n", runtime.GOOS, runtime.GOARCH, os.Getenv("GITHUB_SHA"), installationID, nodeID)
 	if err := os.WriteFile(filepath.Join(directory, "managed-enrollment-opamp-e2e.txt"), []byte(contents), 0600); err != nil {
 		t.Fatalf("write sanitized managed control-plane evidence: %v", err)
 	}
