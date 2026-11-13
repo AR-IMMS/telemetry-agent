@@ -81,7 +81,7 @@ after run `43369909210` exposed the production file-size guard. The unrelated pr
 | Linux build | PASS / CROSS-COMPILE | `GOOS=linux GOARCH=amd64 go build ./...` passed after the file splits. This is not Linux runtime or service verification. |
 | Managed Supervisor live E2E | PASS / LIMITED — WINDOWS + NATIVE UBUNTU CI | Actions run [`43373790016`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43373790016) ran `TestManagedSupervisorRuntimeDeliversOTLP` and passed on Windows Server 2025 and `ubuntu-latest`. The test verifies pinned binaries, local hostmetrics fallback, Collector health, delivery of host metrics to an isolated OTLP sink, and process-tree cancellation. The preceding failures on both runners were traced to the sink and source Collectors both binding `localhost:8888`; disabling internal metrics in both test configs resolved the testbed collision. The sanitized CI summary artifact was uploaded per runner. This remains a hostmetrics smoke test, not full managed-runtime parity. |
 | Native Linux / Docker | BLOCKED / LOCAL ENVIRONMENT | `wsl.exe --list --quiet` returned `Wsl/E_ACCESSDENIED`; Docker Desktop reports access denied opening its Linux Engine named pipe. Native Linux service, process-group, Docker Engine, and managed-runtime E2E remain unverified. |
-| Full vertical-slice coverage | PARTIAL / GATE OPEN | The managed E2E passed on Windows and Ubuntu for actual enrollment, authenticated WSS, remote policy changes, credential replacement/revocation, reconnect, and post-rotation OTLP. Ubuntu also verified Agent-managed profile parity and Docker churn. Durable restart/rollback attribution, local config update/no-op, managed crash recovery, Agent LKG equivalence, Windows managed-profile E2E, and native install/migration/upgrade/uninstall remain open. |
+| Full vertical-slice coverage | PARTIAL / GATE OPEN | Final-head run `43415093522` passed native Windows/Ubuntu enrollment, authenticated WSS policy delivery, credential replacement/revocation, offline fallback/reconnect, Core restart/publication attribution, Agent/OpAMP runtime restart, revision-5 rollback attribution, and Gateway OTLP. Ubuntu also passed isolated PR-05/06 Docker E2Es and Agent-managed Redis/PostgreSQL/Python Prometheus/mock-cooling parity with churn and duplicate-sample checks. Still open: managed local-config content update and direct unchanged-config no-op, managed injected Supervisor/Collector crashes and Agent service recovery, Agent LKG equivalence, Windows managed-profile E2E, and native install/migration/upgrade/uninstall. |
 | Native vertical-slice invocation | PASS / WINDOWS + UBUNTU | Run [`43405983503`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43405983503) executed the expanded enrollment-to-WSS test on both native platforms. Local invocation still skips without pinned binaries and protected credential access; CI is the retained live evidence. |
 | First final-head vertical-slice CI | FAIL / FIX IN FOLLOW-UP | Run `43392748869` executed the Ubuntu live test and exposed a missing Agent precondition: the test fixture passed a generated UUID but had not initialized it through the Agent installation-identity store, so enrollment rejected the database state before sending the request. The existing Agent identity initializer is now used in the fixture. The existing fallback smoke and Linux Docker profile E2Es passed; vet/build were skipped after the failing step. Windows job was still running when this report entry was added. The vertical slice remains NOT VERIFIED until a rerun passes on both platforms. |
 | Second final-head vertical-slice CI | FAIL / FIX IN FOLLOW-UP | Run `43393916687` passed enrollment identity initialization but Collector config validation rejected a literal tab introduced by whitespace before the closing raw-string delimiter. The tab is removed in the next follow-up, and config validation errors now include the generated test YAML. Ubuntu fallback smoke and both PR-05/06 Docker E2Es passed; vet/build were skipped after the failed live step. Windows was still running when recorded. Do not count the managed vertical slice as verified until a corrected rerun passes on both platforms. |
@@ -133,34 +133,37 @@ local configuration update/no-op checks, profile parity, or Agent LKG parity.
 
 ## Contract and compatibility gates still open
 
-1. Mock-backed identity/auth contracts and protected Agent token-file
-   provisioning are implemented. Still verify managed-runtime authentication,
-   credential replacement, active-session revocation, and offline policy
-   behavior. `instance_uid` remains separate from authentication.
-2. Define schema/version, target, desired/applied revision, hash canonicalization,
-   local/remote field ownership, merge order, deletion and stale/conflict rules
-   for the Gateway endpoint policy.
+1. Managed-runtime HTTPS enrollment, protected credential provisioning and
+   replacement, retired-bearer rejection, authenticated WSS reconnect, and
+   offline fallback are verified on Windows and Ubuntu. `instance_uid` remains
+   separate from authentication.
+2. The local versioned Gateway policy and publication/status contracts are
+   implemented and Mock Core-backed tests verify revision/hash attribution,
+   restart persistence, and rollback. Production NestJS interoperability and
+   shared-contract publication remain separate Core work; no production Core
+   behavior is claimed here.
 3. Map protocol/runtime evidence to truthful received, validated, applying,
    applied, failed, recovered and unknown statuses. Readiness is not scrape or
    OTLP delivery evidence; an older applied hash after rollback is not success
    for a newer desired revision.
-4. Profile parity is verified on Windows and Ubuntu WSL for Redis, PostgreSQL,
-   Python Prometheus, and a recreated cooling workload. WSL's Docker Engine
-   reports `Docker Desktop (containerized)`; native Linux Docker Engine parity
-   and Supervisor host-profile coverage remain open.
-5. Agent process-tree cleanup is implemented with a Linux process group and
-   Windows Job Object. The Windows containment tests pass; Linux behavior and
-   managed Supervisor crash/recovery under native service ownership remain
-   unverified. The earlier raw Linux restart left an orphan Collector bound to
-   OTLP and health ports.
-6. Ubuntu 24.04 WSL hostmetrics and Docker profile tests passed using pinned
-   Linux binaries. Native Linux Docker Engine E2E remains BLOCKED because this
-   workstation has no accessible WSL/Docker endpoint; the isolated Ubuntu CI
-   Docker testbed must provide that evidence.
+4. Agent-managed profile parity for Redis, PostgreSQL, Python Prometheus, and a
+   recreated cooling workload passed in native Ubuntu Docker CI run
+   `43415093522`, including churn and duplicate-sample checks. Windows
+   Agent-managed application-profile E2E remains open; Windows CI has no Docker
+   profile testbed.
+5. Agent process-tree cleanup uses a Linux process group and Windows Job
+   Object. Managed-runtime normal shutdown and cleanup passed in the latest
+   native Windows/Ubuntu E2E. Injected Supervisor crash/recovery under native
+   service ownership remains unverified; an earlier raw Linux restart left an
+   orphan Collector bound to OTLP and health ports.
+6. Native Ubuntu Docker/Collector E2Es passed in run `43415093522`. This closes
+   the earlier workstation-only Docker limitation; it does not establish
+   Windows Docker parity or native service installation behavior.
 7. Migration is reversible and opt-in: fresh installation retains legacy
    ownership unless an OpAMP endpoint is supplied; reinstall preserves the
-   stored mode. Default transfer still requires parity, LKG, and single-sink
-   uniqueness evidence.
+   stored mode. Default transfer still requires verified managed local-config
+   changes, Agent LKG equivalence, forced crash/service recovery, Windows
+   profile parity, and native installation/migration/upgrade/uninstall gates.
 
 ## PR-07a verification log
 
@@ -269,7 +272,43 @@ gates open and the checkpoint draft while any are unresolved.
   deadline is now three seconds and its cancellation is deferred so a failed
   assertion cannot leave the poller running. On the authorized native Windows
   host, the focused test passed 100 consecutive runs. This is a test-harness
-  adjustment; no SQLite or reconciliation production behavior changed. A new
-  final-head Windows/Ubuntu CI run is still required.
+  adjustment; no SQLite or reconciliation production behavior changed. Exact
+  head `78981ea60db3b2950e38e579e89be460da4c8fb1` subsequently passed both
+  native jobs in run `43415093522`.
 - The latest PR head was `bed1e624c0ee416e0559992b77bef2c1d6fc318b` when run
-  `43413389730` was inspected. The follow-up is not yet committed or pushed.
+  `43413389730` was inspected. Commit `78981ea` contains the test and report
+  follow-up and is pushed to the existing feature branch.
+
+## Final-head verification after SQLite polling adjustment
+
+- Run [`43415093522`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43415093522)
+  passed on both native Windows and Ubuntu at PR head
+  `78981ea60db3b2950e38e579e89be460da4c8fb1`. Both jobs executed the full Go
+  test step, Agent-managed Supervisor enrollment-to-OTLP E2E, `go vet ./...`,
+  and `go build ./...`; the architecture guard passed on both. Ubuntu also
+  executed and passed isolated PR-05 recovery and PR-06 application-profile
+  Docker E2Es, followed by Agent-managed profile parity.
+- The managed E2E evidence records actual enrollment, protected credential
+  replacement and retired-bearer rejection, offline fallback/reconnect,
+  authenticated WSS, policy revisions 1–5, durable Mock Core restart and
+  publication lookup, OpAMP/Agent runtime restart, revision-5 rollback hash
+  attribution, and OTLP delivery. The Ubuntu profile artifact reports
+  `owner=Agent-managed Supervisor v0.160.0`, profiles Redis/PostgreSQL/Python
+  Prometheus/mock-cooling, container churn, and post-churn OTLP.
+- Evidence was downloaded under ignored `tmp/pr07c-ci-43415093522/`:
+  Windows managed runtime artifact `14032066006` (SHA-256
+  `0c704f21de5f99a403e0ce6521787ad87adb39040ddbdab0fd0abb5cc1a45212`), Linux
+  managed runtime artifact `14030809627` (SHA-256
+  `18ca53464bf7515047d145d0c396c8777689398be085c21c593517cafb43a587`), and
+  Ubuntu profile parity artifact `14031950330` (SHA-256
+  `60ac3e8118145cc1ed0b63765912b57c4199412ef5ab94c0194e0393604157fc`). Both
+  managed artifacts include sanitized pass summaries; hashes and policy
+  revisions match the workflow artifact metadata.
+- Authorized native Windows checks also passed `go test ./... -count=1`,
+  `go vet ./...`, `go build ./...`, and `./scripts/check-architecture.ps1`;
+  the adjusted polling regression passed 100 consecutive runs. The local
+  managed binary E2E was not run in this process; CI executed it natively.
+- This run supersedes the failed documentation-only run `43413389730` for the
+  current PR head. PR #30 remains draft and PR-07 remains IN_PROGRESS. The
+  report does not treat CI's skipped Windows Docker tests as Windows profile
+  verification.
