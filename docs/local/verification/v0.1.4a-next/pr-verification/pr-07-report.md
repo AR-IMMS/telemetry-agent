@@ -44,28 +44,31 @@ this implementation branch's authorized scope.
 
 ## Current PR-07c local verification — 2026-11-13, final integration attempt
 
-**Previously pushed code head:** `16b881cc5896c26cfdec4fa354b797ab0085a86a`
+**Previously pushed code head:** `5c85db70a1fce68f9ab9ad3b17c7e9fba34de7bb`
 (`feat/pr-07-opamp`). The PR-07c implementation commits are `8299deb`
 (installer/owner selection), `08aead6` (process containment), `b7627fb`
 (managed runtime), and `2164933` (session revocation); `fffcb52` records the
 prior verification status; `16b881c` makes the enabled CI gate fail rather
-than silently skip on a non-elevated Windows runner. The next scoped commit
-corrects the Supervisor artifact release URL exposed by Actions run
-`43369304553`. The unrelated pre-existing worktree changes and
+than silently skip on a non-elevated Windows runner; `5c85db7` corrects the
+Supervisor artifact URL after run `43369304553`. The next scoped change splits
+Mock Core persistence and the existing Collector runtime watcher into
+same-package files after run `43369909210` exposed the production file-size
+guard. The unrelated pre-existing worktree changes and
 `cmd/agentctl/otel.yaml.lifecycle.lock` remain unstaged and preserved.
 
 | Check | Result | Evidence / limit |
 |---|---|---|
-| `go test ./... -count=1` | PASS / WINDOWS | Final full repository suite passed after the privilege-guard change when run outside the restricted sandbox. Windows Job Object tests ran. Protected token-file filesystem tests remain elevation-gated. A sandboxed attempt failed on denied SQLite temp-file and loopback access; the unrestricted rerun passed. |
-| Focused managed-runtime package | PASS / WINDOWS | `go test ./internal/agentlifecycle -count=1` passed after the guard change. The live E2E itself was not enabled locally because the current process is not elevated and verified binaries are not provisioned for this run. |
-| `go vet ./...` | PASS / WINDOWS | Completed with exit code 0 after the guard change. |
-| `go build ./...` | PASS / WINDOWS | Completed with exit code 0 after the guard change. |
-| Linux build | PASS / CROSS-COMPILE | `GOOS=linux GOARCH=amd64 go build ./...` passed. This is not Linux runtime or service verification. |
+| `go test ./... -count=1` | PASS / WINDOWS | Final full repository suite passed after the file splits when run outside the restricted sandbox. Windows Job Object tests ran. Protected token-file filesystem tests remain elevation-gated. A sandboxed attempt failed on denied SQLite temp-file and loopback access; the unrestricted rerun passed. |
+| Focused Mock Core/OpAMP/runtime tests | PASS / WINDOWS | `go test ./internal/mockcore ./internal/opampserver ./internal/coreapi ./internal/agentlifecycle -count=1` passed after the splits. The live E2E itself was not enabled locally because the current process is not elevated and verified binaries are not provisioned for this run. |
+| Architecture guard | PASS / WINDOWS | `./scripts/check-architecture.ps1` passed after same-package splits reduced `internal/mockcore/server.go` from 574 to 393 lines and `internal/agentlifecycle/runtime.go` from 456 to 155 lines. `runtime_watcher.go` is 264 lines. |
+| `go vet ./...` | PASS / WINDOWS | Completed with exit code 0 after the file splits. |
+| `go build ./...` | PASS / WINDOWS | Completed with exit code 0 after the file splits. |
+| Linux build | PASS / CROSS-COMPILE | `GOOS=linux GOARCH=amd64 go build ./...` passed after the file splits. This is not Linux runtime or service verification. |
 | Managed Supervisor live E2E | NOT RUN / WINDOWS TOKEN NOT ELEVATED | The current process token is not elevated, Docker is inaccessible, and the required verified Supervisor/Collector binary paths are not provisioned in this local run. The configured CI test checks these prerequisites; privilege absence now fails the enabled Windows gate instead of returning a skip. |
 | Native Linux / Docker | BLOCKED / LOCAL ENVIRONMENT | `wsl.exe --list --quiet` returned `Wsl/E_ACCESSDENIED`; Docker Desktop reports access denied opening its Linux Engine named pipe. Native Linux service, process-group, Docker Engine, and managed-runtime E2E remain unverified. |
 | Full vertical-slice coverage | NOT IMPLEMENTED / GATE OPEN | The current Agent-managed live test is a local hostmetrics fallback-to-OTLP smoke test. It does not perform real Agent enrollment with Mock Core, authenticated WSS Supervisor policy delivery, credential replacement/revocation, durable revision/hash recovery, profile parity under managed ownership, or service install/migration/upgrade/uninstall. Earlier independent PR-07a/07b spike evidence does not cover these Agent-managed paths. |
 | Workflow/report hygiene | PASS | `.github/workflows/ci.yml` YAML and the changed Go test file were checked; `git diff --check` passed. |
-| Draft PR and final-head CI | IN PROGRESS / CI FAILURE | Push of `16b881cc5896c26cfdec4fa354b797ab0085a86a` succeeded; connected GitHub read confirms PR #30 remains open/draft against `chore/v0.1.4a-next`. CI run `43369304553` failed in both OS jobs while downloading Supervisor because the artifact URL used the Collector release tag. Later test, vet, build, Docker, and managed-E2E steps were skipped, so this is not a code-test failure and does not satisfy final-head verification. The installer and CI download paths are corrected to the official `cmd/opampsupervisor` release tag; retry pending. GitHub connector write attempts for PR body/comment returned HTTP 403, so only the pushed branch and local docs could be updated. No merge was attempted. |
+| Draft PR and final-head CI | IN PROGRESS / CI FAILURE | Push of `5c85db70a1fce68f9ab9ad3b17c7e9fba34de7bb` succeeded; connected GitHub read confirms PR #30 remains open/draft against `chore/v0.1.4a-next`. CI run `43369909210` verified both Collector and Supervisor downloads, then failed the architecture guard on `internal/mockcore/server.go` (574 lines) and `internal/agentlifecycle/runtime.go` (456 lines). Later tests, vet, build, Docker, and managed-E2E steps were skipped. The same-package splits now pass the local architecture guard and regression tests; final-head rerun is pending. GitHub connector write attempts for PR body/comment returned HTTP 403, so only the pushed branch and local docs could be updated. No merge was attempted. |
 
 The CI gates added in this checkpoint verify the pinned Supervisor executable
 digest on each runner, run the real Agent-managed hostmetrics fallback through
