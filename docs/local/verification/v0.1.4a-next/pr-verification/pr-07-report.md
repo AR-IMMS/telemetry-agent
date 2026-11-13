@@ -592,8 +592,20 @@ gates open and the checkpoint draft while any are unresolved.
   delegated to CI because the local Windows token cannot control SCM. The local
   full suite is also affected by loopback socket restrictions and ignored
   historical test copies under `tmp/`; those paths were preserved.
-- Exact-head rerun for `62c8a3d9caaf220efda213c612da55d3f05729e8` is pending.
-  PR-07 remains IN_PROGRESS. Do not mark the Windows service gate passed until
-  this head proves migration, rollback, restarts, and uninstall on native
-  Windows; do not merge, transfer default ownership, or start PR-08 while
-  required adoption gates remain open.
+- Run [43448710761](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43448710761)
+  on `1e10f73dc0f84063de8a8a8968e369293113b87d` passed the full Ubuntu job,
+  including native Linux service install/migration/restart/rollback/uninstall.
+  Sanitized native-service artifacts were uploaded for Linux (`14048169509`)
+  and Windows (`14049576920`). Windows executable migration now succeeds, but
+  its job exposed a verification-harness race: the restart helper treated
+  `STOP_PENDING` as stopped and issued `sc start` early, producing service
+  error 1056; cleanup encountered the same pending transition. The harness now
+  waits for the explicit `STOPPED` state. The Windows service stopper also
+  waits through existing `START_PENDING`/`STOP_PENDING` states before sending a
+  stop request. Focused native Windows installation tests and Linux/Windows
+  test-binary compilation pass after this correction.
+- Exact-head rerun after the pending-state correction is required. PR-07
+  remains IN_PROGRESS; do not mark the Windows service gate passed until
+  migration, rollback, restarts, and uninstall pass on native Windows. Do not
+  merge, transfer default ownership, or start PR-08 while required adoption
+  gates remain open.
