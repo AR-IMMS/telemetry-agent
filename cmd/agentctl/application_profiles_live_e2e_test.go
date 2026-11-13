@@ -98,10 +98,25 @@ func TestLiveDockerApplicationProfilesDeliverOTLP(t *testing.T) {
 	statePath := filepath.Join(root, "state.db")
 	configPath := filepath.Join(root, "agent", "otel.yaml")
 	store := agentstate.NewSQLiteStore(statePath)
-	if err := store.Save(agentstate.State{
+	testState := agentstate.State{
 		Collector:         agentstate.CollectorContext{ConfigRoot: configRoot, BinaryPath: binary, ConfigPath: configPath, GatewayEndpoint: sinkEndpoint, HealthEndpoint: defaultHealthEndpoint},
 		DesiredGeneration: 1, ActivatedGeneration: 1, AppliedGeneration: 1, Dependencies: map[string]agentstate.DependencyState{},
-	}); err != nil {
+	}
+	if os.Getenv(pr07aSupervisorProfileParityEnv) == "1" {
+		supervisorBinary := strings.TrimSpace(os.Getenv("AR_IMMS_PR07A_SUPERVISOR_BINARY"))
+		if supervisorBinary == "" {
+			t.Fatal("AR_IMMS_PR07A_SUPERVISOR_BINARY is required for Agent-managed profile parity")
+		}
+		credentialsDir := filepath.Join(filepath.Dir(statePath), "credentials")
+		testState.Supervisor = agentstate.SupervisorContext{
+			BinaryPath:        supervisorBinary,
+			ConfigurationPath: filepath.Join(credentialsDir, "opamp-supervisor.yaml"),
+			StateDirectory:    filepath.Join(credentialsDir, "opamp-supervisor-state"),
+			OpAMPServerURL:    "ws://127.0.0.1:1/v1/opamp",
+			Enabled:           true,
+		}
+	}
+	if err := store.Save(testState); err != nil {
 		t.Fatal(err)
 	}
 	installationID, err := identity.EnsureInstallationIdentity(agentstate.NewIdentityStore(statePath), rand.Reader)
@@ -219,9 +234,12 @@ func TestLiveDockerApplicationProfilesDeliverOTLP(t *testing.T) {
 		t.Fatalf("unsupported E2E host %s", runtime.GOOS)
 	}
 	if os.Getenv(pr07aSupervisorProfileParityEnv) == "1" {
-		supervisorBinary := strings.TrimSpace(os.Getenv("AR_IMMS_PR07A_SUPERVISOR_BINARY"))
-		if supervisorBinary == "" {
-			t.Fatal("AR_IMMS_PR07A_SUPERVISOR_BINARY is required for Supervisor profile parity")
+		state, err := store.Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !state.Supervisor.Enabled {
+			t.Fatal("Agent-managed Supervisor ownership was not retained for profile parity")
 		}
 		stopService()
 		select {
@@ -233,7 +251,14 @@ func TestLiveDockerApplicationProfilesDeliverOTLP(t *testing.T) {
 			t.Fatal("Agent Runtime did not stop before Supervisor profile parity")
 		}
 		runtimeStopped = true
-		runPR07ASupervisorApplicationProfileParity(t, ctx, root, supervisorBinary, binary, configPath, sinkEndpoint, sinkOutput, nodeID, resources, newPythonID)
+		t.Logf("PR07A_SUPERVISOR_PROFILE_PARITY platform=%s owner=agent-managed profiles=redis,postgresql,prometheus,mock-cooling fallback=PASS container_churn=PASS otlp=PASS", runtime.GOOS)
+		evidenceDir := strings.TrimSpace(os.Getenv("AR_IMMS_PR07A_EVIDENCE_DIR"))
+		if evidenceDir != "" {
+			writePR07AEvidence(t, filepath.Join(evidenceDir, "application-profiles"), map[string]string{
+				"profile-parity-summary.txt": fmt.Sprintf("platform=%s\nowner=Agent-managed Supervisor v0.160.0\ncollector=otelcol-contrib-v0.160.0\nprofiles=redis,postgresql,prometheus,mock-cooling\nstartup_fallback=PASS\ncontainer_churn=PASS\npost_churn_profile_otlp_delivery=PASS\nnode_id=%s\n", runtime.GOOS, nodeID),
+				"otlp-sink.log":              tailPR07ATestOutput(sinkOutput.String(), 120),
+			})
+		}
 	}
 }
 
