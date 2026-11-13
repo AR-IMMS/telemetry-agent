@@ -3,7 +3,7 @@ info:
   title: AR-IMMS Agent Control API (local PR-07 contract)
   version: 1.0.0
   description: >-
-    Proposed Agent-facing Core operations for the PR-07 mock-backed slice.
+    Local Agent-facing Core operations for the PR-07 mock-backed slice.
     This file is not published to docs/shared and is not implemented by the
     production Core API baseline. It deliberately preserves enrollment as the
     only credential issuer and does not define a new authentication scheme.
@@ -58,15 +58,70 @@ paths:
           $ref: '#/components/responses/Problem'
         '409':
           $ref: '#/components/responses/Problem'
+  /api/v1/agent-management/publications:
+    put:
+      operationId: recordAgentManagementPublication
+      summary: Persist the exact configuration publication before OpAMP delivery
+      description: >-
+        Core derives the installation from the bearer, verifies the active
+        Supervisor binding and current policy revision, then stores the
+        immutable policy/hash association and Core publication timestamp.
+        Duplicate requests are idempotent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublicationRequest'
+      responses:
+        '200':
+          description: Durable publication record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationEnvelope'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+  /api/v1/agent-management/publications/{config_hash}:
+    get:
+      operationId: resolveAgentManagementPublication
+      summary: Resolve a previously published exact configuration hash
+      description: >-
+        Scope is derived from the authenticated installation and its bound
+        Supervisor instance. An unknown hash returns 404; Core must not infer
+        policy revision from current desired state.
+      parameters:
+        - name: config_hash
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-f0-9]{64}$'
+      responses:
+        '200':
+          description: Matching durable publication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationEnvelope'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
   /api/v1/agent-management/status:
     put:
       operationId: reportAgentManagementStatus
       summary: Report observed OpAMP configuration status
       description: >-
         Reports only protocol-observed configuration state. It does not assert
-        scrape success or OTLP delivery. The server correlates a config hash
-        with the desired revision it sent; an old applied hash does not mark a
-        newer revision applied.
+        scrape success or OTLP delivery. desired_revision is current policy;
+        publication_revision identifies the exact published hash. An older
+        applied hash is accepted as rollback evidence but cannot satisfy a
+        newer desired revision.
       requestBody:
         required: true
         content:
@@ -81,6 +136,8 @@ paths:
         '401':
           $ref: '#/components/responses/Problem'
         '403':
+          $ref: '#/components/responses/Problem'
+        '404':
           $ref: '#/components/responses/Problem'
 components:
   securitySchemes:
@@ -103,6 +160,14 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/InstanceBinding'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    PublicationEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/ConfigurationPublication'
         meta:
           $ref: '#/components/schemas/Meta'
     Session:
@@ -140,9 +205,36 @@ components:
         instance_uid:
           type: string
           format: uuid
+    PublicationRequest:
+      type: object
+      required: [instance_uid, policy_schema_version, policy_revision, config_hash]
+      properties:
+        instance_uid:
+          type: string
+          format: uuid
+        policy_schema_version:
+          const: ar-imms/gateway-policy/v1
+        policy_revision:
+          type: integer
+          minimum: 1
+        config_hash:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+    ConfigurationPublication:
+      allOf:
+        - $ref: '#/components/schemas/PublicationRequest'
+        - type: object
+          required: [installation_id, published_at]
+          properties:
+            installation_id:
+              type: string
+              format: uuid
+            published_at:
+              type: string
+              format: date-time
     StatusReport:
       type: object
-      required: [instance_uid, desired_revision, status, config_hash]
+      required: [instance_uid, desired_revision, publication_revision, status, config_hash]
       properties:
         instance_uid:
           type: string
@@ -150,6 +242,11 @@ components:
         desired_revision:
           type: integer
           minimum: 1
+          description: Current Core desired policy revision at observation time.
+        publication_revision:
+          type: integer
+          minimum: 1
+          description: Policy revision associated with this exact published config hash.
         status:
           type: string
           enum: [APPLYING, APPLIED, FAILED]
@@ -160,9 +257,9 @@ components:
           type: integer
           minimum: 1
           description: >-
-            Optional. Set only when the reported hash is known to be the config
-            applied for that exact revision. Omit it when the hash is unknown or
-            belongs to a prior revision restored by rollback.
+            Optional. Set only when OpAMP reports APPLIED for the exact hash;
+            it equals publication_revision and may be older than desired_revision
+            when Supervisor restored a previously published configuration.
         message:
           type: string
           maxLength: 512

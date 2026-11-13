@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
 	"github.com/ar-imms/telemetry-agent/internal/identity"
@@ -21,6 +22,8 @@ const agentManagementPath = "/api/v1/agent-management"
 type AgentManagementAPI interface {
 	GetSession(context.Context) (AgentManagementSession, error)
 	BindOpAMPInstance(context.Context, string) (string, error)
+	RecordPublication(context.Context, PublicationRequest) (ConfigurationPublication, error)
+	ResolvePublication(context.Context, string, string) (ConfigurationPublication, error)
 	ReportStatus(context.Context, SupervisorStatusReport) error
 }
 
@@ -39,14 +42,77 @@ type AgentManagementSession struct {
 	DesiredPolicy    DesiredGatewayPolicy `json:"desired_policy"`
 }
 
+// PublicationRequest records exact remote configuration bytes before OpAMP delivery.
+type PublicationRequest struct {
+	InstanceUID         string `json:"instance_uid"`
+	PolicySchemaVersion string `json:"policy_schema_version"`
+	PolicyRevision      int64  `json:"policy_revision"`
+	ConfigHash          string `json:"config_hash"`
+}
+
+// ConfigurationPublication is Core's durable record for one hash and policy revision.
+type ConfigurationPublication struct {
+	PublicationRequest
+	InstallationID string    `json:"installation_id"`
+	PublishedAt    time.Time `json:"published_at"`
+}
+
 // SupervisorStatusReport contains protocol-observed config state only.
 type SupervisorStatusReport struct {
 	InstanceUID     string `json:"instance_uid"`
 	DesiredRevision int64  `json:"desired_revision"`
-	AppliedRevision int64  `json:"applied_revision,omitempty"`
-	Status          string `json:"status"`
-	ConfigHash      string `json:"config_hash"`
-	Message         string `json:"message,omitempty"`
+	// PublicationRevision identifies the policy revision that produced ConfigHash.
+	PublicationRevision int64  `json:"publication_revision"`
+	AppliedRevision     int64  `json:"applied_revision,omitempty"`
+	Status              string `json:"status"`
+	ConfigHash          string `json:"config_hash"`
+	Message             string `json:"message,omitempty"`
+}
+
+// RecordPublication persists an idempotent, timestamped policy/hash association before delivery.
+func (c *AgentManagementClient) RecordPublication(ctx context.Context, publication PublicationRequest) (ConfigurationPublication, error) {
+	if err := validatePublicationRequest(publication); err != nil {
+		return ConfigurationPublication{}, err
+	}
+	var envelope struct {
+		Data ConfigurationPublication `json:"data"`
+		Meta struct {
+			RequestID string `json:"request_id"`
+		} `json:"meta"`
+	}
+	if err := c.request(ctx, http.MethodPut, "/publications", publication, http.StatusOK, &envelope); err != nil {
+		return ConfigurationPublication{}, err
+	}
+	if strings.TrimSpace(envelope.Meta.RequestID) == "" || envelope.Data.PublicationRequest != publication || envelope.Data.PublishedAt.IsZero() {
+		return ConfigurationPublication{}, fmt.Errorf("Core publication response does not match the requested policy and hash")
+	}
+	if _, err := identity.ParseInstallationID(envelope.Data.InstallationID); err != nil {
+		return ConfigurationPublication{}, fmt.Errorf("Core publication response has an invalid installation identity")
+	}
+	return envelope.Data, nil
+}
+
+// ResolvePublication resolves a previously published exact hash for the bound Supervisor instance.
+func (c *AgentManagementClient) ResolvePublication(ctx context.Context, instanceUID, configHash string) (ConfigurationPublication, error) {
+	if _, err := identity.ParseInstallationID(instanceUID); err != nil || !validConfigHash(configHash) {
+		return ConfigurationPublication{}, fmt.Errorf("publication identity or hash is invalid")
+	}
+	var envelope struct {
+		Data ConfigurationPublication `json:"data"`
+		Meta struct {
+			RequestID string `json:"request_id"`
+		} `json:"meta"`
+	}
+	if err := c.request(ctx, http.MethodGet, "/publications/"+configHash, nil, http.StatusOK, &envelope); err != nil {
+		return ConfigurationPublication{}, err
+	}
+	if strings.TrimSpace(envelope.Meta.RequestID) == "" || envelope.Data.InstanceUID != instanceUID || envelope.Data.ConfigHash != configHash || envelope.Data.PolicySchemaVersion != "ar-imms/gateway-policy/v1" || envelope.Data.PublishedAt.IsZero() || envelope.Data.PolicyRevision < 1 {
+		return ConfigurationPublication{}, fmt.Errorf("Core publication response does not match the requested instance and hash")
+	}
+	if _, err := identity.ParseInstallationID(envelope.Data.InstallationID); err != nil {
+		return ConfigurationPublication{}, fmt.Errorf("Core publication response has an invalid installation identity")
+	}
+	return envelope.Data, nil
 }
 
 // ControlAPIError reports a safe HTTP status and contract code without body data.
@@ -132,16 +198,28 @@ func (c *AgentManagementClient) BindOpAMPInstance(ctx context.Context, uid strin
 
 // ReportStatus sends an idempotent, sanitized protocol status observation.
 func (c *AgentManagementClient) ReportStatus(ctx context.Context, report SupervisorStatusReport) error {
-	if _, err := identity.ParseInstallationID(report.InstanceUID); err != nil || report.DesiredRevision < 1 || report.AppliedRevision < 0 || report.AppliedRevision > report.DesiredRevision || !validRemoteConfigStatus(report.Status) || len(report.ConfigHash) != 64 || strings.ToLower(report.ConfigHash) != report.ConfigHash {
+	if _, err := identity.ParseInstallationID(report.InstanceUID); err != nil || report.DesiredRevision < 1 || report.PublicationRevision < 1 || report.PublicationRevision > report.DesiredRevision || report.AppliedRevision < 0 || report.AppliedRevision > report.DesiredRevision || !validRemoteConfigStatus(report.Status) || !validConfigHash(report.ConfigHash) || (report.Status == "APPLIED" && report.AppliedRevision != report.PublicationRevision) || (report.Status != "APPLIED" && report.AppliedRevision != 0) {
 		return fmt.Errorf("Supervisor status report is invalid")
-	}
-	if _, err := hex.DecodeString(report.ConfigHash); err != nil {
-		return fmt.Errorf("Supervisor status config hash must be lowercase SHA-256 hex")
 	}
 	if len(report.Message) > 512 || strings.ContainsAny(report.Message, "\r\n\x00") {
 		return fmt.Errorf("Supervisor status message is invalid")
 	}
 	return c.request(ctx, http.MethodPut, "/status", report, http.StatusNoContent, nil)
+}
+
+func validatePublicationRequest(publication PublicationRequest) error {
+	if _, err := identity.ParseInstallationID(publication.InstanceUID); err != nil || publication.PolicySchemaVersion != "ar-imms/gateway-policy/v1" || publication.PolicyRevision < 1 || !validConfigHash(publication.ConfigHash) {
+		return fmt.Errorf("configuration publication is invalid")
+	}
+	return nil
+}
+
+func validConfigHash(value string) bool {
+	if len(value) != 64 || strings.ToLower(value) != value {
+		return false
+	}
+	decoded, err := hex.DecodeString(value)
+	return err == nil && len(decoded) == 32
 }
 
 func (c *AgentManagementClient) request(ctx context.Context, method, suffix string, body any, wantStatus int, output any) error {

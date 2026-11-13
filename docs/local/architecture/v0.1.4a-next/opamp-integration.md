@@ -2,9 +2,11 @@
 
 **Status:** Windows and Ubuntu WSL Supervisor capability tests pass, including
 hostmetrics OTLP delivery. PR-07b Mock Core integration passes on both OSes.
-Native Linux Docker profile parity and Agent-owned process-tree recovery remain
-open. No production Core interoperability or PR-07c runtime ownership transfer
-is claimed.
+PR-07c now adds pinned artifact installation, a protected token-file helper, and
+durable Mock Core publication/status fixtures with rollback attribution after
+adapter restart. Native Linux Docker profile parity, Agent-owned process-tree
+recovery, packaged/runtime integration, and production Core interoperability
+remain open.
 
 ## Target topology
 
@@ -89,14 +91,25 @@ This is not yet an approved cross-repository schema. Agent-local monitoring
 profiles, receiver rules, infrastructure identity, and protected Supervisor
 communication settings remain Agent-owned.
 
-The local PR-07b contract defines schema/version, installation target, desired
+The local PR-07 contract defines schema/version, installation target, desired
 revision, deterministic rendering/hash inputs, endpoint validation, binding
-conflicts, and protocol-observed status in
+conflicts, publication history, and protocol-observed status in
 [agent-control-v1.openapi.yaml](contracts/agent-control-v1.openapi.yaml).
 It is intentionally a mock-backed Agent contract, not a production Core API
 approval or publication to `docs/shared/`. It contains no arbitrary Collector
 YAML or remote commands. Protected local configuration remains outside the
 remote policy.
+
+For each policy response, the adapter records the exact rendered hash and
+revision in Core before returning OpAMP remote configuration. Status reports
+carry current `desired_revision` separately from `publication_revision` and
+`applied_revision`. Rollback to an older published hash is accepted as older
+application evidence; it cannot satisfy a newer desired revision. Unknown
+hashes remain unattributed. The Go Mock Core can persist its fixture to an
+atomic local JSON state file for restart tests; this is test infrastructure,
+not a production Core storage design. The adapter's bounded in-memory map is
+only a duplicate-delivery optimization; hash attribution resolves through the
+Core contract.
 
 Keep desired revision separate from applied revision. Distinguish received,
 validated, applying, applied, failed, recovered, and unknown only where the

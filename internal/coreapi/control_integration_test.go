@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -47,13 +49,23 @@ func TestAgentManagementClientUsesEnrollmentBearerAndBindsInstance(t *testing.T)
 	if !errors.As(err, &apiError) || apiError.Status != 409 || apiError.Code != "OPAMP_INSTANCE_CONFLICT" {
 		t.Fatalf("conflicting bind error = %#v", err)
 	}
+	publication, err := client.RecordPublication(context.Background(), coreapi.PublicationRequest{
+		InstanceUID: instanceUID, PolicySchemaVersion: "ar-imms/gateway-policy/v1", PolicyRevision: 1, ConfigHash: strings.Repeat("a", 64),
+	})
+	if err != nil || publication.PublishedAt.IsZero() {
+		t.Fatalf("record publication = %+v, %v", publication, err)
+	}
+	resolved, err := client.ResolvePublication(context.Background(), instanceUID, publication.ConfigHash)
+	if err != nil || resolved.PolicyRevision != 1 || resolved.ConfigHash != publication.ConfigHash {
+		t.Fatalf("resolve publication = %+v, %v", resolved, err)
+	}
 	if err := client.ReportStatus(context.Background(), coreapi.SupervisorStatusReport{
-		InstanceUID: "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff", DesiredRevision: 1, Status: "APPLIED", ConfigHash: strings.Repeat("a", 64),
+		InstanceUID: "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff", DesiredRevision: 1, PublicationRevision: 1, AppliedRevision: 1, Status: "APPLIED", ConfigHash: strings.Repeat("a", 64),
 	}); !errors.As(err, &apiError) || apiError.Status != 403 || apiError.Code != "OPAMP_INSTANCE_MISMATCH" {
 		t.Fatalf("mismatched status identity error = %#v", err)
 	}
 	report := coreapi.SupervisorStatusReport{
-		InstanceUID: instanceUID, DesiredRevision: 1, Status: "APPLIED", ConfigHash: strings.Repeat("a", 64),
+		InstanceUID: instanceUID, DesiredRevision: 1, PublicationRevision: 1, AppliedRevision: 1, Status: "APPLIED", ConfigHash: strings.Repeat("a", 64),
 	}
 	if err := client.ReportStatus(context.Background(), report); err != nil {
 		t.Fatal(err)
@@ -62,14 +74,99 @@ func TestAgentManagementClientUsesEnrollmentBearerAndBindsInstance(t *testing.T)
 		t.Fatal(err)
 	}
 	observations := mock.Statuses()
-	if len(observations) != 1 || observations[0].InstallationID != session.InstallationID || observations[0].Report.AppliedRevision != 0 {
+	if len(observations) != 1 || observations[0].InstallationID != session.InstallationID || observations[0].Report.AppliedRevision != 1 {
 		t.Fatalf("status observations = %+v", observations)
+	}
+	if err := mock.SetPolicy(session.InstallationID, coreapi.DesiredGatewayPolicy{SchemaVersion: "ar-imms/gateway-policy/v1", Revision: 2, GatewayEndpoint: "127.0.0.2:4317"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.RecordPublication(context.Background(), coreapi.PublicationRequest{
+		InstanceUID: instanceUID, PolicySchemaVersion: "ar-imms/gateway-policy/v1", PolicyRevision: 2, ConfigHash: strings.Repeat("b", 64),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rollback := coreapi.SupervisorStatusReport{InstanceUID: instanceUID, DesiredRevision: 2, PublicationRevision: 1, AppliedRevision: 1, Status: "APPLIED", ConfigHash: strings.Repeat("a", 64)}
+	if err := client.ReportStatus(context.Background(), rollback); err != nil {
+		t.Fatalf("report previous published hash during rollback: %v", err)
+	}
+	if len(mock.Statuses()) != 2 {
+		t.Fatalf("status count after rollback report = %d, want 2", len(mock.Statuses()))
+	}
+	if _, err := client.ResolvePublication(context.Background(), instanceUID, strings.Repeat("c", 64)); err == nil {
+		t.Fatal("unknown publication hash resolved")
 	}
 	mock.Revoke(token)
 	_, err = client.GetSession(context.Background())
 	apiError = nil
 	if !errors.As(err, &apiError) || apiError.Status != 401 || apiError.Code != "UNAUTHORIZED" {
 		t.Fatalf("revoked credential error = %#v", err)
+	}
+}
+
+func TestMockCorePublicationAndStatusSurviveServerRestart(t *testing.T) {
+	const token = "persistent-mock-core-token"
+	const installationID = "11111111-2222-4333-8444-555555555555"
+	const instanceUID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+	statePath := filepath.Join(t.TempDir(), "mock-core-state.json")
+	seed := mockcore.ProvisionedInstallation{
+		AccessToken: token, InstallationID: installationID,
+		NodeID: "33333333-4444-4555-8666-777777777777",
+		Policy: coreapi.DesiredGatewayPolicy{SchemaVersion: "ar-imms/gateway-policy/v1", Revision: 1, GatewayEndpoint: "127.0.0.1:4317"},
+	}
+	first, err := mockcore.NewPersistent(seed, statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serve := func(handler http.Handler) (*httptest.Server, *coreapi.AgentManagementClient) {
+		httpServer := httptest.NewTLSServer(handler)
+		client, clientErr := coreapi.NewAgentManagementClient(httpServer.URL, token, httpServer.Client())
+		if clientErr != nil {
+			httpServer.Close()
+			t.Fatal(clientErr)
+		}
+		return httpServer, client
+	}
+	firstHTTP, client := serve(first)
+	if _, err := client.BindOpAMPInstance(context.Background(), instanceUID); err != nil {
+		t.Fatal(err)
+	}
+	publication, err := client.RecordPublication(context.Background(), coreapi.PublicationRequest{
+		InstanceUID: instanceUID, PolicySchemaVersion: "ar-imms/gateway-policy/v1", PolicyRevision: 1, ConfigHash: strings.Repeat("a", 64),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := client.ReportStatus(context.Background(), coreapi.SupervisorStatusReport{
+		InstanceUID: instanceUID, DesiredRevision: 1, PublicationRevision: 1, AppliedRevision: 1,
+		Status: "APPLIED", ConfigHash: publication.ConfigHash,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	firstHTTP.Close()
+	fixtureBytes, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(fixtureBytes), token) {
+		t.Fatal("persistent Mock Core fixture contains the bearer value")
+	}
+
+	second, err := mockcore.NewPersistent(seed, statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondHTTP, restartedClient := serve(second)
+	defer secondHTTP.Close()
+	session, err := restartedClient.GetSession(context.Background())
+	if err != nil || session.OpAMPInstanceUID != instanceUID {
+		t.Fatalf("restarted session = %+v, %v", session, err)
+	}
+	resolved, err := restartedClient.ResolvePublication(context.Background(), instanceUID, publication.ConfigHash)
+	if err != nil || resolved.PublishedAt != publication.PublishedAt {
+		t.Fatalf("restarted publication = %+v, %v", resolved, err)
+	}
+	if statuses := second.Statuses(); len(statuses) != 1 || statuses[0].Report.Status != "APPLIED" {
+		t.Fatalf("restarted statuses = %+v", statuses)
 	}
 }
 

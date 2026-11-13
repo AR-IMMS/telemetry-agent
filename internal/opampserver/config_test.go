@@ -100,6 +100,12 @@ func (c *capabilityTestClient) GetSession(context.Context) (coreapi.AgentManagem
 func (*capabilityTestClient) BindOpAMPInstance(context.Context, string) (string, error) {
 	return "", nil
 }
+func (*capabilityTestClient) RecordPublication(context.Context, coreapi.PublicationRequest) (coreapi.ConfigurationPublication, error) {
+	return coreapi.ConfigurationPublication{}, nil
+}
+func (*capabilityTestClient) ResolvePublication(context.Context, string, string) (coreapi.ConfigurationPublication, error) {
+	return coreapi.ConfigurationPublication{}, nil
+}
 func (*capabilityTestClient) ReportStatus(context.Context, coreapi.SupervisorStatusReport) error {
 	return nil
 }

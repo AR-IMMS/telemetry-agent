@@ -166,17 +166,27 @@ func (s *Server) handleMessage(ctx context.Context, client coreapi.AgentManageme
 	}
 	body, hash, err := RenderGatewayConfig(session.DesiredPolicy)
 	if err != nil {
-		s.reportRemoteStatus(ctx, client, uid, message.GetRemoteConfigStatus())
+		s.reportRemoteStatus(ctx, client, uid, message.GetRemoteConfigStatus(), session.DesiredPolicy.Revision)
 		s.options.Logger.Warn("Core Gateway policy is invalid", "error", err)
 		return &protobufs.ServerToAgent{InstanceUid: uidBytes}
 	}
 	hashText := hex.EncodeToString(hash[:])
+	s.reportRemoteStatus(ctx, client, uid, message.GetRemoteConfigStatus(), session.DesiredPolicy.Revision)
+	publicationCtx, cancelPublication := context.WithTimeout(ctx, 5*time.Second)
+	publication, err := client.RecordPublication(publicationCtx, coreapi.PublicationRequest{
+		InstanceUID: uid, PolicySchemaVersion: session.DesiredPolicy.SchemaVersion,
+		PolicyRevision: session.DesiredPolicy.Revision, ConfigHash: hashText,
+	})
+	cancelPublication()
+	if err != nil || publication.ConfigHash != hashText || publication.PolicyRevision != session.DesiredPolicy.Revision || publication.InstanceUID != uid {
+		s.options.Logger.Warn("Core configuration publication could not be persisted", "error", err)
+		return &protobufs.ServerToAgent{InstanceUid: uidBytes}
+	}
 	wasSent := s.wasSent(uid, hashText)
 	// The OpAMP hash identifies config content, not the Core policy revision.
 	// Refresh this association before interpreting status so an unchanged
 	// endpoint at a newer revision is credited to the current desired policy.
 	s.markSent(uid, hashText, session.DesiredPolicy.Revision)
-	s.reportRemoteStatus(ctx, client, uid, message.GetRemoteConfigStatus())
 	if wasSent {
 		return response
 	}
@@ -187,14 +197,16 @@ func (s *Server) handleMessage(ctx context.Context, client coreapi.AgentManageme
 	return response
 }
 
-func (s *Server) reportRemoteStatus(ctx context.Context, client coreapi.AgentManagementAPI, uid string, status *protobufs.RemoteConfigStatus) {
+func (s *Server) reportRemoteStatus(ctx context.Context, client coreapi.AgentManagementAPI, uid string, status *protobufs.RemoteConfigStatus, desiredRevision int64) {
 	if status == nil || len(status.GetLastRemoteConfigHash()) != 32 {
 		return
 	}
 	configHash := hex.EncodeToString(status.GetLastRemoteConfigHash())
-	revision := s.revisionForHash(uid, configHash)
-	if revision < 1 {
-		s.options.Logger.Debug("OpAMP remote config status has no observed desired revision", "instance_uid", uid)
+	callCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	publication, err := client.ResolvePublication(callCtx, uid, configHash)
+	cancel()
+	if err != nil || publication.PolicyRevision < 1 || publication.PolicyRevision > desiredRevision {
+		s.options.Logger.Debug("OpAMP remote config status has no durable publication", "instance_uid", uid)
 		return
 	}
 	statusName := ""
@@ -208,11 +220,11 @@ func (s *Server) reportRemoteStatus(ctx context.Context, client coreapi.AgentMan
 	default:
 		return
 	}
-	report := coreapi.SupervisorStatusReport{InstanceUID: uid, DesiredRevision: revision, Status: statusName, ConfigHash: configHash}
+	report := coreapi.SupervisorStatusReport{InstanceUID: uid, DesiredRevision: desiredRevision, PublicationRevision: publication.PolicyRevision, Status: statusName, ConfigHash: configHash}
 	if statusName == "APPLIED" {
-		report.AppliedRevision = revision
+		report.AppliedRevision = publication.PolicyRevision
 	}
-	callCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	callCtx, cancel = context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	if err := client.ReportStatus(callCtx, report); err != nil {
 		s.options.Logger.Warn("OpAMP status report to Core failed", "error", err)
