@@ -211,6 +211,8 @@ func TestManagedSupervisorEnrollmentAndRemoteGatewayE2E(t *testing.T) {
     scrapers:
       cpu: {}
       memory: {}
+processors:
+  batch: {}
 exporters:
   otlp/gateway:
     endpoint: %q
@@ -227,6 +229,7 @@ service:
   pipelines:
     metrics:
       receivers: [hostmetrics]
+      processors: [batch]
       exporters: [otlp/gateway]`, initialEndpoint, strings.TrimPrefix(healthURL, "http://"))
 	if err := os.WriteFile(collectorConfig, []byte(collectorYAML), 0600); err != nil {
 		t.Fatal(err)
