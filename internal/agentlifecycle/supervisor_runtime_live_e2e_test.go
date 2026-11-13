@@ -98,6 +98,11 @@ service:
 		OpAMPServerURL:    "ws://127.0.0.1:4321/v1/opamp",
 		Enabled:           true,
 	}
+	t.Cleanup(func() {
+		if t.Failed() {
+			writeSupervisorRuntimeFailureEvidence(t, managed.StateDirectory, root)
+		}
+	})
 	options := supervisor.Options{
 		BinaryPath:      collectorPath,
 		ConfigPath:      collectorConfig,
@@ -236,6 +241,38 @@ func writeSupervisorRuntimeEvidence(t *testing.T, supervisorPath, collectorPath,
 	summary := fmt.Sprintf("result=PASS\nos=%s\narchitecture=%s\ncommit=%s\nsupervisor_sha256=%s\ncollector_sha256=%s\nhealth_endpoint=%s\notlp_sink_endpoint=%s\ntelemetry_marker_observed=%t\n", runtime.GOOS, runtime.GOARCH, os.Getenv("GITHUB_SHA"), fileSHA256(t, supervisorPath), fileSHA256(t, collectorPath), healthEndpoint, sinkEndpoint, strings.Contains(output, "system.cpu.time") || strings.Contains(output, "system.memory.usage"))
 	if err := os.WriteFile(filepath.Join(evidenceDirectory, "managed-supervisor-runtime.txt"), []byte(summary), 0o600); err != nil {
 		t.Fatalf("write Supervisor runtime evidence: %v", err)
+	}
+}
+
+func writeSupervisorRuntimeFailureEvidence(t *testing.T, stateDirectory, temporaryRoot string) {
+	t.Helper()
+	evidenceDirectory := strings.TrimSpace(os.Getenv("AR_IMMS_PR07C_EVIDENCE_DIR"))
+	if evidenceDirectory == "" {
+		return
+	}
+	if err := os.MkdirAll(evidenceDirectory, 0o700); err != nil {
+		t.Logf("create Supervisor failure evidence directory: %v", err)
+		return
+	}
+	logPath := filepath.Join(stateDirectory, "agent.log")
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		content = []byte("Collector log unavailable: " + err.Error() + "\n")
+	} else {
+		lines := strings.Split(string(content), "\n")
+		var failures []string
+		for _, line := range lines {
+			if strings.Contains(line, `"level":"error"`) || strings.Contains(line, `"level":"warn"`) {
+				failures = append(failures, strings.ReplaceAll(line, temporaryRoot, "<temporary-root>"))
+			}
+		}
+		if len(failures) == 0 {
+			failures = append(failures, "No Collector warning or error records were emitted.")
+		}
+		content = []byte(strings.Join(failures, "\n") + "\n")
+	}
+	if err := os.WriteFile(filepath.Join(evidenceDirectory, "managed-supervisor-failure.log"), content, 0o600); err != nil {
+		t.Logf("write Supervisor failure evidence: %v", err)
 	}
 }
 

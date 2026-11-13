@@ -5,11 +5,12 @@ protected credential/config/state provisioning, opt-in single-owner runtime
 selection, credential-reference restart handling, and Windows Job Object/Linux
 process-group containment. Full Windows `go test ./...`, `go vet ./...`, and
 `go build ./...` pass; affected Linux test binaries cross-compile. The
-Agent-managed live Supervisor/Collector/OTLP E2E is added to Windows and native
-Ubuntu CI. Its local Windows execution cannot run because this process is not
-elevated; the CI test now fails instead of silently skipping when the workflow
-explicitly enables the gate. WSL/Docker access is unavailable here. Native
-Linux/Windows service E2E and final-head CI evidence have not run. PR-07a/07b
+Agent-managed live Supervisor/Collector/OTLP E2E runs on Windows and native
+Ubuntu CI, but both runners failed at Collector readiness on the latest run.
+The test now retains Supervisor-managed Collector warning/error logs on
+failure. Local Windows execution cannot run through the protected credential
+store because this process is not elevated; WSL/Docker access is unavailable
+here. Native service E2E and full managed-runtime parity remain open. PR-07a/07b
 evidence remains as recorded below; the earlier raw Supervisor hard-kill
 failure demonstrates why containment and sink-level uniqueness still require
 live verification. Do not mark ownership transfer complete or merge PR #30
@@ -44,16 +45,15 @@ this implementation branch's authorized scope.
 
 ## Current PR-07c local verification — 2026-11-13, final integration attempt
 
-**Previously pushed code head:** `5c85db70a1fce68f9ab9ad3b17c7e9fba34de7bb`
+**Previously pushed code head:** `4bf9a73b3bb23e276f7c5169175b02204438deae`
 (`feat/pr-07-opamp`). The PR-07c implementation commits are `8299deb`
 (installer/owner selection), `08aead6` (process containment), `b7627fb`
 (managed runtime), and `2164933` (session revocation); `fffcb52` records the
 prior verification status; `16b881c` makes the enabled CI gate fail rather
 than silently skip on a non-elevated Windows runner; `5c85db7` corrects the
-Supervisor artifact URL after run `43369304553`. The next scoped change splits
-Mock Core persistence and the existing Collector runtime watcher into
-same-package files after run `43369909210` exposed the production file-size
-guard. The unrelated pre-existing worktree changes and
+Supervisor artifact URL after run `43369304553`; `4bf9a73` splits Mock Core
+persistence and the existing Collector runtime watcher into same-package files
+after run `43369909210` exposed the production file-size guard. The unrelated pre-existing worktree changes and
 `cmd/agentctl/otel.yaml.lifecycle.lock` remain unstaged and preserved.
 
 | Check | Result | Evidence / limit |
@@ -64,11 +64,11 @@ guard. The unrelated pre-existing worktree changes and
 | `go vet ./...` | PASS / WINDOWS | Completed with exit code 0 after the file splits. |
 | `go build ./...` | PASS / WINDOWS | Completed with exit code 0 after the file splits. |
 | Linux build | PASS / CROSS-COMPILE | `GOOS=linux GOARCH=amd64 go build ./...` passed after the file splits. This is not Linux runtime or service verification. |
-| Managed Supervisor live E2E | NOT RUN / WINDOWS TOKEN NOT ELEVATED | The current process token is not elevated, Docker is inaccessible, and the required verified Supervisor/Collector binary paths are not provisioned in this local run. The configured CI test checks these prerequisites; privilege absence now fails the enabled Windows gate instead of returning a skip. |
+| Managed Supervisor live E2E | FAIL / WINDOWS + UBUNTU CI | Actions run `43370791922` on head `4bf9a73b3bb23e276f7c5169175b02204438deae` downloaded and checksum-verified both pinned artifacts, passed the architecture guard, full `go test ./...`, and Ubuntu Docker/Collector profile gates. The Agent-managed Supervisor fallback test then timed out after 30 seconds waiting for Collector health on both operating systems; Ubuntu application profile E2E also completed successfully. Vet/build were skipped after the test-step failure. Supervisor logs show startup and fallback selection on Windows, but the Collector's retained `agent.log` was not yet available. A diagnostic change now preserves sanitized Collector warning/error lines under the CI evidence directory on failing runs. Local Windows protected-runtime execution remains blocked by the non-elevated token. |
 | Native Linux / Docker | BLOCKED / LOCAL ENVIRONMENT | `wsl.exe --list --quiet` returned `Wsl/E_ACCESSDENIED`; Docker Desktop reports access denied opening its Linux Engine named pipe. Native Linux service, process-group, Docker Engine, and managed-runtime E2E remain unverified. |
 | Full vertical-slice coverage | NOT IMPLEMENTED / GATE OPEN | The current Agent-managed live test is a local hostmetrics fallback-to-OTLP smoke test. It does not perform real Agent enrollment with Mock Core, authenticated WSS Supervisor policy delivery, credential replacement/revocation, durable revision/hash recovery, profile parity under managed ownership, or service install/migration/upgrade/uninstall. Earlier independent PR-07a/07b spike evidence does not cover these Agent-managed paths. |
 | Workflow/report hygiene | PASS | `.github/workflows/ci.yml` YAML and the changed Go test file were checked; `git diff --check` passed. |
-| Draft PR and final-head CI | IN PROGRESS / CI FAILURE | Push of `5c85db70a1fce68f9ab9ad3b17c7e9fba34de7bb` succeeded; connected GitHub read confirms PR #30 remains open/draft against `chore/v0.1.4a-next`. CI run `43369909210` verified both Collector and Supervisor downloads, then failed the architecture guard on `internal/mockcore/server.go` (574 lines) and `internal/agentlifecycle/runtime.go` (456 lines). Later tests, vet, build, Docker, and managed-E2E steps were skipped. The same-package splits now pass the local architecture guard and regression tests; final-head rerun is pending. GitHub connector write attempts for PR body/comment returned HTTP 403, so only the pushed branch and local docs could be updated. No merge was attempted. |
+| Draft PR and final-head CI | IN PROGRESS / CI FAILURE | Push of `4bf9a73b3bb23e276f7c5169175b02204438deae` succeeded; connected GitHub read confirms PR #30 remains open/draft against `chore/v0.1.4a-next`. CI run `43370791922` passed artifact verification, architecture guard, full tests, and Ubuntu Docker/Collector profile gates, but the Agent-managed Supervisor fallback E2E failed on both OS runners at Collector readiness. The latest smoke-test change retains warning/error diagnostics from the Supervisor-managed Collector for the next run. GitHub connector write attempts for PR body/comment returned HTTP 403, so only the pushed branch and local docs could be updated. No merge was attempted. |
 
 The CI gates added in this checkpoint verify the pinned Supervisor executable
 digest on each runner, run the real Agent-managed hostmetrics fallback through
