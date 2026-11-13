@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -75,6 +76,9 @@ func TestManagedSupervisorEnrollmentAndRemoteGatewayE2E(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, "rotated-sink"), 0700); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.MkdirAll(filepath.Join(root, "restarted-sink"), 0700); err != nil {
+		t.Fatal(err)
+	}
 	cert, certPEM := newManagedRuntimeTestCertificate(t)
 	serverCAFile := filepath.Join(root, "opamp-server-ca.pem")
 	if err := os.WriteFile(serverCAFile, certPEM, 0600); err != nil {
@@ -83,9 +87,11 @@ func TestManagedSupervisorEnrollmentAndRemoteGatewayE2E(t *testing.T) {
 	initialSink, initialSinkURL := startSupervisorRuntimeSink(t, ctx, collectorPath, filepath.Join(root, "initial-sink"))
 	updatedSink, updatedSinkURL := startSupervisorRuntimeSink(t, ctx, collectorPath, filepath.Join(root, "updated-sink"))
 	rotatedSink, rotatedSinkURL := startSupervisorRuntimeSink(t, ctx, collectorPath, filepath.Join(root, "rotated-sink"))
+	restartedSink, restartedSinkURL := startSupervisorRuntimeSink(t, ctx, collectorPath, filepath.Join(root, "restarted-sink"))
 	initialEndpoint := strings.TrimPrefix(initialSinkURL, "http://")
 	updatedEndpoint := strings.TrimPrefix(updatedSinkURL, "http://")
 	rotatedEndpoint := strings.TrimPrefix(rotatedSinkURL, "http://")
+	restartedEndpoint := strings.TrimPrefix(restartedSinkURL, "http://")
 
 	const (
 		agentToken            = "pr07c-e2e-agent-token-never-use-in-production"
@@ -99,16 +105,20 @@ func TestManagedSupervisorEnrollmentAndRemoteGatewayE2E(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	core, err := mockcore.New(mockcore.ProvisionedInstallation{
+	coreStatePath := filepath.Join(root, "mock-core-state.json")
+	seed := mockcore.ProvisionedInstallation{
 		AccessToken: agentToken, InstallationID: installationID.String(),
 		NodeID: nodeID, Policy: coreapi.DesiredGatewayPolicy{
 			SchemaVersion: "ar-imms/gateway-policy/v1", Revision: 1, GatewayEndpoint: initialEndpoint,
 		},
-	})
+	}
+	core, err := mockcore.NewPersistent(seed, coreStatePath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	coreHandler := managedRuntimeEnrollmentHandler(t, core, agentToken, replacementAgentToken, bootstrapToken, replacementBootstrap, nodeID)
+	corePointer := &atomic.Pointer[mockcore.Server]{}
+	corePointer.Store(core)
+	coreHandler := managedRuntimeEnrollmentHandler(t, corePointer, agentToken, replacementAgentToken, bootstrapToken, replacementBootstrap, nodeID)
 	coreHTTP := httptest.NewUnstartedServer(coreHandler)
 	coreHTTP.TLS = &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
 	coreHTTP.StartTLS()
@@ -128,21 +138,34 @@ func TestManagedSupervisorEnrollmentAndRemoteGatewayE2E(t *testing.T) {
 	coreClient := func(token string) (coreapi.AgentManagementAPI, error) {
 		return coreapi.NewAgentManagementClient(coreHTTP.URL, token, coreHTTP.Client())
 	}
-	opamp, err := opampserver.New(opampserver.Options{
-		ListenEndpoint: "127.0.0.1:0", ListenPath: "/v1/opamp",
-		TLSConfig:  &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12},
-		CoreClient: coreClient,
-	})
+	startOpAMP := func() (*opampserver.Server, error) {
+		server, err := opampserver.New(opampserver.Options{
+			ListenEndpoint: "127.0.0.1:0", ListenPath: "/v1/opamp",
+			TLSConfig:  &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12},
+			CoreClient: coreClient,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if err := server.Start(); err != nil {
+			return nil, err
+		}
+		return server, nil
+	}
+	stopOpAMP := func(server *opampserver.Server) error {
+		if server == nil {
+			return nil
+		}
+		stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer stopCancel()
+		return server.Stop(stopCtx)
+	}
+	opamp, err := startOpAMP()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := opamp.Start(); err != nil {
-		t.Fatal(err)
-	}
 	defer func() {
-		stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer stopCancel()
-		if err := opamp.Stop(stopCtx); err != nil {
+		if err := stopOpAMP(opamp); err != nil {
 			t.Errorf("stop OpAMP server: %v", err)
 		}
 	}()
@@ -320,17 +343,103 @@ service:
 	case <-time.After(20 * time.Second):
 		t.Fatal("Agent-managed Supervisor process tree did not stop")
 	}
-	if initialSink.String() == "" || updatedSink.String() == "" || rotatedSink.String() == "" {
-		t.Fatal("initial, updated, and post-rotation Gateway sinks must receive OTLP")
+	var revisionThreeHash string
+	for _, status := range core.Statuses() {
+		if status.Report.Status == "APPLIED" && status.Report.AppliedRevision == 3 {
+			revisionThreeHash = status.Report.ConfigHash
+		}
+	}
+	if revisionThreeHash == "" {
+		t.Fatal("Mock Core did not retain the applied revision-3 configuration hash")
+	}
+	resolvePublishedHash := func() (coreapi.ConfigurationPublication, error) {
+		client, err := coreClient(replacementAgentToken)
+		if err != nil {
+			return coreapi.ConfigurationPublication{}, err
+		}
+		return client.ResolvePublication(ctx, installationID.String(), revisionThreeHash)
+	}
+	publication, err := resolvePublishedHash()
+	if err != nil || publication.PolicyRevision != 3 || publication.ConfigHash != revisionThreeHash {
+		t.Fatalf("resolve revision-3 publication before restart: publication=%+v err=%v", publication, err)
+	}
+	if err := stopOpAMP(opamp); err != nil {
+		t.Fatalf("stop OpAMP before Mock Core restart: %v", err)
+	}
+	restartedCore, err := mockcore.NewPersistent(seed, coreStatePath)
+	if err != nil {
+		t.Fatalf("reload Mock Core durable state: %v", err)
+	}
+	corePointer.Store(restartedCore)
+	core = restartedCore
+	publication, err = resolvePublishedHash()
+	if err != nil || publication.PolicyRevision != 3 || publication.ConfigHash != revisionThreeHash {
+		t.Fatalf("resolve revision-3 publication after Mock Core restart: publication=%+v err=%v", publication, err)
+	}
+	if oldClient, err := coreapi.NewAgentManagementClient(coreHTTP.URL, agentToken, coreHTTP.Client()); err != nil {
+		t.Fatal(err)
+	} else if _, err := oldClient.GetSession(ctx); err == nil {
+		t.Fatal("restarted Mock Core accepted the revoked bearer")
+	} else {
+		var apiErr *coreapi.ControlAPIError
+		if !errors.As(err, &apiErr) || apiErr.Status != http.StatusUnauthorized {
+			t.Fatalf("restarted Mock Core old bearer response = %v, want HTTP 401", err)
+		}
+	}
+	if err := restartedCore.SetPolicy(installationID.String(), coreapi.DesiredGatewayPolicy{
+		SchemaVersion: "ar-imms/gateway-policy/v1", Revision: 4, GatewayEndpoint: restartedEndpoint,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	opamp, err = startOpAMP()
+	if err != nil {
+		t.Fatalf("restart OpAMP server: %v", err)
+	}
+	managed.OpAMPServerURL = "wss://" + opamp.Addr().String() + "/v1/opamp"
+	if _, err := agentstate.NewStore(statePath).Update(func(state *agentstate.State) error {
+		state.Supervisor = managed
+		return nil
+	}); err != nil {
+		t.Fatalf("update OpAMP endpoint after server restart: %v", err)
+	}
+	runContext, stopRuntime = context.WithCancel(ctx)
+	runtimeDone = make(chan error, 1)
+	runtimeStopped = false
+	go func() {
+		runtimeDone <- RunCollectorRuntimeWithReconciliation(runContext, statePath, noOpTeardown, nil, nil, nil)
+	}()
+	waitForSupervisorRuntimeReadiness(t, ctx, runtimeDone, healthEndpoint)
+	waitForSupervisorCorePolicy(t, ctx, runtimeDone, core, 4)
+	waitForSupervisorSinkTelemetry(t, ctx, runtimeDone, restartedSink)
+	stopRuntime()
+	select {
+	case err := <-runtimeDone:
+		runtimeStopped = true
+		if err != nil {
+			t.Fatalf("Agent-managed runtime shutdown after OpAMP restart: %v", err)
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("Agent-managed runtime process tree did not stop after OpAMP restart")
+	}
+	if err := stopOpAMP(opamp); err != nil {
+		t.Fatalf("stop restarted OpAMP server: %v", err)
+	}
+	if initialSink.String() == "" || updatedSink.String() == "" || rotatedSink.String() == "" || restartedSink.String() == "" {
+		t.Fatal("initial, updated, post-rotation, and post-restart Gateway sinks must receive OTLP")
 	}
 	writeManagedControlE2EEvidence(t, result.InstallationID, result.Binding.NodeID)
-	t.Logf("verified enrollment identity=%s Node=%s; policy revisions=1,2,3; replacement credential revoked the prior bearer and reconnected through authenticated WSS; initial and updated OTLP delivery", result.InstallationID, result.Binding.NodeID)
+	t.Logf("verified enrollment identity=%s Node=%s; policy revisions=1,2,3,4; replacement credential revoked the prior bearer; durable revision-3 publication resolved after Mock Core restart; restarted OpAMP and Agent runtime applied revision 4 with OTLP delivery", result.InstallationID, result.Binding.NodeID)
 }
 
-func managedRuntimeEnrollmentHandler(t *testing.T, core *mockcore.Server, accessToken, replacementToken, bootstrapToken, replacementBootstrap, nodeID string) http.Handler {
+func managedRuntimeEnrollmentHandler(t *testing.T, corePointer *atomic.Pointer[mockcore.Server], accessToken, replacementToken, bootstrapToken, replacementBootstrap, nodeID string) http.Handler {
 	t.Helper()
 	enrollmentCount := 0
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		core := corePointer.Load()
+		if core == nil {
+			http.Error(writer, "Mock Core is unavailable", http.StatusServiceUnavailable)
+			return
+		}
 		if request.URL.Path != "/api/v1/agent-enrollments" || request.Method != http.MethodPost {
 			core.ServeHTTP(writer, request)
 			return
@@ -427,7 +536,7 @@ func writeManagedControlE2EEvidence(t *testing.T, installationID, nodeID string)
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		t.Fatalf("create managed control-plane evidence directory: %v", err)
 	}
-	contents := fmt.Sprintf("result=PASS\nos=%s\narchitecture=%s\ncommit=%s\nenrollment=actual-agent-service\ncredential=protected-store-and-secret-free-sqlite\ncredential_replacement=previous_revoked_new_wss_session_verified\ntransport=authenticated-wss\npolicy_revisions=1,2,3\ninitial_gateway_otlp=verified\nupdated_gateway_otlp=verified\npost_rotation_gateway_otlp=verified\ninstallation_identity=%s\nnode_identity=%s\n", runtime.GOOS, runtime.GOARCH, os.Getenv("GITHUB_SHA"), installationID, nodeID)
+	contents := fmt.Sprintf("result=PASS\nos=%s\narchitecture=%s\ncommit=%s\nenrollment=actual-agent-service\ncredential=protected-store-and-secret-free-sqlite\ncredential_replacement=previous_revoked_new_wss_session_verified\ntransport=authenticated-wss\npolicy_revisions=1,2,3,4\nmock_core_restart=verified\nrevision3_publication_resolved_after_restart=verified\nopamp_server_restart=verified\nagent_runtime_restart=verified\ninitial_gateway_otlp=verified\nupdated_gateway_otlp=verified\npost_rotation_gateway_otlp=verified\npost_restart_gateway_otlp=verified\ninstallation_identity=%s\nnode_identity=%s\n", runtime.GOOS, runtime.GOARCH, os.Getenv("GITHUB_SHA"), installationID, nodeID)
 	if err := os.WriteFile(filepath.Join(directory, "managed-enrollment-opamp-e2e.txt"), []byte(contents), 0600); err != nil {
 		t.Fatalf("write sanitized managed control-plane evidence: %v", err)
 	}
