@@ -1,30 +1,20 @@
 # PR-07 verification report — OpAMP Supervisor and control plane
 
-**Status:** IN_PROGRESS — PR-07c connects pinned Supervisor installation,
+**Status:** IN_PROGRESS — PR-07c adds pinned Supervisor installation,
 protected credential/config/state provisioning, opt-in single-owner runtime
-selection, credential-reference restart handling, and Windows Job Object/Linux
-process-group containment. Final-head CI run
-[`43400294752`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43400294752)
-passed Windows and Ubuntu at `d6729066668e7f49797ee39c78b55623e5c284be`.
-Both platforms executed full tests, Agent-managed enrollment, authenticated
-WSS, remote Gateway revisions 1 and 2 with delivery to both isolated sinks,
-`go vet`, and `go build`. Ubuntu additionally passed isolated native Docker
-Redis/Collector E2E and the explicitly enabled Supervisor profile fallback,
-reconnect, and OTLP parity subcase for Redis, PostgreSQL, Prometheus, and mock
-cooling; profile and managed-runtime evidence artifacts were uploaded. Corrected
-final-head run `43405983503` passed the expanded managed E2E on native Windows
-and Ubuntu: enrollment, authenticated WSS, credential replacement and old-token
-rejection, reconnect, policy revisions 1–3, and OTLP at three distinct Gateway
-sinks. Ubuntu also passed Agent-managed Docker profile parity for Redis,
-PostgreSQL, Python Prometheus, and mock cooling, including container churn and
-duplicate-sample checks. Durable Mock Core hash/revision resolution across Core
-restart, a fresh OpAMP/Agent runtime, and revision-5 prior-hash rollback passed
-on both native platforms. Agent-managed offline fallback followed by authenticated
-OpAMP reconnect also passed. Remaining gates: local config update/no-op; managed
-Supervisor/Collector crash and Agent/service recovery; LKG equivalence; Windows
-managed-profile E2E; and native Windows/Linux service install, migration,
-upgrade, and uninstall. Keep Supervisor opt-in and PR #30 draft until all
-mandatory adoption gates pass.
+selection, and Windows Job Object/Linux process-group containment. The latest
+exact-head CI run [`43428314136`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43428314136)
+passed for PR head `eb188d396969b564f3576e84a1c5f500cfba41e5` on native Windows
+and Ubuntu. Both platforms executed full Go tests, managed enrollment,
+authenticated WSS, credential revocation/replacement, offline fallback and
+reconnect, local configuration update/no-op, LKG equivalence, Collector and
+Supervisor crash recovery, Agent runtime restart, durable publication
+attribution, rollback, `go vet`, and `go build`. Ubuntu additionally passed
+isolated Docker recovery and Redis, PostgreSQL, Python/Prometheus, and mock
+cooling OTLP parity, including churn and duplicate-sample checks. Hosted Windows
+Docker steps were explicitly skipped. Native Windows/Linux service
+install/migration/upgrade/uninstall and Windows managed Docker-profile parity
+remain open; keep Supervisor opt-in and PR #30 draft.
 **Release target:** `v0.1.4a-next`
 **Branch:** `feat/pr-07-opamp`
 **Implementation baseline:** PR-06 merge
@@ -33,6 +23,11 @@ mandatory adoption gates pass.
 `261d332` corrects post-rotation delivery to a distinct third Gateway;
 `1e7c23d` moves the profile parity subcase under Agent-managed Supervisor
 ownership. Final-head CI run `43405983503` passed both platform jobs.
+
+**Status chronology:** Sections below retain prior verification snapshots.
+Their earlier open-gate lists are historical; the final managed-runtime control
+E2E section at the end of this report is the current status for the verified
+`eb188d3` code head. Adoption gates still open are repeated there explicitly.
 
 ## Target change reviewed
 
@@ -414,3 +409,50 @@ gates open and the checkpoint draft while any are unresolved.
   until these gates pass.
 - This report/tracker update is documentation-only; the updated PR head still
   needs its own CI run before it can be called the final-head verification.
+
+## Final managed-runtime control E2E — 2026-11-13
+
+- Exact PR head `eb188d396969b564f3576e84a1c5f500cfba41e5` passed Windows and
+  Ubuntu CI run [`43428314136`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43428314136).
+  Both runners executed the managed enrollment/control E2E and the standalone
+  managed fallback/OTLP test. The E2E evidence reports actual Agent enrollment,
+  protected credential provisioning, authenticated WSS, replacement and
+  revocation of the old credential, offline startup/reconnect, remote Gateway
+  changes, server restart, durable revision/hash lookup, revision-5 rollback,
+  and OTLP delivery to the initial, changed, post-rotation, post-restart, and
+  rollback sinks.
+- The expanded scenario also verified a changed local configuration activated
+  under the managed Supervisor, unchanged configuration as a no-op without a
+  generation change or Collector restart, and Agent LKG equivalence across
+  active/LKG bytes, persisted state, and the activation journal. Collector
+  crash recovery produced one replacement and resumed OTLP; Supervisor crash
+  cleanup removed both processes and stopped delivery; restarting the Agent
+  runtime restored readiness and delivery.
+- Sanitized artifacts from run `43428314136` are retained locally under
+  `tmp/pr07c-ci-43428314136/` and in GitHub Actions until 2027-02-11:
+  Windows managed runtime `14036969942`
+  (`sha256:a988c5a3778bd96cfa9ec7bda605a0d7dc2db5e3d3377279eeb3b4b315ca1b6b`),
+  Linux managed runtime `14037579211`
+  (`sha256:b2a2ff6e4e2d4df644cb28c06aaa49d001b7d0a2d366f54ecec06645c58f10a8`),
+  and Ubuntu profile parity `14037864151`
+  (`sha256:e8e2c11c14042573784b75e09d4724a78beddb642351840d433df1b20ab17e93`).
+  Profile evidence reports Redis, PostgreSQL, Prometheus, and mock-cooling
+  profile delivery after container churn; its sink checks duplicate samples.
+- Fresh local checks passed: `go test ./internal/agentlifecycle -count=1`,
+  `go vet ./...`, `go build ./...`, and `./scripts/check-architecture.ps1`.
+  The local opt-in managed E2E could not run in this non-elevated Windows
+  process; the native Windows and Ubuntu CI step did run it. The hosted Windows
+  job has no Docker, so Windows Docker-profile parity is not established by
+  this run.
+- The two preceding exact-head failures were test-fixture mismatches, not
+  runtime failures: run `43426891688` found the fixture lacked a required
+  `processors.batch`; run `43427694422` then found the Agent-generated metrics
+  pipeline referenced the missing OTLP receiver. The fixture now includes both
+  requirements and run `43428314136` passed.
+- Mandatory adoption gates still open: native Windows and Linux service
+  installation, migration, upgrade, and uninstall; Windows Agent-managed
+  Docker-profile parity; and direct native service restart verification.
+  Existing Agent/service installations remain on the legacy owner, Supervisor
+  remains opt-in, and PR #30 remains draft. No default-owner transfer or merge
+  is authorized until those gates pass. Production NestJS Core interoperability
+  remains a separately tracked gate.
