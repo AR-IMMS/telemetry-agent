@@ -1,17 +1,18 @@
 # OpAMP and Supervisor integration — v0.1.4a-next
 
 **Status:** PR-07a Windows and Ubuntu WSL capability tests and PR-07b
-Mock-Core-backed protocol/auth tests pass. PR-07c managed-runtime E2E and
-native Linux service lifecycle E2E pass. Run [43456929985](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43456929985)
-exposed a Windows native uninstall race: SCM reported `STOPPED` before the
-service process released its executable. Commit `2f2f42b` waits on the captured
-service process handle before deleting Agent-owned files; exact-head Windows
-verification is pending. PR-07c also wires a reversible
+Mock-Core-backed protocol/auth tests pass. Exact-head Windows/Ubuntu CI run
+[43461962938](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43461962938)
+passed the managed-runtime and native service lifecycle E2Es, including the
+Windows uninstall process-exit regression. The earlier run [43456929985](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43456929985)
+exposed the race where SCM reported `STOPPED` before the service process
+released its executable; commits `2f2f42b` and `a878b33` wait for process exit
+and keep the helper within the architecture guard. PR-07c also wires a reversible
 `--opamp-server-url` installation opt-in, pinned Supervisor provisioning,
 protected token/config/state paths, credential-reference change detection,
 single-owner runtime selection, and contained Agent-owned Supervisor process
-cleanup. Windows Agent-managed Docker-profile parity, final native-service
-rerun, and production Core interoperability remain open.
+cleanup. Windows Agent-managed Docker-profile parity and production Core
+interoperability remain open. Hosted Windows CI skips Docker tests.
 
 ## Target topology
 

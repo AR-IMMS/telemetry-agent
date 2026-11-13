@@ -722,3 +722,40 @@ gates open and the checkpoint draft while any are unresolved.
   IN_PROGRESS; PR #30 stays draft; Supervisor remains opt-in and existing
   installations remain legacy-owned. Do not start PR-08 until mandatory PR-07
   gates pass.
+
+## Exact-head Windows/Linux verification after uninstall fix — 2026-11-13
+
+- Exact code head `a878b332f75819a3e200f59d7ab14a818a675c29`, CI run
+  [43461962938](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43461962938),
+  passed both Windows and Ubuntu. Both jobs executed the architecture guard,
+  full Go test suite, managed Supervisor E2E, native service lifecycle E2E,
+  `go vet ./...`, and `go build ./...`.
+- Native Windows service lifecycle passed install, migration, service restart,
+  rollback to legacy ownership, another restart, uninstall, and resource/process
+  cleanup with the service-process wait in place. The managed-runtime Windows
+  E2E also passed. Windows Docker recovery and Docker application-profile steps
+  were skipped by the hosted runner and do not verify Windows profile parity.
+- Native Ubuntu passed the same suite and service lifecycle. It also ran
+  isolated Docker recovery plus Agent-managed Redis, PostgreSQL,
+  Python/Prometheus, and mock-cooling profile E2Es and actual OTLP checks.
+- Exact-run sanitized evidence artifacts and SHA-256: managed Windows
+  `14056642808` (`82bffb206a72b1c2029493209076a8414befe6525cfe595af418eafd9a8d85ce`),
+  managed Ubuntu `14057421603`
+  (`21c3753fcbfab37099523c121a305b6121d221af3f0553349ecb117205ea2347`),
+  native Windows service `14056233286`
+  (`7d2124c8aa58f10ce1220329c2b6acae6e2b28ee081c27927ff7e0f9292a785a`),
+  native Ubuntu service `14057405859`
+  (`6d01999526784bdf74bec18aa3c7478b7226c2a7bf1a53745ed290cdbd69781f`),
+  and Ubuntu profile parity `14055808953`
+  (`ab4d0c50f120855876b8ad3fdd4240f311919c7bd72385e995a709ebb9a61402`).
+- The first rerun, `ddf1d64`, stopped before tests because the process-wait helper
+  made the SCM file 456 lines, exceeding the 450-line architecture guard.
+  Commit `a878b33` moved those helpers to a focused Windows build-tagged file.
+  The guard then passed for 313 production files and 36 source packages; local
+  focused tests, vet, and build passed.
+- PR-07 remains IN_PROGRESS solely for Windows Agent-managed Docker-profile
+  parity. Hosted Windows has no Docker; the local process cannot provision the
+  protected Supervisor credential without elevation. Keep Supervisor opt-in,
+  existing installations legacy-owned, PR #30 draft, and PR-08 blocked until
+  this mandatory gate passes. Production NestJS Core interoperability remains
+  a separate track.
