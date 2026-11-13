@@ -4,8 +4,12 @@
 `d01e16c3b3c238e135185292eeca2b90152a8a8d` passed Windows/Ubuntu CI run
 [`43514647904`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43514647904)
 and genuine elevated Windows Docker/profile parity. Documentation checkpoint
-`721753f9eaf96f9446bf237a840a49677288f5b2` then passed both CI jobs in run
+`721753f9eaf96f9446bf237a840a49677288f5b2` passed both jobs in run
 [`43517107187`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43517107187).
+Final documentation checkpoint `cd5e7aeddfc96c88a771d71dc68736d1c4da305e`
+also passed both jobs in run
+[`43518358652`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43518358652);
+its sanitized CI artifacts are listed at the end of this report.
 PR #30 remains open pending review and merge. New installations default to
 managed Supervisor; existing installations retain their stored owner until
 explicit migration, with the legacy runtime available for explicit rollback.
@@ -1049,3 +1053,24 @@ parity was blocked and that new installations still used legacy ownership.
   interoperability remains separate from this Mock Core checkpoint. Next:
   review and merge PR #30 into `chore/v0.1.4a-next`, verify the merge, then
   start PR-08.
+
+## Final documentation-head CI artifacts — 2026-11-14
+
+Documentation checkpoint `cd5e7aeddfc96c88a771d71dc68736d1c4da305e` passed
+Windows and Ubuntu in run
+[43518358652](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43518358652).
+Windows completed full tests, native service lifecycle, managed Supervisor
+E2E, vet, and build. Ubuntu additionally completed isolated Docker recovery,
+live Docker/Collector/OTLP profiles, application-profile delivery, and Docker
+teardown. Sanitized evidence artifacts retained by Actions:
+
+- Ubuntu managed Supervisor `14082880439`, SHA-256
+  `f340af5455e5500ef6e59c5fbf6778e7b5c61dd2295bfb598b6f9fe4df4dad5f`.
+- Windows managed Supervisor `14081283022`, SHA-256
+  `9828bc76d642addf1d00146cf155493ee23251f9ff419411308a274569e67dc0`.
+- Ubuntu native service `14081801706`, SHA-256
+  `cdf5b481d6ae4fb34ce8e5f664f6c223119d8dec2b14406e46cf32d30da8921e`.
+- Windows native service `14082780153`, SHA-256
+  `d39e142ea24df8d972d91cfd3cae53e3598b6008b244e3a4339ab3c4f15e75f3`.
+- Ubuntu profile parity and Docker recovery `14081064377`, SHA-256
+  `1f34967a7b7b40bbf8419f27733c038556fa028211c6b784daaf2cd1d29a1f74`.

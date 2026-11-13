@@ -3,7 +3,9 @@
 **Current result:** PASS. Implementation head
 `d01e16c3b3c238e135185292eeca2b90152a8a8d` passed the Windows Docker/profile
 E2E; documentation checkpoint `721753f9eaf96f9446bf237a840a49677288f5b2`
-passed Windows/Ubuntu CI run [43517107187](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43517107187).
+passed Windows/Ubuntu CI run [43517107187](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43517107187),
+and docs checkpoint `cd5e7aeddfc96c88a771d71dc68736d1c4da305e` passed run
+[43518358652](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43518358652).
 Earlier runs below remain as historical evidence.
 
 ## Reproduction record
