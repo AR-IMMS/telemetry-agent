@@ -66,7 +66,7 @@ func TestPublishedHashStatusResolvesAfterAdapterRestartAndRollback(t *testing.T)
 	}
 	message := &protobufs.AgentToServer{InstanceUid: uidBytes, Capabilities: uint64(protobufs.AgentCapabilities_AgentCapabilities_AcceptsRemoteConfig)}
 	first := &Server{options: Options{Logger: slog.Default()}, sent: make(map[string]map[string]int64)}
-	response := first.handleMessage(context.Background(), client, message)
+	response := first.handleMessage(context.Background(), client, message, &sessionConfigCache{})
 	if response.GetRemoteConfig() == nil {
 		t.Fatal("initial desired config was not offered")
 	}
@@ -81,7 +81,7 @@ func TestPublishedHashStatusResolvesAfterAdapterRestartAndRollback(t *testing.T)
 		Status:               protobufs.RemoteConfigStatuses_RemoteConfigStatuses_APPLIED,
 		LastRemoteConfigHash: oldHash,
 	}
-	response = restarted.handleMessage(context.Background(), client, message)
+	response = restarted.handleMessage(context.Background(), client, message, &sessionConfigCache{})
 	if response.GetRemoteConfig() == nil {
 		t.Fatal("new desired config was not offered after the policy revision advanced")
 	}
@@ -92,6 +92,64 @@ func TestPublishedHashStatusResolvesAfterAdapterRestartAndRollback(t *testing.T)
 	report := observations[0].Report
 	if report.DesiredRevision != 2 || report.PublicationRevision != 1 || report.AppliedRevision != 1 || report.Status != "APPLIED" {
 		t.Fatalf("rollback status was misattributed: %+v", report)
+	}
+}
+
+func TestReconnectWithoutRemoteConfigStatusReoffersDesiredConfig(t *testing.T) {
+	const token = "reconnect-config-replay-test-token"
+	const instanceUID = "44444444-5555-4666-8777-888888888888"
+	core, err := mockcore.New(mockcore.ProvisionedInstallation{
+		AccessToken: token, InstallationID: "11111111-2222-4333-8444-555555555555",
+		NodeID: "33333333-4444-4555-8666-777777777777", InstanceUID: instanceUID,
+		Policy: coreapi.DesiredGatewayPolicy{SchemaVersion: "ar-imms/gateway-policy/v1", Revision: 1, GatewayEndpoint: "127.0.0.1:4317"},
+	})
+	if err != nil {
+		t.Fatalf("create Mock Core: %v", err)
+	}
+	coreHTTP := httptest.NewTLSServer(core)
+	defer coreHTTP.Close()
+	client, err := coreapi.NewAgentManagementClient(coreHTTP.URL, token, coreHTTP.Client())
+	if err != nil {
+		t.Fatalf("create Core client: %v", err)
+	}
+	uid, err := uuid.Parse(instanceUID)
+	if err != nil {
+		t.Fatalf("parse instance UID: %v", err)
+	}
+	uidBytes, err := uid.MarshalBinary()
+	if err != nil {
+		t.Fatalf("encode instance UID: %v", err)
+	}
+	message := &protobufs.AgentToServer{InstanceUid: uidBytes, Capabilities: uint64(protobufs.AgentCapabilities_AgentCapabilities_AcceptsRemoteConfig)}
+	adapter := &Server{options: Options{Logger: slog.Default()}, sent: make(map[string]map[string]int64)}
+	firstSession := &sessionConfigCache{}
+	first := adapter.handleMessage(context.Background(), client, message, firstSession)
+	if first.GetRemoteConfig() == nil {
+		t.Fatal("initial desired config was not offered")
+	}
+	if repeated := adapter.handleMessage(context.Background(), client, message, firstSession); repeated.GetRemoteConfig() != nil {
+		t.Fatal("config was redundantly offered again in the same session before status changed")
+	}
+
+	// A reconnecting Supervisor with no reported config hash must receive the
+	// current desired config even though this OpAMP server already sent it on a
+	// previous connection and has remained running.
+	reconnected := adapter.handleMessage(context.Background(), client, message, &sessionConfigCache{})
+	if reconnected.GetRemoteConfig() == nil {
+		t.Fatal("desired config was suppressed for a Supervisor reconnect without config status")
+	}
+
+	message.RemoteConfigStatus = &protobufs.RemoteConfigStatus{
+		Status:               protobufs.RemoteConfigStatuses_RemoteConfigStatuses_APPLIED,
+		LastRemoteConfigHash: append([]byte(nil), first.GetRemoteConfig().GetConfigHash()...),
+	}
+	if applied := adapter.handleMessage(context.Background(), client, message, &sessionConfigCache{}); applied.GetRemoteConfig() != nil {
+		t.Fatal("already-applied desired config was resent after reconnect")
+	}
+
+	message.RemoteConfigStatus.Status = protobufs.RemoteConfigStatuses_RemoteConfigStatuses_FAILED
+	if failed := adapter.handleMessage(context.Background(), client, message, firstSession); failed.GetRemoteConfig() == nil {
+		t.Fatal("failed desired config was not retried in the active session")
 	}
 }
 

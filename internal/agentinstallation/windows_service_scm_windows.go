@@ -122,6 +122,7 @@ func configureWindowsServiceRecovery(service *mgr.Service) error {
 	return nil
 }
 
+// Stop requests service shutdown through SCM and waits until it reports Stopped.
 func (windowsSCMServiceManager) Stop(
 	ctx context.Context,
 	serviceName string,

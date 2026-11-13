@@ -85,7 +85,7 @@ func TestHandleMessageDoesNotOfferConfigWithoutAcceptRemoteConfigCapability(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	response := server.handleMessage(context.Background(), api, &protobufs.AgentToServer{InstanceUid: uidBytes})
+	response := server.handleMessage(context.Background(), api, &protobufs.AgentToServer{InstanceUid: uidBytes}, nil)
 	if response == nil || response.RemoteConfig != nil || api.sessionCalls != 0 {
 		t.Fatalf("response=%+v, Core session calls=%d", response, api.sessionCalls)
 	}

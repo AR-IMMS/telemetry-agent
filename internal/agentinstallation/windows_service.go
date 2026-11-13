@@ -53,6 +53,7 @@ func (f windowsServiceManagerFunc) Restart(
 	return f.restart(ctx, serviceName)
 }
 
+// Stop invokes the configured Windows service stop function.
 func (f windowsServiceManagerFunc) Stop(
 	ctx context.Context,
 	serviceName string,
@@ -67,6 +68,7 @@ type windowsServiceInstaller struct {
 	manager windowsServiceManager
 }
 
+// Stop stops the Agent service through the configured Windows service manager.
 func (i windowsServiceInstaller) Stop(
 	ctx context.Context,
 	layout Layout,

@@ -1,6 +1,7 @@
 package opampserver
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/hex"
@@ -24,6 +25,7 @@ import (
 const (
 	maxTrackedInstances                = 64
 	maxConfigHashesPerTrackedInstance  = 32
+	maxActiveSupervisorSessions        = 64
 	defaultSessionRevalidationInterval = 30 * time.Second
 )
 
@@ -50,6 +52,26 @@ type Server struct {
 	lastUsed       map[string]uint64
 	sessionCancels map[opamptypes.Connection]context.CancelFunc
 	sequence       uint64
+}
+
+type sessionConfigCache struct {
+	mu     sync.Mutex
+	hashes map[string]string
+}
+
+func (c *sessionConfigCache) wasSent(uid, hash string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.hashes[uid] == hash
+}
+
+func (c *sessionConfigCache) markSent(uid, hash string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.hashes == nil {
+		c.hashes = make(map[string]string, 1)
+	}
+	c.hashes[uid] = hash
 }
 
 // New validates server dependencies and rejects non-loopback cleartext binds.
@@ -133,20 +155,45 @@ func (s *Server) onConnecting(request *http.Request) opamptypes.ConnectionRespon
 		s.options.Logger.Warn("OpAMP installation authentication failed", "error", err)
 		return rejectConnection(http.StatusServiceUnavailable)
 	}
+	sessionConfigs := &sessionConfigCache{}
 	return opamptypes.ConnectionResponse{Accept: true, ConnectionCallbacks: opamptypes.ConnectionCallbacks{
 		OnConnected: func(_ context.Context, connection opamptypes.Connection) {
 			s.startSessionMonitor(connection, client)
 		},
 		OnConnectionClose: s.stopSessionMonitor,
 		OnMessage: func(ctx context.Context, _ opamptypes.Connection, message *protobufs.AgentToServer) *protobufs.ServerToAgent {
-			return s.handleMessage(ctx, client, message)
+			return s.handleMessage(ctx, client, message, sessionConfigs)
 		},
 	}}
 }
 
 func (s *Server) startSessionMonitor(connection opamptypes.Connection, client coreapi.AgentManagementAPI) {
+	if connection == nil || client == nil {
+		return
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.mu.Lock()
+	if s.sessionCancels == nil {
+		s.sessionCancels = make(map[opamptypes.Connection]context.CancelFunc)
+	}
+	if _, exists := s.sessionCancels[connection]; exists {
+		s.mu.Unlock()
+		cancel()
+		return
+	}
+	if len(s.sessionCancels) >= maxActiveSupervisorSessions {
+		s.mu.Unlock()
+		cancel()
+		logger := s.options.Logger
+		if logger == nil {
+			logger = slog.Default()
+		}
+		logger.Warn("OpAMP session limit reached; rejecting session", "limit", maxActiveSupervisorSessions)
+		if err := connection.Disconnect(); err != nil {
+			logger.Warn("OpAMP session limit reached; disconnect failed", "error", err)
+		}
+		return
+	}
 	s.sessionCancels[connection] = cancel
 	s.mu.Unlock()
 	go s.monitorSession(ctx, connection, client, defaultSessionRevalidationInterval)
@@ -191,7 +238,7 @@ func (s *Server) monitorSession(ctx context.Context, connection opamptypes.Conne
 	}
 }
 
-func (s *Server) handleMessage(ctx context.Context, client coreapi.AgentManagementAPI, message *protobufs.AgentToServer) *protobufs.ServerToAgent {
+func (s *Server) handleMessage(ctx context.Context, client coreapi.AgentManagementAPI, message *protobufs.AgentToServer, sessionConfigs *sessionConfigCache) *protobufs.ServerToAgent {
 	if message == nil || len(message.GetInstanceUid()) != 16 {
 		return &protobufs.ServerToAgent{}
 	}
@@ -235,6 +282,10 @@ func (s *Server) handleMessage(ctx context.Context, client coreapi.AgentManageme
 		return &protobufs.ServerToAgent{InstanceUid: uidBytes}
 	}
 	hashText := hex.EncodeToString(hash[:])
+	statusConfirmsDesired := message.GetRemoteConfigStatus() != nil &&
+		bytes.Equal(message.GetRemoteConfigStatus().GetLastRemoteConfigHash(), hash[:]) &&
+		(message.GetRemoteConfigStatus().GetStatus() == protobufs.RemoteConfigStatuses_RemoteConfigStatuses_APPLYING ||
+			message.GetRemoteConfigStatus().GetStatus() == protobufs.RemoteConfigStatuses_RemoteConfigStatuses_APPLIED)
 	s.reportRemoteStatus(ctx, client, uid, message.GetRemoteConfigStatus(), session.DesiredPolicy.Revision)
 	publicationCtx, cancelPublication := context.WithTimeout(ctx, 5*time.Second)
 	publication, err := client.RecordPublication(publicationCtx, coreapi.PublicationRequest{
@@ -246,18 +297,27 @@ func (s *Server) handleMessage(ctx context.Context, client coreapi.AgentManageme
 		s.options.Logger.Warn("Core configuration publication could not be persisted", "error", err)
 		return &protobufs.ServerToAgent{InstanceUid: uidBytes}
 	}
-	wasSent := s.wasSent(uid, hashText)
 	// The OpAMP hash identifies config content, not the Core policy revision.
 	// Refresh this association before interpreting status so an unchanged
 	// endpoint at a newer revision is credited to the current desired policy.
 	s.markSent(uid, hashText, session.DesiredPolicy.Revision)
-	if wasSent {
+	if sessionConfigs == nil {
+		sessionConfigs = &sessionConfigCache{}
+	}
+	if statusConfirmsDesired {
+		sessionConfigs.markSent(uid, hashText)
+		return response
+	}
+	statusFailed := message.GetRemoteConfigStatus() != nil &&
+		message.GetRemoteConfigStatus().GetStatus() == protobufs.RemoteConfigStatuses_RemoteConfigStatuses_FAILED
+	if sessionConfigs.wasSent(uid, hashText) && !statusFailed {
 		return response
 	}
 	response.RemoteConfig = &protobufs.AgentRemoteConfig{
 		Config:     &protobufs.AgentConfigMap{ConfigMap: map[string]*protobufs.AgentConfigFile{"": {Body: body}}},
 		ConfigHash: hash[:],
 	}
+	sessionConfigs.markSent(uid, hashText)
 	return response
 }
 
@@ -293,16 +353,6 @@ func (s *Server) reportRemoteStatus(ctx context.Context, client coreapi.AgentMan
 	if err := client.ReportStatus(callCtx, report); err != nil {
 		s.options.Logger.Warn("OpAMP status report to Core failed", "error", err)
 	}
-}
-
-func (s *Server) wasSent(uid, hash string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	_, found := s.sent[uid][hash]
-	if found {
-		s.touchLocked(uid)
-	}
-	return found
 }
 
 func (s *Server) markSent(uid, hash string, revision int64) {

@@ -51,6 +51,44 @@ func TestEstablishedSessionDisconnectsAfterMockCoreRevokesCredential(t *testing.
 	}
 }
 
+func TestSessionMonitorAdmissionBoundsAuthenticatedSessionGoroutines(t *testing.T) {
+	server, err := New(Options{ListenEndpoint: "127.0.0.1:0", CoreClient: func(string) (coreapi.AgentManagementAPI, error) { return nil, nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &capabilityTestClient{}
+	connections := make([]*testOpAMPConnection, maxActiveSupervisorSessions+1)
+	t.Cleanup(func() {
+		for _, connection := range connections {
+			if connection != nil {
+				server.stopSessionMonitor(connection)
+			}
+		}
+	})
+	for index := 0; index < maxActiveSupervisorSessions; index++ {
+		connections[index] = newTestOpAMPConnection(t)
+		server.startSessionMonitor(connections[index], client)
+	}
+	if got := len(server.sessionCancels); got != maxActiveSupervisorSessions {
+		t.Fatalf("active session monitors = %d, want %d", got, maxActiveSupervisorSessions)
+	}
+
+	connections[maxActiveSupervisorSessions] = newTestOpAMPConnection(t)
+	server.startSessionMonitor(connections[maxActiveSupervisorSessions], client)
+	select {
+	case <-connections[maxActiveSupervisorSessions].disconnected:
+	case <-time.After(time.Second):
+		t.Fatal("session beyond the configured monitor limit was not disconnected")
+	}
+	if got := len(server.sessionCancels); got != maxActiveSupervisorSessions {
+		t.Fatalf("active session monitors after limit = %d, want %d", got, maxActiveSupervisorSessions)
+	}
+
+	for _, connection := range connections[:maxActiveSupervisorSessions] {
+		server.stopSessionMonitor(connection)
+	}
+}
+
 type testOpAMPConnection struct {
 	connection   net.Conn
 	disconnected chan struct{}
