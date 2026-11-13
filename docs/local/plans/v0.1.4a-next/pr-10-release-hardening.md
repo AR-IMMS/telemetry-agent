@@ -19,7 +19,7 @@ Use `docs/local/architecture/v0.1.4a-next/context-boundaries.md` and `source-str
 1. Freeze release candidate commit, generate SBOM/dependency inventory and pinned checksums for Agent, Collector, and managed exporters; document compatibility matrix and license notices.
 2. Produce native Linux amd64 package/service (`systemd`) and Windows amd64 service/installer (`SCM`), preserve upgrade state and secure credential storage. Validate environment-specific native tests, not just cross-compile.
 3. Build repeatable Linux/Windows Docker Compose Redis/Postgres/Python Alpine-oriented fixtures; fix image digests and exact Collector component manifest. Separate Agent host from Gateway/test sink.
-4. Run complete release matrix A1–A12: fresh install, enroll, reboot, service crash, dependency ownership, Docker lifecycle, profiles, OpAMP remote config, self-health, operations, security and upgrades.
+4. Run complete release matrix A1–A12 against the consolidated PR-09.5 source: fresh install, enroll, reboot, service crash, dependency ownership, Docker lifecycle, profiles, OpAMP remote config, self-health, operations, security and upgrades.
 5. Run no-op and bad-config recovery tests; kill Collector during activation; simulate Core/Gateway outages, partially failed Docker snapshots, concurrent updates and Agent restart.
 6. Perform clean uninstall and reinstall: remove only Agent-owned services/exporters; preserve or securely remove secrets according to documented flags; do not delete third-party dependencies.
 7. Create operator/developer docs, upgrade/rollback/troubleshooting runbooks; publish signed/checksummed artifacts and release verification report with exact PASS/FAIL/BLOCKED/UNSUPPORTED.
@@ -36,6 +36,7 @@ Use `docs/local/architecture/v0.1.4a-next/context-boundaries.md` and `source-str
 
 ## Acceptance / verification gates
 
+- PR-01 through PR-09.5 pass, including the mandatory source-ownership and context-consolidation acceptance criteria.
 - A1–A12 each have platform-specific actual evidence, commit, digest, logs/metrics, tester and result.
 - Fresh native Linux and Windows install/enroll/monitor/remote-update/recovery/operation E2E pass.
 - Package artifacts checksum verified; upgrade/reinstall/uninstall respect dependency ownership.

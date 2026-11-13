@@ -2,21 +2,27 @@
 
 **Status:** IN_PROGRESS — PR-07c adds pinned Supervisor installation,
 protected credential/config/state provisioning, opt-in single-owner runtime
-selection, and Windows Job Object/Linux process-group containment. Exact report
-head `8e1da1965c85b4642a59b9a36f85df6e9eec46f2` passed Windows/Ubuntu CI run
-[`43453791628`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43453791628).
-Both platforms executed full Go tests, managed enrollment/control E2E, native
-service migration/rollback/uninstall E2E, vet, and build. Ubuntu also passed
-Docker recovery and Agent-managed Redis, PostgreSQL, Python/Prometheus, and
-mock-cooling profiles. Managed control E2E covers credential rotation and
-revocation, offline reconnect, local configuration update/no-op, LKG
-equivalence, crash recovery, durable publication attribution, rollback, and
-OTLP delivery. Native service lifecycle passed on both OSes. Hosted Windows
-Docker steps remain skipped. Windows Agent-managed Docker-profile parity is the
-only remaining PR-07 adoption gate; the local token cannot satisfy the
-SYSTEM/Administrators-only credential ACL, and no self-hosted Actions runner is
-registered. Keep Supervisor opt-in, preserve legacy ownership, and keep PR #30
-draft until this gate passes.
+selection, and Windows Job Object/Linux process-group containment. Exact code
+head `a878b332f75819a3e200f59d7ab14a818a675c29` passed Windows/Ubuntu CI run
+[`43461962938`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43461962938).
+The documentation-updated PR head `11d524a37c291093ea861c8e196e0e8ee033b562`
+passed run [`43463371834`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43463371834).
+Local test-only commit `b348584e399545bf3aedc4e682fd37273cabfffc` fixes the
+profile E2E's consumed-result cleanup signal; it has passed Windows local
+package verification and awaits push/CI.
+Both platforms executed full Go tests, architecture checks, managed
+enrollment/control E2E, native service lifecycle E2E, vet, and build. Ubuntu
+also passed isolated Docker recovery and Agent-managed Redis, PostgreSQL,
+Python/Prometheus, and mock-cooling profiles. Managed control E2E covers
+credential rotation/revocation, offline reconnect, local configuration
+update/no-op, LKG equivalence, crash recovery, durable publication
+attribution, rollback, and OTLP delivery. Hosted Windows Docker/profile steps
+were skipped, so Windows Agent-managed Docker-profile parity remains the only
+mandatory PR-07 adoption gate. A local Windows test attempt reached Docker
+29.5.3 and prepared fixtures but failed writing the protected Supervisor
+configuration under a medium-integrity token; details are recorded at the end
+of this report. Do not weaken its DACL. Keep Supervisor opt-in, preserve legacy
+ownership, and keep PR #30 draft until native Windows profile parity passes.
 **Release target:** `v0.1.4a-next`
 **Branch:** `feat/pr-07-opamp`
 **Implementation baseline:** PR-06 merge
@@ -759,3 +765,79 @@ gates open and the checkpoint draft while any are unresolved.
   existing installations legacy-owned, PR #30 draft, and PR-08 blocked until
   this mandatory gate passes. Production NestJS Core interoperability remains
   a separate track.
+
+## Final report-head CI and local Windows profile-parity attempt — 2026-11-13
+
+- Exact PR head `11d524a37c291093ea861c8e196e0e8ee033b562` completed GitHub
+  Actions run [`43463371834`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43463371834)
+  successfully. Both Windows and Ubuntu jobs passed. Windows explicitly skipped
+  isolated Docker recovery, Docker/Collector/OTLP profile E2E, Agent-managed
+  Docker application-profile E2E, profile evidence upload, and Docker teardown.
+  Ubuntu executed Docker recovery and the managed profile parity. This run is
+  final-head CI evidence, not Windows Docker parity evidence.
+- Local diagnostic command:
+  `go test ./cmd/agentctl -run '^TestLiveDockerApplicationProfilesDeliverOTLP$' -count=1 -v`
+  with `AR_IMMS_PR06_APPLICATION_PROFILE_E2E=1`,
+  `AR_IMMS_PR07A_SUPERVISOR_PROFILE_PARITY=1`, and cached SHA-verified Windows
+  Collector/Supervisor v0.160.0 binaries. Docker daemon version `29.5.3` was
+  reachable in the escalated command context. Redis, PostgreSQL, Python images
+  were available and the test built its PostgreSQL fixture image.
+- The test then failed before profile telemetry while writing the protected
+  Supervisor configuration: `Access is denied` under the credential directory.
+  `whoami /groups` still showed `Medium Mandatory Level` and Administrators
+  deny-only. The failure is a local privilege/setup blocker, not evidence that
+  Windows profile telemetry passed or that product ACLs should be weakened.
+- Test cleanup reported the Agent runtime did not stop within its 10-second
+  cleanup window and `TempDir RemoveAll` could not access the protected
+  credential directory. Follow-up inspection found no test-named
+  `arimms-pr06-*` Docker containers and no matching test-owned Supervisor or
+  Collector processes. The protected temporary directory remains in the
+  ignored workspace; it was not force-deleted. The sanitized console output is
+  retained locally at `.tmp-pr07-windows-docker-parity/test-output.log`.
+- The diagnostic run used the existing dirty worktree, so it does not replace
+  exact-head acceptance evidence. An immutable source archive of exact head
+  `11d524a37c291093ea861c8e196e0e8ee033b562` was prepared. A `RunAs` launch of
+  inbox Windows PowerShell returned `The operation was canceled by the user`
+  before a child process started. No high-integrity token or second test result
+  exists; this launch is not verification evidence.
+- Required next action: run the profile-parity test from a genuine elevated
+  Windows session with Docker Desktop Linux containers, preserving the
+  SYSTEM/Administrators-only DACL. Until it passes, PR-07 remains IN_PROGRESS,
+  PR #30 stays draft, Supervisor stays opt-in, existing installations stay
+  legacy-owned, and PR-08 remains blocked.
+
+## Windows elevation handoff — 2026-11-14
+
+- The protected-file test requires a genuinely elevated token. The available
+  `require_escalated` command context could access Docker but still reported
+  `Medium Mandatory Level` and an Administrators deny-only SID.
+- One `RunAs` launch of inbox Windows PowerShell was attempted for the
+  exact-head E2E, but Windows returned `The operation was canceled by the user`.
+  The child did not create its token evidence file and did not run tests. No
+  further elevation prompt was issued.
+- To close this gate, run the exact test from an elevated Windows PowerShell
+  session with Docker Desktop Linux containers, or register a Windows
+  Docker-capable Actions runner. Preserve the protected Supervisor credential
+  DACL. Until then PR-07 remains IN_PROGRESS and the release goal remains open.
+
+## Profile E2E failure-cleanup regression — 2026-11-14
+
+- The blocked local E2E consumed `serviceDone` while reporting the protected
+  configuration error; test cleanup then waited on that same one-shot channel
+  and emitted a misleading second timeout (`Agent runtime did not stop`).
+  Follow-up process inspection found no test-owned Agent/Supervisor/Collector
+  process, consistent with the runtime error already having been delivered.
+- Commit `b348584e399545bf3aedc4e682fd37273cabfffc` adds
+  `startRuntimeE2E`, which sends the runtime result once and closes the channel
+  so both the telemetry wait and cleanup can observe completion. This changes
+  only the test harness; runtime behavior and protected ACLs are untouched.
+- Red/green regression: before the helper, the new unit test failed to build
+  because `startRuntimeE2E` was undefined; after implementation,
+  `go test ./cmd/agentctl -run '^TestRuntimeE2ECompletionRemainsObservableAfterResultIsRead$' -count=1`
+  passed.
+- Additional local Windows checks after the change passed:
+  `go test ./cmd/agentctl -count=1`, `go vet ./cmd/agentctl`,
+  `go build ./cmd/agentctl`, and `./scripts/check-architecture.ps1` (36 package
+  boundaries and 313 production files checked). The mandatory live Windows
+  profile gate remains blocked by the protected credential ACL/elevation
+  requirement; this test-only correction does not close it.

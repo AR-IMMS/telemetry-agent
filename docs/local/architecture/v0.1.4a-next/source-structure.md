@@ -4,6 +4,15 @@
 
 **Status:** PROPOSED — Context-oriented architecture with lightweight Clean Architecture principles.
 
+**Current release-mission context set:** Identity, Inventory, Monitoring,
+Configuration, Runtime, Health, and Operations. The migration examples below
+are historical ownership hypotheses and must be checked against actual package
+contents, symbols, active consumers, imports, and transaction boundaries. The
+OpAMP Server and Mock Core remain separate executable/service boundaries; they
+do not add Agent business contexts. PR-09.5 starts with a source ownership
+audit and may justify a different physical layout while preserving these
+context responsibilities.
+
 ## 1. Design Principles
 
 - Organize code by **Bounded Context first**, then by responsibilities.

@@ -2,6 +2,19 @@
 
 **Status:** DESIGN BASELINE / not implemented. Distinguish state owner, application command and external adapter. Avoid identical directory scaffolding where there is no complexity.
 
+## Current release-mission terminology
+
+The current `v0.1.4a-next` release mission is authoritative for the business
+context count and names: Identity, Inventory, Monitoring, Configuration,
+Runtime, Health, and Operations. The group labels below are earlier descriptive
+aliases: Identity & Connectivity → Identity; Resource Inventory → Inventory;
+Monitoring Capabilities → Monitoring; Configuration & Policy → Configuration;
+Runtime & Installation → Runtime; Health & Reporting → Health; Remote
+Operations → Operations. The OpAMP Server is a separate central-management
+service boundary, not an eighth Agent business context. This terminology note
+does not mandate a package layout; PR-09.5 will reconcile detailed ownership
+from actual source before moving code.
+
 | Context | Owns | Consumes/emits | Forbidden responsibility |
 |---|---|---|---|
 | Identity & Connectivity | Stable installation ID, binding, credentials, Agent-to-Core business API session | Enrollment Core client, installation identity contract | Monitoring policy decisions, direct Collector writes, OpAMP instance authentication by self-report |

@@ -8,7 +8,7 @@ remain unshipped until their checkpoint evidence records them as verified.
 Start with the [target architecture index](local/architecture/v0.1.4a-next/README.md),
 then review the [release scope](local/requirements/v0.1.4a-next/release-scope.md),
 [acceptance criteria](local/requirements/v0.1.4a-next/acceptance-criteria.md),
-[ten-plan index](local/plans/v0.1.4a-next/README.md),
+[checkpoint plan index](local/plans/v0.1.4a-next/README.md),
 [migration roadmap](local/plans/v0.1.4a-next/migration-roadmap.md), and
 [verification matrix](local/verification/v0.1.4a-next/test-matrix.md).
 
