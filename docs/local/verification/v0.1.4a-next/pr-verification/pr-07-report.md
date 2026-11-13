@@ -1,21 +1,17 @@
 # PR-07 verification report — OpAMP Supervisor and control plane
 
-**Status:** IN_PROGRESS — PR-07c now connects pinned Supervisor installation,
+**Status:** IN_PROGRESS — PR-07c connects pinned Supervisor installation,
 protected credential/config/state provisioning, opt-in single-owner runtime
 selection, credential-reference restart handling, and Windows Job Object/Linux
-process-group containment. Full Windows `go test ./...`, `go vet ./...`, and
-`go build ./...` pass; affected Linux test binaries cross-compile. The
-Agent-managed live Supervisor/Collector/OTLP E2E runs on Windows and native
-Ubuntu CI, but both runners failed at Collector readiness on the latest run.
-The test now retains Supervisor-managed Collector warning/error logs on
-failure. Local Windows execution cannot run through the protected credential
-store because this process is not elevated; WSL/Docker access is unavailable
-here. Native service E2E and full managed-runtime parity remain open. PR-07a/07b
-evidence remains as recorded below; the earlier raw Supervisor hard-kill
-failure demonstrates why containment and sink-level uniqueness still require
-live verification. Do not mark ownership transfer complete or merge PR #30
-until all mandatory adoption, recovery, security, LKG, and profile-parity gates
-pass.
+process-group containment. Final-head CI run `43373790016` passed on Windows
+and Ubuntu at `2a7eff13251ec31c2a90be5169d90f219eb51340`; full tests, the
+Agent-managed fallback-to-OTLP smoke, `go vet`, and `go build` executed. Ubuntu
+also ran the Docker/Collector Redis and application-profile E2Es. This proves
+the smoke's test configuration fix, not full managed-runtime parity. Agent
+enrollment, authenticated managed OpAMP delivery, credential rotation/revocation,
+managed profile parity, recovery/no-duplicate telemetry, LKG equivalence, and
+native service migration lifecycle remain unverified. Do not mark ownership
+transfer complete or merge PR #30 until every mandatory adoption gate passes.
 **Release target:** `v0.1.4a-next`
 **Branch:** `feat/pr-07-opamp`
 **Implementation baseline:** PR-06 merge
@@ -40,12 +36,12 @@ this implementation branch's authorized scope.
 | Packaged installer integration | IMPLEMENTED / FOCUSED WINDOWS TESTS | The installer invokes pinned Supervisor provisioning only for explicit `--opamp-server-url` migration or when preserving a previously enabled Supervisor installation. Fresh installs without the option retain the current Agent Collector owner; reinstall preserves the persisted owner. Endpoint validation rejects remote cleartext WS and invalid URLs. Native install/upgrade/uninstall service checks remain open. |
 | Agent-owned process containment | IMPLEMENTED / WINDOWS TEST PASS; LINUX CROSS-COMPILE | `internal/processowner` uses a Windows suspended process plus kill-on-close Job Object and Linux process groups. Windows Job cancellation and descendants tests pass in the full suite. A Linux process-group integration test is present and its test binary cross-compiles, but it has not run on Linux in this environment. |
 | Supervisor runtime and Agent ownership selection | IMPLEMENTED / LIVE CI GATE PENDING | Persisted `SupervisorContext` selects either the legacy Agent Collector runtime or `runManagedSupervisor`, never both. The managed runner provisions current enrollment credentials, writes protected config/state, supplies the Gateway endpoint, waits for Collector health before existing readiness/LKG callback, watches credential-reference changes, and contains process cleanup. Full live parity, crash recovery, service lifecycle, LKG rollback equivalence, and no-duplicate-sink proof remain open. |
-| Agent-managed Supervisor fallback + OTLP E2E | ADDED / CI PENDING | `TestManagedSupervisorRuntimeDeliversOTLP` checks the pinned Supervisor executable SHA-256 and Collector v0.160.0 version, validates and runs local hostmetrics fallback, waits for Collector health and `system.cpu.time`/`system.memory.usage` at an isolated OTLP sink, then cancels the contained process tree. CI is configured to run this on Windows and native Ubuntu and upload a sanitized summary. If CI enables the test without an elevated Windows token, it now fails rather than skips. Local Windows execution is blocked by the current token; WSL is unavailable. This test does not exercise Agent enrollment, authenticated OpAMP delivery, remote Gateway changes, or the full monitoring profile set. |
+| Agent-managed Supervisor fallback + OTLP E2E | PASS / LIMITED — WINDOWS + NATIVE UBUNTU CI | `TestManagedSupervisorRuntimeDeliversOTLP` checks the pinned Supervisor executable SHA-256 and Collector v0.160.0 version, validates and runs local hostmetrics fallback, waits for Collector health and `system.cpu.time`/`system.memory.usage` at an isolated OTLP sink, then cancels the contained process tree. It passed on both platforms in final-head run `43373790016`. The earlier failures were caused by both isolated Collectors binding `localhost:8888`; setting `service.telemetry.metrics.level: none` in both test configs resolved the collision. This test does not exercise Agent enrollment, authenticated OpAMP delivery, remote Gateway changes, credential lifecycle, or managed profile parity. |
 | Durable publication and truthful rollback attribution | IMPLEMENTED / WINDOWS MOCK CORE TESTS | The local contract records exact policy revision/hash publications before OpAMP delivery and resolves observed hashes through Core. Desired, published, and applied revisions are distinct; old applied hashes remain rollback evidence. Mock Core's atomic JSON fixture survives restart without storing bearer values. The full Windows repository suite passed in this run; native Linux Mock Core execution remains NOT RUN. |
 
-## Current PR-07c local verification — 2026-11-13, final integration attempt
+## PR-07c final-head verification — 2026-11-13
 
-**Previously pushed code head:** `4bf9a73b3bb23e276f7c5169175b02204438deae`
+**Verified pushed code head:** `2a7eff13251ec31c2a90be5169d90f219eb51340`
 (`feat/pr-07-opamp`). The PR-07c implementation commits are `8299deb`
 (installer/owner selection), `08aead6` (process containment), `b7627fb`
 (managed runtime), and `2164933` (session revocation); `fffcb52` records the
@@ -64,11 +60,11 @@ after run `43369909210` exposed the production file-size guard. The unrelated pr
 | `go vet ./...` | PASS / WINDOWS | Completed with exit code 0 after the file splits. |
 | `go build ./...` | PASS / WINDOWS | Completed with exit code 0 after the file splits. |
 | Linux build | PASS / CROSS-COMPILE | `GOOS=linux GOARCH=amd64 go build ./...` passed after the file splits. This is not Linux runtime or service verification. |
-| Managed Supervisor live E2E | FAIL / WINDOWS + UBUNTU CI; FIXED TEST CONFIG, RERUN PENDING | Actions run `43372814327` on head `9053338e838c4d12afb34729ad2aa4975ac67a93` passed artifact verification, architecture guard, full tests, and Ubuntu Docker/profile gates, but the managed fallback test timed out on Collector health on both OS runners. Its sanitized failure artifacts are retained in the run. A pinned local reproduction isolated the cause: the test starts a sink Collector and a managed Collector, both of which tried to bind the default internal Prometheus listener at `localhost:8888`; the second exited before health readiness. Disabling internal Collector metrics in both isolated configs allowed the source to become healthy and the sink to observe `system.cpu.time` and `system.memory.usage`. Summary: ignored local evidence `tmp/pr07c/evidence/windows/collector-metrics-collision-summary.txt`. The smoke config fix is in the current worktree and still requires final-head Windows/Linux CI. |
+| Managed Supervisor live E2E | PASS / LIMITED — WINDOWS + NATIVE UBUNTU CI | Actions run [`43373790016`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43373790016) ran `TestManagedSupervisorRuntimeDeliversOTLP` and passed on Windows Server 2025 and `ubuntu-latest`. The test verifies pinned binaries, local hostmetrics fallback, Collector health, delivery of host metrics to an isolated OTLP sink, and process-tree cancellation. The preceding failures on both runners were traced to the sink and source Collectors both binding `localhost:8888`; disabling internal metrics in both test configs resolved the testbed collision. The sanitized CI summary artifact was uploaded per runner. This remains a hostmetrics smoke test, not full managed-runtime parity. |
 | Native Linux / Docker | BLOCKED / LOCAL ENVIRONMENT | `wsl.exe --list --quiet` returned `Wsl/E_ACCESSDENIED`; Docker Desktop reports access denied opening its Linux Engine named pipe. Native Linux service, process-group, Docker Engine, and managed-runtime E2E remain unverified. |
 | Full vertical-slice coverage | NOT IMPLEMENTED / GATE OPEN | The current Agent-managed live test is a local hostmetrics fallback-to-OTLP smoke test. It does not perform real Agent enrollment with Mock Core, authenticated WSS Supervisor policy delivery, credential replacement/revocation, durable revision/hash recovery, profile parity under managed ownership, or service install/migration/upgrade/uninstall. Earlier independent PR-07a/07b spike evidence does not cover these Agent-managed paths. |
 | Workflow/report hygiene | PASS | `.github/workflows/ci.yml` YAML and the changed Go test file were checked; `git diff --check` passed. |
-| Draft PR and final-head CI | IN PROGRESS / TARGETED FIX PENDING CI | Push of `9053338e838c4d12afb34729ad2aa4975ac67a93` succeeded; connected GitHub read confirms PR #30 remains open/draft against `chore/v0.1.4a-next`. CI run `43372814327` passed artifact verification, architecture guard, full tests, and Ubuntu Docker/profile gates, but the Agent-managed Supervisor fallback test failed on both OS runners. Sanitized failure artifacts were uploaded for both runners. The local pinned reproduction found and corrected the test's duplicate `localhost:8888` internal-metrics listener; final-head Windows/Linux CI after this fix is pending. GitHub connector write attempts for PR body/comment returned HTTP 403, so the PR remains draft and its metadata could not be updated. No merge was attempted. |
+| Draft PR and final-head CI | PASS / LIMITED; PR REMAINS DRAFT | Branch `feat/pr-07-opamp` is pushed at `2a7eff13251ec31c2a90be5169d90f219eb51340`; PR #30 targets `chore/v0.1.4a-next`. CI run `43373790016` completed successfully on Windows and Ubuntu. Both ran the full Go test suite, managed Supervisor fallback-to-OTLP E2E, `go vet ./...`, and `go build ./...`; Ubuntu additionally ran the isolated Docker/Collector Redis and application-profile E2Es. PR #30 remains draft and no merge was attempted. Remaining managed-runtime gates listed above prevent PASS/merge. |
 
 The CI gates added in this checkpoint verify the pinned Supervisor executable
 digest on each runner, run the real Agent-managed hostmetrics fallback through
