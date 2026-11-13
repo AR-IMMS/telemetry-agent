@@ -344,20 +344,22 @@ service:
 		t.Fatal("Agent-managed Supervisor process tree did not stop")
 	}
 	var revisionThreeHash string
+	var revisionThreeInstanceUID string
 	for _, status := range core.Statuses() {
 		if status.Report.Status == "APPLIED" && status.Report.AppliedRevision == 3 {
 			revisionThreeHash = status.Report.ConfigHash
+			revisionThreeInstanceUID = status.Report.InstanceUID
 		}
 	}
-	if revisionThreeHash == "" {
-		t.Fatal("Mock Core did not retain the applied revision-3 configuration hash")
+	if revisionThreeHash == "" || revisionThreeInstanceUID == "" {
+		t.Fatal("Mock Core did not retain the applied revision-3 configuration hash and OpAMP instance UID")
 	}
 	resolvePublishedHash := func() (coreapi.ConfigurationPublication, error) {
 		client, err := coreClient(replacementAgentToken)
 		if err != nil {
 			return coreapi.ConfigurationPublication{}, err
 		}
-		return client.ResolvePublication(ctx, installationID.String(), revisionThreeHash)
+		return client.ResolvePublication(ctx, revisionThreeInstanceUID, revisionThreeHash)
 	}
 	publication, err := resolvePublishedHash()
 	if err != nil || publication.PolicyRevision != 3 || publication.ConfigHash != revisionThreeHash {
