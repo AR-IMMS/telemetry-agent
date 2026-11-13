@@ -46,7 +46,7 @@ func TestPR07NativeServiceUpgradeMigrationRollbackUninstall(t *testing.T) {
 				return
 			}
 			path := filepath.Join(evidenceDirectory, "native-service-e2e.txt")
-			if writeErr := os.WriteFile(path, []byte(strings.Join(evidence, "\n")+"\n"), 0o600); writeErr != nil {
+			if writeErr := os.WriteFile(path, []byte(strings.Join(evidence, "\n")+"\n"), 0o644); writeErr != nil {
 				t.Errorf("write native service evidence: %v", writeErr)
 			}
 		}
