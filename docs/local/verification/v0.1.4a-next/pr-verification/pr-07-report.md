@@ -861,3 +861,41 @@ gates open and the checkpoint draft while any are unresolved.
   IN_PROGRESS, PR #30 remains draft, Supervisor remains opt-in, and the only
   outstanding adoption gate remains native Windows Docker/profile parity with
   the protected Supervisor credential ACL intact.
+
+## Elevated Windows profile parity and default-owner transfer — 2026-11-14
+
+This update supersedes earlier statements in this report that Windows profile
+parity was blocked and that new installations still used legacy ownership.
+
+- On exact PR head `83e7074be0927dff40829e859a73b6585c720b33`, the prepared
+  Windows profile-parity harness ran under a genuine elevated Administrator
+  token against Docker Desktop's Linux Engine 29.5.3. It verified High
+  Mandatory Level, enabled Administrators SID, Docker access, and the pinned
+  Collector/Supervisor v0.160.0 artifacts before starting the test.
+- `go test ./cmd/agentctl -run '^TestLiveDockerApplicationProfilesDeliverOTLP$' -count=1 -v`
+  passed (40.40s). Redis, PostgreSQL, Python/Prometheus, and mock-cooling
+  metrics were delivered to the isolated OTLP sink with stable node identity
+  and provider-scoped container identity. Startup fallback, container churn,
+  receiver uniqueness, no duplicate telemetry, unchanged Collector config and
+  generation during churn, and cleanup passed. See the sanitized
+  [Windows profile evidence](pr-07-windows-profile-parity.md); the local logs
+  and full binary digests are listed there.
+- Following that parity result, new-install ownership transfer is implemented:
+  fresh installs require `--opamp-server-url` and default to the managed
+  Supervisor owner; `--disable-opamp-supervisor` explicitly chooses legacy
+  ownership. Existing installations preserve their persisted owner when the
+  endpoint is omitted, and an explicitly supplied endpoint performs migration.
+  Focused `go test ./internal/agentinstallation -count=1` and
+  `go vet ./internal/agentinstallation` pass. The installer rejects an
+  unconfigured new default install before bootstrap, binary copy, Supervisor
+  installation, or state mutation.
+- The default-owner change is newer than the Windows profile E2E head. It still
+  requires exact-final-head Windows/Ubuntu CI. The complete Windows source
+  suite `go test ./cmd/... ./internal/... -count=1` passed under a High
+  Mandatory Level token. `go vet ./cmd/... ./internal/...`,
+  `go build ./cmd/... ./internal/...`, and the architecture guard passed
+  (36 package boundaries, 313 production files). The execution log is retained
+  locally at `tmp/pr07-final-windows-regression.log`; it contains no credential
+  values. PR-07 remains IN_PROGRESS and PR #30 remains draft pending final-head
+  CI and publication. Production NestJS Core interoperability remains
+  separate.

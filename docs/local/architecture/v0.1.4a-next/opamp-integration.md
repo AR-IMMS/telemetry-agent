@@ -8,11 +8,13 @@ Windows uninstall process-exit regression. The earlier run [43456929985](https:/
 exposed the race where SCM reported `STOPPED` before the service process
 released its executable; commits `2f2f42b` and `a878b33` wait for process exit
 and keep the helper within the architecture guard. PR-07c also wires a reversible
-`--opamp-server-url` installation opt-in, pinned Supervisor provisioning,
+managed runtime; new installations require `--opamp-server-url`, pinned
+Supervisor provisioning,
 protected token/config/state paths, credential-reference change detection,
 single-owner runtime selection, and contained Agent-owned Supervisor process
-cleanup. Windows Agent-managed Docker-profile parity and production Core
-interoperability remain open. Hosted Windows CI skips Docker tests.
+cleanup. Elevated Windows Agent-managed Docker-profile parity has now passed;
+final-head regression remains open. Production Core interoperability remains
+separate. Hosted Windows CI skips Docker tests.
 
 ## Target topology
 
@@ -61,11 +63,14 @@ Process ownership after migration is exactly:
 `OS service manager → AR-IMMS Agent → OTel OpAMP Supervisor → OTel Collector`.
 
 The current Agent `internal/supervisor` and `internal/agentlifecycle` are not the
-OTel OpAMP Supervisor. Installation remains reversible: a fresh install opts
-into the Supervisor owner only when `--opamp-server-url` is supplied; a
-reinstall preserves the already persisted owner and endpoint. Runtime chooses
-exactly one owner from the persisted Agent state. Existing installations
-continue through the Agent Collector runner until explicitly migrated. On
+OTel OpAMP Supervisor. For new installations, the Supervisor is the default and
+required managed runtime; `--opamp-server-url` must be configured before
+installation. `--disable-opamp-supervisor` explicitly selects the legacy Agent
+Collector runtime when required. Reinstallation without an endpoint preserves
+the already persisted owner and endpoint, including legacy ownership; supplying
+an endpoint explicitly migrates an existing legacy installation. Runtime
+chooses exactly one owner from persisted Agent state. Existing installations
+remain on their current owner until explicitly migrated. On
 Agent cancellation or a failed Supervisor process, the contained process group
 (Linux) or Job Object (Windows) is cleaned up before a subsequent owner starts.
 Local configuration activation restarts the Agent-managed Supervisor snapshot;
