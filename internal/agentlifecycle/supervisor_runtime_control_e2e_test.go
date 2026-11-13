@@ -282,6 +282,61 @@ service:
 	}
 	waitForSupervisorCorePolicy(t, ctx, runtimeDone, core, 1)
 	waitForSupervisorSinkTelemetry(t, ctx, runtimeDone, initialSink)
+	localBaseline := strings.ReplaceAll(collectorYAML, initialEndpoint, "${env:OTEL_GATEWAY_ENDPOINT}")
+	localBaseline = strings.Replace(localBaseline, "collection_interval: 1s", "collection_interval: 2s", 1)
+	if localBaseline == strings.ReplaceAll(collectorYAML, initialEndpoint, "${env:OTEL_GATEWAY_ENDPOINT}") {
+		t.Fatal("local configuration fixture did not change the hostmetrics interval")
+	}
+	localCandidate, localOptions := managedRuntimeCandidate(t, statePath, collectorPath, collectorConfig, managedCandidateBaselinePath(root), []byte(localBaseline))
+	managedState := agentstate.NewSQLiteStore(statePath)
+	localPriorPIDs := waitForManagedProcessCount(t, ctx, runtimeDone, collectorPath, root, 1)
+	localSinkBytes := len(initialSink.String())
+	localOutcome, err := ApplyCollectorCandidate(ctx, managedState, localCandidate, localOptions)
+	if err != nil || localOutcome.Result != "activated" || localOutcome.AlreadyApplied {
+		t.Fatalf("apply changed local configuration under managed Supervisor: outcome=%+v error=%v", localOutcome, err)
+	}
+	waitForManagedCandidateApplied(t, ctx, runtimeDone, managedState, localOutcome.Generation)
+	localReplacementPIDs := waitForManagedProcessReplacement(t, ctx, runtimeDone, collectorPath, root, localPriorPIDs[0])
+	if len(localReplacementPIDs) != 1 {
+		t.Fatalf("local configuration update left multiple Collector owners: %v", localReplacementPIDs)
+	}
+	waitForSupervisorSinkGrowth(t, ctx, runtimeDone, initialSink, localSinkBytes)
+	updatedLocalConfig, err := os.ReadFile(collectorConfig)
+	if err != nil || !strings.Contains(string(updatedLocalConfig), "collection_interval: 2s") {
+		t.Fatalf("Agent did not activate changed local configuration: error=%v config=%s", err, updatedLocalConfig)
+	}
+	noOpState, err := managedState.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	noOpConfigBefore, err := os.ReadFile(collectorConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	noOpPIDsBefore := waitForManagedProcessCount(t, ctx, runtimeDone, collectorPath, root, 1)
+	noOpSinkBytes := len(initialSink.String())
+	unchangedCandidate, unchangedOptions := managedRuntimeCandidate(t, statePath, collectorPath, collectorConfig, managedCandidateBaselinePath(root), []byte(localBaseline))
+	noOpOutcome, err := ApplyCollectorCandidate(ctx, managedState, unchangedCandidate, unchangedOptions)
+	if err != nil || noOpOutcome.Result != "applied" || !noOpOutcome.AlreadyApplied {
+		t.Fatalf("unchanged local configuration was not an idempotent no-op: outcome=%+v error=%v", noOpOutcome, err)
+	}
+	time.Sleep(2 * time.Second)
+	noOpStateAfter, err := managedState.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	noOpConfigAfter, err := os.ReadFile(collectorConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	noOpPIDsAfter, err := managedProcessIDs(collectorPath, root)
+	if err != nil || len(noOpPIDsAfter) != 1 || noOpPIDsAfter[0] != noOpPIDsBefore[0] {
+		t.Fatalf("unchanged local configuration restarted or duplicated Collector: before=%v after=%v error=%v", noOpPIDsBefore, noOpPIDsAfter, err)
+	}
+	if noOpStateAfter.DesiredGeneration != noOpState.DesiredGeneration || noOpStateAfter.ActivatedGeneration != noOpState.ActivatedGeneration || noOpStateAfter.AppliedGeneration != noOpState.AppliedGeneration || string(noOpConfigAfter) != string(noOpConfigBefore) {
+		t.Fatalf("unchanged local configuration mutated Agent state or active bytes: before=%+v after=%+v", noOpState, noOpStateAfter)
+	}
+	waitForSupervisorSinkGrowth(t, ctx, runtimeDone, initialSink, noOpSinkBytes)
 	collectorPIDs := waitForManagedProcessCount(t, ctx, runtimeDone, collectorPath, root, 1)
 	collectorSinkBytes := len(initialSink.String())
 	killManagedProcess(t, collectorPIDs[0])
@@ -464,6 +519,86 @@ service:
 	if err != nil || rollbackPublication.PolicyRevision != 5 || rollbackPublication.ConfigHash != revisionThreeHash {
 		t.Fatalf("resolve prior applied hash after revision-5 rollback: publication=%+v err=%v", rollbackPublication, err)
 	}
+	lkgConflictListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve an endpoint to induce Collector startup failure: %v", err)
+	}
+	lkgConflictEndpoint := lkgConflictListener.Addr().String()
+	failedBaseline := strings.ReplaceAll(localBaseline, strings.TrimPrefix(healthEndpoint, "http://"), lkgConflictEndpoint)
+	if failedBaseline == localBaseline {
+		t.Fatal("LKG failure fixture did not replace the Collector health endpoint")
+	}
+	lastKnownGoodBefore, err := os.ReadFile(collectorConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lastKnownGoodState, err := managedState.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	lkgPriorPIDs := waitForManagedProcessCount(t, ctx, runtimeDone, collectorPath, root, 1)
+	failingCandidate, failingOptions := managedRuntimeCandidate(t, statePath, collectorPath, collectorConfig, managedCandidateBaselinePath(root), []byte(failedBaseline))
+	failingOutcome, err := ApplyCollectorCandidate(ctx, managedState, failingCandidate, failingOptions)
+	if err != nil || failingOutcome.Result != "activated" {
+		t.Fatalf("admit startup-failing candidate for Agent LKG verification: outcome=%+v error=%v", failingOutcome, err)
+	}
+	select {
+	case runtimeErr := <-runtimeDone:
+		runtimeStopped = true
+		if runtimeErr == nil {
+			t.Fatal("Agent runtime returned success after managed Collector failed to reach readiness")
+		}
+	case <-ctx.Done():
+		t.Fatalf("Agent runtime did not report failed managed configuration: %v", ctx.Err())
+	}
+	failedCollectorPIDs := waitForManagedProcessCount(t, ctx, runtimeDone, collectorPath, root, 0)
+	if len(failedCollectorPIDs) != 0 {
+		t.Fatalf("Collector survived failed configuration recovery: %v", failedCollectorPIDs)
+	}
+	failedSupervisorPIDs := waitForManagedProcessCount(t, ctx, runtimeDone, supervisorPath, managed.ConfigurationPath, 0)
+	if len(failedSupervisorPIDs) != 0 {
+		t.Fatalf("Supervisor survived failed configuration recovery: %v", failedSupervisorPIDs)
+	}
+	failedSinkBytes := len(rotatedSink.String())
+	time.Sleep(1500 * time.Millisecond)
+	if got := len(rotatedSink.String()); got != failedSinkBytes {
+		t.Fatalf("OTLP continued after failed managed configuration cleanup: sink bytes %d -> %d", failedSinkBytes, got)
+	}
+	if err := lkgConflictListener.Close(); err != nil {
+		t.Fatalf("release reserved LKG failure endpoint: %v", err)
+	}
+	lastKnownGoodAfter, err := os.ReadFile(collectorConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lastKnownGoodFile, err := os.ReadFile(collectorConfig + ".last-known-good")
+	if err != nil || string(lastKnownGoodAfter) != string(lastKnownGoodBefore) || string(lastKnownGoodFile) != string(lastKnownGoodBefore) {
+		t.Fatalf("Agent LKG did not restore the previously applied config: error=%v active_matches=%t lkg_matches=%t", err, string(lastKnownGoodAfter) == string(lastKnownGoodBefore), string(lastKnownGoodFile) == string(lastKnownGoodBefore))
+	}
+	lastKnownGoodStateAfter, err := managedState.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lastKnownGoodStateAfter.ActivatedGeneration != lastKnownGoodState.AppliedGeneration || lastKnownGoodStateAfter.AppliedGeneration != lastKnownGoodState.AppliedGeneration || lastKnownGoodStateAfter.PendingActivation != nil {
+		t.Fatalf("Agent state did not return to the previously applied generation: before=%+v after=%+v", lastKnownGoodState, lastKnownGoodStateAfter)
+	}
+	failureMapping, failureGeneration, foundFailure, err := managedState.CandidateOutcome(failingCandidate.DesiredSetRevision, failingCandidate.BaselineFingerprint, failingCandidate.Candidate.Digest())
+	if err != nil || !foundFailure || failureGeneration != failingOutcome.Generation || failureMapping.Outcome != "failed" || failureMapping.Stage != "readiness" || failureMapping.RecoveryResult != "succeeded" {
+		t.Fatalf("Agent did not durably record LKG recovery: mapping=%+v generation=%d found=%t error=%v", failureMapping, failureGeneration, foundFailure, err)
+	}
+	if len(lkgPriorPIDs) != 1 {
+		t.Fatalf("LKG failure test began with non-unique Collector owners: %v", lkgPriorPIDs)
+	}
+	stopRuntime()
+	runContext, stopRuntime = context.WithCancel(ctx)
+	runtimeDone = make(chan error, 1)
+	runtimeStopped = false
+	go func() {
+		runtimeDone <- RunCollectorRuntimeWithReconciliation(runContext, statePath, noOpTeardown, nil, nil, nil)
+	}()
+	waitForSupervisorRuntimeReadiness(t, ctx, runtimeDone, healthEndpoint)
+	lkgSinkBytes := len(rotatedSink.String())
+	waitForSupervisorSinkGrowth(t, ctx, runtimeDone, rotatedSink, lkgSinkBytes)
 	stopRuntime()
 	select {
 	case err := <-runtimeDone:
@@ -589,7 +724,7 @@ func writeManagedControlE2EEvidence(t *testing.T, installationID, nodeID string)
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		t.Fatalf("create managed control-plane evidence directory: %v", err)
 	}
-	contents := fmt.Sprintf("result=PASS\nos=%s\narchitecture=%s\ncommit=%s\nenrollment=actual-agent-service\ncredential=protected-store-and-secret-free-sqlite\ncredential_replacement=previous_revoked_new_wss_session_verified\ntransport=authenticated-wss\noffline_startup_fallback_reconnect=verified\ncollector_crash_recovery=verified_single_replacement_and_otlp\nsupervisor_crash_process_tree_cleanup=verified\nagent_runtime_restart_after_supervisor_crash=verified\npolicy_revisions=1,2,3,4,5\nmock_core_restart=verified\nrevision3_publication_resolved_after_restart=verified\nopamp_server_restart=verified\nagent_runtime_restart=verified\nrollback_reuses_revision3_config_hash_at_revision5=verified\nrollback_gateway_otlp=verified\ninitial_gateway_otlp=verified\nupdated_gateway_otlp=verified\npost_rotation_gateway_otlp=verified\npost_restart_gateway_otlp=verified\ninstallation_identity=%s\nnode_identity=%s\n", runtime.GOOS, runtime.GOARCH, os.Getenv("GITHUB_SHA"), installationID, nodeID)
+	contents := fmt.Sprintf("result=PASS\nos=%s\narchitecture=%s\ncommit=%s\nenrollment=actual-agent-service\ncredential=protected-store-and-secret-free-sqlite\ncredential_replacement=previous_revoked_new_wss_session_verified\ntransport=authenticated-wss\noffline_startup_fallback_reconnect=verified\nlocal_configuration_update=verified_runtime_restart_and_otlp\nunchanged_configuration=noop_no_generation_change_no_collector_restart\nagent_lkg_equivalence=verified_active_and_lkg_bytes_state_and_journal\ncollector_crash_recovery=verified_single_replacement_and_otlp\nsupervisor_crash_process_tree_cleanup=verified\nagent_runtime_restart_after_supervisor_crash=verified\npolicy_revisions=1,2,3,4,5\nmock_core_restart=verified\nrevision3_publication_resolved_after_restart=verified\nopamp_server_restart=verified\nagent_runtime_restart=verified\nrollback_reuses_revision3_config_hash_at_revision5=verified\nrollback_gateway_otlp=verified\ninitial_gateway_otlp=verified\nupdated_gateway_otlp=verified\npost_rotation_gateway_otlp=verified\npost_restart_gateway_otlp=verified\ninstallation_identity=%s\nnode_identity=%s\n", runtime.GOOS, runtime.GOARCH, os.Getenv("GITHUB_SHA"), installationID, nodeID)
 	if err := os.WriteFile(filepath.Join(directory, "managed-enrollment-opamp-e2e.txt"), []byte(contents), 0600); err != nil {
 		t.Fatalf("write sanitized managed control-plane evidence: %v", err)
 	}
