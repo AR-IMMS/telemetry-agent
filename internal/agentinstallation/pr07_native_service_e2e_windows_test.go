@@ -79,8 +79,8 @@ func nativeServiceE2ERestart(ctx context.Context, serviceName string) error {
 		return fmt.Errorf("sc stop %s: %w: %s", serviceName, err, strings.TrimSpace(string(output)))
 	}
 	for {
-		active, queryErr := nativeServiceE2EActive(serviceName)
-		if queryErr == nil && !active {
+		stopped, queryErr := nativeServiceE2EStopped(serviceName)
+		if queryErr == nil && stopped {
 			break
 		}
 		if err := ctx.Err(); err != nil {
@@ -96,6 +96,14 @@ func nativeServiceE2ERestart(ctx context.Context, serviceName string) error {
 		return fmt.Errorf("sc start %s: %w: %s", serviceName, err, strings.TrimSpace(string(output)))
 	}
 	return nil
+}
+
+func nativeServiceE2EStopped(serviceName string) (bool, error) {
+	output, err := exec.Command("sc.exe", "query", serviceName).CombinedOutput()
+	if err != nil {
+		return false, fmt.Errorf("sc query %s: %w: %s", serviceName, err, strings.TrimSpace(string(output)))
+	}
+	return regexp.MustCompile(`(?im)^\s*STATE\s*:\s*1\s+STOPPED\s*$`).Match(output), nil
 }
 
 func nativeServiceE2EProcessCounts() (int, int, error) {

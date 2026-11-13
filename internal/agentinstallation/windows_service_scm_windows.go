@@ -153,6 +153,17 @@ func (windowsSCMServiceManager) Stop(
 	if status.State == svc.Stopped {
 		return nil
 	}
+	if status.State == svc.StopPending {
+		if err := waitForWindowsServiceState(transitionContext, service, svc.Stopped); err != nil {
+			return fmt.Errorf("wait for Windows service %q to stop: %w", serviceName, err)
+		}
+		return nil
+	}
+	if status.State == svc.StartPending {
+		if err := waitForWindowsServiceState(transitionContext, service, svc.Running); err != nil {
+			return fmt.Errorf("wait for Windows service %q startup before stopping: %w", serviceName, err)
+		}
+	}
 	if _, err := service.Control(svc.Stop); err != nil {
 		return fmt.Errorf("stop Windows service %q: %w", serviceName, err)
 	}
