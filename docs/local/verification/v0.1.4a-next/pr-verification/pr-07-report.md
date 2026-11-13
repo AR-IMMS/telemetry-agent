@@ -256,3 +256,20 @@ Before merging a checkpoint, tie evidence to the exact commit and platform. Run
 CI after final code/docs/report edits; record environment versions, failure
 injection, single-owner/rollback result, and sink evidence. Keep mandatory
 gates open and the checkpoint draft while any are unresolved.
+
+## Latest final-head verification follow-up
+
+- Run [`43413389730`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43413389730)
+  executed the Windows full Go test step and failed only at
+  `TestPeriodicSQLitePollingDetectsCommittedCrossProcessDesiredChange`; the
+  failure was `startup reconciliation did not run` after a transient SQLite
+  snapshot warning. Vet/build and opt-in live E2Es were skipped after that
+  failure; Ubuntu was still running when inspected. The test's one-second
+  startup deadline was too brittle for a Windows runner under load. Its
+  deadline is now three seconds and its cancellation is deferred so a failed
+  assertion cannot leave the poller running. On the authorized native Windows
+  host, the focused test passed 100 consecutive runs. This is a test-harness
+  adjustment; no SQLite or reconciliation production behavior changed. A new
+  final-head Windows/Ubuntu CI run is still required.
+- The latest PR head was `bed1e624c0ee416e0559992b77bef2c1d6fc318b` when run
+  `43413389730` was inspected. The follow-up is not yet committed or pushed.
