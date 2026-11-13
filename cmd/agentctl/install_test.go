@@ -64,6 +64,8 @@ func TestRunInstallStagesCurrentBinaryAndOwnedLayout(t *testing.T) {
 			configRoot,
 			"--gateway-endpoint",
 			"gateway.example:4317",
+			"--opamp-server-url",
+			"ws://127.0.0.1:4320/v1/opamp",
 		},
 		&stdout,
 		&stderr,
@@ -91,6 +93,9 @@ func TestRunInstallStagesCurrentBinaryAndOwnedLayout(t *testing.T) {
 	if got, want := gotOptions.GatewayEndpoint,
 		"gateway.example:4317"; got != want {
 		t.Fatalf("gateway endpoint = %q, want %q", got, want)
+	}
+	if got, want := gotOptions.OpAMPServerURL, "ws://127.0.0.1:4320/v1/opamp"; got != want {
+		t.Fatalf("OpAMP server URL = %q, want %q", got, want)
 	}
 	if got, want := gotOptions.HealthEndpoint,
 		defaultHealthEndpoint; got != want {

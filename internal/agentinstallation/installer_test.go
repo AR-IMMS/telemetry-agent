@@ -65,6 +65,13 @@ func TestInstallerStagesAgentPersistsStateThenStartsService(
 					"collector.yaml",
 			}, nil
 		},
+		installSupervisor: func(_ context.Context, installDir string, _ identity.PlatformInfo) (string, error) {
+			steps = append(steps, "install-supervisor")
+			if installDir != "/opt/ar-imms/telemetry-agent/opampsupervisor" {
+				t.Fatalf("Supervisor install directory = %q", installDir)
+			}
+			return "/opt/ar-imms/telemetry-agent/opampsupervisor/versions/0.160.0/opampsupervisor", nil
+		},
 		newStateStore: func(path string) stateStore {
 			if path != "/var/lib/ar-imms/telemetry-agent/state.db" {
 				t.Fatalf("state path = %q", path)
@@ -101,6 +108,7 @@ func TestInstallerStagesAgentPersistsStateThenStartsService(
 		ConfigRoot:            "/srv/ar-imms/collector-config",
 		GatewayEndpoint:       "gateway.example:4317",
 		HealthEndpoint:        "http://127.0.0.1:13133",
+		OpAMPServerURL:        "ws://127.0.0.1:4320/v1/opamp",
 		ConfigInput:           configInput,
 		ValidationEnvironment: []string{"OTEL_GATEWAY_ENDPOINT=gateway.example:4317"},
 		ValidationTimeout:     30 * time.Second,
@@ -114,7 +122,7 @@ func TestInstallerStagesAgentPersistsStateThenStartsService(
 	}
 
 	if got, want := steps,
-		[]string{"copy-agent", "bootstrap", "start-service"}; !reflect.DeepEqual(got, want) {
+		[]string{"copy-agent", "bootstrap", "install-supervisor", "start-service"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("steps = %v, want %v", got, want)
 	}
 
@@ -149,6 +157,9 @@ func TestInstallerStagesAgentPersistsStateThenStartsService(
 	if store.state.Installation == nil {
 		t.Fatal("installation = nil")
 	}
+	if got := store.state.Supervisor; got.BinaryPath == "" || !got.Enabled || got.OpAMPServerURL != "ws://127.0.0.1:4320/v1/opamp" {
+		t.Fatalf("Supervisor state = %#v, want explicitly configured runtime", got)
+	}
 
 	if got, want := *store.state.Installation,
 		layout.Installation(); !reflect.DeepEqual(got, want) {
@@ -159,6 +170,8 @@ func TestInstallerStagesAgentPersistsStateThenStartsService(
 type recordingStateStore struct {
 	state agentstate.State
 }
+
+func (s *recordingStateStore) Load() (agentstate.State, error) { return s.state, nil }
 
 func (s *recordingStateStore) Update(
 	update agentstate.StateMutation,

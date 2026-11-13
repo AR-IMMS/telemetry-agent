@@ -3,6 +3,10 @@ package agentinstallation
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/url"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,12 +24,14 @@ type Options struct {
 	ConfigRoot            string
 	GatewayEndpoint       string
 	HealthEndpoint        string
+	OpAMPServerURL        string
 	ConfigInput           config.RenderInput
 	ValidationEnvironment []string
 	ValidationTimeout     time.Duration
 }
 
 type stateStore interface {
+	Load() (agentstate.State, error)
 	Update(agentstate.StateMutation) (agentstate.State, error)
 }
 
@@ -34,6 +40,32 @@ type serviceInstaller interface {
 }
 
 type serviceInstallerFunc func(context.Context, Layout) error
+
+// ValidateOpAMPServerURL accepts secure WSS URLs and loopback-only WS URLs.
+func ValidateOpAMPServerURL(value string) error {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return fmt.Errorf("OpAMP server URL is invalid")
+	}
+	if port := parsed.Port(); port != "" {
+		parsedPort, portErr := strconv.Atoi(port)
+		if portErr != nil || parsedPort < 1 || parsedPort > 65535 {
+			return fmt.Errorf("OpAMP server URL port is invalid")
+		}
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case "wss":
+		return nil
+	case "ws":
+		host := strings.ToLower(parsed.Hostname())
+		if host == "localhost" || net.ParseIP(host) != nil && net.ParseIP(host).IsLoopback() {
+			return nil
+		}
+		return fmt.Errorf("cleartext OpAMP is allowed only on loopback")
+	default:
+		return fmt.Errorf("OpAMP server URL must use wss, or ws on loopback")
+	}
+}
 
 func (f serviceInstallerFunc) Install(
 	ctx context.Context,
@@ -44,11 +76,12 @@ func (f serviceInstallerFunc) Install(
 
 // Installer coordinates the concrete effects of a packaged Agent installation.
 type Installer struct {
-	layoutFor       func(identity.PlatformInfo) (Layout, error)
-	copyAgentBinary func(context.Context, string, string) error
-	bootstrap       func(context.Context, bootstrap.Options) (bootstrap.Result, error)
-	newStateStore   func(string) stateStore
-	serviceFor      func(Layout) (serviceInstaller, error)
+	layoutFor         func(identity.PlatformInfo) (Layout, error)
+	copyAgentBinary   func(context.Context, string, string) error
+	bootstrap         func(context.Context, bootstrap.Options) (bootstrap.Result, error)
+	installSupervisor func(context.Context, string, identity.PlatformInfo) (string, error)
+	newStateStore     func(string) stateStore
+	serviceFor        func(Layout) (serviceInstaller, error)
 }
 
 // Install stages the durable Agent binary, bootstraps the Collector, persists
@@ -68,6 +101,9 @@ func (i Installer) Install(
 	}
 	if i.bootstrap == nil {
 		return Layout{}, fmt.Errorf("Collector bootstrapper is required")
+	}
+	if i.installSupervisor == nil {
+		return Layout{}, fmt.Errorf("Supervisor installer is required")
 	}
 	if i.newStateStore == nil {
 		return Layout{}, fmt.Errorf("Agent state store factory is required")
@@ -92,6 +128,12 @@ func (i Installer) Install(
 			"Collector validation timeout must be positive",
 		)
 	}
+	if options.OpAMPServerURL != "" {
+		if err := ValidateOpAMPServerURL(options.OpAMPServerURL); err != nil {
+			return Layout{}, err
+		}
+		options.OpAMPServerURL = strings.TrimSpace(options.OpAMPServerURL)
+	}
 
 	layout, err := i.layoutFor(options.Platform)
 	if err != nil {
@@ -104,6 +146,11 @@ func (i Installer) Install(
 	}
 	if service == nil {
 		return Layout{}, fmt.Errorf("Agent service installer is required")
+	}
+	store := i.newStateStore(layout.StatePath)
+	previousState, previousErr := store.Load()
+	if previousErr != nil && !os.IsNotExist(previousErr) {
+		return Layout{}, fmt.Errorf("load Agent state before installation update: %w", previousErr)
 	}
 
 	if err := i.copyAgentBinary(
@@ -128,8 +175,14 @@ func (i Installer) Install(
 	if err != nil {
 		return Layout{}, fmt.Errorf("bootstrap Collector: %w", err)
 	}
-
-	store := i.newStateStore(layout.StatePath)
+	opampServerURL, enabled := supervisorActivationForInstall(options.OpAMPServerURL, previousState)
+	supervisorBinaryPath := previousState.Supervisor.BinaryPath
+	if options.OpAMPServerURL != "" || enabled {
+		supervisorBinaryPath, err = i.installSupervisor(ctx, layout.SupervisorInstallDirectory, options.Platform)
+		if err != nil {
+			return Layout{}, fmt.Errorf("install OpAMP Supervisor: %w", err)
+		}
+	}
 
 	_, err = store.Update(func(state *agentstate.State) error {
 		if state.Dependencies == nil {
@@ -144,6 +197,11 @@ func (i Installer) Install(
 			ConfigPath:      result.ConfigPath,
 			GatewayEndpoint: options.GatewayEndpoint,
 			HealthEndpoint:  options.HealthEndpoint,
+		}
+		state.Supervisor = agentstate.SupervisorContext{
+			BinaryPath: supervisorBinaryPath, ConfigurationPath: layout.SupervisorConfigurationPath,
+			StateDirectory: layout.SupervisorStateDirectory, OpAMPServerURL: opampServerURL,
+			Enabled: enabled,
 		}
 
 		return state.RecordAgentInstallation(layout.Installation())
@@ -160,4 +218,16 @@ func (i Installer) Install(
 	}
 
 	return layout, nil
+}
+
+func supervisorActivationForInstall(requestedEndpoint string, previous agentstate.State) (string, bool) {
+	if strings.TrimSpace(requestedEndpoint) != "" {
+		// The service installer restarts the Agent after this state commit, so
+		// supplying an endpoint explicitly opts into a single-owner transition.
+		return requestedEndpoint, true
+	}
+	if previous.Installation != nil && previous.Supervisor.Enabled {
+		return previous.Supervisor.OpAMPServerURL, true
+	}
+	return "", false
 }

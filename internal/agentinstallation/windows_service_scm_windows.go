@@ -18,6 +18,7 @@ const (
 	windowsServiceTransitionTimeout = 30 * time.Second
 	windowsServicePollInterval      = 100 * time.Millisecond
 	windowsServiceDescription       = "AR-IMMS Telemetry Agent"
+	windowsServiceRecoveryReset     = 24 * 60 * 60
 )
 
 var windowsErrorServiceDoesNotExist syscall.Errno = 1060
@@ -71,8 +72,7 @@ func (windowsSCMServiceManager) Ensure(
 			)
 		}
 		defer service.Close()
-
-		return nil
+		return configureWindowsServiceRecovery(service)
 	}
 	if err != nil {
 		return fmt.Errorf(
@@ -104,7 +104,20 @@ func (windowsSCMServiceManager) Ensure(
 			err,
 		)
 	}
+	return configureWindowsServiceRecovery(service)
+}
 
+func configureWindowsServiceRecovery(service *mgr.Service) error {
+	if err := service.SetRecoveryActions([]mgr.RecoveryAction{
+		{Type: mgr.ServiceRestart, Delay: 5 * time.Second},
+		{Type: mgr.ServiceRestart, Delay: 30 * time.Second},
+		{Type: mgr.ServiceRestart, Delay: 60 * time.Second},
+	}, windowsServiceRecoveryReset); err != nil {
+		return fmt.Errorf("configure bounded Agent service recovery actions: %w", err)
+	}
+	if err := service.SetRecoveryActionsOnNonCrashFailures(true); err != nil {
+		return fmt.Errorf("enable Agent service recovery after reported failures: %w", err)
+	}
 	return nil
 }
 

@@ -14,14 +14,17 @@ const DefaultAgentServiceName = "ar-imms-telemetry-agent"
 // Layout defines the concrete paths and service identity owned by a packaged
 // Agent installation on one supported platform.
 type Layout struct {
-	Platform                   string
-	InstallDirectory           string
-	DataDirectory              string
-	AgentBinaryPath            string
-	CollectorInstallDirectory  string
-	CollectorConfigurationPath string
-	StatePath                  string
-	ServiceName                string
+	Platform                    string
+	InstallDirectory            string
+	DataDirectory               string
+	AgentBinaryPath             string
+	CollectorInstallDirectory   string
+	SupervisorInstallDirectory  string
+	CollectorConfigurationPath  string
+	SupervisorConfigurationPath string
+	SupervisorStateDirectory    string
+	StatePath                   string
+	ServiceName                 string
 }
 
 // DefaultLayout returns the standard Agent-owned layout for a supported
@@ -31,26 +34,32 @@ func DefaultLayout(platform identity.PlatformInfo) (Layout, error) {
 	switch strings.ToLower(strings.TrimSpace(platform.OS)) {
 	case "linux":
 		return Layout{
-			Platform:                   "linux",
-			InstallDirectory:           "/opt/ar-imms/telemetry-agent",
-			DataDirectory:              "/var/lib/ar-imms/telemetry-agent",
-			AgentBinaryPath:            "/opt/ar-imms/telemetry-agent/agentctl",
-			CollectorInstallDirectory:  "/opt/ar-imms/telemetry-agent/collector",
-			CollectorConfigurationPath: "/var/lib/ar-imms/telemetry-agent/collector.yaml",
-			StatePath:                  "/var/lib/ar-imms/telemetry-agent/state.db",
-			ServiceName:                DefaultAgentServiceName,
+			Platform:                    "linux",
+			InstallDirectory:            "/opt/ar-imms/telemetry-agent",
+			DataDirectory:               "/var/lib/ar-imms/telemetry-agent",
+			AgentBinaryPath:             "/opt/ar-imms/telemetry-agent/agentctl",
+			CollectorInstallDirectory:   "/opt/ar-imms/telemetry-agent/collector",
+			SupervisorInstallDirectory:  "/opt/ar-imms/telemetry-agent/opampsupervisor",
+			CollectorConfigurationPath:  "/var/lib/ar-imms/telemetry-agent/collector.yaml",
+			SupervisorConfigurationPath: "/var/lib/ar-imms/telemetry-agent/credentials/opamp-supervisor.yaml",
+			SupervisorStateDirectory:    "/var/lib/ar-imms/telemetry-agent/credentials/opamp-supervisor-state",
+			StatePath:                   "/var/lib/ar-imms/telemetry-agent/state.db",
+			ServiceName:                 DefaultAgentServiceName,
 		}, nil
 
 	case "windows":
 		return Layout{
-			Platform:                   "windows",
-			InstallDirectory:           `C:\Program Files\AR-IMMS\Telemetry Agent`,
-			DataDirectory:              `C:\ProgramData\AR-IMMS\Telemetry Agent`,
-			AgentBinaryPath:            `C:\Program Files\AR-IMMS\Telemetry Agent\agentctl.exe`,
-			CollectorInstallDirectory:  `C:\Program Files\AR-IMMS\Telemetry Agent\collector`,
-			CollectorConfigurationPath: `C:\ProgramData\AR-IMMS\Telemetry Agent\collector.yaml`,
-			StatePath:                  `C:\ProgramData\AR-IMMS\Telemetry Agent\state.db`,
-			ServiceName:                DefaultAgentServiceName,
+			Platform:                    "windows",
+			InstallDirectory:            `C:\Program Files\AR-IMMS\Telemetry Agent`,
+			DataDirectory:               `C:\ProgramData\AR-IMMS\Telemetry Agent`,
+			AgentBinaryPath:             `C:\Program Files\AR-IMMS\Telemetry Agent\agentctl.exe`,
+			CollectorInstallDirectory:   `C:\Program Files\AR-IMMS\Telemetry Agent\collector`,
+			SupervisorInstallDirectory:  `C:\Program Files\AR-IMMS\Telemetry Agent\opampsupervisor`,
+			CollectorConfigurationPath:  `C:\ProgramData\AR-IMMS\Telemetry Agent\collector.yaml`,
+			SupervisorConfigurationPath: `C:\ProgramData\AR-IMMS\Telemetry Agent\credentials\opamp-supervisor.yaml`,
+			SupervisorStateDirectory:    `C:\ProgramData\AR-IMMS\Telemetry Agent\credentials\opamp-supervisor-state`,
+			StatePath:                   `C:\ProgramData\AR-IMMS\Telemetry Agent\state.db`,
+			ServiceName:                 DefaultAgentServiceName,
 		}, nil
 
 	default:

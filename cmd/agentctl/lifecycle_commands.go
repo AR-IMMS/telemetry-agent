@@ -26,7 +26,7 @@ func runInstall(
 	flags.Usage = func() {
 		fmt.Fprintln(
 			stderr,
-			"usage: agentctl install --config-root <path> [--gateway-endpoint <host:port>] [--validation-endpoint <host:port>] [--timeout <duration>]",
+			"usage: agentctl install --config-root <path> [--gateway-endpoint <host:port>] [--opamp-server-url <wss://host/path>] [--validation-endpoint <host:port>] [--timeout <duration>]",
 		)
 	}
 
@@ -40,6 +40,7 @@ func runInstall(
 		defaultGatewayEndpoint,
 		"runtime OpenTelemetry Gateway endpoint",
 	)
+	opampServerURL := flags.String("opamp-server-url", "", "optional OpAMP endpoint; wss remotely or ws on loopback")
 	validationEndpoint := flags.String(
 		"validation-endpoint",
 		defaultValidationEndpoint,
@@ -79,6 +80,11 @@ func runInstall(
 			flags,
 			"--validation-endpoint must not be empty",
 		)
+	}
+	if strings.TrimSpace(*opampServerURL) != "" {
+		if err := agentinstallation.ValidateOpAMPServerURL(*opampServerURL); err != nil {
+			return usageError(stderr, flags, err.Error())
+		}
 	}
 	if *validationTimeout <= 0 {
 		return usageError(
@@ -180,6 +186,7 @@ func runInstall(
 		SourceBinaryPath: sourceBinaryPath,
 		ConfigRoot:       *configRoot,
 		GatewayEndpoint:  *gatewayEndpoint,
+		OpAMPServerURL:   *opampServerURL,
 		HealthEndpoint:   defaultHealthEndpoint,
 		ConfigInput: config.RenderInput{
 			Platform: platform,

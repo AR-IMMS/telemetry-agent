@@ -29,6 +29,8 @@ Type=simple
 ExecStart=/opt/ar-imms/telemetry-agent/agentctl run --state-path /var/lib/ar-imms/telemetry-agent/state.db
 Restart=on-failure
 RestartSec=5s
+KillMode=control-group
+TimeoutStopSec=30s
 
 [Install]
 WantedBy=multi-user.target
