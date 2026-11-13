@@ -629,3 +629,28 @@ gates open and the checkpoint draft while any are unresolved.
   and existing installations legacy-owned until Windows managed-profile parity
   and the remaining mandatory adoption gates pass. Production NestJS Core
   interoperability remains separately tracked.
+
+## Docs-updated final-head CI — 2026-11-13
+
+- Exact docs-updated head `d7a123a4692912fb66eb5976a7b99f3f28e21e7d` passed
+  native Windows and Ubuntu CI run
+  [43451862541](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43451862541).
+  Both jobs completed successfully and executed the full Go suite, managed
+  runtime E2E, native service lifecycle E2E, `go vet ./...`, and `go build ./...`.
+  Ubuntu also executed Docker recovery and Agent-managed Redis, PostgreSQL,
+  Python/Prometheus, and mock-cooling profile parity. Windows Docker/profile
+  tests were skipped because the hosted Windows runner has no Docker.
+- Sanitized artifacts from this exact run: managed Windows `14051522250`,
+  managed Linux `14051917147`, native service Windows `14049933814`, native
+  service Linux `14051876355`, and Ubuntu profile parity `14052975215`.
+- The native Windows/Linux service E2E verifies PR-06 install, migration to
+  managed Supervisor ownership, service restart, explicit rollback to legacy
+  ownership, another restart, uninstall, and process/resource cleanup. The
+  managed test artifacts are separate from production NestJS Core
+  interoperability, which remains tracked independently.
+- Windows Agent-managed Docker-profile parity remains a mandatory open gate.
+  The local Windows managed-owner test cannot initialize protected Supervisor
+  credentials because the current process lacks an elevated token; hosted
+  Windows CI has no Docker. No product defect was established by that local
+  setup failure. Keep PR #30 draft, PR-07 IN_PROGRESS, Supervisor opt-in, and
+  existing installations legacy-owned until that parity gate passes.
