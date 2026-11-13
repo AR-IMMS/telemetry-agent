@@ -1,12 +1,17 @@
 # OpAMP and Supervisor integration — v0.1.4a-next
 
-**Status:** Windows and Ubuntu WSL Supervisor capability tests pass, including
-hostmetrics OTLP delivery. PR-07b Mock Core integration passes on both OSes.
-PR-07c now adds pinned artifact installation, a protected token-file helper, and
-durable Mock Core publication/status fixtures with rollback attribution after
-adapter restart. Native Linux Docker profile parity, Agent-owned process-tree
-recovery, packaged/runtime integration, and production Core interoperability
-remain open.
+**Status:** PR-07a Windows and Ubuntu WSL capability tests and PR-07b
+Mock-Core-backed protocol/auth tests pass. PR-07c now wires a reversible
+`--opamp-server-url` installation opt-in, pinned Supervisor provisioning,
+protected token/config/state paths, credential-reference change detection,
+single-owner runtime selection, and contained Agent-owned Supervisor process
+cleanup. Windows full Go tests, vet/build, and Linux cross-compilation pass.
+The new real Agent-managed Supervisor/Collector/OTLP E2E is configured for
+Windows and native Ubuntu CI, but the Windows test was skipped locally because
+the process token is not elevated; CI has not yet run. Service-level crash,
+upgrade/uninstall, credential rotation/revocation, Agent LKG parity, full
+profile parity under managed runtime, native Linux execution, and production
+Core interoperability remain open.
 
 ## Target topology
 
@@ -55,14 +60,23 @@ Process ownership after migration is exactly:
 `OS service manager → AR-IMMS Agent → OTel OpAMP Supervisor → OTel Collector`.
 
 The current Agent `internal/supervisor` and `internal/agentlifecycle` are not the
-OTel OpAMP Supervisor. Keep existing Agent Runtime behavior until parity is
-demonstrated. The Linux hard-kill test showed that restarting Supervisor alone
-can leave its Collector child alive and holding listeners. The Agent/service
-manager must terminate the old process tree before a replacement Supervisor
-starts, and tests must confirm only one Collector emits. Transfer ownership as
-one controlled transition; never run two Collector lifecycle owners for the
-same Collector. PR-07a and PR-07b must not silently transfer ownership. Rollback
-must restore the prior single-owner mode.
+OTel OpAMP Supervisor. Installation remains reversible: a fresh install opts
+into the Supervisor owner only when `--opamp-server-url` is supplied; a
+reinstall preserves the already persisted owner and endpoint. Runtime chooses
+exactly one owner from the persisted Agent state. Existing installations
+continue through the Agent Collector runner until explicitly migrated. On
+Agent cancellation or a failed Supervisor process, the contained process group
+(Linux) or Job Object (Windows) is cleaned up before a subsequent owner starts.
+Local configuration activation restarts the Agent-managed Supervisor snapshot;
+credential-reference changes trigger token reprovisioning and a contained
+restart. These behaviors are implemented but still require native service/E2E
+verification. The earlier Linux hard-kill test showed that restarting
+Supervisor alone can leave its Collector child alive and holding listeners;
+the Agent-owned containment path exists to prevent that orphan. Do not mark
+ownership transfer complete until the process tree and OTLP sink prove one
+active Collector owner and no duplicate telemetry. Agent LKG parity remains a
+separate required gate because Supervisor's rollback status is not yet bound to
+all existing Agent LKG invariants.
 
 ## Version and capability evidence
 
@@ -126,11 +140,13 @@ for Supervisor authentication, resolves installation/Node identity from that
 credential, and compare-and-set binds the Supervisor `instance_uid`. The UID
 is never authentication. The pinned Supervisor's Bearer Token Authenticator
 uses a token file and the `opampsupervisor.Extensions` feature gate; Windows
-live evidence exercises that path. Agent installation/provisioning of this
-file, production credential rotation/revocation, session invalidation, and
-offline revocation remain open for PR-07c/Core contract review. The Core client
-uses HTTPS, rejects redirects, and rejects insecure base URLs. The Go adapter
-allows cleartext OpAMP only on loopback; non-loopback requires TLS.
+live evidence exercises that path. Agent runtime now resolves the existing
+enrollment credential reference and provisions the token file; reference
+changes cause a contained Supervisor restart. Managed-runtime authentication,
+credential rotation/revocation, session invalidation, and offline revocation
+still need live verification. The Core client uses HTTPS, rejects redirects,
+and rejects insecure base URLs. The Go adapter allows cleartext OpAMP only on
+loopback; non-loopback requires TLS.
 
 The proposed OpAMP adapter needs only explicit internal Core operations for
 installation authentication, instance binding, desired policy retrieval,
@@ -158,10 +174,11 @@ and implemented in Core.
    and verify authentication, identity binding, policy, and truthful status.
    Core production changes and shared-contract publication require separate
    approval.
-3. **PR-07c — runtime adoption and E2E:** transfer lifecycle ownership only
-   after PR-07a parity and PR-07b contracts; manage the Supervisor dependency;
-   verify installation, config updates, service lifecycle, offline recovery,
-   and PR-05/06 monitoring parity on native Windows and Linux.
+3. **PR-07c — runtime adoption and E2E:** provide a reversible opt-in owner
+   transition while retaining the legacy Agent runtime; make the pinned
+   Supervisor the default required owner only after parity. Verify installation,
+   local config updates, service lifecycle, offline recovery, rollback, and
+   PR-05/06 monitoring parity on native Windows and Linux.
 
 These are review checkpoints, not a requirement for exactly three GitHub PRs.
 Keep each change scoped and independently reversible. Follow the [PR-07 plan](../../plans/v0.1.4a-next/pr-07-opamp.md) and [verification report](../../verification/v0.1.4a-next/pr-verification/pr-07-report.md).

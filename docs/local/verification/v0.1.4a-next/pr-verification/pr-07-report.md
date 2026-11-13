@@ -1,21 +1,18 @@
 # PR-07 verification report — OpAMP Supervisor and control plane
 
-**Status:** IN_PROGRESS — Windows and Ubuntu WSL live Supervisor/Collector
-fallback, local/remote composition, rollback, Collector crash recovery, and
-actual OTLP delivery passed. The pinned Linux Supervisor/Collector E2E also
-passed on Ubuntu 24.04 WSL. PR-07c has begun with an isolated managed artifact
-installer for Supervisor v0.160.0; focused Windows tests cover platform pins,
-checksum rejection, verified reuse, unsupported architecture, and preservation
-of an unverified target. This primitive is not yet wired into installation or
-runtime selection. A raw Supervisor kill/restart failed because the
-Collector child remained alive; the coordinated case passed when the outer
-manager terminated that child before restart. The Agent process-tree manager
-is not implemented yet. Windows Docker profile parity passed. Linux Agent and
-Supervisor profile parity also passed under Ubuntu WSL against Docker Desktop's
-Linux Engine; native Linux Docker Engine parity remains unverified. PR-07b protocol and pinned Supervisor auth passed on both OSes
-against the Go Mock Core. Production Core interoperability, actual Agent-owned
-Supervisor lifecycle, and native Linux Docker parity remain open. Do not
-transfer Collector lifecycle ownership on this evidence.
+**Status:** IN_PROGRESS — PR-07c now connects pinned Supervisor installation,
+protected credential/config/state provisioning, opt-in single-owner runtime
+selection, credential-reference restart handling, and Windows Job Object/Linux
+process-group containment. Full Windows `go test ./...`, `go vet ./...`, and
+`go build ./...` pass; affected Linux test binaries cross-compile. The
+Agent-managed live Supervisor/Collector/OTLP E2E is added to Windows and native
+Ubuntu CI. Its local Windows execution skipped because the current process is
+not elevated, and WSL is unavailable here. Native Linux/Windows service E2E and
+CI evidence have not run. PR-07a/07b evidence remains as recorded below; the
+earlier raw Supervisor hard-kill failure demonstrates why containment and
+sink-level uniqueness still require live verification. Do not mark ownership
+transfer complete or merge PR #30 until all mandatory adoption, recovery,
+security, LKG, and profile-parity gates pass.
 **Release target:** `v0.1.4a-next`
 **Branch:** `feat/pr-07-opamp`
 **Implementation baseline:** PR-06 merge
@@ -36,11 +33,40 @@ this implementation branch's authorized scope.
 |---|---|---|
 | Pinned Supervisor artifact selection | IMPLEMENTED / WINDOWS UNIT TESTS | `internal/bootstrap/supervisor_artifact.go` selects official v0.160.0 Windows/Linux amd64 release binaries and the digests already verified by the PR-07a spike. Unsupported platforms fail closed. |
 | Staged installation and reuse | IMPLEMENTED / WINDOWS UNIT TESTS | `InstallSupervisorBinary` bounds download size, verifies SHA-256 before atomic publication, stores version/platform/digest metadata, re-hashes installed bytes before reuse, and refuses to overwrite an unverified version directory. Repro: `go test ./internal/bootstrap -run 'Test(SelectSupervisorArtifact|InstallSupervisorBinary)' -count=1`. |
-| Protected token-file handoff primitive | IMPLEMENTED / WINDOWS ELEVATION REQUIRED | `credentialstore.Store` atomically materializes the existing enrollment bearer to a fixed file in its OS-protected credential directory and removes it idempotently. Tests cover replacement, missing credentials, path placement, and Linux mode. Windows filesystem tests were explicitly skipped here because the current process is not elevated; native Linux test execution remains NOT RUN. Runtime provisioning, live Supervisor consumption, rotation, revocation, and uninstall cleanup remain NOT RUN. |
-| Packaged installer integration | NOT IMPLEMENTED | The verified artifact primitive is not called by `agentinstallation.Installer`; Supervisor is not yet a required dependency. Existing Agent Runtime remains the only active Collector lifecycle owner. |
-| Agent-owned process containment primitive | IMPLEMENTED / CROSS-COMPILE ONLY | New `internal/processowner` uses a Linux process group and Windows suspended process assignment to a kill-on-close Job Object. Linux cancellation and unexpected root exit terminate descendants and check process-group disappearance; a Linux integration test exercises child cleanup. Windows and Linux test binaries compile on this Windows host, but the Linux process-group test and Windows Job Object lifecycle have not run. It is not yet wired into Agent Runtime. |
-| Supervisor runtime and Agent process containment | NOT INTEGRATED | No production runtime ownership change has been made. Required Windows/Linux service, authorization, restart, LKG, local configuration update, and owned-process-tree gates remain open. |
-| Durable publication and truthful rollback attribution | IMPLEMENTED / WINDOWS MOCK CORE TESTS | The local contract now records exact policy revision/hash publications before OpAMP delivery and resolves observed hashes through Core. Current desired, published, and applied revisions are distinct; an older applied hash is retained as rollback evidence. Mock Core's atomic JSON fixture survives restart without storing bearer values. `go test ./internal/coreapi ./internal/mockcore ./internal/opampserver ./internal/bootstrap ./internal/credentialstore -count=1` and focused `go vet` passed on Windows when run outside the sandbox (sandboxed loopback tests are blocked). Tests verify persistence across server restart and a fresh OpAMP adapter reporting desired revision 2 with old publication/applied revision 1. Native Linux runtime execution remains NOT RUN. |
+| Protected token/config/state provisioning | IMPLEMENTED / LOCAL WINDOWS ELEVATION REQUIRED | `credentialstore.Store` materializes the existing enrollment bearer to a fixed protected file, writes typed allowlisted Supervisor YAML, and prepares persistent Supervisor storage under the protected directory. Unit/integration tests cover token replacement, missing credentials, cleanup, configuration rendering, and path/mode rules. Local Windows filesystem tests skip because the current process is not elevated. Live auth, rotation/revocation, and uninstall cleanup remain unverified. |
+| Packaged installer integration | IMPLEMENTED / FOCUSED WINDOWS TESTS | The installer invokes pinned Supervisor provisioning only for explicit `--opamp-server-url` migration or when preserving a previously enabled Supervisor installation. Fresh installs without the option retain the current Agent Collector owner; reinstall preserves the persisted owner. Endpoint validation rejects remote cleartext WS and invalid URLs. Native install/upgrade/uninstall service checks remain open. |
+| Agent-owned process containment | IMPLEMENTED / WINDOWS TEST PASS; LINUX CROSS-COMPILE | `internal/processowner` uses a Windows suspended process plus kill-on-close Job Object and Linux process groups. Windows Job cancellation and descendants tests pass in the full suite. A Linux process-group integration test is present and its test binary cross-compiles, but it has not run on Linux in this environment. |
+| Supervisor runtime and Agent ownership selection | IMPLEMENTED / LIVE CI GATE PENDING | Persisted `SupervisorContext` selects either the legacy Agent Collector runtime or `runManagedSupervisor`, never both. The managed runner provisions current enrollment credentials, writes protected config/state, supplies the Gateway endpoint, waits for Collector health before existing readiness/LKG callback, watches credential-reference changes, and contains process cleanup. Full live parity, crash recovery, service lifecycle, LKG rollback equivalence, and no-duplicate-sink proof remain open. |
+| Agent-managed Supervisor fallback + OTLP E2E | ADDED / NOT YET EXECUTED | `TestManagedSupervisorRuntimeDeliversOTLP` checks the pinned Supervisor executable SHA-256 and Collector v0.160.0 version, validates and runs local hostmetrics fallback, waits for Collector health and `system.cpu.time`/`system.memory.usage` at an isolated OTLP sink, then cancels the contained process tree. CI runs this on Windows and native Ubuntu and uploads a sanitized summary. Local Windows run skipped because the current process is not elevated; WSL is unavailable. This test does not yet exercise authenticated OpAMP delivery or the full monitoring profile set. |
+| Durable publication and truthful rollback attribution | IMPLEMENTED / WINDOWS MOCK CORE TESTS | The local contract records exact policy revision/hash publications before OpAMP delivery and resolves observed hashes through Core. Desired, published, and applied revisions are distinct; old applied hashes remain rollback evidence. Mock Core's atomic JSON fixture survives restart without storing bearer values. The full Windows repository suite passed in this run; native Linux Mock Core execution remains NOT RUN. |
+
+## Current PR-07c local verification — 2026-11-13
+
+**Local code head:** `2164933` (`feat/pr-07-opamp`). The four PR-07c
+implementation commits are `8299deb` (installer/owner selection), `08aead6`
+(process containment), `b7627fb` (managed runtime), and `2164933` (session
+revocation). The existing lifecycle lock
+`cmd/agentctl/otel.yaml.lifecycle.lock` was preserved and not staged.
+
+| Check | Result | Evidence / limit |
+|---|---|---|
+| `go test ./... -count=1` | PASS / WINDOWS | Full repository test suite passed on Windows. Windows process containment test ran. Protected token-file tests skip without an elevated token. |
+| Focused PR-07c packages | PASS / WINDOWS | `go test ./internal/agentlifecycle ./internal/agentinstallation ./internal/opampserver ./internal/opampsupervisorconfig ./internal/credentialstore ./internal/processowner ./internal/agentstate ./cmd/agentctl -count=1` passed. |
+| `go vet ./...` | PASS / WINDOWS | Completed with exit code 0. |
+| `go build ./...` | PASS / WINDOWS | Completed with exit code 0. |
+| Linux affected-package test compile | PASS / CROSS-COMPILE | `GOOS=linux GOARCH=amd64 go test -c` completed for Agent installation, lifecycle, state, credential store, OpAMP server/config, and process owner packages; `GOOS=linux GOARCH=amd64 go build ./...` passed. No Linux test binary was executed. |
+| Managed Supervisor live E2E | NOT RUN / WINDOWS TOKEN NOT ELEVATED | `TestManagedSupervisorRuntimeDeliversOTLP` was invoked with the paths to the prior-spike Windows binaries but skipped before hashing or starting them because the process token is not elevated, required for the protected Windows ACL. The test is wired to both Windows and native Ubuntu CI and writes a sanitized summary artifact when it runs. |
+| Native Linux / Docker | NOT RUN | `wsl.exe --list --quiet` returned `Wsl/E_ACCESSDENIED`. Native Linux service, process-group, Docker Engine, and managed-runtime E2E must run in Ubuntu CI. WSL is not substituted for that gate. |
+| Workflow/report hygiene | PASS | `.github/workflows/ci.yml` parsed as YAML; `git diff --check` passed. |
+| Remote draft PR update | BLOCKED / AUTH + NETWORK | The connected GitHub app confirms PR #30 remains open, draft, and targets `chore/v0.1.4a-next`; its remote head is still `657d208`. In the local environment `gh auth status` reports the `GH_TOKEN` and stored `iSenity1812` token invalid, and `git ls-remote` fails before authentication because DNS/network access to GitHub is unavailable. Commits are local only and PR #30 has not been updated by this run. |
+
+The CI gates added in this checkpoint verify the pinned Supervisor executable
+digest on each runner, run the real Agent-managed hostmetrics fallback through
+the pinned Collector to an isolated OTLP sink, and upload `managed-supervisor-
+runtime.txt`. CI must run on final PR head before treating that limited smoke
+test as evidence. It does not replace authenticated Agent/Mock Core E2E,
+credential rotation/revocation under the managed runtime, service recovery,
+local configuration update/no-op checks, profile parity, or Agent LKG parity.
 
 ## Verified documentation and current-state facts
 
@@ -68,9 +94,10 @@ this implementation branch's authorized scope.
 
 ## Contract and compatibility gates still open
 
-1. Define installation/binding ↔ OpAMP `instance_uid` identity and authenticated
-   Supervisor credential provisioning, storage, rotation, revocation, and
-   session invalidation. `instance_uid` is not authentication.
+1. Mock-backed identity/auth contracts and protected Agent token-file
+   provisioning are implemented. Still verify managed-runtime authentication,
+   credential replacement, active-session revocation, and offline policy
+   behavior. `instance_uid` remains separate from authentication.
 2. Define schema/version, target, desired/applied revision, hash canonicalization,
    local/remote field ownership, merge order, deletion and stale/conflict rules
    for the Gateway endpoint policy.
@@ -82,15 +109,19 @@ this implementation branch's authorized scope.
    Python Prometheus, and a recreated cooling workload. WSL's Docker Engine
    reports `Docker Desktop (containerized)`; native Linux Docker Engine parity
    and Supervisor host-profile coverage remain open.
-5. Collector crash/restart and Supervisor restart with explicit child cleanup
-   passed on Windows and Linux. Raw Supervisor restart alone failed on Linux:
-   the orphan Collector kept its OTLP and health listeners bound. Implement and
-   verify Agent/service process-tree cleanup before lifecycle ownership transfer.
-6. Ubuntu 24.04 WSL hostmetrics E2E and Docker workload/profile E2E passed
-   using the pinned Linux binaries. Native Linux Docker Engine E2E remains
-   BLOCKED because the available Docker endpoint is Docker Desktop.
-7. Review migration/rollback so the Agent Runtime remains the sole owner until
-   one reversible ownership transfer after parity.
+5. Agent process-tree cleanup is implemented with a Linux process group and
+   Windows Job Object. The Windows containment tests pass; Linux behavior and
+   managed Supervisor crash/recovery under native service ownership remain
+   unverified. The earlier raw Linux restart left an orphan Collector bound to
+   OTLP and health ports.
+6. Ubuntu 24.04 WSL hostmetrics and Docker profile tests passed using pinned
+   Linux binaries. Native Linux Docker Engine E2E remains BLOCKED because this
+   workstation has no accessible WSL/Docker endpoint; the isolated Ubuntu CI
+   Docker testbed must provide that evidence.
+7. Migration is reversible and opt-in: fresh installation retains legacy
+   ownership unless an OpAMP endpoint is supplied; reinstall preserves the
+   stored mode. Default transfer still requires parity, LKG, and single-sink
+   uniqueness evidence.
 
 ## PR-07a verification log
 
@@ -103,18 +134,18 @@ this implementation branch's authorized scope.
 | Local/remote config composition | PASS / LIMITED | Windows and Linux E2E composed a local `hostmetrics` pipeline with an OpAMP remote override of the OTLP exporter endpoint, restarted Collector, and observed output at the new isolated sink. Dynamic local-file update semantics remain NOT RUN. |
 | Offline startup fallback and reconnect | PASS / LIMITED | Windows and Linux Supervisor started Collector from standalone fallback while OpAMP was unavailable, connected when the test server started, and applied remote config. Reconnect-after-established-session-loss remains NOT RUN. |
 | Collector crash recovery | PASS / LIMITED | On Windows and Linux, test killed the managed Collector after successful config; Supervisor started a new Collector process and OTLP output resumed at sink B. |
-| Supervisor process crash recovery | CONDITIONAL / OUTER-MANAGER REQUIRED | Raw Linux Supervisor kill/restart failed: the orphan Collector retained ports `127.0.0.1:37035` and `127.0.0.1:8888`, so its replacement could not start. Evidence: `tmp/pr07a/evidence/linux/supervisor-crash-orphan-recovery.txt`. Coordinated restart passed on Windows and Linux after explicitly terminating the child, modeling the required Agent/service process-tree manager. That manager is not yet implemented; keep lifecycle transfer blocked. |
+| Supervisor process crash recovery | IMPLEMENTED / LIVE SERVICE GATE PENDING | Raw Linux Supervisor kill/restart failed: the orphan Collector retained ports `127.0.0.1:37035` and `127.0.0.1:8888`, so its replacement could not start. Evidence: `tmp/pr07a/evidence/linux/supervisor-crash-orphan-recovery.txt`. Agent-managed process containment now terminates the owned process tree on Supervisor exit/cancellation; Windows containment tests pass and Linux tests cross-compile. Run the managed runtime crash/restart test on native Windows/Linux and prove one sink stream before closing this gate. |
 | Invalid candidate rejection and recovery | PASS / LIMITED | A syntactically valid remote config using an already-bound OTLP receiver port caused activation failure and an OpAMP `FAILED` status. The test server restored the prior config; the Supervisor reported that hash `APPLIED` and sink B delivery resumed. |
 | Automatic config rollback / Agent LKG parity | PASS / LIMITED | With the desired-state test server sending only changed config hashes, the pinned Supervisor reported `FAILED` for an activation-failing config, automatically restored the previous working remote config, and emitted `APPLIED` for its hash within the 20-second observation window. OTLP resumed. The test server had to avoid replaying the same failed hash. Agent Runtime LKG parity remains NOT RUN. |
 | Actual OTLP delivery | PASS / LIMITED | Windows and Linux hostmetrics reached isolated sink A during fallback and sink B after remote update, activation recovery, Collector crash restart, and coordinated Supervisor process restart. Redis, PostgreSQL, Python Prometheus, and mock-cooling profiles reached the isolated sink under Windows Supervisor fallback and OpAMP reconnect. |
 | Existing application-profile parity | PASS / LIMITED | Windows Docker E2E and Ubuntu WSL/Docker Desktop E2E reused PR-06 Redis, PostgreSQL, Python Prometheus, and mock-cooling profiles. Agent Runtime emitted all four streams; after stopping it, Supervisor emitted the same profiles from startup fallback and after OpAMP reconnection. Container recreation delivered the new cooling `resource_id`; tests found no Agent-created duplicate receivers or duplicate OTLP samples. Native Linux Docker Engine parity remains BLOCKED; hostmetrics was covered by the separate Supervisor/Collector E2E. |
 | Windows native E2E | PASS / LIMITED | Focused Windows live test with exact binaries, local `opamp-go` server, and two isolated Collector OTLP sinks. This is a smoke test, not complete PR-05/06 parity. OS build number was not captured. |
-| Native Linux Supervisor/Collector/OTLP E2E | PASS / LIMITED | Ubuntu 24.04 WSL2 kernel `6.18.58.1-microsoft-standard-WSL2`, pinned Linux Supervisor and Collector, local OpAMP test server, and isolated OTLP sinks. Full Linux test/vet/build results are recorded below. |
+| Linux-in-WSL Supervisor/Collector/OTLP E2E | PASS / LIMITED | Ubuntu 24.04 WSL2 kernel `6.18.58.1-microsoft-standard-WSL2`, pinned Linux Supervisor and Collector, local OpAMP test server, and isolated OTLP sinks. This is not native Linux service or Docker Engine verification. |
 | Linux Docker profile parity | PASS / WSL + DOCKER DESKTOP | Ubuntu WSL Go Agent and pinned Linux Supervisor/Collector exercised Redis, PostgreSQL, Python Prometheus, mock cooling, container recreation, profile identity, no duplicate samples, startup fallback, reconnect, and OTLP delivery against Docker Engine 29.5.3. `docker info` identifies `Docker Desktop (containerized)`; this does not verify a native Linux Docker Engine. Evidence: `tmp/pr07a/evidence/linux/application-profiles/`. |
 | Native Linux Docker Engine parity | BLOCKED | No native Linux Docker Engine is available in this environment; the available daemon is Docker Desktop. Run the same test on a native Linux Docker host before treating platform parity as complete. |
 | Mock Core contract interoperability | PR-07B | See the PR-07b local contract and protocol verification section below. |
 | Production NestJS Core interoperability | BLOCKED | Core control operations are absent from inspected API baseline; requires reviewed contract and a separate Core implementation. |
-| Lifecycle ownership transfer / rollback | BLOCKED | Must wait for 07a parity and 07b contract gates; no transfer occurred. |
+| Reversible lifecycle ownership selection | IMPLEMENTED / FOCUSED TESTS | Explicit install opt-in records Supervisor ownership; reinstall preserves it; legacy installs continue using the existing Agent runtime. Live upgrade/uninstall and rollback to prior owner remain unverified. |
 
 ## PR-07b local contract and protocol verification
 
@@ -128,7 +159,7 @@ this implementation branch's authorized scope.
 | PR-07b Go package regression | PASS / WINDOWS | `go test ./internal/coreapi ./internal/opampserver ./internal/mockcore ./cmd/agentctl -count=1` passed through the authorized Windows environment. Sandbox-local TLS loopback execution is denied by OS socket permissions; that failed invocation is environmental, and the same suites passed in the authorized environment. |
 | Repository Go regression, vet, and builds | PASS / WINDOWS + UBUNTU WSL | `go test ./... -count=1`, `go vet ./...`, and `go build ./...` passed on Windows and Ubuntu 24.04 WSL with Go 1.25.5. WSL run uses `GOMODCACHE=/tmp/codex-pr07-gomodcache`, `GOCACHE=/tmp/codex-pr07-gocache`; this verification also confirmed test-only PR-07a helper files compile on both operating systems. |
 | Production NestJS Core interoperability | BLOCKED | Inspected Core API Baseline contains no Agent control routes. Local Mock Core is replaceable by endpoint configuration but does not prove production interoperability. |
-| Supervisor credential provisioning by Agent | NOT RUN | The live test supplies a short-lived test bearer through a protected temp token file. No Agent installation/provisioning/rotation behavior changed in PR-07b. |
+| Supervisor credential provisioning by Agent | IMPLEMENTED / LIVE MANAGED E2E PENDING | Agent runtime resolves the existing enrollment credential reference, materializes the protected token file, and restarts the contained Supervisor when the reference changes. Current live Agent-managed test exercises offline fallback only; authenticated runtime delivery, rotation, revocation, and cleanup still need CI/service evidence. |
 | Native Linux Supervisor/Mock Core E2E | PASS / MOCK-BACKED | Ubuntu 24.04 WSL native Go OpAMP test and exact pinned Linux Supervisor v0.160.0 bearer-auth test passed against HTTPS Mock Core; sanitized evidence under ignored `tmp/pr07b/evidence/linux/`. This does not prove NestJS Core interoperability. |
 
 The pinned Windows and WSL Supervisor tests retain sanitized logs and a status

@@ -72,7 +72,31 @@ jobs:
           & $binaryPath components 2>&1 | Set-Content -LiteralPath $inventoryPath
           if ($LASTEXITCODE -ne 0) { throw "Collector component inventory failed: $LASTEXITCODE" }
           "OTELCOL_CONTRIB_BINARY=$binaryPath" | Add-Content $env:GITHUB_ENV
+          "AR_IMMS_PR05_COLLECTOR_BINARY=$binaryPath" | Add-Content $env:GITHUB_ENV
           "OTELCOL_ARTIFACT_SHA256=$actual" | Add-Content $env:GITHUB_ENV
+
+      - name: Download and verify pinned OpAMP Supervisor
+        shell: pwsh
+        run: |
+          if ($IsWindows) {
+            $name = 'opampsupervisor_0.160.0_windows_amd64.exe'
+            $expected = 'df2dfae96d6b711db31675d2deb8493d3dbada8561b25fe575fd90bd7cac8449'
+          } else {
+            $name = 'opampsupervisor_0.160.0_linux_amd64'
+            $expected = '7967e3210e0252f25f41a96b15758dd2e03feb0aecbe85a945f1e2e6e71865c9'
+          }
+          $directory = Join-Path $env:RUNNER_TEMP 'opampsupervisor'
+          New-Item -ItemType Directory -Force -Path $directory | Out-Null
+          $binaryPath = Join-Path $directory $name
+          $url = "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.160.0/$name"
+          Invoke-WebRequest -Uri $url -OutFile $binaryPath
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $binaryPath).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "Pinned Supervisor checksum mismatch: $actual" }
+          if (-not $IsWindows) { chmod 755 $binaryPath; if ($LASTEXITCODE -ne 0) { throw 'Could not mark Supervisor executable' } }
+          # The pinned Supervisor binary does not implement a --version flag;
+          # the official release URL plus the verified executable digest is its identity.
+          "AR_IMMS_PR07A_SUPERVISOR_BINARY=$binaryPath" | Add-Content $env:GITHUB_ENV
+          "OPAMPSUPERVISOR_ARTIFACT_SHA256=$actual" | Add-Content $env:GITHUB_ENV
 
       - name: Check architecture boundaries and production Go file size
         shell: pwsh
@@ -121,6 +145,20 @@ jobs:
           AR_IMMS_PR06_APPLICATION_PROFILE_E2E: '1'
           AR_IMMS_PR05_COLLECTOR_BINARY: ${{ env.OTELCOL_CONTRIB_BINARY }}
         run: go test ./cmd/agentctl -run '^TestLiveDockerApplicationProfilesDeliverOTLP$' -count=1 -v
+
+      - name: Agent-managed Supervisor fallback and OTLP E2E
+        env:
+          AR_IMMS_PR07C_RUNTIME_E2E: '1'
+          AR_IMMS_PR07C_EVIDENCE_DIR: ${{ runner.temp }}/pr07c-evidence
+        run: go test ./internal/agentlifecycle -run '^TestManagedSupervisorRuntimeDeliversOTLP$' -count=1 -v
+
+      - name: Upload PR-07c runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pr07c-managed-supervisor-${{ runner.os }}
+          path: ${{ runner.temp }}/pr07c-evidence/
+          if-no-files-found: warn
 
       - name: Vet
         run: go vet ./...
