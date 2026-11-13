@@ -485,3 +485,33 @@ gates open and the checkpoint draft while any are unresolved.
   Supervisor remains opt-in, and PR-07 remains IN_PROGRESS. Do not merge,
   transfer default ownership, or start PR-08 until these gates pass. Production
   NestJS Core interoperability remains separately tracked.
+
+## Latest implementation-head CI — 2026-11-13
+
+- Implementation/test head `b803f0daebc622f0a539d30dbed557c2a5b6909d` passed
+  exact-head Windows and Ubuntu CI run
+  [`43433440726`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43433440726).
+  Both full Go suites, managed Agent/Supervisor control E2E, `go vet ./...`, and
+  `go build ./...` passed. Ubuntu also passed isolated Docker recovery, live
+  Collector/OTLP Redis delivery, and Agent-managed Redis, PostgreSQL,
+  Python/Prometheus, and mock-cooling profile tests. Hosted Windows explicitly
+  skipped Docker setup and both Docker profile steps.
+- Sanitized GitHub Actions evidence (available until 2027-02-11): Windows
+  managed runtime artifact `14043205039`
+  (`sha256:9075dca138dfef83fbff0be199f3a4eb47df17421f493ee6ead5f221e1362755`),
+  Linux managed runtime artifact `14043265186`
+  (`sha256:2d24eb1fdfc1253a0f46079525945ea9d4d72c08db1f5ec6d52e9c67a73d1710`),
+  and Ubuntu profile parity artifact `14042585845`
+  (`sha256:c082f1c895b31527ad03970133ceae56b161f875a31343476b2e6db41d0825e5`).
+- On the local Windows host, `go test ./internal/agentlifecycle -count=1` passed
+  with `TEMP` and `TMP` redirected into an isolated workspace directory. With
+  the default sandbox temp path, SQLite failed to open test databases. Docker
+  Desktop named-pipe access is denied, and the current token's Administrators
+  group is deny-only. Native service mutation was not attempted on the
+  developer machine.
+- PR-07 remains IN_PROGRESS. Mandatory gates still open: native Windows/Linux
+  service installation, migration, upgrade, restart, and uninstall; and
+  Windows Agent-managed Docker-profile parity. Supervisor remains opt-in,
+  existing installations remain legacy-owned, and PR #30 remains draft. Do not
+  merge, transfer default ownership, or start PR-08 until those gates pass.
+  Production NestJS Core interoperability remains separately tracked.
