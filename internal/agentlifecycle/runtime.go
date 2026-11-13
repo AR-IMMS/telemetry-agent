@@ -417,11 +417,17 @@ func runCollectorRuntimeWithReconciliation(
 		teardown: teardown,
 		lockPath: collector.ConfigPath + ".lifecycle",
 	}
+	runtimeRunner := collectorRunner(supervisor.Run)
+	if state.Supervisor.Enabled {
+		runtimeRunner = func(ctx context.Context, options supervisor.Options) error {
+			return runManagedSupervisor(ctx, statePath, state.Supervisor, options)
+		}
+	}
 
 	runtimeErr := runtimeWatcher{
 		store:          store,
 		gatewayRuntime: agentstate.NewCoreGatewayStore(statePath),
-		run:            supervisor.Run,
+		run:            runtimeRunner,
 		options: supervisor.Options{
 			BinaryPath:      collector.BinaryPath,
 			ConfigPath:      collector.ConfigPath,

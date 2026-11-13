@@ -18,6 +18,7 @@ type Store struct {
 }
 
 const supervisorTokenFileName = "opamp-supervisor.token"
+const supervisorConfigFileName = "opamp-supervisor.yaml"
 
 // New creates a Store beside the operational database, in a dedicated
 // credentials directory shared by the interactive enrollment command and Agent.
@@ -91,6 +92,55 @@ func (s Store) DeleteSupervisorToken() error {
 		return fmt.Errorf("sync credential directory after token removal: %w", err)
 	}
 	return nil
+}
+
+// WriteSupervisorConfig atomically writes the non-secret runtime config beside
+// the protected token file so the Supervisor can read both under one ACL.
+func (s Store) WriteSupervisorConfig(content []byte) (string, error) {
+	if strings.TrimSpace(s.directory) == "" || len(content) == 0 || len(content) > 256<<10 {
+		return "", fmt.Errorf("Supervisor configuration directory and bounded content are required")
+	}
+	if err := secureDirectory(s.directory); err != nil {
+		return "", fmt.Errorf("secure credential directory: %w", err)
+	}
+	path := filepath.Join(s.directory, supervisorConfigFileName)
+	if err := writeAtomicFile(s.directory, path, content); err != nil {
+		return "", fmt.Errorf("write protected Supervisor configuration: %w", err)
+	}
+	return path, nil
+}
+
+// DeleteSupervisorConfig removes the generated local configuration idempotently.
+func (s Store) DeleteSupervisorConfig() error {
+	if strings.TrimSpace(s.directory) == "" {
+		return fmt.Errorf("credential directory is required")
+	}
+	if err := secureDirectory(s.directory); err != nil {
+		return fmt.Errorf("secure credential directory: %w", err)
+	}
+	if err := os.Remove(filepath.Join(s.directory, supervisorConfigFileName)); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("delete protected Supervisor configuration: %w", err)
+	}
+	if err := syncDirectory(s.directory); err != nil {
+		return fmt.Errorf("sync credential directory after Supervisor configuration removal: %w", err)
+	}
+	return nil
+}
+
+// PrepareSupervisorStateDirectory creates persistent Supervisor storage under
+// the same protected credential directory and applies platform protections.
+func (s Store) PrepareSupervisorStateDirectory() (string, error) {
+	if strings.TrimSpace(s.directory) == "" {
+		return "", fmt.Errorf("credential directory is required")
+	}
+	path := filepath.Join(s.directory, "opamp-supervisor-state")
+	if err := os.MkdirAll(path, 0o700); err != nil {
+		return "", fmt.Errorf("create Supervisor state directory: %w", err)
+	}
+	if err := secureDirectory(path); err != nil {
+		return "", fmt.Errorf("secure Supervisor state directory: %w", err)
+	}
+	return path, nil
 }
 
 func (s Store) getBytes(reference string) ([]byte, error) {

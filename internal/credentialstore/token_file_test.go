@@ -8,6 +8,9 @@ import (
 )
 
 func TestProvisionTokenFileWritesAndReplacesProtectedFile(t *testing.T) {
+	if runtime.GOOS == "windows" && !canPersistPlatformCredentialForTest() {
+		t.Skip("Windows Supervisor token-file integration requires an elevated process")
+	}
 	statePath := filepath.Join(t.TempDir(), "state.db")
 	store := New(statePath)
 	if err := store.Put("agent-access", "first-secret-token"); err != nil {
@@ -44,6 +47,9 @@ func TestProvisionTokenFileWritesAndReplacesProtectedFile(t *testing.T) {
 }
 
 func TestProvisionTokenFileRejectsUnsafeNameAndMissingCredential(t *testing.T) {
+	if runtime.GOOS == "windows" && !canPersistPlatformCredentialForTest() {
+		t.Skip("Windows Supervisor token-file integration requires an elevated process")
+	}
 	store := New(filepath.Join(t.TempDir(), "state.db"))
 	if _, err := store.ProvisionSupervisorToken("missing"); err == nil {
 		t.Fatal("missing credential was accepted")
@@ -51,6 +57,9 @@ func TestProvisionTokenFileRejectsUnsafeNameAndMissingCredential(t *testing.T) {
 }
 
 func TestDeleteTokenFileIsIdempotent(t *testing.T) {
+	if runtime.GOOS == "windows" && !canPersistPlatformCredentialForTest() {
+		t.Skip("Windows Supervisor token-file integration requires an elevated process")
+	}
 	store := New(filepath.Join(t.TempDir(), "state.db"))
 	if err := store.Put("agent-access", "secret"); err != nil {
 		t.Fatal(err)
