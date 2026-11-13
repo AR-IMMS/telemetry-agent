@@ -72,6 +72,9 @@ func TestManagedSupervisorEnrollmentAndRemoteGatewayE2E(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, "updated-sink"), 0700); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.MkdirAll(filepath.Join(root, "rotated-sink"), 0700); err != nil {
+		t.Fatal(err)
+	}
 	cert, certPEM := newManagedRuntimeTestCertificate(t)
 	serverCAFile := filepath.Join(root, "opamp-server-ca.pem")
 	if err := os.WriteFile(serverCAFile, certPEM, 0600); err != nil {
@@ -79,8 +82,10 @@ func TestManagedSupervisorEnrollmentAndRemoteGatewayE2E(t *testing.T) {
 	}
 	initialSink, initialSinkURL := startSupervisorRuntimeSink(t, ctx, collectorPath, filepath.Join(root, "initial-sink"))
 	updatedSink, updatedSinkURL := startSupervisorRuntimeSink(t, ctx, collectorPath, filepath.Join(root, "updated-sink"))
+	rotatedSink, rotatedSinkURL := startSupervisorRuntimeSink(t, ctx, collectorPath, filepath.Join(root, "rotated-sink"))
 	initialEndpoint := strings.TrimPrefix(initialSinkURL, "http://")
 	updatedEndpoint := strings.TrimPrefix(updatedSinkURL, "http://")
+	rotatedEndpoint := strings.TrimPrefix(rotatedSinkURL, "http://")
 
 	const (
 		agentToken            = "pr07c-e2e-agent-token-never-use-in-production"
@@ -298,14 +303,13 @@ service:
 	if _, err := replacementCredentialClient.GetSession(ctx); err != nil {
 		t.Fatalf("Mock Core rejected replacement Agent credential: %v", err)
 	}
-	updatedBytes := len(updatedSink.String())
 	if err := core.SetPolicy(installationID.String(), coreapi.DesiredGatewayPolicy{
-		SchemaVersion: "ar-imms/gateway-policy/v1", Revision: 3, GatewayEndpoint: updatedEndpoint,
+		SchemaVersion: "ar-imms/gateway-policy/v1", Revision: 3, GatewayEndpoint: rotatedEndpoint,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	waitForSupervisorCorePolicy(t, ctx, runtimeDone, core, 3)
-	waitForSupervisorSinkTelemetryAfter(t, ctx, runtimeDone, updatedSink, updatedBytes)
+	waitForSupervisorSinkTelemetry(t, ctx, runtimeDone, rotatedSink)
 	stopRuntime()
 	select {
 	case err := <-runtimeDone:
@@ -316,8 +320,8 @@ service:
 	case <-time.After(20 * time.Second):
 		t.Fatal("Agent-managed Supervisor process tree did not stop")
 	}
-	if initialSink.String() == "" || updatedSink.String() == "" {
-		t.Fatal("both initial and remotely updated Gateway sinks must receive OTLP")
+	if initialSink.String() == "" || updatedSink.String() == "" || rotatedSink.String() == "" {
+		t.Fatal("initial, updated, and post-rotation Gateway sinks must receive OTLP")
 	}
 	writeManagedControlE2EEvidence(t, result.InstallationID, result.Binding.NodeID)
 	t.Logf("verified enrollment identity=%s Node=%s; policy revisions=1,2,3; replacement credential revoked the prior bearer and reconnected through authenticated WSS; initial and updated OTLP delivery", result.InstallationID, result.Binding.NodeID)
@@ -423,7 +427,7 @@ func writeManagedControlE2EEvidence(t *testing.T, installationID, nodeID string)
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		t.Fatalf("create managed control-plane evidence directory: %v", err)
 	}
-	contents := fmt.Sprintf("result=PASS\nos=%s\narchitecture=%s\ncommit=%s\nenrollment=actual-agent-service\ncredential=protected-store-and-secret-free-sqlite\ncredential_replacement=previous_revoked_new_wss_session_verified\ntransport=authenticated-wss\npolicy_revisions=1,2,3\ninitial_gateway_otlp=verified\nupdated_gateway_otlp=verified_after_credential_replacement\ninstallation_identity=%s\nnode_identity=%s\n", runtime.GOOS, runtime.GOARCH, os.Getenv("GITHUB_SHA"), installationID, nodeID)
+	contents := fmt.Sprintf("result=PASS\nos=%s\narchitecture=%s\ncommit=%s\nenrollment=actual-agent-service\ncredential=protected-store-and-secret-free-sqlite\ncredential_replacement=previous_revoked_new_wss_session_verified\ntransport=authenticated-wss\npolicy_revisions=1,2,3\ninitial_gateway_otlp=verified\nupdated_gateway_otlp=verified\npost_rotation_gateway_otlp=verified\ninstallation_identity=%s\nnode_identity=%s\n", runtime.GOOS, runtime.GOARCH, os.Getenv("GITHUB_SHA"), installationID, nodeID)
 	if err := os.WriteFile(filepath.Join(directory, "managed-enrollment-opamp-e2e.txt"), []byte(contents), 0600); err != nil {
 		t.Fatalf("write sanitized managed control-plane evidence: %v", err)
 	}
@@ -447,25 +451,6 @@ func waitForSupervisorCorePolicy(t *testing.T, ctx context.Context, done <-chan 
 			t.Fatalf("Agent-managed Supervisor exited before policy revision %d: %v", revision, err)
 		case <-ctx.Done():
 			t.Fatalf("timed out waiting for applied policy revision %d", revision)
-		case <-ticker.C:
-		}
-	}
-}
-
-func waitForSupervisorSinkTelemetryAfter(t *testing.T, ctx context.Context, done <-chan error, output *supervisorRuntimeBuffer, previousBytes int) {
-	t.Helper()
-	ticker := time.NewTicker(250 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		content := output.String()
-		if len(content) > previousBytes && (strings.Contains(content, "system.cpu.time") || strings.Contains(content, "system.memory.usage")) {
-			return
-		}
-		select {
-		case err := <-done:
-			t.Fatalf("Supervisor exited before post-rotation OTLP telemetry arrived: %v", err)
-		case <-ctx.Done():
-			t.Fatalf("timed out waiting for post-rotation OTLP telemetry: %v", ctx.Err())
 		case <-ticker.C:
 		}
 	}
