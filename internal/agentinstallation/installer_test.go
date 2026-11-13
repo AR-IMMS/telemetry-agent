@@ -167,6 +167,50 @@ func TestInstallerStagesAgentPersistsStateThenStartsService(
 	}
 }
 
+func TestInstallerExplicitLegacyRollbackDisablesManagedSupervisor(t *testing.T) {
+	platform := identity.PlatformInfo{OS: "linux", Architecture: "amd64"}
+	endpoint := "wss://opamp.example.test/v1/opamp"
+	store := &recordingStateStore{state: agentstate.State{
+		Installation: &agentstate.AgentInstallation{},
+		Supervisor: agentstate.SupervisorContext{
+			BinaryPath:     "/opt/ar-imms/telemetry-agent/opampsupervisor/supervisor",
+			OpAMPServerURL: endpoint,
+			Enabled:        true,
+		},
+		Dependencies: map[string]agentstate.DependencyState{},
+	}}
+	installer := Installer{
+		layoutFor:       DefaultLayout,
+		copyAgentBinary: func(context.Context, string, string) error { return nil },
+		bootstrap: func(context.Context, bootstrap.Options) (bootstrap.Result, error) {
+			return bootstrap.Result{BinaryPath: "/collector", ConfigPath: "/collector.yaml"}, nil
+		},
+		installSupervisor: func(context.Context, string, identity.PlatformInfo) (string, error) {
+			t.Fatal("legacy rollback must not install or activate a Supervisor")
+			return "", nil
+		},
+		newStateStore: func(string) stateStore { return store },
+		serviceFor: func(Layout) (serviceInstaller, error) {
+			return serviceInstallerFunc(func(context.Context, Layout) error { return nil }), nil
+		},
+	}
+	_, err := installer.Install(context.Background(), Options{
+		Platform: platform, SourceBinaryPath: "/tmp/agentctl", ConfigRoot: "/etc/ar-imms",
+		GatewayEndpoint: "127.0.0.1:4317", HealthEndpoint: "http://127.0.0.1:13133",
+		DisableSupervisor: true, ConfigInput: config.RenderInput{Platform: platform},
+		ValidationTimeout: time.Second,
+	})
+	if err != nil {
+		t.Fatalf("Install() rollback error = %v", err)
+	}
+	if store.state.Supervisor.Enabled || store.state.Supervisor.OpAMPServerURL != "" {
+		t.Fatalf("Supervisor state after rollback = %#v, want disabled with no endpoint", store.state.Supervisor)
+	}
+	if store.state.Supervisor.BinaryPath == "" {
+		t.Fatal("rollback discarded the pinned Supervisor path needed to support a later migration")
+	}
+}
+
 type recordingStateStore struct {
 	state agentstate.State
 }

@@ -25,6 +25,7 @@ type Options struct {
 	GatewayEndpoint       string
 	HealthEndpoint        string
 	OpAMPServerURL        string
+	DisableSupervisor     bool
 	ConfigInput           config.RenderInput
 	ValidationEnvironment []string
 	ValidationTimeout     time.Duration
@@ -134,6 +135,9 @@ func (i Installer) Install(
 		}
 		options.OpAMPServerURL = strings.TrimSpace(options.OpAMPServerURL)
 	}
+	if options.DisableSupervisor && options.OpAMPServerURL != "" {
+		return Layout{}, fmt.Errorf("OpAMP Supervisor cannot be disabled while an OpAMP endpoint is configured")
+	}
 
 	layout, err := i.layoutFor(options.Platform)
 	if err != nil {
@@ -176,6 +180,9 @@ func (i Installer) Install(
 		return Layout{}, fmt.Errorf("bootstrap Collector: %w", err)
 	}
 	opampServerURL, enabled := supervisorActivationForInstall(options.OpAMPServerURL, previousState)
+	if options.DisableSupervisor {
+		opampServerURL, enabled = "", false
+	}
 	supervisorBinaryPath := previousState.Supervisor.BinaryPath
 	if options.OpAMPServerURL != "" || enabled {
 		supervisorBinaryPath, err = i.installSupervisor(ctx, layout.SupervisorInstallDirectory, options.Platform)

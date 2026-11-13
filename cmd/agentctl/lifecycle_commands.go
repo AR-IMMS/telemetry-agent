@@ -26,7 +26,7 @@ func runInstall(
 	flags.Usage = func() {
 		fmt.Fprintln(
 			stderr,
-			"usage: agentctl install --config-root <path> [--gateway-endpoint <host:port>] [--opamp-server-url <wss://host/path>] [--validation-endpoint <host:port>] [--timeout <duration>]",
+			"usage: agentctl install --config-root <path> [--gateway-endpoint <host:port>] [--opamp-server-url <wss://host/path>] [--disable-opamp-supervisor] [--validation-endpoint <host:port>] [--timeout <duration>]",
 		)
 	}
 
@@ -41,6 +41,7 @@ func runInstall(
 		"runtime OpenTelemetry Gateway endpoint",
 	)
 	opampServerURL := flags.String("opamp-server-url", "", "optional OpAMP endpoint; wss remotely or ws on loopback")
+	disableSupervisor := flags.Bool("disable-opamp-supervisor", false, "explicitly return Collector lifecycle to the legacy Agent Runtime")
 	validationEndpoint := flags.String(
 		"validation-endpoint",
 		defaultValidationEndpoint,
@@ -85,6 +86,9 @@ func runInstall(
 		if err := agentinstallation.ValidateOpAMPServerURL(*opampServerURL); err != nil {
 			return usageError(stderr, flags, err.Error())
 		}
+	}
+	if *disableSupervisor && strings.TrimSpace(*opampServerURL) != "" {
+		return usageError(stderr, flags, "--disable-opamp-supervisor cannot be combined with --opamp-server-url")
 	}
 	if *validationTimeout <= 0 {
 		return usageError(
@@ -182,12 +186,13 @@ func runInstall(
 	}
 
 	result, err := installAgent(ctx, agentinstallation.Options{
-		Platform:         platform,
-		SourceBinaryPath: sourceBinaryPath,
-		ConfigRoot:       *configRoot,
-		GatewayEndpoint:  *gatewayEndpoint,
-		OpAMPServerURL:   *opampServerURL,
-		HealthEndpoint:   defaultHealthEndpoint,
+		Platform:          platform,
+		SourceBinaryPath:  sourceBinaryPath,
+		ConfigRoot:        *configRoot,
+		GatewayEndpoint:   *gatewayEndpoint,
+		OpAMPServerURL:    *opampServerURL,
+		DisableSupervisor: *disableSupervisor,
+		HealthEndpoint:    defaultHealthEndpoint,
 		ConfigInput: config.RenderInput{
 			Platform: platform,
 			Layers:   layers,
