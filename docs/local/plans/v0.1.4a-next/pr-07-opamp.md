@@ -1,6 +1,6 @@
 # PR-07 — OpAMP Supervisor Adoption & Control Plane Integration
 
-**Status:** IN_PROGRESS — On exact docs-updated head `8e1da1965c85b4642a59b9a36f85df6e9eec46f2`, native Windows and Ubuntu run [43453791628](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43453791628) passed the full Go suites, managed-runtime E2E, native service migration/rollback/uninstall E2E, vet, and build. Ubuntu also passed Docker recovery and Agent-managed Redis/PostgreSQL/Python/Prometheus/mock-cooling parity. Windows Agent-managed Docker-profile parity remains open: hosted Windows CI has no Docker, the local token has Administrators deny-only, and no self-hosted runner is registered. Keep Supervisor opt-in and preserve legacy ownership until that gate passes.
+**Status:** IN_PROGRESS — Windows/Ubuntu run [43456929985](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43456929985) passed Ubuntu full tests, managed-runtime and native service E2E, Docker recovery/profile parity, vet, and build. Windows full tests, managed-runtime E2E, vet, and build passed, but native service uninstall failed removing `agentctl.exe` with `Access is denied` after SCM stop. Commit `2f2f42b` waits for the captured service process to exit before file removal; exact-head CI is pending. Windows Agent-managed Docker-profile parity also remains open because hosted Windows has no Docker and local credential provisioning requires elevation. Keep PR #30 draft, Supervisor opt-in, and existing installations legacy-owned until mandatory gates pass.
 **Release target:** `v0.1.4a-next`. **Baseline:** PR-06 merge
 `af2f5db4c6b8832bc7bcc87d332d899dad01b452`; check current `HEAD` before each
 slice. See [target contracts and ownership](../../architecture/v0.1.4a-next/opamp-integration.md), [verification report](../../verification/v0.1.4a-next/pr-verification/pr-07-report.md), and [release progress](release-progress.md).
@@ -75,6 +75,11 @@ Do not couple server code to mock internals or create a second production
 business database. Mock interoperability is not production NestJS Core E2E.
 
 ### PR-07c — Runtime adoption and E2E
+
+Native Windows uninstall must wait for the service process to exit after SCM
+reports `STOPPED` and before deleting its owned executable; see the contract in
+[OpAMP integration](../../architecture/v0.1.4a-next/opamp-integration.md).
+The final-head service E2E must exercise this deletion ordering.
 
 Only after PR-07a parity and PR-07b contract gates pass: provision the pinned
 Supervisor as a managed dependency, transfer Collector process ownership once,

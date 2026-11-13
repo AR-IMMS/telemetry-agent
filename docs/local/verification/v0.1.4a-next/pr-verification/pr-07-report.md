@@ -688,3 +688,37 @@ gates open and the checkpoint draft while any are unresolved.
   the remaining adoption gate; keep PR #30 draft and Supervisor opt-in, and
   preserve legacy ownership for existing installations until that native gate
   passes. Production NestJS Core interoperability remains separate.
+
+## Windows uninstall failure and correction — 2026-11-13
+
+- Exact prior head `fea861f98ae7975cf7e38e7e7761b31bca13b96c`, run
+  [43456929985](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43456929985):
+  Ubuntu passed full tests, managed-runtime E2E, native service lifecycle,
+  isolated Docker recovery, Redis/PostgreSQL/Python/Prometheus/mock-cooling
+  profile parity, vet, and build. Sanitized Ubuntu artifacts include native
+  service `14053869366` (`574f1f0b69abbba185381e3d16855bb20f5005297cbf4573f538248456d69406`),
+  managed runtime `14054332661` (`6efe10f723b4f6d3f76481b1fd43942bda979d387a428f5a9b7aa680b08c63a6`),
+  and profile parity `14053119479` (`a9cb17dd5d84a46e401f5162a82618187c5edf3d561d50a2606536d1157d3b97`).
+- Windows full tests, managed-runtime E2E, vet, and build passed, but native
+  service lifecycle E2E failed during final uninstall: deleting the owned
+  `agentctl.exe` returned `Access is denied`. Sanitized failure evidence is
+  artifact `14054686557`, SHA-256
+  `708db4208c723253e17ea9763931387b8ee2d2e988d523b841ea819e3113b8e0`.
+- Source tracing found uninstall waited for SCM `STOPPED` and immediately
+  removed the service executable. Inference: the service process was still
+  releasing its image after reporting `STOPPED`. Fix `2f2f42b` captures the
+  service PID handle before stop and waits for that process to exit, bounded by
+  the existing service-transition context, before deleting the service and
+  owned files. A native Windows subprocess regression test passes locally.
+- Local focused `go test ./internal/agentinstallation` and `go test ./cmd/agentctl`
+  passed when temp files were redirected into the workspace; `go vet` and
+  `go build` passed for the affected packages. A full local `./...` attempt was
+  blocked by sandbox access to an existing protected `tmp/` fixture and
+  loopback socket restrictions; hosted native CI is the authoritative full
+  suite.
+- Exact-head Windows/Ubuntu rerun for `2f2f42b` is pending. Windows managed
+  Docker-profile parity remains open because hosted Windows CI skips Docker
+  and the local process cannot provision the protected credential. PR-07 stays
+  IN_PROGRESS; PR #30 stays draft; Supervisor remains opt-in and existing
+  installations remain legacy-owned. Do not start PR-08 until mandatory PR-07
+  gates pass.

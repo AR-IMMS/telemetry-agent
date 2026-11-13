@@ -1,17 +1,17 @@
 # OpAMP and Supervisor integration — v0.1.4a-next
 
 **Status:** PR-07a Windows and Ubuntu WSL capability tests and PR-07b
-Mock-Core-backed protocol/auth tests pass. PR-07c now wires a reversible
+Mock-Core-backed protocol/auth tests pass. PR-07c managed-runtime E2E and
+native Linux service lifecycle E2E pass. Run [43456929985](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43456929985)
+exposed a Windows native uninstall race: SCM reported `STOPPED` before the
+service process released its executable. Commit `2f2f42b` waits on the captured
+service process handle before deleting Agent-owned files; exact-head Windows
+verification is pending. PR-07c also wires a reversible
 `--opamp-server-url` installation opt-in, pinned Supervisor provisioning,
 protected token/config/state paths, credential-reference change detection,
 single-owner runtime selection, and contained Agent-owned Supervisor process
-cleanup. Windows full Go tests, vet/build, and Linux cross-compilation pass.
-The new real Agent-managed Supervisor/Collector/OTLP E2E is configured for
-Windows and native Ubuntu CI, but the Windows test was skipped locally because
-the process token is not elevated; CI has not yet run. Service-level crash,
-upgrade/uninstall, credential rotation/revocation, Agent LKG parity, full
-profile parity under managed runtime, native Linux execution, and production
-Core interoperability remain open.
+cleanup. Windows Agent-managed Docker-profile parity, final native-service
+rerun, and production Core interoperability remain open.
 
 ## Target topology
 
@@ -77,6 +77,13 @@ ownership transfer complete until the process tree and OTLP sink prove one
 active Collector owner and no duplicate telemetry. Agent LKG parity remains a
 separate required gate because Supervisor's rollback status is not yet bound to
 all existing Agent LKG invariants.
+
+Native service removal contract: on Windows, capture the running service PID
+before requesting stop, wait for SCM `STOPPED`, then wait for that process
+handle to signal exit before deleting the service-owned Agent executable. Do
+not treat the SCM state alone as proof that Windows released the image file.
+The existing bounded service-transition context limits this wait; timeout or
+process-handle access errors stop uninstall before file deletion.
 
 ## Version and capability evidence
 
