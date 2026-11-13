@@ -16,6 +16,7 @@ const processShutdownGrace = 5 * time.Second
 func runContained(ctx context.Context, options Options) error {
 	command := exec.Command(options.Executable, options.Arguments...)
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	command.Env = processEnvironment(options.Environment)
 	if err := command.Start(); err != nil {
 		return fmt.Errorf("start contained process: %w", err)
 	}

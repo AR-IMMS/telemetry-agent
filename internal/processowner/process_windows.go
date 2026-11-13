@@ -6,15 +6,18 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"strings"
 	"time"
+	"unicode/utf16"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
 
 const (
-	processWaitInterval = 250
-	processWaitLimit    = 20_000
+	processWaitInterval       = 250
+	processWaitLimit          = 20_000
+	processShutdownGraceLimit = 5_000
 )
 
 type jobBasicAccountingInformation struct {
@@ -50,8 +53,15 @@ func runContained(ctx context.Context, options Options) error {
 		return fmt.Errorf("encode managed process command line: %w", err)
 	}
 	startup := windows.StartupInfo{Cb: uint32(unsafe.Sizeof(windows.StartupInfo{}))}
+	var environment *uint16
+	var environmentBlock []uint16
+	if len(options.Environment) > 0 {
+		entries := mergedEnvironment(windows.Environ(), options.Environment)
+		environmentBlock = utf16.Encode([]rune(strings.Join(entries, "\x00") + "\x00\x00"))
+		environment = &environmentBlock[0]
+	}
 	var process windows.ProcessInformation
-	if err := windows.CreateProcess(executable, &commandLine[0], nil, nil, false, windows.CREATE_SUSPENDED|windows.CREATE_UNICODE_ENVIRONMENT, nil, nil, &startup, &process); err != nil {
+	if err := windows.CreateProcess(executable, &commandLine[0], nil, nil, false, windows.CREATE_SUSPENDED|windows.CREATE_UNICODE_ENVIRONMENT|windows.CREATE_NEW_PROCESS_GROUP, environment, nil, &startup, &process); err != nil {
 		return fmt.Errorf("create suspended managed process: %w", err)
 	}
 	defer windows.CloseHandle(process.Process)
@@ -70,6 +80,11 @@ func runContained(ctx context.Context, options Options) error {
 	for {
 		select {
 		case <-ctx.Done():
+			// Services often have no attached console. Try the Supervisor's normal
+			// Windows control-break shutdown path first, then fall back to the Job.
+			if windows.GenerateConsoleCtrlEvent(windows.CTRL_BREAK_EVENT, process.ProcessId) == nil {
+				_ = waitForProcessWithin(process.Process, processShutdownGraceLimit)
+			}
 			if err := windows.TerminateJobObject(job, 1); err != nil {
 				return fmt.Errorf("terminate managed process Job Object: %w", err)
 			}
@@ -125,7 +140,11 @@ func waitForJobEmpty(job windows.Handle) error {
 }
 
 func waitForProcess(process windows.Handle) error {
-	for waited := 0; waited < processWaitLimit; waited += processWaitInterval {
+	return waitForProcessWithin(process, processWaitLimit)
+}
+
+func waitForProcessWithin(process windows.Handle, maxWait int) error {
+	for waited := 0; waited < maxWait; waited += processWaitInterval {
 		result, err := windows.WaitForSingleObject(process, processWaitInterval)
 		if err != nil {
 			return err
@@ -138,5 +157,5 @@ func waitForProcess(process windows.Handle) error {
 		}
 		runtime.Gosched()
 	}
-	return fmt.Errorf("managed process did not terminate within %d milliseconds", processWaitLimit)
+	return fmt.Errorf("managed process did not terminate within %d milliseconds", maxWait)
 }
