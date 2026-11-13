@@ -28,6 +28,7 @@ func runInstall(
 			stderr,
 			"usage: agentctl install --config-root <path> [--gateway-endpoint <host:port>] [--opamp-server-url <wss://host/path>] [--disable-opamp-supervisor] [--validation-endpoint <host:port>] [--timeout <duration>]",
 		)
+		fmt.Fprintln(stderr, "new installs require --opamp-server-url unless --disable-opamp-supervisor is explicit; existing installs preserve their persisted owner when the endpoint is omitted")
 	}
 
 	configRoot := flags.String(
@@ -40,8 +41,8 @@ func runInstall(
 		defaultGatewayEndpoint,
 		"runtime OpenTelemetry Gateway endpoint",
 	)
-	opampServerURL := flags.String("opamp-server-url", "", "optional OpAMP endpoint; wss remotely or ws on loopback")
-	disableSupervisor := flags.Bool("disable-opamp-supervisor", false, "explicitly return Collector lifecycle to the legacy Agent Runtime")
+	opampServerURL := flags.String("opamp-server-url", "", "Supervisor endpoint; required for new installs unless legacy runtime is explicitly selected")
+	disableSupervisor := flags.Bool("disable-opamp-supervisor", false, "explicitly select the legacy Agent Collector runtime for a new install or rollback")
 	validationEndpoint := flags.String(
 		"validation-endpoint",
 		defaultValidationEndpoint,

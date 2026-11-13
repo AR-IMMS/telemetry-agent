@@ -6,19 +6,29 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 )
 
-func TestSupervisorActivationRequiresExplicitEndpointAndPreservesExistingMode(t *testing.T) {
+func TestSupervisorActivationDefaultsNewInstallsToSupervisor(t *testing.T) {
 	endpoint := "wss://opamp.example.test/v1/opamp"
-	if gotURL, enabled := supervisorActivationForInstall("", agentstate.State{}); gotURL != "" || enabled {
-		t.Fatalf("fresh install without endpoint = (%q, %t), want inactive", gotURL, enabled)
+	if _, enabled, err := supervisorActivationForInstall("", agentstate.State{}, false); err == nil || enabled {
+		t.Fatalf("fresh install without endpoint = enabled %t, error %v; want required endpoint", enabled, err)
 	}
-	if gotURL, enabled := supervisorActivationForInstall(endpoint, agentstate.State{}); gotURL != endpoint || !enabled {
-		t.Fatalf("explicit fresh install = (%q, %t), want endpoint enabled", gotURL, enabled)
+	if gotURL, enabled, err := supervisorActivationForInstall(endpoint, agentstate.State{}, false); gotURL != endpoint || !enabled || err != nil {
+		t.Fatalf("fresh default install = (%q, %t), error %v; want Supervisor enabled", gotURL, enabled, err)
 	}
-	previous := agentstate.State{Installation: &agentstate.AgentInstallation{}, Supervisor: agentstate.SupervisorContext{OpAMPServerURL: endpoint, Enabled: true}}
-	if gotURL, enabled := supervisorActivationForInstall("", previous); gotURL != endpoint || !enabled {
-		t.Fatalf("upgrade without endpoint = (%q, %t), want existing owner preserved", gotURL, enabled)
+	managed := agentstate.State{Installation: &agentstate.AgentInstallation{}, Supervisor: agentstate.SupervisorContext{OpAMPServerURL: endpoint, Enabled: true}}
+	if gotURL, enabled, err := supervisorActivationForInstall("", managed, false); gotURL != endpoint || !enabled || err != nil {
+		t.Fatalf("managed upgrade without endpoint = (%q, %t), error %v; want existing owner preserved", gotURL, enabled, err)
 	}
-	if gotURL, enabled := supervisorActivationForInstall(endpoint, agentstate.State{Installation: &agentstate.AgentInstallation{}}); gotURL != endpoint || !enabled {
-		t.Fatalf("explicit ownership transfer = (%q, %t), want enabled", gotURL, enabled)
+	legacy := agentstate.State{Installation: &agentstate.AgentInstallation{}}
+	if gotURL, enabled, err := supervisorActivationForInstall("", legacy, false); gotURL != "" || enabled || err != nil {
+		t.Fatalf("legacy upgrade without endpoint = (%q, %t), error %v; want legacy owner preserved", gotURL, enabled, err)
+	}
+	if gotURL, enabled, err := supervisorActivationForInstall(endpoint, legacy, false); gotURL != endpoint || !enabled || err != nil {
+		t.Fatalf("explicit migration = (%q, %t), error %v; want Supervisor enabled", gotURL, enabled, err)
+	}
+	if gotURL, enabled, err := supervisorActivationForInstall("", managed, true); gotURL != "" || enabled || err != nil {
+		t.Fatalf("explicit rollback = (%q, %t), error %v; want legacy owner", gotURL, enabled, err)
+	}
+	if gotURL, enabled, err := supervisorActivationForInstall("", agentstate.State{}, true); gotURL != "" || enabled || err != nil {
+		t.Fatalf("explicit fresh legacy selection = (%q, %t), error %v; want legacy owner", gotURL, enabled, err)
 	}
 }

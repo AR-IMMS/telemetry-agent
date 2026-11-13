@@ -158,7 +158,7 @@ func TestInstallerStagesAgentPersistsStateThenStartsService(
 		t.Fatal("installation = nil")
 	}
 	if got := store.state.Supervisor; got.BinaryPath == "" || !got.Enabled || got.OpAMPServerURL != "ws://127.0.0.1:4320/v1/opamp" {
-		t.Fatalf("Supervisor state = %#v, want explicitly configured runtime", got)
+		t.Fatalf("Supervisor state = %#v, want default Supervisor owner for a new install", got)
 	}
 
 	if got, want := *store.state.Installation,

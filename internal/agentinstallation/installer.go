@@ -19,12 +19,15 @@ import (
 // Options contains the caller-provided inputs for one packaged Agent
 // installation. Paths owned by the Agent are resolved from Platform.
 type Options struct {
-	Platform              identity.PlatformInfo
-	SourceBinaryPath      string
-	ConfigRoot            string
-	GatewayEndpoint       string
-	HealthEndpoint        string
-	OpAMPServerURL        string
+	Platform         identity.PlatformInfo
+	SourceBinaryPath string
+	ConfigRoot       string
+	GatewayEndpoint  string
+	HealthEndpoint   string
+	// OpAMPServerURL configures the default Supervisor owner on a new
+	// installation. A new install requires this unless DisableSupervisor is set.
+	OpAMPServerURL string
+	// DisableSupervisor explicitly selects the legacy Agent Collector runtime.
 	DisableSupervisor     bool
 	ConfigInput           config.RenderInput
 	ValidationEnvironment []string
@@ -160,6 +163,14 @@ func (i Installer) Install(
 	if previousErr != nil && !os.IsNotExist(previousErr) {
 		return Layout{}, fmt.Errorf("load Agent state before installation update: %w", previousErr)
 	}
+	opampServerURL, enabled, err := supervisorActivationForInstall(
+		options.OpAMPServerURL,
+		previousState,
+		options.DisableSupervisor,
+	)
+	if err != nil {
+		return Layout{}, err
+	}
 
 	result, err := i.bootstrap(ctx, bootstrap.Options{
 		Platform:    options.Platform,
@@ -174,10 +185,6 @@ func (i Installer) Install(
 	})
 	if err != nil {
 		return Layout{}, fmt.Errorf("bootstrap Collector: %w", err)
-	}
-	opampServerURL, enabled := supervisorActivationForInstall(options.OpAMPServerURL, previousState)
-	if options.DisableSupervisor {
-		opampServerURL, enabled = "", false
 	}
 	supervisorBinaryPath := previousState.Supervisor.BinaryPath
 	if options.OpAMPServerURL != "" || enabled {
@@ -240,14 +247,22 @@ func (i Installer) Install(
 	return layout, nil
 }
 
-func supervisorActivationForInstall(requestedEndpoint string, previous agentstate.State) (string, bool) {
+func supervisorActivationForInstall(requestedEndpoint string, previous agentstate.State, disableSupervisor bool) (string, bool, error) {
+	if disableSupervisor {
+		return "", false, nil
+	}
 	if strings.TrimSpace(requestedEndpoint) != "" {
-		// The service installer restarts the Agent after this state commit, so
-		// supplying an endpoint explicitly opts into a single-owner transition.
-		return requestedEndpoint, true
+		// Supplying the endpoint selects the default Supervisor owner for a new
+		// install or explicitly migrates an existing legacy installation.
+		return requestedEndpoint, true, nil
 	}
-	if previous.Installation != nil && previous.Supervisor.Enabled {
-		return previous.Supervisor.OpAMPServerURL, true
+	if previous.Installation != nil {
+		if previous.Supervisor.Enabled {
+			return previous.Supervisor.OpAMPServerURL, true, nil
+		}
+		return "", false, nil
 	}
-	return "", false
+	return "", false, fmt.Errorf(
+		"OpAMP server URL is required for a new installation using the default Supervisor runtime; explicitly disable Supervisor to select the legacy Agent runtime",
+	)
 }
