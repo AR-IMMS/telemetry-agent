@@ -899,3 +899,51 @@ parity was blocked and that new installations still used legacy ownership.
   values. PR-07 remains IN_PROGRESS and PR #30 remains draft pending final-head
   CI and publication. Production NestJS Core interoperability remains
   separate.
+
+## Windows exact-head retest and Linux recovery follow-up — 2026-11-14
+
+- Windows managed Docker-profile parity passed on exact PR head
+  `a6d4f43581cd5f4978884a130a61aeae3760edb2` under a genuine elevated token.
+  The pinned Collector and Supervisor v0.160.0 digests, Docker Desktop Linux
+  Engine access, four profile metrics, identities, startup fallback, churn,
+  receiver uniqueness, and fixture cleanup are recorded in the
+  [Windows parity evidence](pr-07-windows-profile-parity.md).
+- Ubuntu run
+  [43506593114](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43506593114)
+  passed the full test, service lifecycle, and initial native Docker profile
+  phases, then failed during isolated Docker daemon recovery. The failure was
+  in test setup: immediately after restarting DIND, its mounted `docker.sock`
+  had not yet been recreated, so `chmod` returned `No such file or directory`.
+  Linux host-bound profile uniqueness checks before recovery passed.
+- Commit `05b2884e4b442f944390820c8a0413260e2f7057` adds a bounded 30-second
+  retry for the temporary CI socket to reappear before restoring the same
+  test-only permissions used at initial DIND startup. It does not change
+  runtime behavior or credential ACLs.
+- Focused local verification after that fix passed:
+  `go test ./internal/monitoringprofile -count=1`,
+  `go test ./cmd/agentctl -run '^$'`, and
+  `go vet ./internal/monitoringprofile`. The full local Windows command suite
+  is constrained by this sandbox's SQLite temp-file denial; Windows CI runs
+  the full suite.
+- Exact code head `05b2884e4b442f944390820c8a0413260e2f7057` passed both jobs in
+  [CI run 43507624447](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43507624447).
+  Ubuntu executed native Docker recovery, all four live application profiles,
+  managed Supervisor E2E, vet, and build. Windows passed full tests, native
+  service lifecycle, managed Supervisor E2E, vet, and build; its Docker tests
+  were skipped and are covered by the separate elevated local profile run.
+- Ubuntu recovery evidence: inventory was preserved during the daemon outage,
+  receiver data resumed after recovery, and applied configuration generation
+  remained unchanged at 2. The paused Redis endpoint was diagnosed as
+  `endpoint_unreachable` with timestamped Collector evidence. Multi-network,
+  published-port override, and unpublished-container cases executed. Profile
+  parity emitted Redis, PostgreSQL, Python/Prometheus, and mock-cooling metrics.
+- Sanitized CI artifacts from run `43507624447`: Ubuntu profile/recovery
+  `14077980526`, managed Supervisor Linux `14077780978`, managed Supervisor
+  Windows `14077661075`, native service Linux `14075994084`, and native service
+  Windows `14077715396`.
+- The report/tracker edits in this commit still require one docs-updated
+  final-head CI run before PR-07 can be marked PASS. PR-07 remains
+  **IN_PROGRESS** and draft PR #30 remains unmerged. Existing
+  installations preserve their persisted runtime owner; new installations
+  default to managed Supervisor with the required OpAMP URL and explicit
+  legacy rollback option.

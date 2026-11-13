@@ -62,3 +62,50 @@ This closes only the Windows Agent-managed Docker/profile parity gate. The
 separate default-owner transfer is implemented after this tested head and must
 pass final-head Windows/Ubuntu regression and CI before PR-07 can be marked
 PASS or merged. Production NestJS Core interoperability remains separate.
+
+## Exact-head retest — 2026-11-14
+
+- Exact PR head: `a6d4f43581cd5f4978884a130a61aeae3760edb2`.
+- Exact source snapshot SHA-256: `688b2d04d4905c36c6140419a28563ff4bebf354405d747f5b060b10c0b2e3dc`.
+- Test command: `go test ./cmd/agentctl -run '^TestLiveDockerApplicationProfilesDeliverOTLP$' -count=1 -v`.
+- Result: **PASS**, 45.84 seconds; exit code 0; zero new fixture containers after cleanup.
+- Elevation preflight again confirmed High Mandatory Level and an enabled
+  Administrators SID. Docker Desktop `desktop-linux` connected to Linux Engine
+  29.5.3 (`x86_64`).
+- Collector archive, Collector binary, and Supervisor v0.160.0 SHA-256 values
+  match the verified digests above.
+- Redis, PostgreSQL, Python/Prometheus, and mock-cooling metrics reached the
+  isolated OTLP sink. Node identity and resource identity were recorded for
+  each profile. Startup fallback, container churn, receiver uniqueness, and
+  cleanup passed.
+- Reproducible raw run: `tmp/pr07-win-profile-a6d4f43-20261114/evidence/windows-admin-profile-e2e.log`.
+  This is a local ignored artifact and is not part of the release commit.
+
+This retest closes Windows profile parity for the runtime changes on the tested
+head. A later PR commit changes only the Linux Docker recovery test retry; the
+latest PR head still requires final CI before PR-07 can pass.
+
+## Linux recovery and profile CI — 2026-11-14
+
+- Code head `05b2884e4b442f944390820c8a0413260e2f7057` passed Ubuntu in CI run
+  [43507624447](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43507624447).
+- The native live Docker test ran a two-network scenario with mapped ports,
+  an override port, and an unpublished container. During a real isolated DIND
+  outage, inventory remained present and receiver data resumed after restart;
+  applied Collector generation remained 2. A paused Redis endpoint was
+  reported `endpoint_unreachable` with timestamped Collector evidence.
+- The same job passed live OTLP delivery for Redis (`redis.clients.connected`),
+  PostgreSQL (`postgresql.backends`), Python/Prometheus
+  (`python_app_requests_total`), and mock cooling
+  (`ar_imms_test_cooling_celsius`). Receiver uniqueness checks passed after
+  churn and recovery. The four-profile managed-runtime E2E, managed Supervisor
+  enrollment/remote Gateway E2E, vet, build, and cleanup also passed.
+- Ubuntu CI artifact `14077980526` retains sanitized profile/recovery evidence.
+  Windows CI passed full tests, native service lifecycle, managed Supervisor
+  E2E, vet, and build, but skipped Docker tests. Windows profile parity is
+  independently verified by the elevated workstation run above.
+
+The remaining PR-07 verification is the docs-updated final-head CI run and
+review/merge of draft PR #30. The Windows Docker-profile result remains tied to
+the exact E2E head recorded above; the only later code change is the Linux
+test-harness socket retry.
