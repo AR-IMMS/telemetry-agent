@@ -6,13 +6,15 @@ selection, credential-reference restart handling, and Windows Job Object/Linux
 process-group containment. Full Windows `go test ./...`, `go vet ./...`, and
 `go build ./...` pass; affected Linux test binaries cross-compile. The
 Agent-managed live Supervisor/Collector/OTLP E2E is added to Windows and native
-Ubuntu CI. Its local Windows execution skipped because the current process is
-not elevated, and WSL is unavailable here. Native Linux/Windows service E2E and
-CI evidence have not run. PR-07a/07b evidence remains as recorded below; the
-earlier raw Supervisor hard-kill failure demonstrates why containment and
-sink-level uniqueness still require live verification. Do not mark ownership
-transfer complete or merge PR #30 until all mandatory adoption, recovery,
-security, LKG, and profile-parity gates pass.
+Ubuntu CI. Its local Windows execution cannot run because this process is not
+elevated; the CI test now fails instead of silently skipping when the workflow
+explicitly enables the gate. WSL/Docker access is unavailable here. Native
+Linux/Windows service E2E and final-head CI evidence have not run. PR-07a/07b
+evidence remains as recorded below; the earlier raw Supervisor hard-kill
+failure demonstrates why containment and sink-level uniqueness still require
+live verification. Do not mark ownership transfer complete or merge PR #30
+until all mandatory adoption, recovery, security, LKG, and profile-parity gates
+pass.
 **Release target:** `v0.1.4a-next`
 **Branch:** `feat/pr-07-opamp`
 **Implementation baseline:** PR-06 merge
@@ -37,34 +39,39 @@ this implementation branch's authorized scope.
 | Packaged installer integration | IMPLEMENTED / FOCUSED WINDOWS TESTS | The installer invokes pinned Supervisor provisioning only for explicit `--opamp-server-url` migration or when preserving a previously enabled Supervisor installation. Fresh installs without the option retain the current Agent Collector owner; reinstall preserves the persisted owner. Endpoint validation rejects remote cleartext WS and invalid URLs. Native install/upgrade/uninstall service checks remain open. |
 | Agent-owned process containment | IMPLEMENTED / WINDOWS TEST PASS; LINUX CROSS-COMPILE | `internal/processowner` uses a Windows suspended process plus kill-on-close Job Object and Linux process groups. Windows Job cancellation and descendants tests pass in the full suite. A Linux process-group integration test is present and its test binary cross-compiles, but it has not run on Linux in this environment. |
 | Supervisor runtime and Agent ownership selection | IMPLEMENTED / LIVE CI GATE PENDING | Persisted `SupervisorContext` selects either the legacy Agent Collector runtime or `runManagedSupervisor`, never both. The managed runner provisions current enrollment credentials, writes protected config/state, supplies the Gateway endpoint, waits for Collector health before existing readiness/LKG callback, watches credential-reference changes, and contains process cleanup. Full live parity, crash recovery, service lifecycle, LKG rollback equivalence, and no-duplicate-sink proof remain open. |
-| Agent-managed Supervisor fallback + OTLP E2E | ADDED / NOT YET EXECUTED | `TestManagedSupervisorRuntimeDeliversOTLP` checks the pinned Supervisor executable SHA-256 and Collector v0.160.0 version, validates and runs local hostmetrics fallback, waits for Collector health and `system.cpu.time`/`system.memory.usage` at an isolated OTLP sink, then cancels the contained process tree. CI runs this on Windows and native Ubuntu and uploads a sanitized summary. Local Windows run skipped because the current process is not elevated; WSL is unavailable. This test does not yet exercise authenticated OpAMP delivery or the full monitoring profile set. |
+| Agent-managed Supervisor fallback + OTLP E2E | ADDED / CI PENDING | `TestManagedSupervisorRuntimeDeliversOTLP` checks the pinned Supervisor executable SHA-256 and Collector v0.160.0 version, validates and runs local hostmetrics fallback, waits for Collector health and `system.cpu.time`/`system.memory.usage` at an isolated OTLP sink, then cancels the contained process tree. CI is configured to run this on Windows and native Ubuntu and upload a sanitized summary. If CI enables the test without an elevated Windows token, it now fails rather than skips. Local Windows execution is blocked by the current token; WSL is unavailable. This test does not exercise Agent enrollment, authenticated OpAMP delivery, remote Gateway changes, or the full monitoring profile set. |
 | Durable publication and truthful rollback attribution | IMPLEMENTED / WINDOWS MOCK CORE TESTS | The local contract records exact policy revision/hash publications before OpAMP delivery and resolves observed hashes through Core. Desired, published, and applied revisions are distinct; old applied hashes remain rollback evidence. Mock Core's atomic JSON fixture survives restart without storing bearer values. The full Windows repository suite passed in this run; native Linux Mock Core execution remains NOT RUN. |
 
-## Current PR-07c local verification — 2026-11-13
+## Current PR-07c local verification — 2026-11-13, final integration attempt
 
-**Local code head:** `2164933` (`feat/pr-07-opamp`). The four PR-07c
-implementation commits are `8299deb` (installer/owner selection), `08aead6`
-(process containment), `b7627fb` (managed runtime), and `2164933` (session
-revocation). The existing lifecycle lock
-`cmd/agentctl/otel.yaml.lifecycle.lock` was preserved and not staged.
+**Committed code head:** `fffcb52840ce0c3a3f9a007fa0c9f1eba34caee4`
+(`feat/pr-07-opamp`). The PR-07c implementation commits are `8299deb`
+(installer/owner selection), `08aead6` (process containment), `b7627fb`
+(managed runtime), and `2164933` (session revocation); `fffcb52` records the
+prior verification status. This attempt changes the live-test privilege guard
+so an enabled CI gate fails instead of silently skipping. The unrelated
+pre-existing worktree changes and `cmd/agentctl/otel.yaml.lifecycle.lock`
+remain unstaged and preserved.
 
 | Check | Result | Evidence / limit |
 |---|---|---|
-| `go test ./... -count=1` | PASS / WINDOWS | Full repository test suite passed on Windows. Windows process containment test ran. Protected token-file tests skip without an elevated token. |
-| Focused PR-07c packages | PASS / WINDOWS | `go test ./internal/agentlifecycle ./internal/agentinstallation ./internal/opampserver ./internal/opampsupervisorconfig ./internal/credentialstore ./internal/processowner ./internal/agentstate ./cmd/agentctl -count=1` passed. |
-| `go vet ./...` | PASS / WINDOWS | Completed with exit code 0. |
-| `go build ./...` | PASS / WINDOWS | Completed with exit code 0. |
-| Linux affected-package test compile | PASS / CROSS-COMPILE | `GOOS=linux GOARCH=amd64 go test -c` completed for Agent installation, lifecycle, state, credential store, OpAMP server/config, and process owner packages; `GOOS=linux GOARCH=amd64 go build ./...` passed. No Linux test binary was executed. |
-| Managed Supervisor live E2E | NOT RUN / WINDOWS TOKEN NOT ELEVATED | `TestManagedSupervisorRuntimeDeliversOTLP` was invoked with the paths to the prior-spike Windows binaries but skipped before hashing or starting them because the process token is not elevated, required for the protected Windows ACL. The test is wired to both Windows and native Ubuntu CI and writes a sanitized summary artifact when it runs. |
-| Native Linux / Docker | NOT RUN | `wsl.exe --list --quiet` returned `Wsl/E_ACCESSDENIED`. Native Linux service, process-group, Docker Engine, and managed-runtime E2E must run in Ubuntu CI. WSL is not substituted for that gate. |
-| Workflow/report hygiene | PASS | `.github/workflows/ci.yml` parsed as YAML; `git diff --check` passed. |
-| Remote draft PR update | BLOCKED / AUTH + NETWORK | The connected GitHub app confirms PR #30 remains open, draft, and targets `chore/v0.1.4a-next`; its remote head is still `657d208`. In the local environment `gh auth status` reports the `GH_TOKEN` and stored `iSenity1812` token invalid, and `git ls-remote` fails before authentication because DNS/network access to GitHub is unavailable. Commits are local only and PR #30 has not been updated by this run. |
+| `go test ./... -count=1` | PASS / WINDOWS | Final full repository suite passed after the privilege-guard change when run outside the restricted sandbox. Windows Job Object tests ran. Protected token-file filesystem tests remain elevation-gated. A sandboxed attempt failed on denied SQLite temp-file and loopback access; the unrestricted rerun passed. |
+| Focused managed-runtime package | PASS / WINDOWS | `go test ./internal/agentlifecycle -count=1` passed after the guard change. The live E2E itself was not enabled locally because the current process is not elevated and verified binaries are not provisioned for this run. |
+| `go vet ./...` | PASS / WINDOWS | Completed with exit code 0 after the guard change. |
+| `go build ./...` | PASS / WINDOWS | Completed with exit code 0 after the guard change. |
+| Linux build | PASS / CROSS-COMPILE | `GOOS=linux GOARCH=amd64 go build ./...` passed. This is not Linux runtime or service verification. |
+| Managed Supervisor live E2E | NOT RUN / WINDOWS TOKEN NOT ELEVATED | The current process token is not elevated, Docker is inaccessible, and the required verified Supervisor/Collector binary paths are not provisioned in this local run. The configured CI test checks these prerequisites; privilege absence now fails the enabled Windows gate instead of returning a skip. |
+| Native Linux / Docker | BLOCKED / LOCAL ENVIRONMENT | `wsl.exe --list --quiet` returned `Wsl/E_ACCESSDENIED`; Docker Desktop reports access denied opening its Linux Engine named pipe. Native Linux service, process-group, Docker Engine, and managed-runtime E2E remain unverified. |
+| Full vertical-slice coverage | NOT IMPLEMENTED / GATE OPEN | The current Agent-managed live test is a local hostmetrics fallback-to-OTLP smoke test. It does not perform real Agent enrollment with Mock Core, authenticated WSS Supervisor policy delivery, credential replacement/revocation, durable revision/hash recovery, profile parity under managed ownership, or service install/migration/upgrade/uninstall. Earlier independent PR-07a/07b spike evidence does not cover these Agent-managed paths. |
+| Workflow/report hygiene | PASS | `.github/workflows/ci.yml` YAML and the changed Go test file were checked; `git diff --check` passed. |
+| Remote draft PR update | BLOCKED / AUTH + NETWORK | `gh auth status` reports the environment token and stored `iSenity1812` credential invalid; `gh pr view 30` cannot connect to the GitHub API. No push or final-head CI run occurred. The latest remote head was previously observed as `657d208`; this attempt could not query whether it has since changed. PR #30 status remains unverified from this local run and no merge was attempted. |
 
 The CI gates added in this checkpoint verify the pinned Supervisor executable
 digest on each runner, run the real Agent-managed hostmetrics fallback through
 the pinned Collector to an isolated OTLP sink, and upload `managed-supervisor-
-runtime.txt`. CI must run on final PR head before treating that limited smoke
-test as evidence. It does not replace authenticated Agent/Mock Core E2E,
+runtime.txt`. The Windows gate now fails on missing elevation rather than
+silently skipping. CI must run on final PR head before treating that limited
+smoke test as evidence. It does not replace authenticated Agent/Mock Core E2E,
 credential rotation/revocation under the managed runtime, service recovery,
 local configuration update/no-op checks, profile parity, or Agent LKG parity.
 

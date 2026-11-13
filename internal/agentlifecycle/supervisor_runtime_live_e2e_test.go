@@ -28,7 +28,7 @@ func TestManagedSupervisorRuntimeDeliversOTLP(t *testing.T) {
 		t.Skip("set AR_IMMS_PR07C_RUNTIME_E2E=1 to run pinned Agent-managed Supervisor E2E")
 	}
 	if !canRunSupervisorRuntimeE2E() {
-		t.Skip("protected Windows credential-store E2E requires an elevated process")
+		t.Fatal("AR_IMMS_PR07C_RUNTIME_E2E=1 requires an elevated process for the protected Windows credential-store E2E")
 	}
 	supervisorPath := strings.TrimSpace(os.Getenv("AR_IMMS_PR07A_SUPERVISOR_BINARY"))
 	collectorPath := strings.TrimSpace(os.Getenv("AR_IMMS_PR05_COLLECTOR_BINARY"))
