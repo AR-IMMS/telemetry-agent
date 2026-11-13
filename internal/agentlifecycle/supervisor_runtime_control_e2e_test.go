@@ -10,6 +10,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -81,7 +82,12 @@ func TestManagedSupervisorEnrollmentAndRemoteGatewayE2E(t *testing.T) {
 	initialEndpoint := strings.TrimPrefix(initialSinkURL, "http://")
 	updatedEndpoint := strings.TrimPrefix(updatedSinkURL, "http://")
 
-	const agentToken = "pr07c-e2e-agent-token-never-use-in-production"
+	const (
+		agentToken            = "pr07c-e2e-agent-token-never-use-in-production"
+		replacementAgentToken = "pr07c-e2e-replacement-agent-token-never-use-in-production"
+		bootstrapToken        = "pr07c-e2e-bootstrap-token-never-use-in-production"
+		replacementBootstrap  = "pr07c-e2e-replacement-bootstrap-token-never-use-in-production"
+	)
 	const nodeID = "33333333-4444-4555-8666-777777777777"
 	statePath := filepath.Join(root, "agent-state.db")
 	installationID, err := identity.EnsureInstallationIdentity(agentstate.NewIdentityStore(statePath), rand.Reader)
@@ -97,7 +103,7 @@ func TestManagedSupervisorEnrollmentAndRemoteGatewayE2E(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	coreHandler := managedRuntimeEnrollmentHandler(t, core, agentToken, nodeID)
+	coreHandler := managedRuntimeEnrollmentHandler(t, core, agentToken, replacementAgentToken, bootstrapToken, replacementBootstrap, nodeID)
 	coreHTTP := httptest.NewUnstartedServer(coreHandler)
 	coreHTTP.TLS = &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
 	coreHTTP.StartTLS()
@@ -148,7 +154,7 @@ func TestManagedSupervisorEnrollmentAndRemoteGatewayE2E(t *testing.T) {
 		Installation: enrollment.Installation{ID: installationID.String()},
 		Agent:        enrollment.Agent{Version: "pr07c-e2e"},
 		Environment:  enrollment.Environment{OS: runtime.GOOS, Architecture: runtime.GOARCH},
-	}, "pr07c-e2e-bootstrap-token-never-use-in-production")
+	}, bootstrapToken)
 	if err != nil {
 		t.Fatalf("actual Agent enrollment against Mock Core: %v", err)
 	}
@@ -252,6 +258,54 @@ service:
 	}
 	waitForSupervisorCorePolicy(t, ctx, runtimeDone, core, 2)
 	waitForSupervisorSinkTelemetry(t, ctx, runtimeDone, updatedSink)
+	priorCredentialRef := attempt.AccessCredentialRef
+	if _, err := service.ReEnroll(ctx, origin, enrollment.EnrollmentPayload{
+		Installation: enrollment.Installation{ID: installationID.String()},
+		Agent:        enrollment.Agent{Version: "pr07c-e2e"},
+		Environment:  enrollment.Environment{OS: runtime.GOOS, Architecture: runtime.GOARCH},
+	}, replacementBootstrap); err != nil {
+		t.Fatalf("replace Agent credential through actual re-enrollment: %v", err)
+	}
+	replacementAttempt, err := agentstate.NewEnrollmentStore(statePath).LoadAttempt()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replacementAttempt.AccessCredentialRef == priorCredentialRef {
+		t.Fatal("re-enrollment did not replace the protected credential reference")
+	}
+	if storedReplacement, err := credentialstore.New(statePath).Get(replacementAttempt.AccessCredentialRef); err != nil || storedReplacement != replacementAgentToken {
+		t.Fatalf("resolve protected replacement Agent credential: err=%v matches=%t", err, storedReplacement == replacementAgentToken)
+	}
+	if _, err := credentialstore.New(statePath).Get(priorCredentialRef); !errors.Is(err, enrollment.ErrCredentialNotFound) {
+		t.Fatalf("prior protected Agent credential remains available after re-enrollment: %v", err)
+	}
+	oldCredentialClient, err := coreapi.NewAgentManagementClient(coreHTTP.URL, agentToken, coreHTTP.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := oldCredentialClient.GetSession(ctx); err == nil {
+		t.Fatal("Mock Core still accepts the replaced Agent credential")
+	} else {
+		var apiErr *coreapi.ControlAPIError
+		if !errors.As(err, &apiErr) || apiErr.Status != http.StatusUnauthorized {
+			t.Fatalf("old Agent credential response = %v, want HTTP 401", err)
+		}
+	}
+	replacementCredentialClient, err := coreapi.NewAgentManagementClient(coreHTTP.URL, replacementAgentToken, coreHTTP.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := replacementCredentialClient.GetSession(ctx); err != nil {
+		t.Fatalf("Mock Core rejected replacement Agent credential: %v", err)
+	}
+	updatedBytes := len(updatedSink.String())
+	if err := core.SetPolicy(installationID.String(), coreapi.DesiredGatewayPolicy{
+		SchemaVersion: "ar-imms/gateway-policy/v1", Revision: 3, GatewayEndpoint: updatedEndpoint,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	waitForSupervisorCorePolicy(t, ctx, runtimeDone, core, 3)
+	waitForSupervisorSinkTelemetryAfter(t, ctx, runtimeDone, updatedSink, updatedBytes)
 	stopRuntime()
 	select {
 	case err := <-runtimeDone:
@@ -266,35 +320,60 @@ service:
 		t.Fatal("both initial and remotely updated Gateway sinks must receive OTLP")
 	}
 	writeManagedControlE2EEvidence(t, result.InstallationID, result.Binding.NodeID)
-	t.Logf("verified enrollment identity=%s Node=%s; policy revisions=1,2; initial and updated OTLP delivery; transport=WSS", result.InstallationID, result.Binding.NodeID)
+	t.Logf("verified enrollment identity=%s Node=%s; policy revisions=1,2,3; replacement credential revoked the prior bearer and reconnected through authenticated WSS; initial and updated OTLP delivery", result.InstallationID, result.Binding.NodeID)
 }
 
-func managedRuntimeEnrollmentHandler(t *testing.T, core http.Handler, accessToken, nodeID string) http.Handler {
+func managedRuntimeEnrollmentHandler(t *testing.T, core *mockcore.Server, accessToken, replacementToken, bootstrapToken, replacementBootstrap, nodeID string) http.Handler {
 	t.Helper()
+	enrollmentCount := 0
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/api/v1/agent-enrollments" || request.Method != http.MethodPost {
 			core.ServeHTTP(writer, request)
 			return
 		}
 		var input enrollment.EnrollmentRequest
-		if err := json.NewDecoder(request.Body).Decode(&input); err != nil || input.BootstrapToken != "pr07c-e2e-bootstrap-token-never-use-in-production" {
+		if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
 			http.Error(writer, "invalid enrollment request", http.StatusUnauthorized)
+			return
+		}
+		responseToken := accessToken
+		switch enrollmentCount {
+		case 0:
+			if input.BootstrapToken != bootstrapToken {
+				http.Error(writer, "invalid enrollment request", http.StatusUnauthorized)
+				return
+			}
+		case 1:
+			if input.BootstrapToken != replacementBootstrap {
+				http.Error(writer, "invalid replacement enrollment request", http.StatusUnauthorized)
+				return
+			}
+			responseToken = replacementToken
+		default:
+			http.Error(writer, "unexpected enrollment request", http.StatusConflict)
 			return
 		}
 		if err := input.EnrollmentPayload.Validate(); err != nil {
 			http.Error(writer, "invalid enrollment payload", http.StatusBadRequest)
 			return
 		}
+		if enrollmentCount == 1 {
+			if err := core.ReplaceCredential(accessToken, replacementToken); err != nil {
+				http.Error(writer, "could not replace Mock Core credential", http.StatusInternalServerError)
+				return
+			}
+		}
 		response := enrollment.EnrollmentResponse{
 			EnrollmentID:   "aaaaaaaa-1111-4222-8333-bbbbbbbbbbbb",
 			InstallationID: input.Installation.ID,
 			Binding:        enrollment.Binding{ID: "cccccccc-1111-4222-8333-dddddddddddd", NodeID: nodeID, Status: "active"},
-			Credential:     enrollment.Credential{Type: "bearer", AccessToken: accessToken},
+			Credential:     enrollment.Credential{Type: "bearer", AccessToken: responseToken},
 			ControlPlane:   enrollment.ControlPlane{BaseURL: "https://" + request.Host, PollIntervalSeconds: 30},
 		}
 		writer.Header().Set("Content-Type", "application/json")
 		writer.WriteHeader(http.StatusCreated)
 		_ = json.NewEncoder(writer).Encode(map[string]any{"data": response, "meta": map[string]string{"request_id": "pr07c-e2e-request"}})
+		enrollmentCount++
 	})
 }
 
@@ -344,7 +423,7 @@ func writeManagedControlE2EEvidence(t *testing.T, installationID, nodeID string)
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		t.Fatalf("create managed control-plane evidence directory: %v", err)
 	}
-	contents := fmt.Sprintf("result=PASS\nos=%s\narchitecture=%s\ncommit=%s\nenrollment=actual-agent-service\ncredential=protected-store-and-secret-free-sqlite\ntransport=authenticated-wss\npolicy_revisions=1,2\ninitial_gateway_otlp=verified\nupdated_gateway_otlp=verified\ninstallation_identity=%s\nnode_identity=%s\n", runtime.GOOS, runtime.GOARCH, os.Getenv("GITHUB_SHA"), installationID, nodeID)
+	contents := fmt.Sprintf("result=PASS\nos=%s\narchitecture=%s\ncommit=%s\nenrollment=actual-agent-service\ncredential=protected-store-and-secret-free-sqlite\ncredential_replacement=previous_revoked_new_wss_session_verified\ntransport=authenticated-wss\npolicy_revisions=1,2,3\ninitial_gateway_otlp=verified\nupdated_gateway_otlp=verified_after_credential_replacement\ninstallation_identity=%s\nnode_identity=%s\n", runtime.GOOS, runtime.GOARCH, os.Getenv("GITHUB_SHA"), installationID, nodeID)
 	if err := os.WriteFile(filepath.Join(directory, "managed-enrollment-opamp-e2e.txt"), []byte(contents), 0600); err != nil {
 		t.Fatalf("write sanitized managed control-plane evidence: %v", err)
 	}
@@ -368,6 +447,25 @@ func waitForSupervisorCorePolicy(t *testing.T, ctx context.Context, done <-chan 
 			t.Fatalf("Agent-managed Supervisor exited before policy revision %d: %v", revision, err)
 		case <-ctx.Done():
 			t.Fatalf("timed out waiting for applied policy revision %d", revision)
+		case <-ticker.C:
+		}
+	}
+}
+
+func waitForSupervisorSinkTelemetryAfter(t *testing.T, ctx context.Context, done <-chan error, output *supervisorRuntimeBuffer, previousBytes int) {
+	t.Helper()
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		content := output.String()
+		if len(content) > previousBytes && (strings.Contains(content, "system.cpu.time") || strings.Contains(content, "system.memory.usage")) {
+			return
+		}
+		select {
+		case err := <-done:
+			t.Fatalf("Supervisor exited before post-rotation OTLP telemetry arrived: %v", err)
+		case <-ctx.Done():
+			t.Fatalf("timed out waiting for post-rotation OTLP telemetry: %v", ctx.Err())
 		case <-ticker.C:
 		}
 	}

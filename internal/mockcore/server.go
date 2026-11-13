@@ -203,6 +203,33 @@ func (s *Server) SetPolicy(installationID string, policy coreapi.DesiredGatewayP
 	return nil
 }
 
+// ReplaceCredential atomically revokes one test bearer and binds its
+// installation to a replacement without persisting either secret value.
+func (s *Server) ReplaceCredential(previousToken, replacementToken string) error {
+	if s == nil || strings.TrimSpace(previousToken) == "" || strings.TrimSpace(replacementToken) == "" || previousToken == replacementToken {
+		return fmt.Errorf("mock Core credential replacement is invalid")
+	}
+	previousHash := sha256.Sum256([]byte(previousToken))
+	replacementHash := sha256.Sum256([]byte(replacementToken))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	installation, exists := s.installations[previousHash]
+	if !exists {
+		return fmt.Errorf("mock Core prior credential does not exist")
+	}
+	if _, exists := s.installations[replacementHash]; exists {
+		return fmt.Errorf("mock Core replacement credential already exists")
+	}
+	delete(s.installations, previousHash)
+	s.installations[replacementHash] = installation
+	if err := s.persistLocked(); err != nil {
+		delete(s.installations, replacementHash)
+		s.installations[previousHash] = installation
+		return err
+	}
+	return nil
+}
+
 // Revoke removes the test credential so later requests receive 401.
 func (s *Server) Revoke(accessToken string) error {
 	if s == nil {
