@@ -33,7 +33,7 @@ func TestSelectSupervisorArtifactPinsSupportedPlatform(t *testing.T) {
 			if artifact.Version != "0.160.0" || artifact.BinaryName != test.wantFile || artifact.SHA256 != test.wantHash {
 				t.Fatalf("artifact = %+v", artifact)
 			}
-			if !strings.HasPrefix(artifact.URL, "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.160.0/") || !strings.HasSuffix(artifact.URL, test.wantFile) {
+			if !strings.HasPrefix(artifact.URL, "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/cmd%2Fopampsupervisor%2Fv0.160.0/") || !strings.HasSuffix(artifact.URL, test.wantFile) {
 				t.Fatalf("artifact URL = %q", artifact.URL)
 			}
 		})

@@ -44,14 +44,15 @@ this implementation branch's authorized scope.
 
 ## Current PR-07c local verification — 2026-11-13, final integration attempt
 
-**Committed code head:** `fffcb52840ce0c3a3f9a007fa0c9f1eba34caee4`
+**Previously pushed code head:** `16b881cc5896c26cfdec4fa354b797ab0085a86a`
 (`feat/pr-07-opamp`). The PR-07c implementation commits are `8299deb`
 (installer/owner selection), `08aead6` (process containment), `b7627fb`
 (managed runtime), and `2164933` (session revocation); `fffcb52` records the
-prior verification status. This attempt changes the live-test privilege guard
-so an enabled CI gate fails instead of silently skipping. The unrelated
-pre-existing worktree changes and `cmd/agentctl/otel.yaml.lifecycle.lock`
-remain unstaged and preserved.
+prior verification status; `16b881c` makes the enabled CI gate fail rather
+than silently skip on a non-elevated Windows runner. The next scoped commit
+corrects the Supervisor artifact release URL exposed by Actions run
+`43369304553`. The unrelated pre-existing worktree changes and
+`cmd/agentctl/otel.yaml.lifecycle.lock` remain unstaged and preserved.
 
 | Check | Result | Evidence / limit |
 |---|---|---|
@@ -64,7 +65,7 @@ remain unstaged and preserved.
 | Native Linux / Docker | BLOCKED / LOCAL ENVIRONMENT | `wsl.exe --list --quiet` returned `Wsl/E_ACCESSDENIED`; Docker Desktop reports access denied opening its Linux Engine named pipe. Native Linux service, process-group, Docker Engine, and managed-runtime E2E remain unverified. |
 | Full vertical-slice coverage | NOT IMPLEMENTED / GATE OPEN | The current Agent-managed live test is a local hostmetrics fallback-to-OTLP smoke test. It does not perform real Agent enrollment with Mock Core, authenticated WSS Supervisor policy delivery, credential replacement/revocation, durable revision/hash recovery, profile parity under managed ownership, or service install/migration/upgrade/uninstall. Earlier independent PR-07a/07b spike evidence does not cover these Agent-managed paths. |
 | Workflow/report hygiene | PASS | `.github/workflows/ci.yml` YAML and the changed Go test file were checked; `git diff --check` passed. |
-| Remote draft PR update | BLOCKED / AUTH + NETWORK | `gh auth status` reports the environment token and stored `iSenity1812` credential invalid; `gh pr view 30` cannot connect to the GitHub API. No push or final-head CI run occurred. The latest remote head was previously observed as `657d208`; this attempt could not query whether it has since changed. PR #30 status remains unverified from this local run and no merge was attempted. |
+| Draft PR and final-head CI | IN PROGRESS / CI FAILURE | Push of `16b881cc5896c26cfdec4fa354b797ab0085a86a` succeeded; connected GitHub read confirms PR #30 remains open/draft against `chore/v0.1.4a-next`. CI run `43369304553` failed in both OS jobs while downloading Supervisor because the artifact URL used the Collector release tag. Later test, vet, build, Docker, and managed-E2E steps were skipped, so this is not a code-test failure and does not satisfy final-head verification. The installer and CI download paths are corrected to the official `cmd/opampsupervisor` release tag; retry pending. GitHub connector write attempts for PR body/comment returned HTTP 403, so only the pushed branch and local docs could be updated. No merge was attempted. |
 
 The CI gates added in this checkpoint verify the pinned Supervisor executable
 digest on each runner, run the real Agent-managed hostmetrics fallback through

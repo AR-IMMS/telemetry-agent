@@ -55,7 +55,7 @@ func SelectSupervisorArtifact(platform identity.PlatformInfo) (SupervisorArtifac
 		return SupervisorArtifact{}, fmt.Errorf("unsupported Supervisor architecture %q", platform.Architecture)
 	}
 
-	baseURL := "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v" + supervisorVersion + "/"
+	baseURL := "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/cmd%2Fopampsupervisor%2Fv" + supervisorVersion + "/"
 	switch strings.ToLower(strings.TrimSpace(platform.OS)) {
 	case "windows":
 		name := "opampsupervisor_0.160.0_windows_amd64.exe"

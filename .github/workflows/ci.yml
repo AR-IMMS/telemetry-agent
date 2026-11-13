@@ -88,7 +88,7 @@ jobs:
           $directory = Join-Path $env:RUNNER_TEMP 'opampsupervisor'
           New-Item -ItemType Directory -Force -Path $directory | Out-Null
           $binaryPath = Join-Path $directory $name
-          $url = "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.160.0/$name"
+          $url = "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/cmd%2Fopampsupervisor%2Fv0.160.0/$name"
           Invoke-WebRequest -Uri $url -OutFile $binaryPath
           $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $binaryPath).Hash.ToLowerInvariant()
           if ($actual -ne $expected) { throw "Pinned Supervisor checksum mismatch: $actual" }
