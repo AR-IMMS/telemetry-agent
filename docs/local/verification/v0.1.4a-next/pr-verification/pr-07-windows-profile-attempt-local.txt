@@ -1,0 +1,45 @@
+PR-07 Windows Agent-managed Docker profile parity — blocked local attempt
+Date: 2026-11-13
+Source branch: feat/pr-07-opamp
+Source HEAD during attempt: 11d524a37c291093ea861c8e196e0e8ee033b562
+Note: command ran from the existing dirty worktree; this is diagnostic evidence,
+not exact-head acceptance evidence.
+
+Command:
+  go test ./cmd/agentctl -run '^TestLiveDockerApplicationProfilesDeliverOTLP$' -count=1 -v
+
+Enabled test inputs:
+  AR_IMMS_PR06_APPLICATION_PROFILE_E2E=1
+  AR_IMMS_PR07A_SUPERVISOR_PROFILE_PARITY=1
+  AR_IMMS_PR05_COLLECTOR_BINARY=<cached SHA-verified otelcol-contrib v0.160.0 Windows binary>
+  AR_IMMS_PR07A_SUPERVISOR_BINARY=<cached SHA-verified opampsupervisor v0.160.0 Windows binary>
+  AR_IMMS_PR07A_EVIDENCE_DIR=<isolated test evidence directory>
+
+Environment observations:
+  Docker Engine: 29.5.3, reachable in the escalated command context.
+  Windows token: Medium Mandatory Level; BUILTIN\Administrators deny-only.
+  Fixture images: redis:7-alpine, postgres:17-alpine, python:3.12-alpine.
+  The test built its isolated PostgreSQL fixture image and printed image IDs.
+
+Sanitized test output:
+  === RUN   TestLiveDockerApplicationProfilesDeliverOTLP
+  Agent reconciliation pass failed stage=validate code=invalid_candidate class=permanent
+  Agent runtime exited before redis.clients.connected delivery: write protected Supervisor configuration:
+  open <isolated-temp>\credentials\.credential-<temporary>: Access is denied.; sink=; Collector=
+  Agent runtime did not stop within 10 seconds during test cleanup.
+  TempDir RemoveAll cleanup: access denied for the protected credential directory.
+  --- FAIL: TestLiveDockerApplicationProfilesDeliverOTLP
+
+Result: BLOCKED before profile telemetry. The process token could not write the
+protected Supervisor credential/configuration path. No security ACL was changed.
+
+Post-test inspection:
+  No Docker containers matching arimms-pr06-* remained.
+  No matching test-owned Supervisor or Collector process remained.
+  The test's protected temporary credential directory remains inaccessible to
+  the current token; it was not force-deleted.
+
+Required follow-up:
+  Rerun from a genuine high-integrity Windows session with Docker Desktop Linux
+  containers. Retain the SYSTEM/Administrators-only credential DACL. Do not
+  treat hosted Windows CI skips or Linux parity as Windows parity evidence.

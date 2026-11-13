@@ -92,10 +92,22 @@ func TestDockerCollectorLayerUsesPlatformEndpointStrategiesAndIdentity(t *testin
 			if test.wantContainer && receivers["redis/container_endpoint"] == nil {
 				t.Fatal("container-endpoint Redis receiver rule is missing")
 			}
-			for _, raw := range receivers {
+			observer := extensions["docker_observer"].(map[string]any)
+			if test.os == "linux" {
+				if observer["use_host_bindings"] != true || observer["ignore_non_host_bindings"] != true {
+					t.Fatalf("Linux Docker Observer endpoint selection=%#v, want host-bound published endpoints only", observer)
+				}
+			} else if observer["use_host_bindings"] != nil || observer["ignore_non_host_bindings"] != nil {
+				t.Fatalf("Windows Docker Observer endpoint selection=%#v, want the verified alternate_port defaults", observer)
+			}
+			for id, raw := range receivers {
 				receiver := raw.(map[string]any)
 				rule := receiver["rule"].(string)
-				if !strings.Contains(rule, "port == 6379") {
+				privatePortVariable := "port"
+				if test.os == "linux" && id == "redis/alternate_port" {
+					privatePortVariable = "alternate_port"
+				}
+				if !strings.Contains(rule, privatePortVariable+" == 6379") {
 					t.Fatalf("Redis receiver rule accepts a non-Redis private port: %s", rule)
 				}
 				if !containsAll(rule, `labels["ar-imms.monitoring.enabled"] == "true"`, `labels["ar-imms.monitoring.profile"] == "redis"`) {
@@ -113,25 +125,28 @@ func TestDockerCollectorLayerUsesPlatformEndpointStrategiesAndIdentity(t *testin
 				if attributes["workload_id"] != "`labels[\"ar-imms.workload.id\"]`" {
 					t.Errorf("optional workload identity mapping = %#v", attributes["workload_id"])
 				}
+				if test.os == "linux" && id == "redis/alternate_port" && receiver["config"].(map[string]any)["endpoint"] != "`host`:`port`" {
+					t.Errorf("Linux Redis receiver=%#v, want the host-bound endpoint strategy", receiver)
+				}
 			}
 		})
 	}
 }
 
-func TestDockerCollectorLayerPinsDeterministicNetworkSelectionAndPortOverrideRule(t *testing.T) {
+func TestDockerCollectorLayerPinsHostBoundLinuxEndpointAndPortOverrideRule(t *testing.T) {
 	layer, _, err := DefaultRegistry().DockerCollectorLayer("linux", dockerEndpoint("linux"), "core-node-123")
 	if err != nil {
 		t.Fatal(err)
 	}
 	observer := layer.Document["extensions"].(map[string]any)["docker_observer"].(map[string]any)
-	if observer["api_version"] != "1.44" || observer["use_hostname_if_present"] != false || observer["use_host_bindings"] != nil {
-		t.Fatalf("Docker Observer endpoint selection config=%#v, want default host binding behavior and deterministic network IP selection", observer)
+	if observer["api_version"] != "1.44" || observer["use_hostname_if_present"] != false || observer["use_host_bindings"] != true || observer["ignore_non_host_bindings"] != true {
+		t.Fatalf("Docker Observer endpoint selection config=%#v, want deterministic host-bound endpoints", observer)
 	}
 	creator := layer.Document["receivers"].(map[string]any)["receiver_creator"].(map[string]any)
 	receivers := creator["receivers"].(map[string]any)
 	for id, raw := range receivers {
 		rule := raw.(map[string]any)["rule"].(string)
-		if !strings.Contains(rule, `labels["ar-imms.monitoring.port"]`) || !strings.Contains(rule, `int(labels["ar-imms.monitoring.port"])`) || !strings.Contains(rule, `port == 6379`) {
+		if !strings.Contains(rule, `labels["ar-imms.monitoring.port"]`) || !strings.Contains(rule, `int(labels["ar-imms.monitoring.port"])`) || (!strings.Contains(rule, `alternate_port == 6379`) && !strings.Contains(rule, `port == 6379`)) {
 			t.Fatalf("receiver %q does not implement default plus validated workload target port rule: %s", id, rule)
 		}
 	}

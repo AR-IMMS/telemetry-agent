@@ -205,8 +205,8 @@ func profileEndpointStrategies(profileID, receiverType string, targetPort uint16
 		}
 	}
 	return []EndpointStrategy{
-		{ID: alternateID, OS: "windows", When: "alternate_port > 0", Endpoint: endpointFor("host"), Scope: discovery.EndpointHost, Provenance: "published_port", TargetPort: targetPort, TargetPortLabel: targetPortLabel, Priority: 100},
-		{ID: alternateID, OS: "linux", When: "alternate_port > 0", Endpoint: endpointFor("host"), Scope: discovery.EndpointHost, Provenance: "published_port", TargetPort: targetPort, TargetPortLabel: targetPortLabel, Priority: 100},
-		{ID: containerID, OS: "linux", When: "alternate_port == 0 and host != \"\"", Endpoint: endpointFor("container"), Scope: discovery.EndpointContainer, Provenance: "container_network", TargetPort: targetPort, TargetPortLabel: targetPortLabel, Priority: 50},
+		{ID: alternateID, OS: "windows", When: "alternate_port > 0", Endpoint: endpointFor("host"), Scope: discovery.EndpointHost, Provenance: "published_port", TargetPort: targetPort, TargetPortLabel: targetPortLabel, PrivatePortVariable: "port", Priority: 100},
+		{ID: alternateID, OS: "linux", When: "alternate_port > 0", Endpoint: "`host`:`port`", Scope: discovery.EndpointHost, Provenance: "published_port", TargetPort: targetPort, TargetPortLabel: targetPortLabel, PrivatePortVariable: "alternate_port", Priority: 100},
+		{ID: containerID, OS: "linux", When: "alternate_port == 0 and host != \"\"", Endpoint: endpointFor("container"), Scope: discovery.EndpointContainer, Provenance: "container_network", TargetPort: targetPort, TargetPortLabel: targetPortLabel, PrivatePortVariable: "port", Priority: 50},
 	}
 }

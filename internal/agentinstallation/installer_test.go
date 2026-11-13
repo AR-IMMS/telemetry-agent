@@ -65,6 +65,13 @@ func TestInstallerStagesAgentPersistsStateThenStartsService(
 					"collector.yaml",
 			}, nil
 		},
+		installSupervisor: func(_ context.Context, installDir string, _ identity.PlatformInfo) (string, error) {
+			steps = append(steps, "install-supervisor")
+			if installDir != "/opt/ar-imms/telemetry-agent/opampsupervisor" {
+				t.Fatalf("Supervisor install directory = %q", installDir)
+			}
+			return "/opt/ar-imms/telemetry-agent/opampsupervisor/versions/0.160.0/opampsupervisor", nil
+		},
 		newStateStore: func(path string) stateStore {
 			if path != "/var/lib/ar-imms/telemetry-agent/state.db" {
 				t.Fatalf("state path = %q", path)
@@ -101,6 +108,7 @@ func TestInstallerStagesAgentPersistsStateThenStartsService(
 		ConfigRoot:            "/srv/ar-imms/collector-config",
 		GatewayEndpoint:       "gateway.example:4317",
 		HealthEndpoint:        "http://127.0.0.1:13133",
+		OpAMPServerURL:        "ws://127.0.0.1:4320/v1/opamp",
 		ConfigInput:           configInput,
 		ValidationEnvironment: []string{"OTEL_GATEWAY_ENDPOINT=gateway.example:4317"},
 		ValidationTimeout:     30 * time.Second,
@@ -114,7 +122,7 @@ func TestInstallerStagesAgentPersistsStateThenStartsService(
 	}
 
 	if got, want := steps,
-		[]string{"copy-agent", "bootstrap", "start-service"}; !reflect.DeepEqual(got, want) {
+		[]string{"bootstrap", "install-supervisor", "copy-agent", "start-service"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("steps = %v, want %v", got, want)
 	}
 
@@ -149,6 +157,9 @@ func TestInstallerStagesAgentPersistsStateThenStartsService(
 	if store.state.Installation == nil {
 		t.Fatal("installation = nil")
 	}
+	if got := store.state.Supervisor; got.BinaryPath == "" || !got.Enabled || got.OpAMPServerURL != "ws://127.0.0.1:4320/v1/opamp" {
+		t.Fatalf("Supervisor state = %#v, want default Supervisor owner for a new install", got)
+	}
 
 	if got, want := *store.state.Installation,
 		layout.Installation(); !reflect.DeepEqual(got, want) {
@@ -156,9 +167,90 @@ func TestInstallerStagesAgentPersistsStateThenStartsService(
 	}
 }
 
+func TestInstallerExplicitLegacyRollbackDisablesManagedSupervisor(t *testing.T) {
+	platform := identity.PlatformInfo{OS: "linux", Architecture: "amd64"}
+	endpoint := "wss://opamp.example.test/v1/opamp"
+	store := &recordingStateStore{state: agentstate.State{
+		Installation: &agentstate.AgentInstallation{},
+		Supervisor: agentstate.SupervisorContext{
+			BinaryPath:     "/opt/ar-imms/telemetry-agent/opampsupervisor/supervisor",
+			OpAMPServerURL: endpoint,
+			Enabled:        true,
+		},
+		Dependencies: map[string]agentstate.DependencyState{},
+	}}
+	serviceRunning := true
+	var serviceSteps []string
+	installer := Installer{
+		layoutFor: DefaultLayout,
+		copyAgentBinary: func(context.Context, string, string) error {
+			serviceSteps = append(serviceSteps, "copy")
+			if serviceRunning {
+				t.Fatal("Agent binary was replaced while the installed service was running")
+			}
+			return nil
+		},
+		bootstrap: func(context.Context, bootstrap.Options) (bootstrap.Result, error) {
+			return bootstrap.Result{BinaryPath: "/collector", ConfigPath: "/collector.yaml"}, nil
+		},
+		installSupervisor: func(context.Context, string, identity.PlatformInfo) (string, error) {
+			t.Fatal("legacy rollback must not install or activate a Supervisor")
+			return "", nil
+		},
+		newStateStore: func(string) stateStore { return store },
+		serviceFor: func(Layout) (serviceInstaller, error) {
+			return stoppingServiceInstaller{
+				stop: func(context.Context, Layout) error {
+					serviceSteps = append(serviceSteps, "stop")
+					serviceRunning = false
+					return nil
+				},
+				install: func(context.Context, Layout) error {
+					serviceSteps = append(serviceSteps, "restart")
+					serviceRunning = true
+					return nil
+				},
+			}, nil
+		},
+	}
+	_, err := installer.Install(context.Background(), Options{
+		Platform: platform, SourceBinaryPath: "/tmp/agentctl", ConfigRoot: "/etc/ar-imms",
+		GatewayEndpoint: "127.0.0.1:4317", HealthEndpoint: "http://127.0.0.1:13133",
+		DisableSupervisor: true, ConfigInput: config.RenderInput{Platform: platform},
+		ValidationTimeout: time.Second,
+	})
+	if err != nil {
+		t.Fatalf("Install() rollback error = %v", err)
+	}
+	if store.state.Supervisor.Enabled || store.state.Supervisor.OpAMPServerURL != "" {
+		t.Fatalf("Supervisor state after rollback = %#v, want disabled with no endpoint", store.state.Supervisor)
+	}
+	if store.state.Supervisor.BinaryPath == "" {
+		t.Fatal("rollback discarded the pinned Supervisor path needed to support a later migration")
+	}
+	if !reflect.DeepEqual(serviceSteps, []string{"stop", "copy", "restart"}) {
+		t.Fatalf("service and binary sequence = %v, want stop, copy, restart", serviceSteps)
+	}
+}
+
+type stoppingServiceInstaller struct {
+	stop    func(context.Context, Layout) error
+	install func(context.Context, Layout) error
+}
+
+func (s stoppingServiceInstaller) Stop(ctx context.Context, layout Layout) error {
+	return s.stop(ctx, layout)
+}
+
+func (s stoppingServiceInstaller) Install(ctx context.Context, layout Layout) error {
+	return s.install(ctx, layout)
+}
+
 type recordingStateStore struct {
 	state agentstate.State
 }
+
+func (s *recordingStateStore) Load() (agentstate.State, error) { return s.state, nil }
 
 func (s *recordingStateStore) Update(
 	update agentstate.StateMutation,

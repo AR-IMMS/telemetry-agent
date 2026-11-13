@@ -6,7 +6,7 @@
 |---|---|---|---|---|
 | L1 | Ubuntu 24.04 LTS x86_64 | systemd service | Native Docker Engine + Compose plugin | Redis, PostgreSQL, Python API |
 | W1 | Windows 11/Server supported target x86_64 | Windows SCM | Docker Desktop Linux containers | Redis, PostgreSQL, Python API; Windows Exporter; LHM only if sensor support |
-| Core/Gateway | Separate reachable host or VPS | NestJS OpAMP endpoint and auth | OTLP gateway + isolated verification sink | Logs, health/status and metric capture |
+| Core/Gateway | Separate reachable host or VPS | Go Mock Core + Go OpAMP Server initially; production Core only after separate contract review | OTLP gateway + isolated verification sink | Logs, health/status and metric capture; clearly label mock vs production Core |
 
 ## Workload images and traffic
 

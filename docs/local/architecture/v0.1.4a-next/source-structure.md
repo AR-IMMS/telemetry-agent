@@ -4,6 +4,15 @@
 
 **Status:** PROPOSED — Context-oriented architecture with lightweight Clean Architecture principles.
 
+**Current release-mission context set:** Identity, Inventory, Monitoring,
+Configuration, Runtime, Health, and Operations. The migration examples below
+are historical ownership hypotheses and must be checked against actual package
+contents, symbols, active consumers, imports, and transaction boundaries. The
+OpAMP Server and Mock Core remain separate executable/service boundaries; they
+do not add Agent business contexts. PR-09.5 starts with a source ownership
+audit and may justify a different physical layout while preserving these
+context responsibilities.
+
 ## 1. Design Principles
 
 - Organize code by **Bounded Context first**, then by responsibilities.
@@ -137,6 +146,11 @@ internal/app → Wires all dependencies
 | `dependency`, `agentinstallation` | `runtime/adapters/` |
 | `agenthealth` | `health/` |
 | `agentstate` | Context-owned SQLite adapters + `platform/sqlite` |
+
+The current `internal/supervisor` is the Agent's Collector process supervisor;
+it is not OTel OpAMP Supervisor. Treat any future OpAMP server adapter and
+Supervisor provisioning as explicit boundaries, not a reason to mechanically
+rename or move existing packages. See the [PR-07 migration contract](opamp-integration.md).
 
 Preserve compatibility facades during migration. Do not mechanically move packages or change SQLite schema while reorganizing ownership.
 

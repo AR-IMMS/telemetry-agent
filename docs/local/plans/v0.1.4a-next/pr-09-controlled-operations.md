@@ -6,6 +6,17 @@
 
 Ship resource-targeted read-only Docker diagnostics plus optional opt-in container/service restart with durable authorization and idempotency; no SSH/arbitrary shell/AI remediation.
 
+## Current release-mission constraint
+
+Execute PR-09 only after PR-07 and PR-08 pass. The operation names and endpoints
+listed below are candidates from an earlier plan, not an approved operation
+catalog or contract. Before implementation, establish the actual approved
+request/response, authorization, target binding, idempotency, audit, timeout,
+and result-reporting contracts. Implement only operations explicitly present
+in those reviewed contracts. If no mutation policy is approved and enforceable,
+keep all mutating operations disabled. This constraint supersedes any broader
+scope implied by the candidate list in this plan.
+
 ## Baseline / current architecture constraints
 
 Operations are NOT OpAMP `Restart` (that concerns Agent). Core owns human RBAC/approval/audit; Agent must independently enforce narrowed signed/secure operation intent and exact target verification. Docker socket access is high privilege.

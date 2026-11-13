@@ -75,7 +75,8 @@ Enrollment identity/credential storage; Gateway snapshot support; SQLite WAL and
 | ADR-VN-04 | OpenTelemetry Collector owns telemetry, not Agent | ACCEPTED principle |
 | ADR-VN-05 | Generic Monitoring Profiles first; specialized native Go definitions only if required | PROPOSED |
 | ADR-VN-06 | OpAMP transport of versioned AR-IMMS config; authority/merge policies remain OPEN | PARTIALLY ACCEPTED |
-| ADR-VN-07 | Keep AR-IMMS Collector supervisor; do **not** run OpAMP Supervisor simultaneously | PROPOSED |
+| ADR-VN-07 (historical) | Keep AR-IMMS Collector supervisor; do **not** run OpAMP Supervisor simultaneously | SUPERSEDED as target by PR-07 proposal; retained as migration history |
+| ADR-VN-07R | Adopt official OTel OpAMP Supervisor after exact-version capability/parity checks; transfer lifecycle ownership once and never co-run owners | PROPOSED; no artifact or parity verification claimed |
 | ADR-VN-08 | OTel-native Observer + Receiver Creator is preferred for supported endpoint lifecycles; migration requires parity spike, with exactly one owner | ACCEPTED DIRECTION / VALIDATION PENDING |
 | ADR-VN-09 | Operations API separate from OpAMP and monitoring configurations | PROPOSED |
 | ADR-VN-10 | Existing Windows exporter/LHM/Node exporter as managed baseline/optional dependencies | PROPOSED |
@@ -182,7 +183,7 @@ flowchart TB
 
 **Features:** native systemd/Windows SCM startup; baseline configs; Collector install and repair; OS-specific managed dependencies; deterministic complete config assembly; process health; activation lock; LKG. **Status:** substantially EXISTING; native live Linux/SCM gates need fresh verification.
 
-**Rules:** compiled config composed from approved intents and pinned components; validation before activation; no direct writes of raw user YAML into active config; stable generation on no-op; failures preserve/restore LKG; don't remove resources not owned by Agent; Agent supervisor is sole process owner (no concurrent OpAMP Supervisor).
+**Rules:** compiled config composed from approved intents and pinned components; validation before activation; no direct writes of raw user YAML into active config; stable generation on no-op; failures preserve/restore LKG; don't remove resources not owned by Agent. The current Agent supervisor remains sole owner until parity; after a controlled transfer, OTel OpAMP Supervisor is sole Collector process owner. Never run both owners simultaneously. See [OpAMP/Supervisor integration](opamp-integration.md).
 
 **Edge cases:** checksum mismatch, binary incompatible with OS/arch, partial install, disk full, permission denial, service already exists, Collector crash loop, startup timeout, invalid config, failed atomic rename, reboot mid-activation, stale lifecycle lock, failed rollback, uninstall with shared dependency, Windows AV/firewall, Linux SELinux/AppArmor/systemd restrictions.
 
@@ -306,16 +307,9 @@ A safe profile references **approved symbolic endpoint bindings**, not arbitrary
 
 ### 7.1 Protocol boundary
 
-**DECIDED DIRECTION:** Go Agent embeds an **OpAMP client**; NestJS Core exposes an **OpAMP server adapter**, initially over authenticated HTTPS plain-HTTP polling, with WebSocket as optional later capability. OpAMP's wire messages are Protobuf, not JSON REST. Generated protocol types and transport framing must match the pinned protocol version; do not invent field names from prose examples.
+**REVISED PROPOSAL:** use the official OTel OpAMP Supervisor as the node-side OpAMP client and eventual sole Collector process owner, after exact-version capability/parity checks. Use a small Go OpAMP server adapter and contract-compatible Go Mock Core for the initial isolated vertical slice. Core production interoperability remains separately gated. See [OpAMP/Supervisor integration](opamp-integration.md) for ownership, proposed protocol flow, evidence gates, and open contracts.
 
-- Agent initiates HTTPS or WSS outbound.
-- Core IAM/Agent Registry remains the source for installation authorization and target Node binding.
-- OpAMP `instance_uid` is protocol identity, mapped to—not equated with—AR-IMMS Installation ID; never treated as a bearer credential.
-- Server supports only negotiated protocol capabilities; no requirement to expose package upgrades, arbitrary commands, certificate bootstrap or WebSocket in MVP.
-- Agent sends relevant agent description, capabilities, config/effective status and health via OpAMP when supported; do not over-claim that every detailed AR-IMMS operation state fits native OpAMP fields.
-- Remote policy is an **AR-IMMS-owned versioned document** delivered in OpAMP `config_map` with declared content type/hash. Agent validates it before translating to existing desired state; Core must NOT push arbitrary active Collector YAML.
-- `RemoteConfigStatus` represents protocol-level apply states; any separately needed `RECEIVED/ACCEPTED/APPLIED/DELIVERED` is an AR-IMMS lifecycle projection, not a fabricated OpAMP enum.
-- The OpAMP restart command (if supported later) pertains to the managed Agent's lifecycle. It is not a Docker/OS-service restart API.
+The OpAMP wire format remains the standard protocol, not a custom JSON wrapper. Do not assume a particular transport, capability, config merge, status mapping, or artifact version is supported until verified against the exact pinned build. `instance_uid` is protocol identity, not authentication. Do not accept arbitrary commands or unrestricted Collector YAML.
 
 ### 7.2 Core logical modules
 
@@ -323,36 +317,15 @@ A safe profile references **approved symbolic endpoint bindings**, not arbitrary
 |---|---|---|
 | Agent Registry (existing) | Installation↔Node binding, credential/revocation | Collector config |
 | Monitoring Policy (new) | Published profile snapshots, scope, revisions and audit | Container endpoint discovery |
-| OpAMP Transport Adapter (new) | Protobuf protocol, HTTP/WS session, auth integration, per-installation delivery | Business policy validation by itself |
+| Go OpAMP Server adapter (proposed) | Native protocol, authenticated session, translation through documented Core API contracts | Durable policy authority, mock-only APIs |
 | Config Status Projection (new) | Config hash/accepted/applied/error facts, recency | Telemetry backend truth |
 | Operations Authorization (separate new) | Specific user/target/action approvals and audit | OpAMP command misuse |
 
 Core must authenticate *each relevant request/connection*, authorize the installation against its binding, enforce size/rate limits and redact secrets. A fleet-wide profile change must not leak configurations to other installations.
 
-### 7.3 OpAMP Core → Agent flow
+### 7.3 OpAMP flow
 
-```mermaid
-sequenceDiagram
-    actor Admin
-    participant Core as Core Policy + Registry
-    participant Server as OpAMP Server Adapter
-    participant Client as Go OpAMP Client
-    participant Config as Agent Configuration
-    participant Run as Runtime / Collector
-    Admin->>Core: Publish policy revision 12 for Node A
-    Client->>Server: Authenticated AgentToServer (poll or WS)
-    Server->>Core: Verify installation/authorization + desired hash
-    Server-->>Client: ServerToAgent remote_config hash H12
-    Client->>Config: Validate ownership, schema, capability, revision
-    Config->>Config: Atomically persist accepted policy
-    Config-->>Client: Acceptance state
-    Config->>Run: Reconcile latest desired state
-    Run-->>Config: Applied generation or failed/LKG
-    Client->>Server: Report remote config status/hash and health
-    Server->>Core: Persist status projection
-```
-
-**Remote-config commit decision (proposed):** a syntactically valid remote policy can be persisted as *accepted*, but it is not marked *applied* until Collector readiness/journal confirms it. If the effective configuration cannot be applied, preserve LKG and surface failure. Core policy revision and local Collector generation are distinct monotonic concepts.
+The revised proposed flow is maintained in [diagrams/remote-config.mmd](diagrams/remote-config.mmd). The target separates Core/Mock Core, the Go OpAMP server, OTel OpAMP Supervisor, AR-IMMS Agent, and Collector. Exact status mapping and configuration ownership remain contract questions. Keep Core policy revision distinct from local applied configuration and never infer OTLP delivery from readiness.
 
 ### 7.4 OpAMP connectivity edge cases
 
@@ -373,7 +346,7 @@ sequenceDiagram
 
 ### 7.5 Implementation decision gate
 
-The TypeScript OpAMP server is **a proposal**, not a claim of an existing production-ready NestJS library. Before implementation: (1) pin protocol revision and generated Protobuf schema, (2) prove compatibility with official Go OpAMP client test fixture, (3) test HTTP exchange, auth, config hash/status and reconnect, (4) compare effort/security against a dedicated Go OpAMP service. NestJS remains preferred only if the protocol adapter is auditable and testable. **Do not simultaneously deploy upstream OpAMP Supervisor with AR-IMMS supervisor.**
+The earlier TypeScript/NestJS OpAMP adapter design is **superseded as the PR-07 target** by the Go OpAMP server adapter plus contract-compatible Go Mock Core proposal. Keep the historical design for traceability. PR-07a must first establish exact Supervisor and Collector artifact compatibility, config composition/update behavior, fallback, failure recovery, and actual telemetry delivery on Windows and Linux. The server must use `opamp-go`; Core authority remains behind reviewed cross-repository contracts. Production NestJS Core interoperability is a separate, unverified gate. **Do not transfer Collector lifecycle ownership or run both supervisors concurrently before parity.**
 
 ---
 
@@ -758,7 +731,7 @@ Each test stores: ID, OS/build, actual Collector binary checksum/version/capabil
 | T-062 | P1/C+B | Credential revoked while Agent running | New management updates denied; offline mutation policy enforced |
 | T-063 | P1/C+B | Status packet duplicated/out-of-order | Core displays latest valid status/hash, not stale success |
 | T-064 | P1/C+B | Large/malicious config payload | Size limits, schema validation, no shell or raw Collector YAML execution |
-| T-065 | P1/C+B | Protocol interoperability Go client ↔ TS server | Real Protobuf message exchange and status semantics verified |
+| T-065 | P1/C+B | Protocol interoperability Supervisor ↔ Go OpAMP server ↔ contract-compatible Mock Core | Real Protobuf exchange and status semantics verified; production Core separate |
 | T-066 | P1/C+B | TLS cert expiration/proxy failure/clock skew | Explicit failure; bounded backoff; no insecure bypass |
 
 ### 14.6 Internal events, SQLite and concurrency
@@ -856,7 +829,7 @@ Each test stores: ID, OS/build, actual Collector binary checksum/version/capabil
 2. **Profile ownership:** How does a locally installed Agent transition to Core-managed authority, and can a Core-managed namespace be relinquished? Define disable/delete precedence.
 3. **Prometheus generic bindings:** Exact symbolic endpoint resolver, address restrictions, selector grammar, duplicate prevention and secret references.
 4. **OTel delegation [DECIDED DIRECTION]:** Prefer Docker/Host observers and Receiver Creator for supported runtime endpoint lifecycles, without Agent duplicating receiver execution. Validate pinned distribution, Linux/Windows reachability, identity parity and existing Redis E2E before switching active owner.
-5. **OpAMP server placement [DECIDED]:** NestJS adapter in Core, initially authenticated plain HTTP polling. Protocol conformance, capability negotiation, security, and potential later WebSocket support still require validation.
+5. **OpAMP server and runtime placement [PROPOSED]:** Go protocol adapter, Go Mock Core for the initial testbed, and official OTel OpAMP Supervisor after exact artifact/platform checks. Production Core API placement, auth, and interoperability need separate review; lifecycle ownership transfer waits for parity.
 6. **OpAMP config unit:** Snapshot vs delta, revision/hash canonicalization, 1-profile vs whole namespace atomicity, and status projection mapping.
 7. **Offline policy after revocation:** Continue locally running monitoring vs disable Core-controlled sensitive configs after trusted revocation evidence. No speculative choice without security review.
 8. **Gateway reachability/commit:** Applied generation requires readiness, not OTLP delivery. Decide how to surface delivery problem without rolling back healthy Collector needlessly.
@@ -865,7 +838,7 @@ Each test stores: ID, OS/build, actual Collector binary checksum/version/capabil
 11. **Operations transport and privilege:** Agent-poll vs other outbound channel; can Docker and OS restart operations be executed within enforceable least privilege? If not, disable mutations.
 12. **Health precision:** Which per-integration scrape evidence is actually available with pinned Collector? UNKNOWN if only aggregated metrics exist.
 13. **SQLite cross-context transaction:** Preserve atomic approval+desired state while splitting repository ownership; avoid event-based pseudo-transaction.
-14. **Version/support policy:** When to move from Collector v0.160.0; pin protocol and distribution versions with compatibility matrix.
+14. **Version/support policy:** Verify whether a compatible Supervisor artifact exists for the pinned Collector v0.160.0 on both target OSes; pin actual artifact/protocol versions and compatibility evidence. Do not assume version-number alignment.
 
 ---
 
@@ -895,7 +868,7 @@ Phase-1 audit reported:
 5. Preserve legacy CLI, SQLite and public contracts or include explicit migration tests and upgrade path.
 6. Add typed dispatcher early **without removing recovery polling**. Document queue capacity, publish failure and shutdown.
 7. Use standard OTel components instead of new telemetry execution logic; document why a bespoke adapter is unavoidable.
-8. Do not add broad generic frameworks, runtime scripting, custom plugin loader, message broker, direct SQL cross-context writes, or a second Collector supervisor.
+8. Do not add broad generic frameworks, runtime scripting, custom plugin loader, message broker, or direct SQL cross-context writes. Collector lifecycle has exactly one active owner; the proposed migration replaces the Agent owner with OTel OpAMP Supervisor only after parity, without concurrent ownership.
 9. Domain entities and public Go APIs get meaningful GoDoc; focus on invariants, pre/postconditions, side effects, concurrency/transactions, authorization and failure semantics; no boilerplate per-line comments.
 10. Enforce import restrictions, file-size limits, cross-platform build and critical race/concurrency checks mechanically in CI.
 11. Verify real E2E with actual pinned Collector binary and isolated sink; show evidence rather than test names alone.

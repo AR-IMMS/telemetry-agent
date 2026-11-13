@@ -29,6 +29,16 @@ type CollectorContext struct {
 	HealthEndpoint  string `json:"healthEndpoint"`
 }
 
+// SupervisorContext records the pinned OpAMP Supervisor runtime owned by the Agent.
+type SupervisorContext struct {
+	BinaryPath        string `json:"binaryPath,omitempty"`
+	ConfigurationPath string `json:"configurationPath,omitempty"`
+	StateDirectory    string `json:"stateDirectory,omitempty"`
+	OpAMPServerURL    string `json:"opampServerUrl,omitempty"`
+	ServerCAFile      string `json:"serverCaFile,omitempty"`
+	Enabled           bool   `json:"enabled,omitempty"`
+}
+
 // TeardownAction identifies the host-resource operation permitted after the
 // Collector has acknowledged a configuration generation.
 type TeardownAction string
@@ -56,10 +66,11 @@ type DependencyState struct {
 
 // State is the Agent-owned desired state persisted on the local machine.
 type State struct {
-	Collector           CollectorContext `json:"collector"`
-	DesiredGeneration   uint64           `json:"desiredGeneration"`
-	ActivatedGeneration uint64           `json:"activatedGeneration"`
-	AppliedGeneration   uint64           `json:"appliedGeneration"`
+	Collector           CollectorContext  `json:"collector"`
+	Supervisor          SupervisorContext `json:"supervisor,omitempty"`
+	DesiredGeneration   uint64            `json:"desiredGeneration"`
+	ActivatedGeneration uint64            `json:"activatedGeneration"`
+	AppliedGeneration   uint64            `json:"appliedGeneration"`
 	// PendingActivation supports recovery between config promotion and commit.
 	PendingActivation *PendingActivation         `json:"pendingActivation,omitempty"`
 	Dependencies      map[string]DependencyState `json:"dependencies"`

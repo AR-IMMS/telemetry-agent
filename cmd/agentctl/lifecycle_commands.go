@@ -26,8 +26,9 @@ func runInstall(
 	flags.Usage = func() {
 		fmt.Fprintln(
 			stderr,
-			"usage: agentctl install --config-root <path> [--gateway-endpoint <host:port>] [--validation-endpoint <host:port>] [--timeout <duration>]",
+			"usage: agentctl install --config-root <path> [--gateway-endpoint <host:port>] [--opamp-server-url <wss://host/path>] [--disable-opamp-supervisor] [--validation-endpoint <host:port>] [--timeout <duration>]",
 		)
+		fmt.Fprintln(stderr, "new installs require --opamp-server-url unless --disable-opamp-supervisor is explicit; existing installs preserve their persisted owner when the endpoint is omitted")
 	}
 
 	configRoot := flags.String(
@@ -40,6 +41,8 @@ func runInstall(
 		defaultGatewayEndpoint,
 		"runtime OpenTelemetry Gateway endpoint",
 	)
+	opampServerURL := flags.String("opamp-server-url", "", "Supervisor endpoint; required for new installs unless legacy runtime is explicitly selected")
+	disableSupervisor := flags.Bool("disable-opamp-supervisor", false, "explicitly select the legacy Agent Collector runtime for a new install or rollback")
 	validationEndpoint := flags.String(
 		"validation-endpoint",
 		defaultValidationEndpoint,
@@ -79,6 +82,14 @@ func runInstall(
 			flags,
 			"--validation-endpoint must not be empty",
 		)
+	}
+	if strings.TrimSpace(*opampServerURL) != "" {
+		if err := agentinstallation.ValidateOpAMPServerURL(*opampServerURL); err != nil {
+			return usageError(stderr, flags, err.Error())
+		}
+	}
+	if *disableSupervisor && strings.TrimSpace(*opampServerURL) != "" {
+		return usageError(stderr, flags, "--disable-opamp-supervisor cannot be combined with --opamp-server-url")
 	}
 	if *validationTimeout <= 0 {
 		return usageError(
@@ -176,11 +187,13 @@ func runInstall(
 	}
 
 	result, err := installAgent(ctx, agentinstallation.Options{
-		Platform:         platform,
-		SourceBinaryPath: sourceBinaryPath,
-		ConfigRoot:       *configRoot,
-		GatewayEndpoint:  *gatewayEndpoint,
-		HealthEndpoint:   defaultHealthEndpoint,
+		Platform:          platform,
+		SourceBinaryPath:  sourceBinaryPath,
+		ConfigRoot:        *configRoot,
+		GatewayEndpoint:   *gatewayEndpoint,
+		OpAMPServerURL:    *opampServerURL,
+		DisableSupervisor: *disableSupervisor,
+		HealthEndpoint:    defaultHealthEndpoint,
 		ConfigInput: config.RenderInput{
 			Platform: platform,
 			Layers:   layers,

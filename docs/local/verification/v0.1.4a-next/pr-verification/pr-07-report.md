@@ -1,0 +1,1076 @@
+# PR-07 verification report — OpAMP Supervisor and control plane
+
+**Current authoritative result:** PASS. Implementation head
+`d01e16c3b3c238e135185292eeca2b90152a8a8d` passed Windows/Ubuntu CI run
+[`43514647904`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43514647904)
+and genuine elevated Windows Docker/profile parity. Documentation checkpoint
+`721753f9eaf96f9446bf237a840a49677288f5b2` passed both jobs in run
+[`43517107187`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43517107187).
+Final documentation checkpoint `cd5e7aeddfc96c88a771d71dc68736d1c4da305e`
+also passed both jobs in run
+[`43518358652`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43518358652);
+its sanitized CI artifacts are listed at the end of this report.
+PR #30 remains open pending review and merge. New installations default to
+managed Supervisor; existing installations retain their stored owner until
+explicit migration, with the legacy runtime available for explicit rollback.
+See the final exact-head section at the end of this report.
+
+**Historical status snapshot (superseded by final exact-head result below):**
+IN_PROGRESS — PR-07c adds pinned Supervisor installation,
+protected credential/config/state provisioning, opt-in single-owner runtime
+selection, and Windows Job Object/Linux process-group containment. Exact code
+head `a878b332f75819a3e200f59d7ab14a818a675c29` passed Windows/Ubuntu CI run
+[`43461962938`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43461962938).
+The documentation-updated PR head `11d524a37c291093ea861c8e196e0e8ee033b562`
+passed run [`43463371834`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43463371834).
+Local test-only commit `b348584e399545bf3aedc4e682fd37273cabfffc` fixes the
+profile E2E's consumed-result cleanup signal; it has passed Windows local
+package verification and awaits push/CI.
+Both platforms executed full Go tests, architecture checks, managed
+enrollment/control E2E, native service lifecycle E2E, vet, and build. Ubuntu
+also passed isolated Docker recovery and Agent-managed Redis, PostgreSQL,
+Python/Prometheus, and mock-cooling profiles. Managed control E2E covers
+credential rotation/revocation, offline reconnect, local configuration
+update/no-op, LKG equivalence, crash recovery, durable publication
+attribution, rollback, and OTLP delivery. Hosted Windows Docker/profile steps
+were skipped, so Windows Agent-managed Docker-profile parity remains the only
+mandatory PR-07 adoption gate. A local Windows test attempt reached Docker
+29.5.3 and prepared fixtures but failed writing the protected Supervisor
+configuration under a medium-integrity token; details are recorded at the end
+of this report. Do not weaken its DACL. Keep Supervisor opt-in, preserve legacy
+ownership, and keep PR #30 draft until native Windows profile parity passes.
+**Release target:** `v0.1.4a-next`
+**Branch:** `feat/pr-07-opamp`
+**Implementation baseline:** PR-06 merge
+`af2f5db4c6b8832bc7bcc87d332d899dad01b452`.
+**Expanded credential-rotation test commits:** `882e450` adds the rotation path;
+`261d332` corrects post-rotation delivery to a distinct third Gateway;
+`1e7c23d` moves the profile parity subcase under Agent-managed Supervisor
+ownership. Final-head CI run `43405983503` passed both platform jobs.
+
+**Status chronology:** Sections below retain prior verification snapshots.
+The latest exact-head CI and local Windows evidence sections at the end of this
+report are authoritative for `8e1da19`; earlier open-gate lists are historical.
+
+## Target change reviewed
+
+The accepted target is staged: (07a) exact-version Supervisor capability spike
+without ownership transfer; (07b) reviewed versioned contracts plus Go OpAMP
+server and Go Mock Core; (07c) controlled runtime adoption after parity. The
+Agent Runtime remains the only production Collector lifecycle owner throughout
+07a/07b. Production Core changes and shared-contract publication are outside
+this implementation branch's authorized scope.
+
+## PR-07c implementation progress
+
+| Slice | Result | Evidence / limit |
+|---|---|---|
+| Pinned Supervisor artifact selection | IMPLEMENTED / WINDOWS UNIT TESTS | `internal/bootstrap/supervisor_artifact.go` selects official v0.160.0 Windows/Linux amd64 release binaries and the digests already verified by the PR-07a spike. Unsupported platforms fail closed. |
+| Staged installation and reuse | IMPLEMENTED / WINDOWS UNIT TESTS | `InstallSupervisorBinary` bounds download size, verifies SHA-256 before atomic publication, stores version/platform/digest metadata, re-hashes installed bytes before reuse, and refuses to overwrite an unverified version directory. Repro: `go test ./internal/bootstrap -run 'Test(SelectSupervisorArtifact|InstallSupervisorBinary)' -count=1`. |
+| Protected token/config/state provisioning | IMPLEMENTED / LOCAL WINDOWS ELEVATION REQUIRED | `credentialstore.Store` materializes the existing enrollment bearer to a fixed protected file, writes typed allowlisted Supervisor YAML, and prepares persistent Supervisor storage under the protected directory. Unit/integration tests cover token replacement, missing credentials, cleanup, configuration rendering, and path/mode rules. Local Windows filesystem tests skip because the current process is not elevated. Live auth, rotation/revocation, and uninstall cleanup remain unverified. |
+| Packaged installer integration | IMPLEMENTED / FOCUSED WINDOWS TESTS | The installer invokes pinned Supervisor provisioning only for explicit `--opamp-server-url` migration or when preserving a previously enabled Supervisor installation. Fresh installs without the option retain the current Agent Collector owner; reinstall preserves the persisted owner. Endpoint validation rejects remote cleartext WS and invalid URLs. Native install/upgrade/uninstall service checks remain open. |
+| Agent-owned process containment | IMPLEMENTED / WINDOWS TEST PASS; LINUX CROSS-COMPILE | `internal/processowner` uses a Windows suspended process plus kill-on-close Job Object and Linux process groups. Windows Job cancellation and descendants tests pass in the full suite. A Linux process-group integration test is present and its test binary cross-compiles, but it has not run on Linux in this environment. |
+| Supervisor runtime and Agent ownership selection | IMPLEMENTED / LIVE CI GATE PENDING | Persisted `SupervisorContext` selects either the legacy Agent Collector runtime or `runManagedSupervisor`, never both. The managed runner provisions current enrollment credentials, writes protected config/state, supplies the Gateway endpoint, waits for Collector health before existing readiness/LKG callback, watches credential-reference changes, and contains process cleanup. Full live parity, crash recovery, service lifecycle, LKG rollback equivalence, and no-duplicate-sink proof remain open. |
+| Agent-managed Supervisor fallback + OTLP E2E | PASS / LIMITED — WINDOWS + NATIVE UBUNTU CI | `TestManagedSupervisorRuntimeDeliversOTLP` checks the pinned Supervisor executable SHA-256 and Collector v0.160.0 version, validates and runs local hostmetrics fallback, waits for Collector health and `system.cpu.time`/`system.memory.usage` at an isolated OTLP sink, then cancels the contained process tree. It passed on both platforms in final-head run `43373790016`. The earlier failures were caused by both isolated Collectors binding `localhost:8888`; setting `service.telemetry.metrics.level: none` in both test configs resolved the collision. This test does not exercise Agent enrollment, authenticated OpAMP delivery, remote Gateway changes, credential lifecycle, or managed profile parity. |
+| Durable publication and truthful rollback attribution | IMPLEMENTED / WINDOWS MOCK CORE TESTS | The local contract records exact policy revision/hash publications before OpAMP delivery and resolves observed hashes through Core. Desired, published, and applied revisions are distinct; old applied hashes remain rollback evidence. Mock Core's atomic JSON fixture survives restart without storing bearer values. The full Windows repository suite passed in this run; native Linux Mock Core execution remains NOT RUN. |
+| Enrollment-to-WSS managed Gateway vertical slice | PASS / WINDOWS + NATIVE UBUNTU CI; RESTART EXTENSION PENDING | Run `43405983503` passed actual enrollment, protected credential storage, authenticated WSS, remote Gateway revisions 1–3, explicit re-enrollment, old credential rejection, protected replacement credential use, reconnect, and post-rotation OTLP. A local follow-up extends the same test to persist/reload Mock Core, resolve the applied revision-3 hash after restart, restart OpAMP and Agent runtime, and deliver revision 4 to a fourth sink. The extension compiled but skipped locally because pinned binaries and `AR_IMMS_PR07C_CONTROL_E2E=1` are unset. Native verification is pending a final-head CI run. |
+| Mock Core credential replacement and active-session revocation | PASS / LOCAL HOST TESTS; MANAGED E2E PENDING CI | New persistent Mock Core test verifies bearer rotation survives server restart, rejects the previous token, accepts the replacement, and stores only hashes. The OpAMP session-monitor test now uses live HTTPS Mock Core and verifies an established session disconnects after bearer revocation. `go test ./internal/mockcore -count=1` and focused `go test ./internal/opampserver -run 'TestEstablishedSessionDisconnectsAfterMockCoreRevokesCredential' -count=1` passed in the authorized host environment. Managed-runtime rotation/reconnect still awaits final-head CI. |
+
+## PR-07c final-head verification — 2026-11-13
+
+**Verified pushed code head:** `2a7eff13251ec31c2a90be5169d90f219eb51340`
+(`feat/pr-07-opamp`). The PR-07c implementation commits are `8299deb`
+(installer/owner selection), `08aead6` (process containment), `b7627fb`
+(managed runtime), and `2164933` (session revocation); `fffcb52` records the
+prior verification status; `16b881c` makes the enabled CI gate fail rather
+than silently skip on a non-elevated Windows runner; `5c85db7` corrects the
+Supervisor artifact URL after run `43369304553`; `4bf9a73` splits Mock Core
+persistence and the existing Collector runtime watcher into same-package files
+after run `43369909210` exposed the production file-size guard. The unrelated pre-existing worktree changes and
+`cmd/agentctl/otel.yaml.lifecycle.lock` remain unstaged and preserved.
+
+| Check | Result | Evidence / limit |
+|---|---|---|
+| `go test ./... -count=1` | PASS / WINDOWS | Final full repository suite passed after the file splits when run outside the restricted sandbox. Windows Job Object tests ran. Protected token-file filesystem tests remain elevation-gated. A sandboxed attempt failed on denied SQLite temp-file and loopback access; the unrestricted rerun passed. |
+| Focused Mock Core/OpAMP/runtime tests | PASS / WINDOWS | `go test ./internal/mockcore ./internal/opampserver ./internal/coreapi ./internal/agentlifecycle -count=1` passed after the splits. The live E2E itself was not enabled locally because the current process is not elevated and verified binaries are not provisioned for this run. |
+| Architecture guard | PASS / WINDOWS | `./scripts/check-architecture.ps1` passed after same-package splits reduced `internal/mockcore/server.go` from 574 to 393 lines and `internal/agentlifecycle/runtime.go` from 456 to 155 lines. `runtime_watcher.go` is 264 lines. |
+| `go vet ./...` | PASS / WINDOWS | Completed with exit code 0 after the file splits. |
+| `go build ./...` | PASS / WINDOWS | Completed with exit code 0 after the file splits. |
+| Linux build | PASS / CROSS-COMPILE | `GOOS=linux GOARCH=amd64 go build ./...` passed after the file splits. This is not Linux runtime or service verification. |
+| Managed Supervisor live E2E | PASS / LIMITED — WINDOWS + NATIVE UBUNTU CI | Actions run [`43373790016`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43373790016) ran `TestManagedSupervisorRuntimeDeliversOTLP` and passed on Windows Server 2025 and `ubuntu-latest`. The test verifies pinned binaries, local hostmetrics fallback, Collector health, delivery of host metrics to an isolated OTLP sink, and process-tree cancellation. The preceding failures on both runners were traced to the sink and source Collectors both binding `localhost:8888`; disabling internal metrics in both test configs resolved the testbed collision. The sanitized CI summary artifact was uploaded per runner. This remains a hostmetrics smoke test, not full managed-runtime parity. |
+| Native Linux / Docker | BLOCKED / LOCAL ENVIRONMENT | `wsl.exe --list --quiet` returned `Wsl/E_ACCESSDENIED`; Docker Desktop reports access denied opening its Linux Engine named pipe. Native Linux service, process-group, Docker Engine, and managed-runtime E2E remain unverified. |
+| Full vertical-slice coverage | PARTIAL / GATE OPEN | Final-head run `43415093522` passed native Windows/Ubuntu enrollment, authenticated WSS policy delivery, credential replacement/revocation, offline fallback/reconnect, Core restart/publication attribution, Agent/OpAMP runtime restart, revision-5 rollback attribution, and Gateway OTLP. Ubuntu also passed isolated PR-05/06 Docker E2Es and Agent-managed Redis/PostgreSQL/Python Prometheus/mock-cooling parity with churn and duplicate-sample checks. Still open: managed local-config content update and direct unchanged-config no-op, managed injected Supervisor/Collector crashes and Agent service recovery, Agent LKG equivalence, Windows managed-profile E2E, and native install/migration/upgrade/uninstall. |
+| Native vertical-slice invocation | PASS / WINDOWS + UBUNTU | Run [`43405983503`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43405983503) executed the expanded enrollment-to-WSS test on both native platforms. Local invocation still skips without pinned binaries and protected credential access; CI is the retained live evidence. |
+| First final-head vertical-slice CI | FAIL / FIX IN FOLLOW-UP | Run `43392748869` executed the Ubuntu live test and exposed a missing Agent precondition: the test fixture passed a generated UUID but had not initialized it through the Agent installation-identity store, so enrollment rejected the database state before sending the request. The existing Agent identity initializer is now used in the fixture. The existing fallback smoke and Linux Docker profile E2Es passed; vet/build were skipped after the failing step. Windows job was still running when this report entry was added. The vertical slice remains NOT VERIFIED until a rerun passes on both platforms. |
+| Second final-head vertical-slice CI | FAIL / FIX IN FOLLOW-UP | Run `43393916687` passed enrollment identity initialization but Collector config validation rejected a literal tab introduced by whitespace before the closing raw-string delimiter. The tab is removed in the next follow-up, and config validation errors now include the generated test YAML. Ubuntu fallback smoke and both PR-05/06 Docker E2Es passed; vet/build were skipped after the failed live step. Windows was still running when recorded. Do not count the managed vertical slice as verified until a corrected rerun passes on both platforms. |
+| Corrected final-head vertical-slice CI | PASS / NATIVE WINDOWS + UBUNTU; PARTIAL ADOPTION | Run [`43405983503`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43405983503) at `e35bf05eba70d15bcc3689bcf6caee56671cd568` passed full Go tests, vet, and build on both platforms. Both passed managed enrollment, authenticated WSS, credential replacement/revocation, reconnect, revisions 1–3, and initial/updated/post-rotation Gateway OTLP. Ubuntu also passed native Docker Redis E2E and Agent-managed Docker application-profile parity. Evidence artifacts: `pr07c-managed-supervisor-Windows` (14027711358), `pr07c-managed-supervisor-Linux` (14027901228), and `pr07a-supervisor-profile-parity` (14027796168). This run predates the new Core/OpAMP/Agent restart extension. |
+| Managed restart and rollback attribution | PASS / NATIVE WINDOWS + UBUNTU CI | Final-head run [`43410936502`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43410936502) passed Windows and Ubuntu full tests, vet, build, and the managed E2E. It persisted/reloaded Mock Core, verified retired-bearer rejection, resolved revision-3 publication by bound OpAMP UID/hash after restart, restarted OpAMP and Agent runtime, delivered revision 4, then reused the revision-3 hash at policy revision 5. Core attributed that hash to revision 5 and the rollback Gateway continued receiving OTLP. Evidence was downloaded under `tmp/pr07c-ci-43410936502/`: `pr07c-managed-supervisor-Windows` (14029951215), `pr07c-managed-supervisor-Linux` (14030260639), and Ubuntu `pr07a-supervisor-profile-parity` (14029448155). Earlier run [`43408766821`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43408766821) exposed the fixture's wrong installation-ID lookup; commit `31d1d68` corrected it, and run [`43409637790`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43409637790) verified restart through revision 4. |
+| Managed restart and rollback attribution | PASS / NATIVE WINDOWS + UBUNTU CI | Run [`43410936502`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43410936502) passed Windows and Ubuntu full tests, vet, build, and the managed E2E. It persisted/reloaded Mock Core, verified retired-bearer rejection, resolved revision-3 publication by bound OpAMP UID/hash after restart, restarted OpAMP and Agent runtime, delivered revision 4, then reused the revision-3 hash at policy revision 5. Core attributed that hash to revision 5 and the rollback Gateway continued receiving OTLP. Evidence is retained under `tmp/pr07c-ci-43410936502/`. Earlier run [`43408766821`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43408766821) exposed the fixture's wrong installation-ID lookup; commit `31d1d68` corrected it, and run [`43409637790`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43409637790) verified restart through revision 4. |
+| Agent-managed offline startup and reconnect | PASS / NATIVE WINDOWS + UBUNTU CI | Final-head run [`43412411604`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43412411604) starts Agent/Supervisor before OpAMP is listening, observes Collector readiness and fallback OTLP at the local sink, starts the authenticated OpAMP endpoint, then verifies policy revisions 1–5 and all configured Gateway deliveries. Evidence artifacts downloaded under `tmp/pr07c-ci-43412411604/`: `pr07c-managed-supervisor-Windows` (14030132774), `pr07c-managed-supervisor-Linux` (14029913823), and Ubuntu `pr07a-supervisor-profile-parity` (14030182990). |
+| Local credential-rotation follow-up regression | PASS / NATIVE WINDOWS; EXPANDED MANAGED E2E SKIPPED LOCALLY | On 2026-11-13, `go test ./... -count=1`, `go vet ./...`, and `go build ./...` passed in the authorized Windows host environment. Persistent Mock Core rotation and live HTTPS active-session revocation tests passed. The expanded managed E2E compiled but skipped locally due unavailable pinned binaries and protected credential access; native evidence is run `43405983503`. |
+| Expanded credential rotation and managed restart CI | PASS / NATIVE WINDOWS + UBUNTU | Run [`43405983503`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43405983503) passed protected credential rotation, old-bearer rejection, authenticated reconnect, revisions 1–3, and post-rotation OTLP. Run [`43410936502`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43410936502) passed persistent Core restart, revision-3 publication resolution, OpAMP/Agent restart, revision-4 delivery, and revision-5 prior-hash rollback attribution. Run [`43412411604`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43412411604) also passed Agent-managed offline fallback and authenticated reconnect on both platforms. |
+| Agent-managed profile parity | PASS / NATIVE UBUNTU DOCKER | Run [`43405983503`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43405983503) executed `TestLiveDockerApplicationProfilesDeliverOTLP` with `AR_IMMS_PR07A_SUPERVISOR_PROFILE_PARITY=1`. The log records `owner=agent-managed profiles=redis,postgresql,prometheus,mock-cooling fallback=PASS container_churn=PASS otlp=PASS` (35.74s). It verifies no duplicate samples and no generation/config change during container churn. Windows profile E2E was skipped because CI Docker infrastructure is Linux-only. |
+| Supervisor TLS CA configuration | PASS / UNIT + PINNED WINDOWS/UBUNTU E2E | Optional CA path persists in `SupervisorContext` and renders as `server.tls.ca_file`; invalid blank/control-character paths are rejected. The pinned v0.160.0 [`OpAMPServer.TLS`](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/cmd/opampsupervisor/v0.160.0/cmd/opampsupervisor/supervisor/config/config.go) uses Collector `configtls.ClientConfig`. The exact binary accepted and used this setting on both platforms in run `43400294752`; TLS verification remained enabled. |
+| Full Windows regression after CA-file change | PASS / WINDOWS HOST; LIVE E2E NOT RUN LOCALLY | `go test ./... -count=1`, `go vet ./...`, and `go build ./...` completed successfully in the authorized Windows environment after the CA-file implementation. A sandboxed attempt was stopped after expected SQLite and loopback permission failures. The opt-in WSS E2E still requires final-head CI because local protected credential-store elevation is unavailable. |
+| Windows test/helper regression | PASS / HOST SUITE + LIVE CI | Full Windows suite, vet/build, and architecture guard passed locally. The opt-in E2E is unavailable in this local process without elevated credential-store access; native Windows CI executed and passed the managed test in 37.23s. |
+| Workflow/report hygiene | PASS / PROFILE GATE ENABLED | `.github/workflows/ci.yml` sets `AR_IMMS_PR07A_SUPERVISOR_PROFILE_PARITY=1` for the Linux Redis/PostgreSQL/Python/mock-cooling E2E and uploads its evidence, so that existing Supervisor profile subcase will no longer silently skip. CI run `43397059968` predates this workflow change. Existing unrelated changes under `cmd/agentctl`, `internal/agentinstallation`, and `internal/agentlifecycle` remain unstaged and untouched by this checkpoint. |
+| Draft PR and final-head CI | PASS / LIMITED; PR REMAINS DRAFT | Branch `feat/pr-07-opamp` is pushed; implementation head `2a7eff13251ec31c2a90be5169d90f219eb51340` passed run `43373790016`, and documentation-updated head `3df00f0d794b8c12e470b6dc2a9eecff6e65711f` passed run [`43374665764`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43374665764) on Windows and Ubuntu. Both ran the full Go test suite, managed Supervisor fallback-to-OTLP E2E, `go vet ./...`, and `go build ./...`; Ubuntu additionally ran the isolated Docker/Collector Redis and application-profile E2Es. PR #30 remains draft and no merge was attempted. Remaining managed-runtime gates listed above prevent PASS/merge. |
+
+The CI gates added in this checkpoint verify the pinned Supervisor executable
+digest on each runner, run the real Agent-managed hostmetrics fallback through
+the pinned Collector to an isolated OTLP sink, and upload runtime evidence on
+success or Collector warning/error records on failure. The Windows gate now
+fails on missing elevation rather than silently skipping. CI must run on final PR head before treating that limited
+smoke test as evidence. It does not replace authenticated Agent/Mock Core E2E,
+credential rotation/revocation under the managed runtime, service recovery,
+local configuration update/no-op checks, profile parity, or Agent LKG parity.
+
+## Verified documentation and current-state facts
+
+- Existing `internal/supervisor` and `internal/agentlifecycle` own the current
+  Agent Collector process/runtime path. They are distinct from OTel OpAMP
+  Supervisor, and the production runtime was not modified in PR-07a.
+- Authoritative enrollment OpenAPI blob
+  `5ce0f6a3d94401c2adf65eaf9ad524a37b868571` and Core `api/baseline.yaml` blob
+  `4f4166f2a4d1770f5142618d58b1997092d289c0` were fetched from the user-named
+  repositories. Enrollment uses a single-use bootstrap token with a 10-minute
+  initial window and bounded same-attempt credential recovery; it does not
+  define an Agent bearer-authenticated control endpoint. Core reserves the
+  `agentBearer` scheme, but the baseline defines no Agent control operation.
+  PR-07b must define the smallest supported control API contract without
+  changing enrollment semantics. Production Core interoperability remains
+  unverified.
+- Official Supervisor v0.160.0 docs describe remote configuration as opt-in,
+  merged with local config, and applied through Collector restart. Startup
+  fallback is standalone; automatic rollback is opt-in and described for
+  Collector startup failure. The Windows tests below confirm only the scenarios
+  they actually executed. Supervisor-process recovery depends on the outer
+  Agent/service manager also cleaning up its child; both raw and coordinated
+  cases are recorded below. See the [pinned Supervisor README](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.160.0/cmd/opampsupervisor/README.md)
+  and [pinned specification](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.160.0/cmd/opampsupervisor/specification/README.md).
+
+## Contract and compatibility gates still open
+
+1. Managed-runtime HTTPS enrollment, protected credential provisioning and
+   replacement, retired-bearer rejection, authenticated WSS reconnect, and
+   offline fallback are verified on Windows and Ubuntu. `instance_uid` remains
+   separate from authentication.
+2. The local versioned Gateway policy and publication/status contracts are
+   implemented and Mock Core-backed tests verify revision/hash attribution,
+   restart persistence, and rollback. Production NestJS interoperability and
+   shared-contract publication remain separate Core work; no production Core
+   behavior is claimed here.
+3. Map protocol/runtime evidence to truthful received, validated, applying,
+   applied, failed, recovered and unknown statuses. Readiness is not scrape or
+   OTLP delivery evidence; an older applied hash after rollback is not success
+   for a newer desired revision.
+4. Agent-managed profile parity for Redis, PostgreSQL, Python Prometheus, and a
+   recreated cooling workload passed in native Ubuntu Docker CI run
+   `43415093522`, including churn and duplicate-sample checks. Windows
+   Agent-managed application-profile E2E remains open; Windows CI has no Docker
+   profile testbed.
+5. Agent process-tree cleanup uses a Linux process group and Windows Job
+   Object. Managed-runtime normal shutdown and cleanup passed in the latest
+   native Windows/Ubuntu E2E. Injected Supervisor crash/recovery under native
+   service ownership remains unverified; an earlier raw Linux restart left an
+   orphan Collector bound to OTLP and health ports.
+6. Native Ubuntu Docker/Collector E2Es passed in run `43415093522`. This closes
+   the earlier workstation-only Docker limitation; it does not establish
+   Windows Docker parity or native service installation behavior.
+7. Migration is reversible and opt-in: fresh installation retains legacy
+   ownership unless an OpAMP endpoint is supplied; reinstall preserves the
+   stored mode. Default transfer still requires verified managed local-config
+   changes, Agent LKG equivalence, forced crash/service recovery, Windows
+   profile parity, and native installation/migration/upgrade/uninstall gates.
+
+## PR-07a verification log
+
+| Gate | Status | Evidence / note |
+|---|---|---|
+| Exact Windows Supervisor artifact and checksum | PASS | Official v0.160.0 Windows amd64 artifact SHA-256 `df2dfae96d6b711db31675d2deb8493d3dbada8561b25fe575fd90bd7cac8449`; executable `--help` returned successfully. |
+| Exact Linux Supervisor artifact and checksum | PASS | Official v0.160.0 Linux amd64 artifact SHA-256 `7967e3210e0252f25f41a96b15758dd2e03feb0aecbe85a945f1e2e6e71865c9`; executable on Ubuntu 24.04 WSL. |
+| Collector v0.160.0 artifact hashes | PASS | Official Windows archive SHA-256 `d8de67cf9dc3ffe928610d52b192cb029365bb42dc79a23e0586c040c83293cf`; Linux archive SHA-256 `7bb60c584c241c86261c2b8697cd3725dd8c56691f5ad5d98454eaa005b47b0c`; both match repository manifests. |
+| Pinned Supervisor/Collector interoperability | PASS / LIMITED | Exact pinned Supervisor and Collector delivered hostmetrics on Windows 11 and Ubuntu 24.04 WSL. Linux test used the native WSL2 Linux kernel; Docker workloads were not part of this test. |
+| Local/remote config composition | PASS / LIMITED | Windows and Linux E2E composed a local `hostmetrics` pipeline with an OpAMP remote override of the OTLP exporter endpoint, restarted Collector, and observed output at the new isolated sink. Dynamic local-file update semantics remain NOT RUN. |
+| Offline startup fallback and reconnect | PASS / LIMITED | Windows and Linux Supervisor started Collector from standalone fallback while OpAMP was unavailable, connected when the test server started, and applied remote config. Reconnect-after-established-session-loss remains NOT RUN. |
+| Collector crash recovery | PASS / LIMITED | On Windows and Linux, test killed the managed Collector after successful config; Supervisor started a new Collector process and OTLP output resumed at sink B. |
+| Supervisor process crash recovery | IMPLEMENTED / LIVE SERVICE GATE PENDING | Raw Linux Supervisor kill/restart failed: the orphan Collector retained ports `127.0.0.1:37035` and `127.0.0.1:8888`, so its replacement could not start. Evidence: `tmp/pr07a/evidence/linux/supervisor-crash-orphan-recovery.txt`. Agent-managed process containment now terminates the owned process tree on Supervisor exit/cancellation; Windows containment tests pass and Linux tests cross-compile. Run the managed runtime crash/restart test on native Windows/Linux and prove one sink stream before closing this gate. |
+| Invalid candidate rejection and recovery | PASS / LIMITED | A syntactically valid remote config using an already-bound OTLP receiver port caused activation failure and an OpAMP `FAILED` status. The test server restored the prior config; the Supervisor reported that hash `APPLIED` and sink B delivery resumed. |
+| Automatic config rollback / Agent LKG parity | PASS / LIMITED | With the desired-state test server sending only changed config hashes, the pinned Supervisor reported `FAILED` for an activation-failing config, automatically restored the previous working remote config, and emitted `APPLIED` for its hash within the 20-second observation window. OTLP resumed. The test server had to avoid replaying the same failed hash. Agent Runtime LKG parity remains NOT RUN. |
+| Actual OTLP delivery | PASS / LIMITED | Windows and Linux hostmetrics reached isolated sink A during fallback and sink B after remote update, activation recovery, Collector crash restart, and coordinated Supervisor process restart. Redis, PostgreSQL, Python Prometheus, and mock-cooling profiles reached the isolated sink under Windows Supervisor fallback and OpAMP reconnect. |
+| Existing application-profile parity | PASS / LIMITED | Windows Docker E2E and Ubuntu WSL/Docker Desktop E2E reused PR-06 Redis, PostgreSQL, Python Prometheus, and mock-cooling profiles. Agent Runtime emitted all four streams; after stopping it, Supervisor emitted the same profiles from startup fallback and after OpAMP reconnection. Container recreation delivered the new cooling `resource_id`; tests found no Agent-created duplicate receivers or duplicate OTLP samples. Native Linux Docker Engine parity remains BLOCKED; hostmetrics was covered by the separate Supervisor/Collector E2E. |
+| Windows native E2E | PASS / LIMITED | Focused Windows live test with exact binaries, local `opamp-go` server, and two isolated Collector OTLP sinks. This is a smoke test, not complete PR-05/06 parity. OS build number was not captured. |
+| Linux-in-WSL Supervisor/Collector/OTLP E2E | PASS / LIMITED | Ubuntu 24.04 WSL2 kernel `6.18.58.1-microsoft-standard-WSL2`, pinned Linux Supervisor and Collector, local OpAMP test server, and isolated OTLP sinks. This is not native Linux service or Docker Engine verification. |
+| Linux Docker profile parity | PASS / WSL + DOCKER DESKTOP | Ubuntu WSL Go Agent and pinned Linux Supervisor/Collector exercised Redis, PostgreSQL, Python Prometheus, mock cooling, container recreation, profile identity, no duplicate samples, startup fallback, reconnect, and OTLP delivery against Docker Engine 29.5.3. `docker info` identifies `Docker Desktop (containerized)`; this does not verify a native Linux Docker Engine. Evidence: `tmp/pr07a/evidence/linux/application-profiles/`. |
+| Native Linux Docker Engine parity | BLOCKED | No native Linux Docker Engine is available in this environment; the available daemon is Docker Desktop. Run the same test on a native Linux Docker host before treating platform parity as complete. |
+| Mock Core contract interoperability | PR-07B | See the PR-07b local contract and protocol verification section below. |
+| Production NestJS Core interoperability | BLOCKED | Core control operations are absent from inspected API baseline; requires reviewed contract and a separate Core implementation. |
+| Reversible lifecycle ownership selection | IMPLEMENTED / FOCUSED TESTS | Explicit install opt-in records Supervisor ownership; reinstall preserves it; legacy installs continue using the existing Agent runtime. Live upgrade/uninstall and rollback to prior owner remain unverified. |
+
+## PR-07b local contract and protocol verification
+
+| Gate | Status | Evidence / note |
+|---|---|---|
+| Local versioned Core control contract | PASS / MOCK-BACKED | `docs/local/architecture/v0.1.4a-next/contracts/agent-control-v1.openapi.yaml` defines authenticated session/policy read, first-bind compare-and-set, durable publication record/lookup, and truthful observed status. It is not published to `docs/shared/` and is not a production Core contract. |
+| Existing enrollment bearer and Core response conventions | PASS / MOCK-BACKED | TLS `httptest` integration exercises HTTPS-only client, existing bearer, `{data,meta.request_id}` responses, RFC problem responses, revocation, binding conflict, and identity mismatch. Duplicate identical status PUTs are idempotent in Mock Core. |
+| OpAMP server policy and status translation | PASS / MOCK-BACKED | Live `opamp-go` v0.23.0 WebSocket client connects to the Go adapter and HTTPS Mock Core, receives the versioned Gateway policy, binds its instance UID, and reports APPLIED revision 1. See `go test ./internal/opampserver -run '^TestLiveAuthenticatedSupervisorToMockCorePolicyAndStatus$' -count=1 -v`. |
+| Pinned Supervisor bearer-auth config | PASS / WINDOWS + UBUNTU WSL | Exact Supervisor/Collector v0.160.0 with `server.auth: bearertokenauth` and the `opampsupervisor.Extensions` gate connected to the adapter; Mock Core recorded the bound instance and APPLIED revision 1 on both operating systems. The isolated test disables Collector internal metrics to avoid colliding with an existing `localhost:8888` listener and sets a 15s Collector bootstrap timeout. Evidence: `tmp/pr07b/evidence/{windows,linux}/status-summary.txt` and `supervisor.log`. |
+| Remote config status attribution safeguards | PASS / MOCK CORE INTEGRATION | Unknown hashes are suppressed. The process-local map remains a bounded duplicate-delivery optimization; correctness resolves publications through the authenticated Core contract. Tests verify an old hash after adapter restart reports `desired_revision=2`, `publication_revision=1`, and `applied_revision=1`, without claiming revision 2 was applied. Existing pinned Windows/WSL live revision-attribution evidence remains recorded above. |
+| PR-07b Go package regression | PASS / WINDOWS | `go test ./internal/coreapi ./internal/opampserver ./internal/mockcore ./cmd/agentctl -count=1` passed through the authorized Windows environment. Sandbox-local TLS loopback execution is denied by OS socket permissions; that failed invocation is environmental, and the same suites passed in the authorized environment. |
+| Repository Go regression, vet, and builds | PASS / WINDOWS + UBUNTU WSL | `go test ./... -count=1`, `go vet ./...`, and `go build ./...` passed on Windows and Ubuntu 24.04 WSL with Go 1.25.5. WSL run uses `GOMODCACHE=/tmp/codex-pr07-gomodcache`, `GOCACHE=/tmp/codex-pr07-gocache`; this verification also confirmed test-only PR-07a helper files compile on both operating systems. |
+| Production NestJS Core interoperability | BLOCKED | Inspected Core API Baseline contains no Agent control routes. Local Mock Core is replaceable by endpoint configuration but does not prove production interoperability. |
+| Supervisor credential provisioning by Agent | PASS / WINDOWS + NATIVE UBUNTU MANAGED E2E | Agent runtime resolves the existing enrollment credential reference, materializes the protected token file, and restarts the contained Supervisor when the reference changes. Final-head managed E2E verifies actual enrollment, credential replacement and retired-bearer rejection, authenticated WSS reconnect, remote policy, Core restart, and OTLP delivery. Service install/migration/uninstall remains open. |
+| Native Linux Supervisor/Mock Core E2E | PASS / MOCK-BACKED | Ubuntu 24.04 WSL native Go OpAMP test and exact pinned Linux Supervisor v0.160.0 bearer-auth test passed against HTTPS Mock Core; sanitized evidence under ignored `tmp/pr07b/evidence/linux/`. This does not prove NestJS Core interoperability. |
+
+The pinned Windows and WSL Supervisor tests retain sanitized logs and a status
+summary under ignored `tmp/pr07b/evidence/{windows,linux}/`. The token is
+synthetic, stored in a temporary token file, and redacted from retained logs.
+The first Windows rerun exposed a real testbed collision with the Collector's
+default `localhost:8888` metrics listener; the isolated harness now disables
+that internal metrics reader. This is a harness setting, not a production
+Collector configuration change.
+
+## Reproduction and retained evidence
+
+- Focused test:
+  `go test ./cmd/agentctl -run '^TestPR07ASupervisorRemoteConfigAndFallbackDelivery$' -count=1 -v`
+- Windows Docker profile parity:
+  `go test ./cmd/agentctl -run '^TestLiveDockerApplicationProfilesDeliverOTLP$' -count=1 -v`
+  with `AR_IMMS_PR06_APPLICATION_PROFILE_E2E=1`,
+  `AR_IMMS_PR07A_SUPERVISOR_PROFILE_PARITY=1`, verified Supervisor/Collector
+  binary paths, and `AR_IMMS_PR07A_EVIDENCE_DIR=<directory>`.
+- Variables: `AR_IMMS_PR07A_LIVE_E2E=1`,
+  `AR_IMMS_PR07A_SUPERVISOR_BINARY=<verified Windows Supervisor>`,
+  `AR_IMMS_PR05_COLLECTOR_BINARY=<verified Windows Collector>`, and
+  `AR_IMMS_PR07A_EVIDENCE_DIR=<directory>`.
+- The passing run reported remote config SHA-256
+  `a1547e7f8bbf20001b4c9ec665a1ae88f2f4a8fa35955dae99cda930ea543c9f` and
+  delivered `system.memory.usage` from Collector Contrib `0.160.0` to both
+  endpoints. Raw captured output is retained locally under ignored
+  `tmp/pr07a/evidence/windows/` (`supervisor.log`, both sink logs, and
+  `test-summary.txt`); re-running regenerates it. Verified downloads and
+  extracted binaries are under ignored `tmp/pr07a/artifacts/`.
+- `go test ./cmd/agentctl -run '^TestPR07A' -count=1` passed on Windows after
+  the addition of the executable harness.
+- The Windows Docker profile-parity run passed on 2026-11-13 with Redis,
+  PostgreSQL, Python Prometheus, mock-cooling churn, offline startup fallback,
+  OpAMP reconnect, and OTLP sink verification. Reproducible local evidence is
+  retained under ignored `tmp/pr07a/evidence/windows/application-profiles/`
+  (`supervisor.log`, `otlp-sink.log`, and `profile-parity-summary.txt`). Docker
+  was accessed through the elevated Windows test environment; this is not
+  native Linux verification.
+- Linux Supervisor E2E passed on 2026-11-13 on Ubuntu 24.04 WSL using pinned
+  Linux Supervisor/Collector binaries and isolated local OTLP sinks. The
+  `tmp/pr07a/evidence/linux/` directory contains `test-summary.txt`, process
+  output and sink logs. `supervisor-crash-orphan-recovery.txt` preserves the
+  separate raw-restart failure that showed why Agent/service process-tree
+  cleanup is mandatory.
+- The Linux Mock Core live run passed on 2026-11-13. Sanitized status and
+  Supervisor logs are under ignored `tmp/pr07b/evidence/linux/`.
+- The test-only harness does not change production installation, runtime
+  ownership, config, or lifecycle behavior. The pre-existing untracked
+  `cmd/agentctl/otel.yaml.lifecycle.lock` remains preserved and excluded.
+
+## Merge audit requirement
+
+Before merging a checkpoint, tie evidence to the exact commit and platform. Run
+CI after final code/docs/report edits; record environment versions, failure
+injection, single-owner/rollback result, and sink evidence. Keep mandatory
+gates open and the checkpoint draft while any are unresolved.
+
+## Latest final-head verification follow-up
+
+- Run [`43413389730`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43413389730)
+  executed the Windows full Go test step and failed only at
+  `TestPeriodicSQLitePollingDetectsCommittedCrossProcessDesiredChange`; the
+  failure was `startup reconciliation did not run` after a transient SQLite
+  snapshot warning. Vet/build and opt-in live E2Es were skipped after that
+  failure; Ubuntu was still running when inspected. The test's one-second
+  startup deadline was too brittle for a Windows runner under load. Its
+  deadline is now three seconds and its cancellation is deferred so a failed
+  assertion cannot leave the poller running. On the authorized native Windows
+  host, the focused test passed 100 consecutive runs. This is a test-harness
+  adjustment; no SQLite or reconciliation production behavior changed. Exact
+  head `78981ea60db3b2950e38e579e89be460da4c8fb1` subsequently passed both
+  native jobs in run `43415093522`.
+- The latest PR head was `bed1e624c0ee416e0559992b77bef2c1d6fc318b` when run
+  `43413389730` was inspected. Commit `78981ea` contains the test and report
+  follow-up and is pushed to the existing feature branch.
+
+## Final-head verification after SQLite polling adjustment
+
+- Run [`43415093522`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43415093522)
+  passed on both native Windows and Ubuntu at PR head
+  `78981ea60db3b2950e38e579e89be460da4c8fb1`. Both jobs executed the full Go
+  test step, Agent-managed Supervisor enrollment-to-OTLP E2E, `go vet ./...`,
+  and `go build ./...`; the architecture guard passed on both. Ubuntu also
+  executed and passed isolated PR-05 recovery and PR-06 application-profile
+  Docker E2Es, followed by Agent-managed profile parity.
+- The managed E2E evidence records actual enrollment, protected credential
+  replacement and retired-bearer rejection, offline fallback/reconnect,
+  authenticated WSS, policy revisions 1–5, durable Mock Core restart and
+  publication lookup, OpAMP/Agent runtime restart, revision-5 rollback hash
+  attribution, and OTLP delivery. The Ubuntu profile artifact reports
+  `owner=Agent-managed Supervisor v0.160.0`, profiles Redis/PostgreSQL/Python
+  Prometheus/mock-cooling, container churn, and post-churn OTLP.
+- Evidence was downloaded under ignored `tmp/pr07c-ci-43415093522/`:
+  Windows managed runtime artifact `14032066006` (SHA-256
+  `0c704f21de5f99a403e0ce6521787ad87adb39040ddbdab0fd0abb5cc1a45212`), Linux
+  managed runtime artifact `14030809627` (SHA-256
+  `18ca53464bf7515047d145d0c396c8777689398be085c21c593517cafb43a587`), and
+  Ubuntu profile parity artifact `14031950330` (SHA-256
+  `60ac3e8118145cc1ed0b63765912b57c4199412ef5ab94c0194e0393604157fc`). Both
+  managed artifacts include sanitized pass summaries; hashes and policy
+  revisions match the workflow artifact metadata.
+- Authorized native Windows checks also passed `go test ./... -count=1`,
+  `go vet ./...`, `go build ./...`, and `./scripts/check-architecture.ps1`;
+  the adjusted polling regression passed 100 consecutive runs. The local
+  managed binary E2E was not run in this process; CI executed it natively.
+- This run supersedes the failed documentation-only run `43413389730` for the
+  current PR head. PR #30 remains draft and PR-07 remains IN_PROGRESS. The
+  report does not treat CI's skipped Windows Docker tests as Windows profile
+  verification.
+
+## Managed process crash gate added for exact-head CI
+
+- A test-only extension to `TestManagedSupervisorEnrollmentAndRemoteGatewayE2E`
+  now kills the Agent-managed Collector by matching its pinned executable and
+  exact managed config path, then requires one replacement process and renewed
+  OTLP delivery. Sink Collectors use different config paths and are excluded.
+- The same test kills the Agent-managed Supervisor, requires the Agent runtime
+  to report the unexpected exit, waits for both Supervisor and its Collector
+  process to disappear, and checks that the isolated sink stops receiving data.
+  It then restarts the Agent runtime and requires readiness plus renewed OTLP.
+- Local verification: `go test ./internal/agentlifecycle -run
+  '^TestManagedSupervisorEnrollmentAndRemoteGatewayE2E$' -count=1` passed with
+  the live E2E skipped because `AR_IMMS_PR07C_CONTROL_E2E` and the protected
+  credential-store runtime prerequisites are unavailable in this process.
+  The full `go test ./... -count=1`, `go vet ./...`, `go build ./...`, and
+  `./scripts/check-architecture.ps1` passed in the authorized native Windows
+  environment after the test change. A sandboxed full-suite attempt failed on
+  denied SQLite temp files and loopback sockets; this is not the native run's
+  result. The opt-in live test was attempted in the current process but this
+  Windows token is not elevated, so protected credential provisioning stopped
+  before runtime startup.
+- The workflow explicitly sets `AR_IMMS_PR07C_CONTROL_E2E=1` and runs this test
+  on native Windows and Ubuntu. Crash recovery and process-tree evidence remain
+  NOT VERIFIED until that exact-head workflow completes successfully. PR #30
+  remains draft; Supervisor remains opt-in.
+- Exact-head run [`43419406085`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43419406085)
+  executed the crash-enabled E2E on both operating systems but timed out while
+  looking for the managed Collector. The runtime launches a snapshot under a
+  `.collector-launch-*` directory, so matching the original config file path
+  was incorrect. The fix moves all four sink Collector configs to independent
+  temp directories and matches the unique Agent runtime temp root, which is
+  present in its snapshot path. Both jobs passed full tests; Ubuntu also passed
+  the PR-05 Docker recovery and PR-06 application profile steps. The crash gate
+  remains open until a new exact-head run passes.
+
+## Final managed crash-injection verification
+
+- Exact PR head `6429d4bef925d6cabd5b14ea25565df0c5f6f517` passed CI run
+  [`43420887371`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43420887371)
+  on native Windows and Ubuntu. `TestManagedSupervisorEnrollmentAndRemoteGatewayE2E`
+  executed and passed in 70.53s on Windows and 66.98s on Ubuntu; both full Go
+  test steps, `go vet ./...`, and `go build ./...` passed. Ubuntu also executed
+  isolated Docker recovery, application profiles, and profile parity; these
+  steps were skipped on Windows because the hosted Windows runner has no Docker.
+- Failure injection terminated the Agent-managed Collector, observed exactly
+  one replacement Collector, and verified OTLP resumed. Terminating the
+  Agent-managed Supervisor caused the Agent runtime to return an error, cleaned
+  up both managed processes, and stopped sink delivery. Restarting the Agent
+  runtime restored readiness and OTLP delivery. Evidence summaries explicitly
+  report `collector_crash_recovery=verified_single_replacement_and_otlp`,
+  `supervisor_crash_process_tree_cleanup=verified`, and
+  `agent_runtime_restart_after_supervisor_crash=verified`.
+- Sanitized evidence is downloaded under
+  `tmp/pr07c-ci-43420887371/`. Windows managed-runtime artifact `14033099323`
+  has GitHub SHA-256 `6a03268a756fbdc74734386c9031d82b314bdc7e83112373bb08a0d355cda3bf`;
+  Ubuntu artifact `14034381146` has SHA-256
+  `7e4f2a74072b2b04b12d6ee4ef7dfbce2cca6149218809c1aace0f0912c97f97`.
+  Ubuntu profile parity artifact `14032864851` has SHA-256
+  `cf87dae6147ab0df4e53b35bd06391a58f1717bfab884a2e7de213437f3885c3`.
+- This closes the managed Collector/Supervisor crash and Agent runtime restart
+  gate for the E2E harness. Remaining mandatory adoption gates: managed local
+  configuration content update and direct unchanged-config no-op, Agent LKG
+  equivalence, Windows Agent-managed profile E2E, and native Windows/Linux
+  installation, migration, upgrade, and uninstall. The CI process-recovery test
+  does not establish OS service migration lifecycle. PR #30 remains draft and
+  PR-07 remains IN_PROGRESS; Supervisor remains opt-in.
+
+## Final implementation-head verification and remaining adoption gates
+
+- Implementation head `e5aa9fafd6e18577d9d8020b0706417bc1717dd1` passed CI run
+  [`43421992274`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43421992274).
+  The Windows and Ubuntu jobs both passed the full Go test step, managed
+  enrollment/control/crash E2E, `go vet ./...`, and `go build ./...`. Ubuntu
+  executed and passed isolated Docker recovery, live Collector/OTLP, and
+  Agent-managed Redis, PostgreSQL, Python/Prometheus, and mock-cooling profile
+  checks. Windows Docker recovery and profile steps were explicitly skipped;
+  that run is not Windows Docker-profile evidence.
+- Sanitized artifacts for the exact-head run:
+  Windows managed runtime `14034522704`
+  (`sha256:beb203f88ae6fa2ba49938a633e08ad78579dac29c692edfea24d7e8f5d34a0d`),
+  Linux managed runtime `14033879428`
+  (`sha256:abcb14ad4c7ad528263066df783bde4f76f3546084b254cc6b9d0d423c626399`),
+  and Ubuntu profile parity `14033774498`
+  (`sha256:515912de3fa4873e336e1aa08c3d83870de813ddfcaed1c8412e3e42abfc9b2f`).
+- Native Windows host capability checks show Docker CLI is installed, but access
+  to `dockerDesktopLinuxEngine` is denied. The current process token has the
+  Administrators group marked deny-only, and querying the Service Control
+  Manager is denied. Therefore this host cannot provide local live Docker or
+  native service install/migration/upgrade/uninstall evidence. These limits do
+  not change the CI evidence above; they leave the corresponding adoption gates
+  open.
+- PR #30 is still open and draft at this head. Remaining mandatory gates are
+  managed local configuration content update and unchanged-config no-op,
+  Agent LKG equivalence, Windows Agent-managed profile E2E, and native
+  Windows/Linux installation, migration, upgrade, and uninstall. Supervisor
+  remains opt-in and existing installations remain unchanged pending explicit
+  migration. Production NestJS Core interoperability remains separately
+  tracked. PR-07 is IN_PROGRESS; no merge or default-owner transfer is allowed
+  until these gates pass.
+- This report/tracker update is documentation-only; the updated PR head still
+  needs its own CI run before it can be called the final-head verification.
+
+## Final managed-runtime control E2E — 2026-11-13
+
+- Exact PR head `eb188d396969b564f3576e84a1c5f500cfba41e5` passed Windows and
+  Ubuntu CI run [`43428314136`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43428314136).
+  Both runners executed the managed enrollment/control E2E and the standalone
+  managed fallback/OTLP test. The E2E evidence reports actual Agent enrollment,
+  protected credential provisioning, authenticated WSS, replacement and
+  revocation of the old credential, offline startup/reconnect, remote Gateway
+  changes, server restart, durable revision/hash lookup, revision-5 rollback,
+  and OTLP delivery to the initial, changed, post-rotation, post-restart, and
+  rollback sinks.
+- The expanded scenario also verified a changed local configuration activated
+  under the managed Supervisor, unchanged configuration as a no-op without a
+  generation change or Collector restart, and Agent LKG equivalence across
+  active/LKG bytes, persisted state, and the activation journal. Collector
+  crash recovery produced one replacement and resumed OTLP; Supervisor crash
+  cleanup removed both processes and stopped delivery; restarting the Agent
+  runtime restored readiness and delivery.
+- Sanitized artifacts from run `43428314136` are retained locally under
+  `tmp/pr07c-ci-43428314136/` and in GitHub Actions until 2027-02-11:
+  Windows managed runtime `14036969942`
+  (`sha256:a988c5a3778bd96cfa9ec7bda605a0d7dc2db5e3d3377279eeb3b4b315ca1b6b`),
+  Linux managed runtime `14037579211`
+  (`sha256:b2a2ff6e4e2d4df644cb28c06aaa49d001b7d0a2d366f54ecec06645c58f10a8`),
+  and Ubuntu profile parity `14037864151`
+  (`sha256:e8e2c11c14042573784b75e09d4724a78beddb642351840d433df1b20ab17e93`).
+  Profile evidence reports Redis, PostgreSQL, Prometheus, and mock-cooling
+  profile delivery after container churn; its sink checks duplicate samples.
+- Fresh local checks passed: `go test ./internal/agentlifecycle -count=1`,
+  `go vet ./...`, `go build ./...`, and `./scripts/check-architecture.ps1`.
+  The local opt-in managed E2E could not run in this non-elevated Windows
+  process; the native Windows and Ubuntu CI step did run it. The hosted Windows
+  job has no Docker, so Windows Docker-profile parity is not established by
+  this run.
+- The two preceding exact-head failures were test-fixture mismatches, not
+  runtime failures: run `43426891688` found the fixture lacked a required
+  `processors.batch`; run `43427694422` then found the Agent-generated metrics
+  pipeline referenced the missing OTLP receiver. The fixture now includes both
+  requirements and run `43428314136` passed.
+- Mandatory adoption gates still open: native Windows and Linux service
+  installation, migration, upgrade, and uninstall; Windows Agent-managed
+  Docker-profile parity; and direct native service restart verification.
+  Existing Agent/service installations remain on the legacy owner, Supervisor
+  remains opt-in, and PR #30 remains draft. No default-owner transfer or merge
+  is authorized until those gates pass. Production NestJS Core interoperability
+  remains a separately tracked gate.
+
+## Documentation-updated exact-head CI and local capability check — 2026-11-13
+
+- The documentation-updated PR head
+  `e159c9e63c0c525bf37d61bcc336ba481e3625d6` completed Windows and Ubuntu CI in
+  run [`43429611905`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43429611905),
+  attempt 2. Both jobs passed full Go tests, managed runtime/control E2E,
+  `go vet ./...`, and `go build ./...`. Ubuntu Docker recovery and Agent-managed
+  application-profile E2E passed. Windows Docker/profile steps are skipped on
+  the hosted runner. The first attempt timed out waiting for post-restart OTLP
+  telemetry after policy revision 4 had applied; the failed Linux job passed
+  when retried on the same head. Keep this as an intermittent test-stability
+  signal rather than erasing it from the evidence.
+- Local `go test ./internal/agentlifecycle -count=1` initially failed because
+  SQLite could not create files under the sandbox-provided default `%TEMP%`.
+  The same command passed after setting `TEMP` and `TMP` to an isolated
+  workspace directory. This is a local sandbox filesystem limitation; hosted
+  native Windows and Linux test jobs passed.
+- A fresh local capability check confirms Docker CLI access is denied on the
+  `dockerDesktopLinuxEngine` named pipe. The Administrators group is deny-only
+  in the current Windows token, and the local process cannot query or control
+  the Agent service through SCM. No native service installation, migration,
+  upgrade, restart, or uninstall was attempted on this developer machine.
+- Mandatory adoption gates remain native Windows/Linux service install,
+  migration, upgrade, restart, and uninstall, and Windows Docker profile
+  parity. Hosted Windows explicitly skips the latter. PR #30 remains draft,
+  Supervisor remains opt-in, and PR-07 remains IN_PROGRESS. Do not merge,
+  transfer default ownership, or start PR-08 until these gates pass. Production
+  NestJS Core interoperability remains separately tracked.
+
+## Latest implementation-head CI — 2026-11-13
+
+- Implementation/test head `b803f0daebc622f0a539d30dbed557c2a5b6909d` passed
+  exact-head Windows and Ubuntu CI run
+  [`43433440726`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43433440726).
+  Both full Go suites, managed Agent/Supervisor control E2E, `go vet ./...`, and
+  `go build ./...` passed. Ubuntu also passed isolated Docker recovery, live
+  Collector/OTLP Redis delivery, and Agent-managed Redis, PostgreSQL,
+  Python/Prometheus, and mock-cooling profile tests. Hosted Windows explicitly
+  skipped Docker setup and both Docker profile steps.
+- Sanitized GitHub Actions evidence (available until 2027-02-11): Windows
+  managed runtime artifact `14043205039`
+  (`sha256:9075dca138dfef83fbff0be199f3a4eb47df17421f493ee6ead5f221e1362755`),
+  Linux managed runtime artifact `14043265186`
+  (`sha256:2d24eb1fdfc1253a0f46079525945ea9d4d72c08db1f5ec6d52e9c67a73d1710`),
+  and Ubuntu profile parity artifact `14042585845`
+  (`sha256:c082f1c895b31527ad03970133ceae56b161f875a31343476b2e6db41d0825e5`).
+- On the local Windows host, `go test ./internal/agentlifecycle -count=1` passed
+  with `TEMP` and `TMP` redirected into an isolated workspace directory. With
+  the default sandbox temp path, SQLite failed to open test databases. Docker
+  Desktop named-pipe access is denied, and the current token's Administrators
+  group is deny-only. Native service mutation was not attempted on the
+  developer machine.
+- PR-07 remains IN_PROGRESS. Mandatory gates still open: native Windows/Linux
+  service installation, migration, upgrade, restart, and uninstall; and
+  Windows Agent-managed Docker-profile parity. Supervisor remains opt-in,
+  existing installations remain legacy-owned, and PR #30 remains draft. Do not
+  merge, transfer default ownership, or start PR-08 until those gates pass.
+  Production NestJS Core interoperability remains separately tracked.
+
+## PR-07c final-head CI and native Windows profile follow-up — 2026-11-13
+
+- GitHub reports PR #30 open and draft, with `feat/pr-07-opamp` targeting
+  `chore/v0.1.4a-next`. Exact head `e97f454c9179ec5deb83f1deeb80d4ac2a935e80`
+  passed Actions run
+  [`43434645674`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43434645674)
+  on Windows and Ubuntu. Both executed the full Go suite, the managed
+  Agent/Supervisor control E2E, vet, and build. Ubuntu also executed and passed
+  isolated Docker recovery, live Collector/OTLP Redis, and the Agent-managed
+  Redis, PostgreSQL, Python/Prometheus, and mock-cooling profile E2Es. Windows
+  Docker tests are skipped by the hosted workflow and are not represented as
+  Windows Docker verification.
+- On the local Windows Docker Desktop testbed, the pinned Collector
+  `0.160.0` and Supervisor `0.160.0` artifacts were checksum-verified. The
+  legacy-owner `TestLiveDockerApplicationProfilesDeliverOTLP` passed in 52.02s
+  with Redis, PostgreSQL, and Python profile containers; the test log is kept
+  at `tmp/pr07-win-native-evidence-e97f454/profile-test-legacy/go-test.log`.
+  This validates the Windows Docker/profile baseline under legacy ownership,
+  not Supervisor parity.
+- The same test with
+  `AR_IMMS_PR07A_SUPERVISOR_PROFILE_PARITY=1` could not reach profile
+  collection: protected Supervisor configuration creation failed because the
+  current Windows token lacks the elevated Administrators SID required by the
+  protected credential-store ACL. A `Start-Process -Verb RunAs` retry was
+  denied by the environment. Docker daemon access is available only in the
+  escalated command context; Service Control Manager and WSL access are denied
+  in this user session. No product defect was established by that failed
+  setup, and no test or runtime changes were made.
+- CI evidence at this head does verify managed-runtime behavior on native
+  Windows and Ubuntu, but it does not execute native OS service install,
+  migration, upgrade, restart, or uninstall. These service lifecycle gates
+  remain unverified. Windows managed Docker-profile parity also remains open.
+  PR #30 remains draft, Supervisor remains opt-in, and existing installations
+  remain legacy-owned. Production NestJS Core interoperability stays separate.
+
+## Documentation checkpoint verification — 2026-11-13
+
+- Documentation update `29eb73e68a1da6c4e23f8a32c8843ba97634282b` passed
+  exact-head CI run
+  [`43438719294`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43438719294)
+  on Windows and Ubuntu. Both jobs passed. The update changed only this report
+  and the release tracker; it did not alter runtime or test code.
+- PR #30 remains open and draft. PR-07 remains IN_PROGRESS pending actual
+  native service install/migration/upgrade/restart/uninstall and Windows
+  Agent-managed Docker-profile verification. Do not transfer default runtime
+  ownership or merge until those mandatory gates pass.
+
+## Native service lifecycle verification and Windows migration fix — 2026-11-13
+
+- Commit `100ac1fbd48a43c9ea04b970aa567f9bf75ba9c5` added an opt-in native
+  service E2E to PR #30 CI. It builds the PR-06 Agent from
+  `origin/chore/v0.1.4a-next`, installs it, migrates to managed Supervisor,
+  restarts the service, rolls back to legacy ownership, restarts again, and
+  uninstalls. Preflight rejects non-privileged or non-clean hosts; evidence
+  records binary hashes, service owner, process counts, and lifecycle results.
+- Run [43446198767](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43446198767)
+  executed the native Linux lifecycle sequence successfully in 11.75s. Its
+  Ubuntu job failed afterward because the root-written evidence file was mode
+  `0600` and could not be read by the artifact uploader. Commit `42928f9`
+  changes the sanitized report mode to `0644` so the runner can retain it.
+- The same run exposed a Windows migration defect: `Installer.Install` tried
+  to atomically replace `agentctl.exe` while the running Windows service still
+  had it open (`Access is denied`). Commit `62c8a3d` moves binary activation
+  until after prerequisites are prepared, stops an existing installed service
+  before replacement on Windows/Linux, and restarts the prior service if the
+  binary copy fails. Unit coverage verifies stop-before-copy ordering and the
+  Linux first-install no-op. Explicit `agentctl install
+  --disable-opamp-supervisor` provides a controlled, exclusive return to legacy
+  ownership and rejects simultaneous Supervisor enable/disable options.
+- Focused Windows Agent-installation tests pass. Both Linux/amd64 and
+  Windows/amd64 Agent-installation test binaries compile. Earlier scoped local
+  `go vet` and `go build` passed; native privileged service verification remains
+  delegated to CI because the local Windows token cannot control SCM. The local
+  full suite is also affected by loopback socket restrictions and ignored
+  historical test copies under `tmp/`; those paths were preserved.
+- Run [43448710761](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43448710761)
+  on `1e10f73dc0f84063de8a8a8968e369293113b87d` passed the full Ubuntu job,
+  including native Linux service install/migration/restart/rollback/uninstall.
+  Sanitized native-service artifacts were uploaded for Linux (`14048169509`)
+  and Windows (`14049576920`). Windows executable migration now succeeds, but
+  its job exposed a verification-harness race: the restart helper treated
+  `STOP_PENDING` as stopped and issued `sc start` early, producing service
+  error 1056; cleanup encountered the same pending transition. The harness now
+  waits for the explicit `STOPPED` state. The Windows service stopper also
+  waits through existing `START_PENDING`/`STOP_PENDING` states before sending a
+  stop request. Focused native Windows installation tests and Linux/Windows
+  test-binary compilation pass after this correction.
+- Exact-head rerun after the pending-state correction is required. PR-07
+  remains IN_PROGRESS; do not mark the Windows service gate passed until
+  migration, rollback, restarts, and uninstall pass on native Windows. Do not
+  merge, transfer default ownership, or start PR-08 while required adoption
+  gates remain open.
+
+## Native service exact-head verification passed — 2026-11-13
+
+- Exact-head CI run [43450425177](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43450425177)
+  passed on Windows and Ubuntu at `939835c6346ec97d564eeca3d9918c057e92ceaf`.
+- The native Windows service lifecycle test passed in 18.38s and the native
+  Linux lifecycle test passed. Both verify PR-06 install, managed Supervisor
+  migration, service restart, explicit rollback to legacy ownership, another
+  restart, and uninstall with service/path/process cleanup. Sanitized service
+  evidence artifacts are retained as Windows `14051765071` and Linux
+  `14050646612`.
+- Both jobs passed the full Go suite, managed-runtime E2E, `go vet ./...`, and
+  `go build ./...`. Ubuntu also passed isolated Docker recovery and
+  Agent-managed Redis, PostgreSQL, Python/Prometheus, and mock-cooling profile
+  E2Es. Hosted Windows CI skips Docker and therefore does not close Windows
+  Agent-managed Docker-profile parity.
+- PR-07 remains IN_PROGRESS and PR #30 remains draft. Keep Supervisor opt-in
+  and existing installations legacy-owned until Windows managed-profile parity
+  and the remaining mandatory adoption gates pass. Production NestJS Core
+  interoperability remains separately tracked.
+
+## Docs-updated final-head CI — 2026-11-13
+
+- Exact docs-updated head `d7a123a4692912fb66eb5976a7b99f3f28e21e7d` passed
+  native Windows and Ubuntu CI run
+  [43451862541](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43451862541).
+  Both jobs completed successfully and executed the full Go suite, managed
+  runtime E2E, native service lifecycle E2E, `go vet ./...`, and `go build ./...`.
+  Ubuntu also executed Docker recovery and Agent-managed Redis, PostgreSQL,
+  Python/Prometheus, and mock-cooling profile parity. Windows Docker/profile
+  tests were skipped because the hosted Windows runner has no Docker.
+- Sanitized artifacts from this exact run: managed Windows `14051522250`,
+  managed Linux `14051917147`, native service Windows `14049933814`, native
+  service Linux `14051876355`, and Ubuntu profile parity `14052975215`.
+- The native Windows/Linux service E2E verifies PR-06 install, migration to
+  managed Supervisor ownership, service restart, explicit rollback to legacy
+  ownership, another restart, uninstall, and process/resource cleanup. The
+  managed test artifacts are separate from production NestJS Core
+  interoperability, which remains tracked independently.
+- Windows Agent-managed Docker-profile parity remains a mandatory open gate.
+  The local Windows managed-owner test cannot initialize protected Supervisor
+  credentials because the current process lacks an elevated token; hosted
+  Windows CI has no Docker. No product defect was established by that local
+  setup failure. Keep PR #30 draft, PR-07 IN_PROGRESS, Supervisor opt-in, and
+  existing installations legacy-owned until that parity gate passes.
+
+## Current-head evidence and local Windows blocker — 2026-11-13
+
+- Exact report/tracker head `8e1da1965c85b4642a59b9a36f85df6e9eec46f2` passed
+  Windows and Ubuntu run
+  [43453791628](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43453791628).
+  Both jobs executed full Go tests, managed-runtime E2E, native service
+  lifecycle E2E, `go vet ./...`, and `go build ./...`. Ubuntu additionally
+  executed isolated Docker recovery and Agent-managed Redis, PostgreSQL,
+  Python/Prometheus, and mock-cooling profile parity. Hosted Windows Docker
+  profile steps were skipped.
+- Exact-run sanitized artifacts and SHA-256: managed Windows `14053092000`
+  (`d1225feeddc4dd88220b46bc284ae833144a038bdc942fb0fabae4a329e7c7be`),
+  managed Ubuntu `14053852431`
+  (`954fecdb488dbda1abdb9713caa7ae888dee7cfe9c4f15d969d5f5addafd6051`),
+  native service Windows `14053247154`
+  (`af7336c2cb0bd9a1c726dc0e704ed0c2c1961838c7d26d9f70aeed73090c1dc5`),
+  native service Ubuntu `14053731467`
+  (`db69db826f3114fea18a78fb7662e140c1bd46e57aa7b00a99808919a914f6ad`),
+  and Ubuntu profile parity `14053017477`
+  (`a34fa870ab83a89197b9e947876086de06db88c4da2f3185938fbced505fe8fe`).
+- The local Windows Docker daemon responds with version `29.5.3` when invoked
+  through the elevated command context. The current process remains medium
+  integrity and the Administrators SID is deny-only. The Windows credential
+  store applies protected DACL `D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)`, granting
+  SYSTEM and built-in Administrators. The managed profile E2E therefore cannot
+  provision/read the protected Supervisor token in this process. The GitHub
+  repository has zero registered self-hosted Actions runners. This confirms an
+  environment/privilege blocker; it does not justify weakening credential ACLs
+  or treating Linux profile parity as Windows evidence.
+- PR-07 remains IN_PROGRESS. Windows Agent-managed Docker-profile parity is
+  the remaining adoption gate; keep PR #30 draft and Supervisor opt-in, and
+  preserve legacy ownership for existing installations until that native gate
+  passes. Production NestJS Core interoperability remains separate.
+
+## Windows uninstall failure and correction — 2026-11-13
+
+- Exact prior head `fea861f98ae7975cf7e38e7e7761b31bca13b96c`, run
+  [43456929985](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43456929985):
+  Ubuntu passed full tests, managed-runtime E2E, native service lifecycle,
+  isolated Docker recovery, Redis/PostgreSQL/Python/Prometheus/mock-cooling
+  profile parity, vet, and build. Sanitized Ubuntu artifacts include native
+  service `14053869366` (`574f1f0b69abbba185381e3d16855bb20f5005297cbf4573f538248456d69406`),
+  managed runtime `14054332661` (`6efe10f723b4f6d3f76481b1fd43942bda979d387a428f5a9b7aa680b08c63a6`),
+  and profile parity `14053119479` (`a9cb17dd5d84a46e401f5162a82618187c5edf3d561d50a2606536d1157d3b97`).
+- Windows full tests, managed-runtime E2E, vet, and build passed, but native
+  service lifecycle E2E failed during final uninstall: deleting the owned
+  `agentctl.exe` returned `Access is denied`. Sanitized failure evidence is
+  artifact `14054686557`, SHA-256
+  `708db4208c723253e17ea9763931387b8ee2d2e988d523b841ea819e3113b8e0`.
+- Source tracing found uninstall waited for SCM `STOPPED` and immediately
+  removed the service executable. Inference: the service process was still
+  releasing its image after reporting `STOPPED`. Fix `2f2f42b` captures the
+  service PID handle before stop and waits for that process to exit, bounded by
+  the existing service-transition context, before deleting the service and
+  owned files. A native Windows subprocess regression test passes locally.
+- Local focused `go test ./internal/agentinstallation` and `go test ./cmd/agentctl`
+  passed when temp files were redirected into the workspace; `go vet` and
+  `go build` passed for the affected packages. A full local `./...` attempt was
+  blocked by sandbox access to an existing protected `tmp/` fixture and
+  loopback socket restrictions; hosted native CI is the authoritative full
+  suite.
+- Exact-head Windows/Ubuntu rerun for `2f2f42b` is pending. Windows managed
+  Docker-profile parity remains open because hosted Windows CI skips Docker
+  and the local process cannot provision the protected credential. PR-07 stays
+  IN_PROGRESS; PR #30 stays draft; Supervisor remains opt-in and existing
+  installations remain legacy-owned. Do not start PR-08 until mandatory PR-07
+  gates pass.
+
+## Exact-head Windows/Linux verification after uninstall fix — 2026-11-13
+
+- Exact code head `a878b332f75819a3e200f59d7ab14a818a675c29`, CI run
+  [43461962938](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43461962938),
+  passed both Windows and Ubuntu. Both jobs executed the architecture guard,
+  full Go test suite, managed Supervisor E2E, native service lifecycle E2E,
+  `go vet ./...`, and `go build ./...`.
+- Native Windows service lifecycle passed install, migration, service restart,
+  rollback to legacy ownership, another restart, uninstall, and resource/process
+  cleanup with the service-process wait in place. The managed-runtime Windows
+  E2E also passed. Windows Docker recovery and Docker application-profile steps
+  were skipped by the hosted runner and do not verify Windows profile parity.
+- Native Ubuntu passed the same suite and service lifecycle. It also ran
+  isolated Docker recovery plus Agent-managed Redis, PostgreSQL,
+  Python/Prometheus, and mock-cooling profile E2Es and actual OTLP checks.
+- Exact-run sanitized evidence artifacts and SHA-256: managed Windows
+  `14056642808` (`82bffb206a72b1c2029493209076a8414befe6525cfe595af418eafd9a8d85ce`),
+  managed Ubuntu `14057421603`
+  (`21c3753fcbfab37099523c121a305b6121d221af3f0553349ecb117205ea2347`),
+  native Windows service `14056233286`
+  (`7d2124c8aa58f10ce1220329c2b6acae6e2b28ee081c27927ff7e0f9292a785a`),
+  native Ubuntu service `14057405859`
+  (`6d01999526784bdf74bec18aa3c7478b7226c2a7bf1a53745ed290cdbd69781f`),
+  and Ubuntu profile parity `14055808953`
+  (`ab4d0c50f120855876b8ad3fdd4240f311919c7bd72385e995a709ebb9a61402`).
+- The first rerun, `ddf1d64`, stopped before tests because the process-wait helper
+  made the SCM file 456 lines, exceeding the 450-line architecture guard.
+  Commit `a878b33` moved those helpers to a focused Windows build-tagged file.
+  The guard then passed for 313 production files and 36 source packages; local
+  focused tests, vet, and build passed.
+- PR-07 remains IN_PROGRESS solely for Windows Agent-managed Docker-profile
+  parity. Hosted Windows has no Docker; the local process cannot provision the
+  protected Supervisor credential without elevation. Keep Supervisor opt-in,
+  existing installations legacy-owned, PR #30 draft, and PR-08 blocked until
+  this mandatory gate passes. Production NestJS Core interoperability remains
+  a separate track.
+
+## Final report-head CI and local Windows profile-parity attempt — 2026-11-13
+
+- Exact PR head `11d524a37c291093ea861c8e196e0e8ee033b562` completed GitHub
+  Actions run [`43463371834`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43463371834)
+  successfully. Both Windows and Ubuntu jobs passed. Windows explicitly skipped
+  isolated Docker recovery, Docker/Collector/OTLP profile E2E, Agent-managed
+  Docker application-profile E2E, profile evidence upload, and Docker teardown.
+  Ubuntu executed Docker recovery and the managed profile parity. This run is
+  final-head CI evidence, not Windows Docker parity evidence.
+- Local diagnostic command:
+  `go test ./cmd/agentctl -run '^TestLiveDockerApplicationProfilesDeliverOTLP$' -count=1 -v`
+  with `AR_IMMS_PR06_APPLICATION_PROFILE_E2E=1`,
+  `AR_IMMS_PR07A_SUPERVISOR_PROFILE_PARITY=1`, and cached SHA-verified Windows
+  Collector/Supervisor v0.160.0 binaries. Docker daemon version `29.5.3` was
+  reachable in the escalated command context. Redis, PostgreSQL, Python images
+  were available and the test built its PostgreSQL fixture image.
+- The test then failed before profile telemetry while writing the protected
+  Supervisor configuration: `Access is denied` under the credential directory.
+  `whoami /groups` still showed `Medium Mandatory Level` and Administrators
+  deny-only. The failure is a local privilege/setup blocker, not evidence that
+  Windows profile telemetry passed or that product ACLs should be weakened.
+- Test cleanup reported the Agent runtime did not stop within its 10-second
+  cleanup window and `TempDir RemoveAll` could not access the protected
+  credential directory. Follow-up inspection found no test-named
+  `arimms-pr06-*` Docker containers and no matching test-owned Supervisor or
+  Collector processes. The protected temporary directory remains in the
+  ignored workspace; it was not force-deleted. The sanitized console output is
+  retained locally at `.tmp-pr07-windows-docker-parity/test-output.log`.
+- The diagnostic run used the existing dirty worktree, so it does not replace
+  exact-head acceptance evidence. An immutable source archive of exact head
+  `11d524a37c291093ea861c8e196e0e8ee033b562` was prepared. A `RunAs` launch of
+  inbox Windows PowerShell returned `The operation was canceled by the user`
+  before a child process started. No high-integrity token or second test result
+  exists; this launch is not verification evidence.
+- Required next action: run the profile-parity test from a genuine elevated
+  Windows session with Docker Desktop Linux containers, preserving the
+  SYSTEM/Administrators-only DACL. Until it passes, PR-07 remains IN_PROGRESS,
+  PR #30 stays draft, Supervisor stays opt-in, existing installations stay
+  legacy-owned, and PR-08 remains blocked.
+
+## Windows elevation handoff — 2026-11-14
+
+- The protected-file test requires a genuinely elevated token. The available
+  `require_escalated` command context could access Docker but still reported
+  `Medium Mandatory Level` and an Administrators deny-only SID.
+- One `RunAs` launch of inbox Windows PowerShell was attempted for the
+  exact-head E2E, but Windows returned `The operation was canceled by the user`.
+  The child did not create its token evidence file and did not run tests. No
+  further elevation prompt was issued.
+- To close this gate, run the exact test from an elevated Windows PowerShell
+  session with Docker Desktop Linux containers, or register a Windows
+  Docker-capable Actions runner. Preserve the protected Supervisor credential
+  DACL. Until then PR-07 remains IN_PROGRESS and the release goal remains open.
+
+## Profile E2E failure-cleanup regression — 2026-11-14
+
+- The blocked local E2E consumed `serviceDone` while reporting the protected
+  configuration error; test cleanup then waited on that same one-shot channel
+  and emitted a misleading second timeout (`Agent runtime did not stop`).
+  Follow-up process inspection found no test-owned Agent/Supervisor/Collector
+  process, consistent with the runtime error already having been delivered.
+- Commit `b348584e399545bf3aedc4e682fd37273cabfffc` adds
+  `startRuntimeE2E`, which sends the runtime result once and closes the channel
+  so both the telemetry wait and cleanup can observe completion. This changes
+  only the test harness; runtime behavior and protected ACLs are untouched.
+- Red/green regression: before the helper, the new unit test failed to build
+  because `startRuntimeE2E` was undefined; after implementation,
+  `go test ./cmd/agentctl -run '^TestRuntimeE2ECompletionRemainsObservableAfterResultIsRead$' -count=1`
+  passed.
+- Additional local Windows checks after the change passed:
+  `go test ./cmd/agentctl -count=1`, `go vet ./cmd/agentctl`,
+  `go build ./cmd/agentctl`, and `./scripts/check-architecture.ps1` (36 package
+  boundaries and 313 production files checked). The mandatory live Windows
+  profile gate remains blocked by the protected credential ACL/elevation
+  requirement; this test-only correction does not close it.
+
+## Latest pushed head CI — 2026-11-14
+
+- Push of `196dbefa62a0d99784b5a20d5f68e001f2c5fb48` triggered Actions run
+  [`43471042444`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43471042444).
+  Both Ubuntu and Windows jobs completed successfully.
+- Ubuntu executed and passed architecture checks, full tests, native service
+  lifecycle, live Docker/Collector/OTLP profile tests, Agent-managed
+  Redis/PostgreSQL/Python/Prometheus/mock-cooling profiles, managed Supervisor
+  fallback/OTLP E2E, evidence uploads, vet, build, and Docker teardown.
+- Windows executed and passed architecture checks, full tests, native service
+  lifecycle, managed Supervisor fallback/OTLP E2E, vet, and build. The workflow
+  explicitly skipped isolated Docker startup, live Docker/Collector/OTLP,
+  Agent-managed Docker profile parity, and profile evidence upload. Those
+  skips do not verify Windows Docker profile parity.
+- The run confirms the completion-signal fix is green on both CI platforms and
+  the supported Linux Docker/profile path remains green. PR-07 is still
+  IN_PROGRESS, PR #30 remains draft, Supervisor remains opt-in, and the only
+  outstanding adoption gate remains native Windows Docker/profile parity with
+  the protected Supervisor credential ACL intact.
+
+## Elevated Windows profile parity and default-owner transfer — 2026-11-14
+
+This update supersedes earlier statements in this report that Windows profile
+parity was blocked and that new installations still used legacy ownership.
+
+- On exact PR head `83e7074be0927dff40829e859a73b6585c720b33`, the prepared
+  Windows profile-parity harness ran under a genuine elevated Administrator
+  token against Docker Desktop's Linux Engine 29.5.3. It verified High
+  Mandatory Level, enabled Administrators SID, Docker access, and the pinned
+  Collector/Supervisor v0.160.0 artifacts before starting the test.
+- `go test ./cmd/agentctl -run '^TestLiveDockerApplicationProfilesDeliverOTLP$' -count=1 -v`
+  passed (40.40s). Redis, PostgreSQL, Python/Prometheus, and mock-cooling
+  metrics were delivered to the isolated OTLP sink with stable node identity
+  and provider-scoped container identity. Startup fallback, container churn,
+  receiver uniqueness, no duplicate telemetry, unchanged Collector config and
+  generation during churn, and cleanup passed. See the sanitized
+  [Windows profile evidence](pr-07-windows-profile-parity.md); the local logs
+  and full binary digests are listed there.
+- Following that parity result, new-install ownership transfer is implemented:
+  fresh installs require `--opamp-server-url` and default to the managed
+  Supervisor owner; `--disable-opamp-supervisor` explicitly chooses legacy
+  ownership. Existing installations preserve their persisted owner when the
+  endpoint is omitted, and an explicitly supplied endpoint performs migration.
+  Focused `go test ./internal/agentinstallation -count=1` and
+  `go vet ./internal/agentinstallation` pass. The installer rejects an
+  unconfigured new default install before bootstrap, binary copy, Supervisor
+  installation, or state mutation.
+- The default-owner change is newer than the Windows profile E2E head. It still
+  requires exact-final-head Windows/Ubuntu CI. The complete Windows source
+  suite `go test ./cmd/... ./internal/... -count=1` passed under a High
+  Mandatory Level token. `go vet ./cmd/... ./internal/...`,
+  `go build ./cmd/... ./internal/...`, and the architecture guard passed
+  (36 package boundaries, 313 production files). The execution log is retained
+  locally at `tmp/pr07-final-windows-regression.log`; it contains no credential
+  values. PR-07 remains IN_PROGRESS and PR #30 remains draft pending final-head
+  CI and publication. Production NestJS Core interoperability remains
+  separate.
+
+## Windows exact-head retest and Linux recovery follow-up — 2026-11-14
+
+- Windows managed Docker-profile parity passed on exact PR head
+  `a6d4f43581cd5f4978884a130a61aeae3760edb2` under a genuine elevated token.
+  The pinned Collector and Supervisor v0.160.0 digests, Docker Desktop Linux
+  Engine access, four profile metrics, identities, startup fallback, churn,
+  receiver uniqueness, and fixture cleanup are recorded in the
+  [Windows parity evidence](pr-07-windows-profile-parity.md).
+- Ubuntu run
+  [43506593114](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43506593114)
+  passed the full test, service lifecycle, and initial native Docker profile
+  phases, then failed during isolated Docker daemon recovery. The failure was
+  in test setup: immediately after restarting DIND, its mounted `docker.sock`
+  had not yet been recreated, so `chmod` returned `No such file or directory`.
+  Linux host-bound profile uniqueness checks before recovery passed.
+- Commit `05b2884e4b442f944390820c8a0413260e2f7057` adds a bounded 30-second
+  retry for the temporary CI socket to reappear before restoring the same
+  test-only permissions used at initial DIND startup. It does not change
+  runtime behavior or credential ACLs.
+- Focused local verification after that fix passed:
+  `go test ./internal/monitoringprofile -count=1`,
+  `go test ./cmd/agentctl -run '^$'`, and
+  `go vet ./internal/monitoringprofile`. The full local Windows command suite
+  is constrained by this sandbox's SQLite temp-file denial; Windows CI runs
+  the full suite.
+- Exact code head `05b2884e4b442f944390820c8a0413260e2f7057` passed both jobs in
+  [CI run 43507624447](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43507624447).
+  Ubuntu executed native Docker recovery, all four live application profiles,
+  managed Supervisor E2E, vet, and build. Windows passed full tests, native
+  service lifecycle, managed Supervisor E2E, vet, and build; its Docker tests
+  were skipped and are covered by the separate elevated local profile run.
+- Ubuntu recovery evidence: inventory was preserved during the daemon outage,
+  receiver data resumed after recovery, and applied configuration generation
+  remained unchanged at 2. The paused Redis endpoint was diagnosed as
+  `endpoint_unreachable` with timestamped Collector evidence. Multi-network,
+  published-port override, and unpublished-container cases executed. Profile
+  parity emitted Redis, PostgreSQL, Python/Prometheus, and mock-cooling metrics.
+- Sanitized CI artifacts from run `43507624447`: Ubuntu profile/recovery
+  `14077980526`, managed Supervisor Linux `14077780978`, managed Supervisor
+  Windows `14077661075`, native service Linux `14075994084`, and native service
+  Windows `14077715396`.
+- The report/tracker edits in this commit still require one docs-updated
+  final-head CI run before PR-07 can be marked PASS. PR-07 remains
+  **IN_PROGRESS** and draft PR #30 remains unmerged. Existing
+  installations preserve their persisted runtime owner; new installations
+  default to managed Supervisor with the required OpAMP URL and explicit
+  legacy rollback option.
+
+## Final adoption gate closure — 2026-11-14
+
+- **Status: PASS.** Documentation-updated PR head
+  `4951dd176abf2743452bc477f37cd864fde3e1e1` passed both jobs in final-head CI
+  run [43509130191](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43509130191).
+- Ubuntu passed the full tests, native service migration/upgrade/rollback/
+  restart/uninstall, isolated Docker recovery, Docker/Collector/OTLP profile
+  E2E, Agent-managed Redis/PostgreSQL/Python/mock-cooling profile E2E, managed
+  Supervisor E2E, vet, build, and isolated Docker teardown.
+- Windows passed the full tests, native service migration/upgrade/rollback/
+  restart/uninstall, managed Supervisor E2E, vet, and build. CI intentionally
+  skipped Windows Docker tests; the separately elevated workstation run
+  recorded in [Windows profile parity](pr-07-windows-profile-parity.md)
+  passed the actual Windows Docker-to-OTLP managed profile test with all four
+  profiles, verified binaries, elevated token, identity attribution, churn,
+  uniqueness, and cleanup.
+- Artifacts from final-head CI run `43509130191`:
+  - Ubuntu profile/recovery `14078046622`, SHA-256
+    `89b9d035b3b0a4c14a524b96fefbfca4111ce94b7c96e870e62f84ab3cba8184`.
+  - Managed Supervisor Linux `14077363870`, SHA-256
+    `30d3f4e6250968bffdb20241400b4300bea494a5ad36dc179601e6eb88125eac`.
+  - Managed Supervisor Windows `14078066984`, SHA-256
+    `42a8d75c17d30a9b2785da492df6a1f60f8fb988cafaae5de1f116cbad0a86ac`.
+  - Native service Linux `14078360160`, SHA-256
+    `65627d5d401a284264f519c8b84f2d7db2964c7aa7088d5a4b2841a68a903cc9`.
+  - Native service Windows `14076503670`, SHA-256
+    `7310a7cc4e4711a8e1f747e8e8892c27e1a3b8dd76bb19b27b884a3b5caf2cf1`.
+- Runtime ownership transfer is complete for new installations: managed
+  Supervisor is the default and requires the OpAMP endpoint. Explicit legacy
+  ownership remains the controlled rollback path. Existing installations keep
+  their persisted owner unless explicitly migrated; dual Collector lifecycle
+  ownership is prohibited.
+- Production NestJS Core interoperability remains separately tracked and was
+  not a gate for this Mock Core implementation checkpoint.
+- Next: review draft PR #30, mark it ready, merge into
+  `chore/v0.1.4a-next`, verify the merge commit and target branch, then begin
+  PR-08. Do not conflate PR-07 verification PASS with PR merge state.
+
+## Final exact-head verification — 2026-11-14
+
+- **Implementation source head:** `d01e16c3b3c238e135185292eeca2b90152a8a8d`
+  on `feat/pr-07-opamp`; PR #30 targets `chore/v0.1.4a-next`.
+- **CI:** implementation head run
+  [43514647904](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43514647904)
+  and documentation-updated head
+  [721753f9eaf96f9446bf237a840a49677288f5b2](https://github.com/AR-IMMS/telemetry-agent/commit/721753f9eaf96f9446bf237a840a49677288f5b2)
+  run [43517107187](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43517107187)
+  passed both Ubuntu and Windows jobs. Ubuntu executed full
+  tests, native service lifecycle, isolated Docker recovery, four live profile
+  OTLP checks, managed Supervisor E2E, vet, and build. Windows executed full
+  tests, native service lifecycle, managed Supervisor E2E, vet, and build;
+  hosted Windows Docker tests are skipped and are covered by the elevated
+  workstation run below.
+- **Windows managed profile parity:** a fresh `RunAs`/UAC process reported
+  High Mandatory Level, enabled Administrators SID, and Administrator role.
+  It connected to Docker Desktop `desktop-linux` / Linux Engine 29.5.3
+  (`x86_64`) and verified Collector and Supervisor v0.160.0 digests before
+  executing `go test ./cmd/agentctl -run
+  '^TestLiveDockerApplicationProfilesDeliverOTLP$' -count=1 -v`.
+  Result: PASS in 45.17 seconds; exit code 0; fixture cleanup PASS with zero
+  new containers remaining. Fallback and container churn passed. Real metrics
+  reached the isolated OTLP sink for Redis, PostgreSQL, Python/Prometheus, and
+  mock cooling. Each was attributed to Node
+  `33333333-4444-4555-8666-777777777777` and a distinct provider resource ID.
+- **Pinned binaries:** Collector archive SHA-256
+  `d8de67cf9dc3ffe928610d52b192cb029365bb42dc79a23e0586c040c83293cf`;
+  Collector executable SHA-256
+  `43a7d3eb2b759281b6297a91c830988be39c16e538e8f55aeb4ea31ab7a612cd`;
+  Supervisor v0.160.0 SHA-256
+  `df2dfae96d6b711db31675d2deb8493d3dbada8561b25fe575fd90bd7cac8449`.
+- **Reproducible evidence:** exact source snapshot archive SHA-256
+  `A1D1122D89A0CEAEC041013094D476E1AAFE556C4BC36E813C64AA58131CCBC2`;
+  sanitized Windows execution log SHA-256
+  `009FBF587377D672225F49C8E966858373778A1EC28B78A020EC3A7D0073E97E`.
+  The log and source archive are retained locally under
+  `tmp/pr07-win-profile-d01e16c-20261114/`; compact sanitized evidence is in
+  [Windows profile parity](pr-07-windows-profile-parity.md).
+- Focused Go tests, full `./cmd/... ./internal/...` test/vet/build gates, the
+  OpAMP session race check, and architecture guard passed before this run. A
+  broad `go test ./...` attempt was blocked during package discovery by an
+  unrelated protected fixture directory; no fixture or permission was altered.
+- Final ownership contract: new installs default to managed Supervisor and
+  require the OpAMP URL; `--disable-opamp-supervisor` is the explicit legacy
+  rollback. Reinstall preserves the stored owner, and existing installations
+  require explicit migration. Only one runtime may own Collector lifecycle.
+- **Gate:** PR-07 verification is PASS. Production NestJS Core
+  interoperability remains separate from this Mock Core checkpoint. Next:
+  review and merge PR #30 into `chore/v0.1.4a-next`, verify the merge, then
+  start PR-08.
+
+## Final documentation-head CI artifacts — 2026-11-14
+
+Documentation checkpoint `cd5e7aeddfc96c88a771d71dc68736d1c4da305e` passed
+Windows and Ubuntu in run
+[43518358652](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43518358652).
+Windows completed full tests, native service lifecycle, managed Supervisor
+E2E, vet, and build. Ubuntu additionally completed isolated Docker recovery,
+live Docker/Collector/OTLP profiles, application-profile delivery, and Docker
+teardown. Sanitized evidence artifacts retained by Actions:
+
+- Ubuntu managed Supervisor `14082880439`, SHA-256
+  `f340af5455e5500ef6e59c5fbf6778e7b5c61dd2295bfb598b6f9fe4df4dad5f`.
+- Windows managed Supervisor `14081283022`, SHA-256
+  `9828bc76d642addf1d00146cf155493ee23251f9ff419411308a274569e67dc0`.
+- Ubuntu native service `14081801706`, SHA-256
+  `cdf5b481d6ae4fb34ce8e5f664f6c223119d8dec2b14406e46cf32d30da8921e`.
+- Windows native service `14082780153`, SHA-256
+  `d39e142ea24df8d972d91cfd3cae53e3598b6008b244e3a4339ab3c4f15e75f3`.
+- Ubuntu profile parity and Docker recovery `14081064377`, SHA-256
+  `1f34967a7b7b40bbf8419f27733c038556fa028211c6b784daaf2cd1d29a1f74`.

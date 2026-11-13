@@ -26,6 +26,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v7
@@ -72,7 +74,31 @@ jobs:
           & $binaryPath components 2>&1 | Set-Content -LiteralPath $inventoryPath
           if ($LASTEXITCODE -ne 0) { throw "Collector component inventory failed: $LASTEXITCODE" }
           "OTELCOL_CONTRIB_BINARY=$binaryPath" | Add-Content $env:GITHUB_ENV
+          "AR_IMMS_PR05_COLLECTOR_BINARY=$binaryPath" | Add-Content $env:GITHUB_ENV
           "OTELCOL_ARTIFACT_SHA256=$actual" | Add-Content $env:GITHUB_ENV
+
+      - name: Download and verify pinned OpAMP Supervisor
+        shell: pwsh
+        run: |
+          if ($IsWindows) {
+            $name = 'opampsupervisor_0.160.0_windows_amd64.exe'
+            $expected = 'df2dfae96d6b711db31675d2deb8493d3dbada8561b25fe575fd90bd7cac8449'
+          } else {
+            $name = 'opampsupervisor_0.160.0_linux_amd64'
+            $expected = '7967e3210e0252f25f41a96b15758dd2e03feb0aecbe85a945f1e2e6e71865c9'
+          }
+          $directory = Join-Path $env:RUNNER_TEMP 'opampsupervisor'
+          New-Item -ItemType Directory -Force -Path $directory | Out-Null
+          $binaryPath = Join-Path $directory $name
+          $url = "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/cmd%2Fopampsupervisor%2Fv0.160.0/$name"
+          Invoke-WebRequest -Uri $url -OutFile $binaryPath
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $binaryPath).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "Pinned Supervisor checksum mismatch: $actual" }
+          if (-not $IsWindows) { chmod 755 $binaryPath; if ($LASTEXITCODE -ne 0) { throw 'Could not mark Supervisor executable' } }
+          # The pinned Supervisor binary does not implement a --version flag;
+          # the official release URL plus the verified executable digest is its identity.
+          "AR_IMMS_PR07A_SUPERVISOR_BINARY=$binaryPath" | Add-Content $env:GITHUB_ENV
+          "OPAMPSUPERVISOR_ARTIFACT_SHA256=$actual" | Add-Content $env:GITHUB_ENV
 
       - name: Check architecture boundaries and production Go file size
         shell: pwsh
@@ -108,6 +134,68 @@ jobs:
       - name: Test
         run: go test ./... -count=1
 
+      - name: Build PR-06 Agent and current Agent for native service lifecycle E2E
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 30
+        shell: pwsh
+        run: |
+          $legacySource = Join-Path $env:RUNNER_TEMP 'pr07-legacy-source'
+          $binaryName = if ($IsWindows) { 'agentctl.exe' } else { 'agentctl' }
+          $legacyBinary = Join-Path $env:RUNNER_TEMP "pr07-legacy-$binaryName"
+          $currentBinary = Join-Path $env:RUNNER_TEMP "pr07-current-$binaryName"
+          $evidenceDirectory = Join-Path $env:RUNNER_TEMP 'pr07c-native-service-evidence'
+          New-Item -ItemType Directory -Force -Path $evidenceDirectory | Out-Null
+          git worktree add --detach $legacySource origin/chore/v0.1.4a-next
+          if ($LASTEXITCODE -ne 0) { throw 'Could not prepare the PR-06 Agent source for upgrade verification' }
+          try {
+            Push-Location $legacySource
+            try {
+              go build -o $legacyBinary ./cmd/agentctl
+              if ($LASTEXITCODE -ne 0) { throw 'Could not build the PR-06 Agent binary' }
+            } finally {
+              Pop-Location
+            }
+            go build -o $currentBinary ./cmd/agentctl
+            if ($LASTEXITCODE -ne 0) { throw 'Could not build the current Agent binary' }
+          } finally {
+            git worktree remove --force $legacySource
+          }
+          "AR_IMMS_PR07C_LEGACY_AGENTCTL_BINARY=$legacyBinary" | Add-Content $env:GITHUB_ENV
+          "AR_IMMS_PR07C_AGENTCTL_BINARY=$currentBinary" | Add-Content $env:GITHUB_ENV
+          "AR_IMMS_PR07C_CONFIG_ROOT=$(Join-Path $env:GITHUB_WORKSPACE 'configs')" | Add-Content $env:GITHUB_ENV
+          "AR_IMMS_PR07C_SERVICE_EVIDENCE_DIR=$evidenceDirectory" | Add-Content $env:GITHUB_ENV
+
+      - name: Native service upgrade, migration, rollback, restart, and uninstall E2E
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 30
+        shell: pwsh
+        run: |
+          $testBinary = Join-Path $env:RUNNER_TEMP 'pr07-native-service.test'
+          if ($IsWindows) { $testBinary += '.exe' }
+          go test -c -o $testBinary ./internal/agentinstallation
+          if ($LASTEXITCODE -ne 0) { throw 'Could not build the native service E2E test binary' }
+          $testArgs = @("-test.run=^TestPR07NativeServiceUpgradeMigrationRollbackUninstall$", '-test.v')
+          if ($IsWindows) {
+            $env:AR_IMMS_PR07C_NATIVE_SERVICE_E2E = '1'
+            & $testBinary @testArgs
+            if ($LASTEXITCODE -ne 0) { throw "Native Windows service lifecycle E2E failed: $LASTEXITCODE" }
+          } else {
+            sudo env `
+              "AR_IMMS_PR07C_NATIVE_SERVICE_E2E=1" `
+              "AR_IMMS_PR07C_LEGACY_AGENTCTL_BINARY=$env:AR_IMMS_PR07C_LEGACY_AGENTCTL_BINARY" `
+              "AR_IMMS_PR07C_AGENTCTL_BINARY=$env:AR_IMMS_PR07C_AGENTCTL_BINARY" `
+              "AR_IMMS_PR07C_CONFIG_ROOT=$env:AR_IMMS_PR07C_CONFIG_ROOT" `
+              "AR_IMMS_PR07C_SERVICE_EVIDENCE_DIR=$env:AR_IMMS_PR07C_SERVICE_EVIDENCE_DIR" `
+              $testBinary @testArgs
+            if ($LASTEXITCODE -ne 0) { throw "Native Linux service lifecycle E2E failed: $LASTEXITCODE" }
+          }
+
+      - name: Upload native service lifecycle evidence
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.number == 30
+        uses: actions/upload-artifact@v6
+        with:
+          name: pr07c-native-service-${{ runner.os }}
+          path: ${{ runner.temp }}/pr07c-native-service-evidence/
+          if-no-files-found: warn
+
       - name: Live Docker/Collector/OTLP profile E2E
         if: runner.os == 'Linux'
         env:
@@ -119,8 +207,34 @@ jobs:
         if: runner.os == 'Linux'
         env:
           AR_IMMS_PR06_APPLICATION_PROFILE_E2E: '1'
+          AR_IMMS_PR07A_SUPERVISOR_PROFILE_PARITY: '1'
           AR_IMMS_PR05_COLLECTOR_BINARY: ${{ env.OTELCOL_CONTRIB_BINARY }}
+          AR_IMMS_PR07A_SUPERVISOR_BINARY: ${{ env.AR_IMMS_PR07A_SUPERVISOR_BINARY }}
+          AR_IMMS_PR07A_EVIDENCE_DIR: ${{ runner.temp }}/pr07a-evidence
         run: go test ./cmd/agentctl -run '^TestLiveDockerApplicationProfilesDeliverOTLP$' -count=1 -v
+
+      - name: Upload PR-07a profile parity evidence
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v6
+        with:
+          name: pr07a-supervisor-profile-parity
+          path: ${{ runner.temp }}/pr07a-evidence/
+          if-no-files-found: warn
+
+      - name: Agent-managed Supervisor fallback and OTLP E2E
+        env:
+          AR_IMMS_PR07C_RUNTIME_E2E: '1'
+          AR_IMMS_PR07C_CONTROL_E2E: '1'
+          AR_IMMS_PR07C_EVIDENCE_DIR: ${{ runner.temp }}/pr07c-evidence
+        run: go test ./internal/agentlifecycle -run '^(TestManagedSupervisorRuntimeDeliversOTLP|TestManagedSupervisorEnrollmentAndRemoteGatewayE2E)$' -count=1 -v
+
+      - name: Upload PR-07c runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pr07c-managed-supervisor-${{ runner.os }}
+          path: ${{ runner.temp }}/pr07c-evidence/
+          if-no-files-found: warn
 
       - name: Vet
         run: go vet ./...

@@ -15,6 +15,8 @@ Type=simple
 ExecStart=%s run --state-path %s
 Restart=on-failure
 RestartSec=5s
+KillMode=control-group
+TimeoutStopSec=30s
 
 [Install]
 WantedBy=multi-user.target

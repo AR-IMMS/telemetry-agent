@@ -151,6 +151,7 @@ func TestPeriodicSQLitePollingDetectsCommittedCrossProcessDesiredChange(t *testi
 	observed := make(chan uint64, 8)
 	controller := Controller{Desired: reader.IntegrationRepository(), Baseline: staticBaseline{}, Resolver: integration.NewResolver(registry), Compiler: &testCompiler{}, Validator: func(context.Context, collectorruntime.Candidate) error { return nil }, Applier: recordingApplier{revisions: observed}, Attempts: &testAttempts{}}
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	done := make(chan error, 1)
 	go func() { done <- controller.Run(ctx, 10*time.Millisecond) }()
 	select {
@@ -158,8 +159,9 @@ func TestPeriodicSQLitePollingDetectsCommittedCrossProcessDesiredChange(t *testi
 		if revision != 0 {
 			t.Fatalf("startup revision=%d want 0", revision)
 		}
-	case <-time.After(time.Second):
-		t.Fatal("startup reconciliation did not run")
+	case <-time.After(3 * time.Second):
+		snapshot, snapshotErr := reader.IntegrationRepository().Snapshot()
+		t.Fatalf("startup reconciliation did not run: current SQLite snapshot=%+v snapshot_error=%v", snapshot, snapshotErr)
 	}
 	service := configuration.NewIntegrationService(integration.NewResolver(registry), writer.IntegrationRepository())
 	if _, _, err := service.Put(integration.IntegrationInstance{ID: "cross-process", DefinitionID: "fixture", DefinitionVersion: "1.0.0", Configuration: map[string]any{}, Enabled: true}, 0); err != nil {

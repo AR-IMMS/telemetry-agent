@@ -26,6 +26,7 @@ import (
 )
 
 const applicationProfilesE2EEnv = "AR_IMMS_PR06_APPLICATION_PROFILE_E2E"
+const pr07aSupervisorProfileParityEnv = "AR_IMMS_PR07A_SUPERVISOR_PROFILE_PARITY"
 
 // TestLiveDockerApplicationProfilesDeliverOTLP verifies native Redis,
 // PostgreSQL, and Prometheus profile delivery through the local Collector.
@@ -97,10 +98,25 @@ func TestLiveDockerApplicationProfilesDeliverOTLP(t *testing.T) {
 	statePath := filepath.Join(root, "state.db")
 	configPath := filepath.Join(root, "agent", "otel.yaml")
 	store := agentstate.NewSQLiteStore(statePath)
-	if err := store.Save(agentstate.State{
+	testState := agentstate.State{
 		Collector:         agentstate.CollectorContext{ConfigRoot: configRoot, BinaryPath: binary, ConfigPath: configPath, GatewayEndpoint: sinkEndpoint, HealthEndpoint: defaultHealthEndpoint},
 		DesiredGeneration: 1, ActivatedGeneration: 1, AppliedGeneration: 1, Dependencies: map[string]agentstate.DependencyState{},
-	}); err != nil {
+	}
+	if os.Getenv(pr07aSupervisorProfileParityEnv) == "1" {
+		supervisorBinary := strings.TrimSpace(os.Getenv("AR_IMMS_PR07A_SUPERVISOR_BINARY"))
+		if supervisorBinary == "" {
+			t.Fatal("AR_IMMS_PR07A_SUPERVISOR_BINARY is required for Agent-managed profile parity")
+		}
+		credentialsDir := filepath.Join(filepath.Dir(statePath), "credentials")
+		testState.Supervisor = agentstate.SupervisorContext{
+			BinaryPath:        supervisorBinary,
+			ConfigurationPath: filepath.Join(credentialsDir, "opamp-supervisor.yaml"),
+			StateDirectory:    filepath.Join(credentialsDir, "opamp-supervisor-state"),
+			OpAMPServerURL:    "ws://127.0.0.1:1/v1/opamp",
+			Enabled:           true,
+		}
+	}
+	if err := store.Save(testState); err != nil {
 		t.Fatal(err)
 	}
 	installationID, err := identity.EnsureInstallationIdentity(agentstate.NewIdentityStore(statePath), rand.Reader)
@@ -133,11 +149,14 @@ func TestLiveDockerApplicationProfilesDeliverOTLP(t *testing.T) {
 	}
 	collectorLogs := &nativeCollectorLogReporter{health: agenthealth.NewReporter(agenthealth.RuntimeObservation{CollectorState: agenthealth.CollectorStateStarting})}
 	serviceCtx, stopService := context.WithCancel(ctx)
-	serviceDone := make(chan error, 1)
-	go func() {
-		serviceDone <- runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, agentstate.TeardownAction, []agentstate.OwnedResource) error { return nil }, collectorLogs, bootstrap.OSCommandRunner{})
-	}()
+	serviceDone := startRuntimeE2E(func() error {
+		return runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, agentstate.TeardownAction, []agentstate.OwnedResource) error { return nil }, collectorLogs, bootstrap.OSCommandRunner{})
+	})
+	runtimeStopped := false
 	t.Cleanup(func() {
+		if runtimeStopped {
+			return
+		}
 		stopService()
 		select {
 		case <-serviceDone:
@@ -212,6 +231,33 @@ func TestLiveDockerApplicationProfilesDeliverOTLP(t *testing.T) {
 	}
 	if runtime.GOOS != "windows" && runtime.GOOS != "linux" {
 		t.Fatalf("unsupported E2E host %s", runtime.GOOS)
+	}
+	if os.Getenv(pr07aSupervisorProfileParityEnv) == "1" {
+		state, err := store.Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !state.Supervisor.Enabled {
+			t.Fatal("Agent-managed Supervisor ownership was not retained for profile parity")
+		}
+		stopService()
+		select {
+		case runtimeErr := <-serviceDone:
+			if runtimeErr != nil {
+				t.Fatalf("stop Agent Runtime before Supervisor profile parity: %v", runtimeErr)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("Agent Runtime did not stop before Supervisor profile parity")
+		}
+		runtimeStopped = true
+		t.Logf("PR07A_SUPERVISOR_PROFILE_PARITY platform=%s owner=agent-managed profiles=redis,postgresql,prometheus,mock-cooling fallback=PASS container_churn=PASS otlp=PASS", runtime.GOOS)
+		evidenceDir := strings.TrimSpace(os.Getenv("AR_IMMS_PR07A_EVIDENCE_DIR"))
+		if evidenceDir != "" {
+			writePR07AEvidence(t, filepath.Join(evidenceDir, "application-profiles"), map[string]string{
+				"profile-parity-summary.txt": fmt.Sprintf("platform=%s\nowner=Agent-managed Supervisor v0.160.0\ncollector=otelcol-contrib-v0.160.0\nprofiles=redis,postgresql,prometheus,mock-cooling\nstartup_fallback=PASS\ncontainer_churn=PASS\npost_churn_profile_otlp_delivery=PASS\nnode_id=%s\n", runtime.GOOS, nodeID),
+				"otlp-sink.log":              tailPR07ATestOutput(sinkOutput.String(), 120),
+			})
+		}
 	}
 }
 

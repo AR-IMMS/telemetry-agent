@@ -176,7 +176,7 @@ Minimum requirements: exact immutable target/container identity, preflight valid
 | **PR-04 — Context Migration** | CLI delegates to context-owned public use cases; no new UX required. | Old `dependency`, `integration`, `discovery`, `inventory` behavior passes. |
 | **PR-05 — OTel Discovery** | Add `inventory refresh`; expose observer/provider diagnostics as needed. | No ghost resource/receiver after convergence; no unnecessary Collector reactivation. |
 | **PR-06 — Monitoring Profiles** | Add `monitoring list/inspect/explain/profile/reconcile`; keep legacy manual commands. | Redis, PostgreSQL, Python `/metrics` real-data E2E; profile validation and no-rebuild scenario. |
-| **PR-07 — OpAMP** | Add `config show/validate/history/sync`; expose connectivity in `status`. | Core NestJS ↔ Agent config/status, offline, replay/no-op, LKG verified. |
+| **PR-07 — OpAMP/Supervisor** | Review whether `config show/validate/history/sync` and `status` need updates after Supervisor capability/parity; preserve public CLI until an explicit contract is approved. | 07a pinned capability; 07b Go server/Mock Core contracts; 07c single-owner runtime adoption, offline/replay/no-op/LKG and actual OTLP verified. |
 | **PR-08 — Health Reporting** | Add `doctor`; expand `status` and monitoring evidence explanations. | Honest readiness/scrape/export state and redaction tests. |
 | **PR-09 — Controlled Operations** | Add `operations inspect-container/container-logs/status`; `restart-container` only after security gate. | Auth, stale-target, duplicate ID, timeout/unknown result, audit. |
 | **PR-10 — Release Hardening** | Complete CLI docs, native Windows/Linux smoke, help and JSON/exit-code golden tests. | New and old CLI regression + real E2E passing with recorded evidence. |

@@ -76,6 +76,26 @@ func TestWindowsServiceInstallerEnsuresAndRestartsAgentService(
 	}
 }
 
+func TestWindowsServiceInstallerStopsExistingAgentBeforeReplacement(t *testing.T) {
+	layout, err := DefaultLayout(identity.PlatformInfo{OS: "windows"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got string
+	installer := windowsServiceInstaller{manager: windowsServiceManagerFunc{
+		stop: func(_ context.Context, serviceName string) error {
+			got = serviceName
+			return nil
+		},
+	}}
+	if err := installer.Stop(context.Background(), layout); err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+	if got != layout.ServiceName {
+		t.Fatalf("stopped service = %q, want %q", got, layout.ServiceName)
+	}
+}
+
 func TestWindowsServiceRemoverRemovesAgentService(
 	t *testing.T,
 ) {

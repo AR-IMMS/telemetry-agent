@@ -25,8 +25,10 @@ proposal package is dated 2026-11-12.
 ## Decision status
 
 The proposal favors OTel-first collection, native Windows/Linux operation,
-application and host metrics, a discovery-provider boundary, a NestJS OpAMP
-adapter, and incremental refactoring. Decisions remain open where the source
+application and host metrics, a discovery-provider boundary, official OTel
+OpAMP Supervisor adoption after capability/parity checks, a Go OpAMP server
+adapter with a contract-compatible Go Mock Core for the immediate testbed, and
+incremental refactoring. Production Core interoperability and decisions remain open where the source
 documents say so, including pinned Collector component/platform validation,
 Core versus local configuration authority, and remote-operation privilege and
 transport. See [integration status](integration-status.md) and the
@@ -37,7 +39,10 @@ transport. See [integration status](integration-status.md) and the
 3. `source-structure.md`: proposed Go package layout, current migration map and import guardrails.
 4. `state-and-event-model.md`: SQLite persistence/CAS, typed dispatcher, recovery.
 5. `otel-integration-strategy.md`: OTel-first receivers/observer/receiver_creator and host/app/facility plans.
-6. `opamp-integration.md`: NestJS protocol adapter, Agent client, target/status/security and open authority.
+6. `opamp-integration.md`: revised OpAMP/Supervisor target, ownership transfer gates, contracts, and open authority/security.
 7. `diagrams/`: one component diagram and six Mermaid flows; diagrams are proposed behavior, not executed traces.
 
-Do not copy these into `docs/shared` until both Core and Agent owners review contract changes. OpAMP transport is a target direction; configuration authority is unresolved.
+Do not copy these into `docs/shared` until both Core and Agent owners review
+contract changes. OpAMP Supervisor adoption and the Go Mock Core are proposals;
+exact artifact compatibility, contract authority, and production NestJS Core
+interoperability remain unverified.

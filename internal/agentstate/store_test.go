@@ -44,6 +44,28 @@ func TestFileStorePersistsDesiredState(t *testing.T) {
 	}
 }
 
+func TestFileStorePersistsSupervisorRuntimeContext(t *testing.T) {
+	store := NewFileStore(filepath.Join(t.TempDir(), "state.json"))
+	want := State{Supervisor: SupervisorContext{
+		BinaryPath:        "supervisor",
+		ConfigurationPath: "supervisor.yaml",
+		StateDirectory:    "supervisor-state",
+		OpAMPServerURL:    "wss://opamp.example.test/v1/opamp",
+		ServerCAFile:      "opamp-server-ca.pem",
+		Enabled:           true,
+	}}
+	if err := store.Save(want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("loaded state = %#v, want %#v", got, want)
+	}
+}
+
 func TestFileStoreUpdateCreatesMissingState(t *testing.T) {
 	store := NewFileStore(t.TempDir() + "/state.json")
 

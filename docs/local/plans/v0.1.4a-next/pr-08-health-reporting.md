@@ -1,54 +1,108 @@
-# PR-08 — Self-Monitoring, Status & Diagnostic Evidence
+# PR-08 — Health & Reporting Implementation Plan
 
-**Status:** PRE-IMPLEMENTATION PLAN / implementation not started. **Release target:** `v0.1.4a-next`. **Evidence:** required from actual target-repository HEAD, not assumed.
+> **For agentic workers:** Use `superpowers:executing-plans` to implement this plan task by task. Each task is a separately reviewable checkpoint; do not begin PR-08 before PR-07 passes and merges.
 
-## Objective and exit boundary
+**Goal:** Provide truthful, evidence-based Agent health, local diagnostics, and supported status reporting without taking ownership of recovery or telemetry execution.
 
-Provide truthful health reporting for Agent, Collector, managed dependencies, receivers and telemetry path, including offline and export failures.
+**Architecture:** Health owns evidence collection, freshness/completeness evaluation, assessment, and diagnostics. Runtime, Identity, Inventory, Monitoring, and Configuration remain the owners of the facts and mutations in their domains. Core reporting must consume only an approved contract; do not invent endpoints or status semantics.
 
-## Baseline / current architecture constraints
+**Tech Stack:** Go 1.25.5, existing SQLite/event and Agent runtime evidence, Windows and Linux native test environments, pinned OTel Collector and OpAMP Supervisor v0.160.0.
 
-Current `agenthealth` has readiness snapshots but full Core reporting/outbox and per-integration scrape evidence are not established. Avoid inventing delivery acknowledgment where Collector has no direct confirmation.
+**Spec:** [Release scope](../../requirements/v0.1.4a-next/release-scope.md), [acceptance criteria](../../requirements/v0.1.4a-next/acceptance-criteria.md), [context boundaries](../../architecture/v0.1.4a-next/context-boundaries.md), [OpAMP integration](../../architecture/v0.1.4a-next/opamp-integration.md), and the mission's Health context and PR-08 requirements. Reconcile these documents against current source and approved Core contracts before implementation.
 
-## Affected contexts and anticipated code areas
+## Global Constraints
 
-Use `docs/local/architecture/v0.1.4a-next/context-boundaries.md` and `source-structure.md` as canonical target. Source mapping is refined against current HEAD during step 1. Expected contexts: see objective and migration roadmap.
+- Keep the seven bounded contexts and the dependency direction in the accepted release mission.
+- Health evaluates evidence; it does not mutate configuration, restart components, or own their persistence.
+- Separate Agent, Core, Supervisor, Collector, configuration, inventory, monitoring, dependency, and delivery status.
+- Missing, stale, incomplete, and unsupported evidence must remain distinguishable from healthy evidence.
+- Collector readiness and OpAMP status do not prove successful collection or OTLP delivery.
+- Reuse existing OTel/runtime evidence; do not add a parallel telemetry pipeline.
+- Bound diagnostic storage, payloads, retries, and retention; redact credentials and protected configuration.
+- Preserve CLI compatibility, SQLite migration/order/CAS guarantees, Windows/Linux behavior, and managed-runtime ownership.
+- Do not modify `docs/shared/` or Core production code without authorization.
 
-## Implementation steps (ordered)
+## Review Focus
 
-1. Define diagnostic model with separate phases: discovered, capability resolved, config accepted, generation applied, process ready, scrape observed, exporter healthy, backend delivery observed if independently measurable.
-2. Collect self-telemetry from Agent and Collector using native health/metrics/logs where available; keep failures bounded and do not create monitoring dependency loops.
-3. Integrate Windows Exporter, LHM Exporter and Linux dependency readiness/ownership diagnostics; distinguish unavailable hardware sensors from Agent failure.
-4. Create status snapshot API/CLI and OpAMP health projection (only when supported by negotiated capabilities). Persist summary and diagnostic error codes, not unbounded log payload.
-5. Provide bounded diagnostic bundle with redaction/TTL/size and timestamps; reconcile snapshot generation with real Collector process and gateway connectivity evidence.
-6. Build deterministic fault-injection fixtures for Collector kill, exporter kill, gateway outage, invalid config, Docker shutdown, Core offline and disk exhaustion.
+- A running process with an unavailable Collector must not be reported as fully healthy; test each component dimension independently.
+- Stale or missing timestamps must yield an explicit unknown/stale result, not a fabricated success; test freshness boundaries.
+- Collector readiness without an observed sink delivery must not set delivery healthy; retain a real OTLP evidence test.
+- Core or Gateway outages must not erase local evidence or trigger health-owned recovery; test outage and reconvergence.
+- Diagnostic snapshots must omit tokens, credentials, private keys, and protected configuration values; test serialized outputs and logs.
 
-## Edge cases and failure semantics
+---
 
-- Collector process ready but Redis scrape fails: do not report healthy monitoring.
-- Gateway 503/blackhole: distinguish exporter retries from proven delivery; no zero-loss guarantee.
-- Agent cannot reach Core: local health remains available; retry bounded with backoff.
-- LHM not supported by hardware: show UNSUPPORTED capability, not failure of baseline.
-- Full disk/log overflow must not wedge Agent or leak credentials.
+## Task 1: Baseline health evidence contracts
 
-## Acceptance / verification gates
+**Files:**
 
-- Agent local status and Core status show OS/Agent/Collector/exporter/config states separately.
-- Fault injection and recovery evidence on Windows/Linux, with transitions timestamped.
-- Diagnostic bundle redacts secrets and is bounded in memory/disk/output.
-- OpAMP reporting must not block monitoring or Collector lifecycle.
+- Read: `internal/agenthealth/`, owning Runtime/Identity/Inventory/Monitoring/Configuration packages, `docs/local/architecture/v0.1.4a-next/`, and existing PR-07 evidence.
+- Modify: `docs/local/architecture/v0.1.4a-next/context-boundaries.md` only where the approved seven-context terminology or Health contract is missing.
+- Create or update: `docs/local/verification/v0.1.4a-next/pr-verification/pr-08-report.md`.
 
-**Evidence to attach:** before/after state and test commands; platform and Docker/Collector versions, native metrics or agent/service logs where relevant; Git SHA; unreached items explicitly NOT RUN/BLOCKED. Tests must reproduce *negative* paths as well as happy paths.
+**Interfaces:**
 
-## Rollback and stop conditions
+- Consumes: existing typed evidence from the owning contexts and any reviewed Core reporting contract.
+- Produces: a source-checked evidence matrix defining owner, type, timestamp/freshness, completeness, error/unknown semantics, and sensitive fields for each health dimension.
 
-Revert new reporting projections without changing Collector desired/active generation; retain local status baseline.
+- [ ] Inventory current source and tests; identify exactly which evidence is already emitted and which is absent.
+- [ ] Write contract tests for the existing or approved evidence DTOs and their freshness/completeness semantics before implementation.
+- [ ] Record unresolved Core reporting fields, retry, idempotency, and persistence decisions as open; do not infer a wire format.
+- [ ] Run focused source and contract tests; record exact HEAD and whether each case is verified, unsupported, or blocked.
 
-**Stop/seek architecture review** if a new protocol interpretation, security elevation, state migration, new OS service ownership, unsupported OTel component, or config authority conflict is required. No silent scope expansion.
+## Task 2: Health assessment and local diagnostics
 
-## Mandatory delivery contract
+**Files:**
 
-- **Before coding:** check current `git HEAD`, clean/dirty working tree including submodule, exact package paths, implemented behavior, Collector v0.160.0 **actual binary manifest**, and previous PR evidence. The paths below are *proposed ownership targets*, not confirmed post-refactor filenames. Do not infer functionality from package names.
-- **Each PR delivers:** implementation plan updated with actual touched paths; code + focused tests; `pr-verification/pr-XX-report.md` recording commit, environment, commands, observed outputs, PASS/FAIL/BLOCKED/NOT RUN, risk, follow-up and rollback.
-- **Shared invariants:** Windows/Linux binaries and services, CLI behavior, SQLite migration/CAS, enrollment/credential secrecy, one active receiver owner, Collector generation/readiness/LKG, managed-dependency ownership and real OTLP metrics. Never mark a simulated or mocked test as a live E2E PASS.
-- **Quality:** `gofmt`, `go test ./...`, `go vet ./...`, focused `go test -race` where supported; both OS build gates; architectural import check, production Go file ≤450 LOC; per-feature real-host tests. Core NestJS changes use lint/typecheck/unit/integration tests in Core repository. Record pre-existing failures separately.
+- Modify: the source-identified Health owner, expected to include `internal/agenthealth/` unless the PR-09.5 ownership audit identifies a justified target.
+- Test: the corresponding Health package tests and integration test package identified from current repository structure.
+
+**Interfaces:**
+
+- Consumes: Task 1 evidence contracts.
+- Produces: an assessment with separate statuses for Agent runtime, Core connectivity, Supervisor, Collector, configuration, inventory, monitoring, dependencies, and telemetry delivery.
+
+- [ ] Add tests for independently healthy/unhealthy components, stale/missing evidence, and incomplete provider observations.
+- [ ] Implement assessment without direct process, configuration, database, Docker, or service-manager mutation.
+- [ ] Add local diagnostics with explicit evidence timestamps and sanitized values.
+- [ ] Verify credential/configuration redaction and bounded output with adversarial fixtures.
+- [ ] Run focused tests, architecture guard, `go vet ./...`, and `go build ./...`.
+
+## Task 3: Core health reporting, only when contract is approved
+
+**Files:**
+
+- Modify: the existing Agent-to-Core adapter and Health-owned application boundary identified by the contract review.
+- Test: schema/contract tests and Mock Core integration tests; do not modify Core production code or `docs/shared/`.
+
+**Interfaces:**
+
+- Consumes: the approved versioned reporting contract, or remains unimplemented if no approved contract exists.
+- Produces: bounded, retryable, idempotent reports with explicit unknown/error status and no secret material.
+
+- [ ] Confirm owner, version, request/response, authentication, status vocabulary, retry limits, idempotency, and retention before dependent code.
+- [ ] Add positive, rejection, outage, duplicate-report, stale-report, and restart/replay contract tests.
+- [ ] Implement only the approved adapter behavior; keep local health evaluation usable offline.
+- [ ] Label Mock Core verification separately from production NestJS interoperability.
+
+## Task 4: Failure and recovery verification
+
+**Files:**
+
+- Test: existing Agent lifecycle, Supervisor, Collector, Docker, and OTLP E2E harnesses; add only focused fixtures needed for evidence.
+- Update: `docs/local/verification/v0.1.4a-next/pr-verification/pr-08-report.md` and `docs/local/plans/v0.1.4a-next/release-progress.md`.
+
+- [ ] Verify Agent, Supervisor, Collector, Core, and Gateway failure and recovery independently.
+- [ ] Verify profile/receiver failure while the Collector process remains healthy.
+- [ ] Verify configuration rejection/LKG recovery and status convergence without Health initiating recovery.
+- [ ] Run native Windows and Linux tests; distinguish local tests, mocks, hosted CI, and real infrastructure E2E.
+- [ ] Record exact commit, commands, artifact digests, sanitized evidence, limits, and PR-09 readiness.
+
+## Exit Criteria
+
+- Each health dimension has a named evidence owner and explicit freshness/completeness semantics.
+- Local diagnostics are bounded and secret-free.
+- No health result claims collection or delivery based only on process/configuration/readiness evidence.
+- Approved Core reporting works with bounded retries and idempotency; otherwise the unresolved contract is recorded and no invented API is shipped.
+- Failure and recovery tests execute natively on Windows and Linux for supported scenarios.
+- PR-08 report and release tracker match the exact implementation and verification evidence.

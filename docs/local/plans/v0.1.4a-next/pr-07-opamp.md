@@ -1,56 +1,126 @@
-# PR-07 — NestJS OpAMP Server Adapter & Go Agent Client
+# PR-07 — OpAMP Supervisor Adoption & Control Plane Integration
 
-**Status:** PRE-IMPLEMENTATION PLAN / implementation not started. **Release target:** `v0.1.4a-next`. **Evidence:** required from actual target-repository HEAD, not assumed.
+**Status:** IN_PROGRESS — Exact code head `a878b332f75819a3e200f59d7ab14a818a675c29` passed Windows and Ubuntu run [43461962938](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43461962938); docs-updated heads `11d524a37c291093ea861c8e196e0e8ee033b562` and `196dbefa62a0d99784b5a20d5f68e001f2c5fb48` passed [43463371834](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43463371834) and [43471042444](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43471042444). Final-head run passed both full suites, architecture guard, managed-runtime E2E, native service migration/rollback/restart/uninstall, vet, and build. Ubuntu also passed isolated Docker recovery and Agent-managed Redis/PostgreSQL/Python/Prometheus/mock-cooling parity. The pushed test-only completion-signal fix passed local `cmd/agentctl` tests, vet, build, and architecture guard. Hosted Windows skipped Docker recovery and both Docker profile E2Es, leaving Windows Agent-managed profile parity open. A local Windows attempt reached Docker 29.5.3 but failed provisioning the protected Supervisor configuration under a medium-integrity token; a subsequent `RunAs` launch was canceled before test execution. See the verification report; rerun only from a genuinely elevated Windows session or Docker-capable Windows runner. Keep PR #30 draft, Supervisor opt-in, and existing installations legacy-owned until the remaining mandatory gate passes.
+**Current update (2026-11-14):** The preceding status describes earlier attempts and is superseded for Windows parity by the elevated exact-head run recorded in [the Windows profile evidence](../../verification/v0.1.4a-next/pr-verification/pr-07-windows-profile-parity.md). That gate passed on head `83e7074be0927dff40829e859a73b6585c720b33`. The default-owner transfer is implemented locally; exact-final-head CI and publication remain outstanding. PR-07 remains IN_PROGRESS and PR #30 remains draft.
+**Release target:** `v0.1.4a-next`. **Baseline:** PR-06 merge
+`af2f5db4c6b8832bc7bcc87d332d899dad01b452`; check current `HEAD` before each
+slice. See [target contracts and ownership](../../architecture/v0.1.4a-next/opamp-integration.md), [verification report](../../verification/v0.1.4a-next/pr-verification/pr-07-report.md), and [release progress](release-progress.md).
 
-## Objective and exit boundary
+## Objective
 
-Deliver remote config via OpAMP transport (initially HTTPS plain HTTP polling) from Core NestJS to Agent Go, with durable desired/effective hashes and truthful status. Do not implement a generic remote command channel here.
+Adopt the official OTel OpAMP Supervisor only after exact-version Windows/Linux
+capability and parity checks, and deliver a narrowly scoped remote-management
+vertical slice using a Go OpAMP server and contract-compatible Go Mock Core.
+Transfer Collector lifecycle ownership once, only after parity. Core production
+changes and shared-contract publication require separate approval.
 
-## Baseline / current architecture constraints
+The existing Agent `internal/supervisor` is not the OTel OpAMP Supervisor.
+Preserve current Agent Runtime, enrollment, SQLite, CLI, dependencies, LKG,
+PR-05 discovery, PR-06 profiles, and OTLP behavior through migration.
 
-Core enrollment and Agent identity/credential already exist. Current accepted Gateway snapshot != a fleet-wide remote policy system. OpAMP server must be implemented/verified against protocol specification, not guessed protobuf fields.
+## Work slices and commit boundaries
 
-## Affected contexts and anticipated code areas
+The a/b/c slices are gated checkpoints, not exactly three GitHub PRs. Keep
+commits small and scoped, for example: artifact/provenance evidence; a single
+capability finding; contract specification; Mock Core API; OpAMP adapter; Agent
+provisioning; controlled lifecycle transfer. Each commit should be independently
+reviewable and avoid unrelated formatting or worktree changes.
 
-Use `docs/local/architecture/v0.1.4a-next/context-boundaries.md` and `source-structure.md` as canonical target. Source mapping is refined against current HEAD during step 1. Expected contexts: see objective and migration roadmap.
+### PR-07a — Capability spike (no runtime ownership transfer)
 
-## Implementation steps (ordered)
+1. Preserve the PR-06 merge baseline and current Agent Runtime. Keep the
+   capability harness opt-in and test-only; no lifecycle ownership transfer.
+2. Verify exact Windows/Linux amd64 Supervisor artifacts, version, SHA-256,
+   provenance, license, and compatibility with pinned Collector Contrib
+   v0.160.0. Do not infer compatibility from matching version strings.
+3. Verify OpAMP extension and config support, existing host/Redis/PostgreSQL/
+   Prometheus profiles, local config updates and deterministic composition.
+4. Test valid and invalid remote config, startup with no server, offline
+   fallback, Supervisor and Collector crash/restart, rollback, recovery, and
+   actual OTLP delivery. Record whether config changes restart Collector and
+   whether existing LKG guarantees cover activation failures.
+5. Run separately on native Windows and native Linux. Docker Desktop evidence
+   is not native Linux evidence. Retain exact commands, environment, logs,
+   artifact hashes, and sink telemetry.
+6. Deliver migration and rollback design. Keep the existing Agent Runtime the
+   sole Collector lifecycle owner until PR-07c.
 
-1. Before writing protocol code, record an ADR on **minimum** policy authority: scope of writable fields, local bootstrap retention, targeted Core revision, and invalid/older/conflicting revision behavior; defer broad policy UX, not conflict safety.
-2. Define server-side OpAMP Agent association: credential to installation to registered Node; `instance_uid` is protocol identifier and is not authentication. Map UID lifecycle explicitly.
-3. Generate Protobuf types from one pinned official OpAMP schema and implement supported HTTP binary transport + message validation in NestJS adapter; constrain size, TLS/auth, rate and session replay.
-4. Implement Go Agent OpAMP client with reconnect/backoff and explicit capabilities; persist accepted transport payload/hash separately from effective Collector config/generation in SQLite.
-5. Use an AR-IMMS versioned monitoring policy file inside OpAMP `config_map`; validation -> configuration desired revision -> existing reconcile -> runtime activation/LKG.
-6. Report `RemoteConfigStatus` based on protocol-defined statuses and actual runtime outcome; health/effective config optional by declared capability; not treat ready as delivered.
-7. Add Core admin API integration and status display/records; scope config to authorized node and never send arbitrary executable shell/OTel YAML.
-8. Implement hard offline/reconnect/reboot, bad config, same hash/no-op, revoked credential and rollback tests.
+### PR-07b — Contracts and control-plane vertical slice
 
-## Edge cases and failure semantics
+Before dependent implementation, inspect the authoritative `agent-enrollment`
+OpenAPI and Core API Baseline. The authoritative files have been read at
+`agent-enrollment.openapi.yaml` blob `5ce0f6a3d94401c2adf65eaf9ad524a37b868571`
+and Core `api/baseline.yaml` blob `4f4166f2a4d1770f5142618d58b1997092d289c0`.
+The enrollment spec defines single-use bootstrap semantics and recovery, not an
+Agent bearer-authenticated control route. Core reserves `agentBearer`, but the
+baseline defines no Agent control API. Reuse those conventions; do not infer or
+implement unsupported production Core routes, nor publish shared contracts.
 
-- A valid config hash can still fail compile/activate: report FAILED and keep LKG.
-- Multiple Agent instances/reconnect cannot cross-deliver policy between nodes.
-- Legacy local config and Core config precedence unresolved: minimally deterministic and documented rule is required before implementation.
-- TLS renewal, lost HTTP response, duplicate sequence/hash, malformed protobuf, oversize payload, unknown fields/version.
-- A pending config must not be misreported APPLIED until runtime readiness; no claim backend delivery.
+Define and review explicit contracts for installation authentication and
+binding, Supervisor credential provisioning/rotation/revocation, OpAMP
+`instance_uid` mapping, targeted versioned desired policy, Gateway endpoint
+validation, local/remote config ownership and merge/deletion rules, revision and
+hash semantics, status/error mapping, idempotency, retry, cache and reconnect.
+Keep desired revision distinct from applied revision; state what evidence each
+status represents.
 
-## Acceptance / verification gates
+Proposed first policy field: Core-owned OTLP Gateway endpoint. Agent continues
+to own installation/infrastructure identity, monitoring profiles, receiver
+rules, and protected local configuration. This proposal is not authorization
+for broader remote policy.
 
-- Cross-repository NestJS↔Go native Linux/Windows E2E with actual OpAMP HTTP Protobuf exchanges.
-- Targeted config updates only intended Node; hash/status/state after restart and reconnect.
-- Invalid/revoked/expired requests rejected; offline continues LKG; same hash no generation bump.
-- Protocol compliance tests for framing/content-type/capabilities and status mapping; Core IAM/audit checks.
+Implement a small Go OpAMP server using `opamp-go` and a Go Mock Core that
+implements the same documented HTTP contracts intended for Core. Test-only
+policy mutation and failure injection must not leak into production interfaces.
+Do not couple server code to mock internals or create a second production
+business database. Mock interoperability is not production NestJS Core E2E.
 
-**Evidence to attach:** before/after state and test commands; platform and Docker/Collector versions, native metrics or agent/service logs where relevant; Git SHA; unreached items explicitly NOT RUN/BLOCKED. Tests must reproduce *negative* paths as well as happy paths.
+### PR-07c — Runtime adoption and E2E
 
-## Rollback and stop conditions
+Native Windows uninstall must wait for the service process to exit after SCM
+reports `STOPPED` and before deleting its owned executable; see the contract in
+[OpAMP integration](../../architecture/v0.1.4a-next/opamp-integration.md).
+The final-head service E2E must exercise this deletion ordering.
 
-Disable OpAMP consumption and restore last effective local config; retain enroll identity and durable last-known-good. Core server endpoint may be disabled without disturbing OTLP.
+Only after PR-07a parity and PR-07b contract gates pass: provision the pinned
+Supervisor as a managed dependency, transfer Collector process ownership once,
+and remove/disable the former owner only as part of that verified transition.
+Prove rollback restores a single prior owner. Verify native install/upgrade,
+service lifecycle, local config changes, offline fallback, reconnect/restart,
+and PR-05/06 receiver/profile parity with real telemetry on Windows and Linux.
 
-**Stop/seek architecture review** if a new protocol interpretation, security elevation, state migration, new OS service ownership, unsupported OTel component, or config authority conflict is required. No silent scope expansion.
+## Mandatory verification gates
 
-## Mandatory delivery contract
+- Exact checksummed artifacts and pinned-version compatibility on each OS.
+- No overlapping Agent/OTel Supervisor ownership of one Collector.
+- Target scoping, authenticated identity binding, credential rejection and
+  revocation behavior; no trust in self-reported `instance_uid`.
+- Local config and protected Supervisor settings cannot be overwritten outside
+  approved policy fields; invalid/stale/conflicting policy fails safely.
+- Configuration hash/revision status remains truthful through restart,
+  rollback, server outage, duplicate request, and older applied config.
+- Offline startup/recovery, Supervisor/Collector crash, candidate activation
+  failure, and actual OTLP sink delivery are separately evidenced.
+- Existing enrollment, SQLite, CLI, managed dependencies, discovery, monitoring
+  profiles, and LKG behavior remain compatible.
+- Native Windows and native Linux E2E; report mock-backed and production Core
+  evidence separately. Untested gates remain `NOT RUN` or `BLOCKED`.
 
-- **Before coding:** check current `git HEAD`, clean/dirty working tree including submodule, exact package paths, implemented behavior, Collector v0.160.0 **actual binary manifest**, and previous PR evidence. The paths below are *proposed ownership targets*, not confirmed post-refactor filenames. Do not infer functionality from package names.
-- **Each PR delivers:** implementation plan updated with actual touched paths; code + focused tests; `pr-verification/pr-XX-report.md` recording commit, environment, commands, observed outputs, PASS/FAIL/BLOCKED/NOT RUN, risk, follow-up and rollback.
-- **Shared invariants:** Windows/Linux binaries and services, CLI behavior, SQLite migration/CAS, enrollment/credential secrecy, one active receiver owner, Collector generation/readiness/LKG, managed-dependency ownership and real OTLP metrics. Never mark a simulated or mocked test as a live E2E PASS.
-- **Quality:** `gofmt`, `go test ./...`, `go vet ./...`, focused `go test -race` where supported; both OS build gates; architectural import check, production Go file ≤450 LOC; per-feature real-host tests. Core NestJS changes use lint/typecheck/unit/integration tests in Core repository. Record pre-existing failures separately.
+## Not in scope / stop conditions
+
+No arbitrary commands, remote package updates, remote container operations,
+unrestricted Collector YAML, full Agent Registry CRUD, second policy database,
+or silent modification of the Core repository or `docs/shared` submodule. Stop
+before implementing a contract whose authoritative Core conventions are
+missing; record the concrete gap and continue independent capability work.
+
+## Verification log and merge audit
+
+Before merge, `pr-07-report.md` must list each slice's exact commit/PR head,
+platform, OS build, Agent/Supervisor/Collector versions and hashes, Docker and
+sink versions, commands, raw log/evidence locations, PASS/FAIL/BLOCKED/NOT
+RUN/UNSUPPORTED, deviations, known failures, owner transfer state, and rollback
+result. Audit that the report describes the exact candidate head and that CI
+and required native E2E ran after the final documentation/test-log update.
+Never merge with a mandatory gate unresolved; keep the checkpoint draft while
+verification is incomplete.

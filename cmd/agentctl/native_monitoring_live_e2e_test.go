@@ -299,6 +299,9 @@ func verifyNativeDockerRecovery(t *testing.T, ctx context.Context, manager strin
 	if output, err := exec.CommandContext(ctx, "docker", "start", manager).CombinedOutput(); err != nil {
 		t.Fatalf("restart isolated Docker Engine manager: %v\n%s", err, output)
 	}
+	if err := restoreNativeDockerSocketAccess(ctx, manager); err != nil {
+		t.Fatalf("restore isolated Docker Engine socket access after restart: %v", err)
+	}
 	waitForNativeDockerReady(t, ctx, manager)
 	for _, resourceID := range resourceIDs {
 		name := nativeContainerNameForID(t, ctx, resourceID)
@@ -325,6 +328,29 @@ func verifyNativeDockerRecovery(t *testing.T, ctx context.Context, manager strin
 	}
 	assertNativeReceiverUniqueness(t, logs.output())
 	t.Logf("PR05_DOCKER_RECOVERY preserved_inventory=true receiver_data_resumed=true applied_generation=%d collector_instances=%d", stateAfter.AppliedGeneration, len(instancesBefore))
+}
+
+func restoreNativeDockerSocketAccess(ctx context.Context, manager string) error {
+	timeout := time.NewTimer(30 * time.Second)
+	defer timeout.Stop()
+	retry := time.NewTicker(250 * time.Millisecond)
+	defer retry.Stop()
+	var lastErr error
+	var lastOutput []byte
+	for {
+		command := exec.CommandContext(ctx, "docker", "exec", manager, "chmod", "666", "/run/host/docker.sock")
+		lastOutput, lastErr = command.CombinedOutput()
+		if lastErr == nil {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("wait for isolated Docker socket: %w", ctx.Err())
+		case <-timeout.C:
+			return fmt.Errorf("socket did not reappear: %w: %s", lastErr, lastOutput)
+		case <-retry.C:
+		}
+	}
 }
 
 func waitForNativeProviderOutage(t *testing.T, ctx context.Context, repository interface {

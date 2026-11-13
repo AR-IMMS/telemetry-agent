@@ -2,12 +2,13 @@
 
 ## Documentation map
 
-**Architecture target:** `v0.1.4a-next` is the proposed target for review. It
-describes intended work and is not evidence that those capabilities have
-shipped. Start with the [target architecture index](local/architecture/v0.1.4a-next/README.md),
+**Canonical release target:** `v0.1.4a-next` is the active release target.
+Its architecture describes the intended end state; individual capabilities
+remain unshipped until their checkpoint evidence records them as verified.
+Start with the [target architecture index](local/architecture/v0.1.4a-next/README.md),
 then review the [release scope](local/requirements/v0.1.4a-next/release-scope.md),
 [acceptance criteria](local/requirements/v0.1.4a-next/acceptance-criteria.md),
-[ten-plan index](local/plans/v0.1.4a-next/README.md),
+[checkpoint plan index](local/plans/v0.1.4a-next/README.md),
 [migration roadmap](local/plans/v0.1.4a-next/migration-roadmap.md), and
 [verification matrix](local/verification/v0.1.4a-next/test-matrix.md).
 
@@ -18,8 +19,8 @@ submodule and is not modified by this documentation integration.
 
 For the architecture in the current implementation, see
 [`ARCHITECTURE.md`](ARCHITECTURE.md). The accepted v0.1.4 target remains
-historical context; the v0.1.4a-next proposal is the target currently under
-review. See [integration status and reconciliations](local/architecture/v0.1.4a-next/integration-status.md).
+historical context; v0.1.4a-next is the canonical target being implemented and
+verified. See [integration status and reconciliations](local/architecture/v0.1.4a-next/integration-status.md).
 
 Telemetry Agent is a small Go application that runs an OpenTelemetry Collector
 and safely manages host-level telemetry dependencies on one machine.

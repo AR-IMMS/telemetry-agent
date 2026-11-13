@@ -3,6 +3,7 @@ package agentinstallation
 import (
 	"context"
 	"os"
+	"path"
 	"reflect"
 	"testing"
 
@@ -90,5 +91,53 @@ func TestSystemdServiceInstallerWritesReloadsEnablesAndStarts(
 
 	if !reflect.DeepEqual(commands, wantCommands) {
 		t.Fatalf("commands = %#v, want %#v", commands, wantCommands)
+	}
+}
+
+func TestSystemdServiceInstallerStopsExistingUnitBeforeReplacement(t *testing.T) {
+	layout, err := DefaultLayout(identity.PlatformInfo{OS: "linux"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	unitDirectory := t.TempDir()
+	unitPath := path.Join(unitDirectory, layout.ServiceName+".service")
+	if err := os.WriteFile(unitPath, []byte("existing unit"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var commands []systemdCommand
+	installer := systemdServiceInstaller{
+		unitDirectory: unitDirectory,
+		run: func(_ context.Context, command systemdCommand) error {
+			commands = append(commands, command)
+			return nil
+		},
+	}
+	if err := installer.Stop(context.Background(), layout); err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+	want := []systemdCommand{{Executable: "systemctl", Args: []string{"stop", layout.ServiceName + ".service"}}}
+	if !reflect.DeepEqual(commands, want) {
+		t.Fatalf("Stop() commands = %#v, want %#v", commands, want)
+	}
+}
+
+func TestSystemdServiceInstallerDoesNotStopMissingUnit(t *testing.T) {
+	layout, err := DefaultLayout(identity.PlatformInfo{OS: "linux"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var called bool
+	installer := systemdServiceInstaller{
+		unitDirectory: t.TempDir(),
+		run: func(context.Context, systemdCommand) error {
+			called = true
+			return nil
+		},
+	}
+	if err := installer.Stop(context.Background(), layout); err != nil {
+		t.Fatalf("Stop() on first install error = %v", err)
+	}
+	if called {
+		t.Fatal("Stop() invoked systemctl for a missing first-install unit")
 	}
 }
