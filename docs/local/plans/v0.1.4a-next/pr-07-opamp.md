@@ -1,6 +1,6 @@
 # PR-07 — OpAMP Supervisor Adoption & Control Plane Integration
 
-**Status:** IN_PROGRESS — PR-07a Windows and Ubuntu WSL live Supervisor/Collector and profile-parity tests pass with Docker Desktop caveat; PR-07b Go Mock Core and pinned Supervisor auth pass on Windows and WSL. Native Linux Docker Engine verification, Agent-owned process-tree recovery/credential provisioning, and controlled lifecycle transfer remain open.
+**Status:** IN_PROGRESS — On exact docs-updated head `8e1da1965c85b4642a59b9a36f85df6e9eec46f2`, native Windows and Ubuntu run [43453791628](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43453791628) passed the full Go suites, managed-runtime E2E, native service migration/rollback/uninstall E2E, vet, and build. Ubuntu also passed Docker recovery and Agent-managed Redis/PostgreSQL/Python/Prometheus/mock-cooling parity. Windows Agent-managed Docker-profile parity remains open: hosted Windows CI has no Docker, the local token has Administrators deny-only, and no self-hosted runner is registered. Keep Supervisor opt-in and preserve legacy ownership until that gate passes.
 **Release target:** `v0.1.4a-next`. **Baseline:** PR-06 merge
 `af2f5db4c6b8832bc7bcc87d332d899dad01b452`; check current `HEAD` before each
 slice. See [target contracts and ownership](../../architecture/v0.1.4a-next/opamp-integration.md), [verification report](../../verification/v0.1.4a-next/pr-verification/pr-07-report.md), and [release progress](release-progress.md).

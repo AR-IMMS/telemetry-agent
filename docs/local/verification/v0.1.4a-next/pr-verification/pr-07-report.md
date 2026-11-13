@@ -2,21 +2,21 @@
 
 **Status:** IN_PROGRESS — PR-07c adds pinned Supervisor installation,
 protected credential/config/state provisioning, opt-in single-owner runtime
-selection, and Windows Job Object/Linux process-group containment. The latest
-exact-head CI run [`43434645674`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43434645674)
-passed for implementation head `e97f454c9179ec5deb83f1deeb80d4ac2a935e80` on native Windows
-and Ubuntu. Both platforms executed full Go tests, the managed enrollment and
-control E2E, `go vet`, and `go build`; Ubuntu also passed Docker recovery and
-Agent-managed Redis, PostgreSQL, Python/Prometheus, and mock-cooling profiles.
-The managed E2E covers credential rotation/revocation, offline startup and
-reconnect, local configuration change/no-op, LKG equivalence, crash recovery,
-durable publication attribution, rollback, and OTLP delivery. Hosted Windows
-Docker steps were skipped. A local native Windows legacy-owner profile run now
-passes; managed Supervisor parity still requires an elevated process. Native
-service lifecycle gates remain open, so keep Supervisor opt-in and PR #30 draft.
-The subsequent documentation-only head `29eb73e68a1da6c4e23f8a32c8843ba97634282b`
-passed Windows and Ubuntu CI run
-[`43438719294`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43438719294).
+selection, and Windows Job Object/Linux process-group containment. Exact report
+head `8e1da1965c85b4642a59b9a36f85df6e9eec46f2` passed Windows/Ubuntu CI run
+[`43453791628`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43453791628).
+Both platforms executed full Go tests, managed enrollment/control E2E, native
+service migration/rollback/uninstall E2E, vet, and build. Ubuntu also passed
+Docker recovery and Agent-managed Redis, PostgreSQL, Python/Prometheus, and
+mock-cooling profiles. Managed control E2E covers credential rotation and
+revocation, offline reconnect, local configuration update/no-op, LKG
+equivalence, crash recovery, durable publication attribution, rollback, and
+OTLP delivery. Native service lifecycle passed on both OSes. Hosted Windows
+Docker steps remain skipped. Windows Agent-managed Docker-profile parity is the
+only remaining PR-07 adoption gate; the local token cannot satisfy the
+SYSTEM/Administrators-only credential ACL, and no self-hosted Actions runner is
+registered. Keep Supervisor opt-in, preserve legacy ownership, and keep PR #30
+draft until this gate passes.
 **Release target:** `v0.1.4a-next`
 **Branch:** `feat/pr-07-opamp`
 **Implementation baseline:** PR-06 merge
@@ -27,8 +27,8 @@ passed Windows and Ubuntu CI run
 ownership. Final-head CI run `43405983503` passed both platform jobs.
 
 **Status chronology:** Sections below retain prior verification snapshots.
-The latest CI and local Windows evidence section at the end of this report is
-the current status for `e97f454`; earlier open-gate lists are historical.
+The latest exact-head CI and local Windows evidence sections at the end of this
+report are authoritative for `8e1da19`; earlier open-gate lists are historical.
 
 ## Target change reviewed
 
@@ -654,3 +654,37 @@ gates open and the checkpoint draft while any are unresolved.
   Windows CI has no Docker. No product defect was established by that local
   setup failure. Keep PR #30 draft, PR-07 IN_PROGRESS, Supervisor opt-in, and
   existing installations legacy-owned until that parity gate passes.
+
+## Current-head evidence and local Windows blocker — 2026-11-13
+
+- Exact report/tracker head `8e1da1965c85b4642a59b9a36f85df6e9eec46f2` passed
+  Windows and Ubuntu run
+  [43453791628](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43453791628).
+  Both jobs executed full Go tests, managed-runtime E2E, native service
+  lifecycle E2E, `go vet ./...`, and `go build ./...`. Ubuntu additionally
+  executed isolated Docker recovery and Agent-managed Redis, PostgreSQL,
+  Python/Prometheus, and mock-cooling profile parity. Hosted Windows Docker
+  profile steps were skipped.
+- Exact-run sanitized artifacts and SHA-256: managed Windows `14053092000`
+  (`d1225feeddc4dd88220b46bc284ae833144a038bdc942fb0fabae4a329e7c7be`),
+  managed Ubuntu `14053852431`
+  (`954fecdb488dbda1abdb9713caa7ae888dee7cfe9c4f15d969d5f5addafd6051`),
+  native service Windows `14053247154`
+  (`af7336c2cb0bd9a1c726dc0e704ed0c2c1961838c7d26d9f70aeed73090c1dc5`),
+  native service Ubuntu `14053731467`
+  (`db69db826f3114fea18a78fb7662e140c1bd46e57aa7b00a99808919a914f6ad`),
+  and Ubuntu profile parity `14053017477`
+  (`a34fa870ab83a89197b9e947876086de06db88c4da2f3185938fbced505fe8fe`).
+- The local Windows Docker daemon responds with version `29.5.3` when invoked
+  through the elevated command context. The current process remains medium
+  integrity and the Administrators SID is deny-only. The Windows credential
+  store applies protected DACL `D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)`, granting
+  SYSTEM and built-in Administrators. The managed profile E2E therefore cannot
+  provision/read the protected Supervisor token in this process. The GitHub
+  repository has zero registered self-hosted Actions runners. This confirms an
+  environment/privilege blocker; it does not justify weakening credential ACLs
+  or treating Linux profile parity as Windows evidence.
+- PR-07 remains IN_PROGRESS. Windows Agent-managed Docker-profile parity is
+  the remaining adoption gate; keep PR #30 draft and Supervisor opt-in, and
+  preserve legacy ownership for existing installations until that native gate
+  passes. Production NestJS Core interoperability remains separate.
