@@ -1,8 +1,10 @@
 # PR-07 Windows Agent-managed profile parity
 
-**Current result:** PASS on final PR head
-`d01e16c3b3c238e135185292eeca2b90152a8a8d`; final Windows/Ubuntu CI also
-passed on that head. Earlier runs below remain as historical evidence.
+**Current result:** PASS. Implementation head
+`d01e16c3b3c238e135185292eeca2b90152a8a8d` passed the Windows Docker/profile
+E2E; documentation checkpoint `721753f9eaf96f9446bf237a840a49677288f5b2`
+passed Windows/Ubuntu CI run [43517107187](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43517107187).
+Earlier runs below remain as historical evidence.
 
 ## Reproduction record
 

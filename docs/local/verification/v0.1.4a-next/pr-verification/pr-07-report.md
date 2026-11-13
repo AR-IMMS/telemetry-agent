@@ -1,13 +1,15 @@
 # PR-07 verification report — OpAMP Supervisor and control plane
 
-**Current authoritative result:** PASS on exact PR head
-`d01e16c3b3c238e135185292eeca2b90152a8a8d`. Windows/Ubuntu CI run
+**Current authoritative result:** PASS. Implementation head
+`d01e16c3b3c238e135185292eeca2b90152a8a8d` passed Windows/Ubuntu CI run
 [`43514647904`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43514647904)
-passed both jobs, and genuine elevated Windows Docker/profile parity passed on
-the same head. PR #30 remains open pending review and merge. New installations
-default to managed Supervisor; existing installations retain their stored
-owner until explicit migration, with the legacy runtime available for explicit
-rollback. See the final exact-head section at the end of this report.
+and genuine elevated Windows Docker/profile parity. Documentation checkpoint
+`721753f9eaf96f9446bf237a840a49677288f5b2` then passed both CI jobs in run
+[`43517107187`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43517107187).
+PR #30 remains open pending review and merge. New installations default to
+managed Supervisor; existing installations retain their stored owner until
+explicit migration, with the legacy runtime available for explicit rollback.
+See the final exact-head section at the end of this report.
 
 **Historical status snapshot (superseded by final exact-head result below):**
 IN_PROGRESS — PR-07c adds pinned Supervisor installation,
@@ -998,11 +1000,14 @@ parity was blocked and that new installations still used legacy ownership.
 
 ## Final exact-head verification — 2026-11-14
 
-- **PR head:** `d01e16c3b3c238e135185292eeca2b90152a8a8d` on
-  `feat/pr-07-opamp`; PR #30 targets `chore/v0.1.4a-next`.
-- **CI:** run
+- **Implementation source head:** `d01e16c3b3c238e135185292eeca2b90152a8a8d`
+  on `feat/pr-07-opamp`; PR #30 targets `chore/v0.1.4a-next`.
+- **CI:** implementation head run
   [43514647904](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43514647904)
-  passed both Ubuntu and Windows jobs on this exact head. Ubuntu executed full
+  and documentation-updated head
+  [721753f9eaf96f9446bf237a840a49677288f5b2](https://github.com/AR-IMMS/telemetry-agent/commit/721753f9eaf96f9446bf237a840a49677288f5b2)
+  run [43517107187](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43517107187)
+  passed both Ubuntu and Windows jobs. Ubuntu executed full
   tests, native service lifecycle, isolated Docker recovery, four live profile
   OTLP checks, managed Supervisor E2E, vet, and build. Windows executed full
   tests, native service lifecycle, managed Supervisor E2E, vet, and build;
