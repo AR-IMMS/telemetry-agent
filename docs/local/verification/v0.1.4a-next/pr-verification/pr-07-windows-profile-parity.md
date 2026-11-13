@@ -1,8 +1,8 @@
 # PR-07 Windows Agent-managed profile parity
 
-**Result:** PASS for Windows Docker/profile parity on the tested PR head. PR-07
-remains IN_PROGRESS pending verification of the subsequent default-owner code
-change on its final commit and CI.
+**Current result:** PASS on final PR head
+`d01e16c3b3c238e135185292eeca2b90152a8a8d`; final Windows/Ubuntu CI also
+passed on that head. Earlier runs below remain as historical evidence.
 
 ## Reproduction record
 
@@ -105,7 +105,46 @@ latest PR head still requires final CI before PR-07 can pass.
   E2E, vet, and build, but skipped Docker tests. Windows profile parity is
   independently verified by the elevated workstation run above.
 
-The remaining PR-07 verification is the docs-updated final-head CI run and
-review/merge of draft PR #30. The Windows Docker-profile result remains tied to
-the exact E2E head recorded above; the only later code change is the Linux
-test-harness socket retry.
+At the preceding checkpoint, the remaining PR-07 verification was final-head
+CI and review/merge of draft PR #30. The final retest below supersedes that
+open-gate note and records the exact current PR head.
+
+## Final PR-head retest — 2026-11-14
+
+- Exact PR head and source snapshot: `d01e16c3b3c238e135185292eeca2b90152a8a8d`.
+- Archive SHA-256: `A1D1122D89A0CEAEC041013094D476E1AAFE556C4BC36E813C64AA58131CCBC2`.
+- Genuine `RunAs`/UAC execution verified High Mandatory Level, enabled
+  Administrators SID, and Administrator role. No DACL or security check was
+  weakened.
+- Runtime: Windows 10.0.26200.0, Go 1.25.5 `windows/amd64`, Docker Desktop
+  `desktop-linux`, Linux Engine 29.5.3 (`x86_64`).
+- Collector v0.160.0 archive SHA-256
+  `d8de67cf9dc3ffe928610d52b192cb029365bb42dc79a23e0586c040c83293cf`;
+  executable SHA-256
+  `43a7d3eb2b759281b6297a91c830988be39c16e538e8f55aeb4ea31ab7a612cd`.
+  Supervisor v0.160.0 SHA-256
+  `df2dfae96d6b711db31675d2deb8493d3dbada8561b25fe575fd90bd7cac8449`.
+- Command: `go test ./cmd/agentctl -run
+  '^TestLiveDockerApplicationProfilesDeliverOTLP$' -count=1 -v`.
+  Result: **PASS**, 45.17 seconds, exit code 0; startup fallback, container
+  churn, actual OTLP, and cleanup passed; zero fixture containers remained.
+- Metrics delivered to the isolated OTLP sink:
+
+  | Profile | Metric | Resource ID |
+  |---|---|---|
+  | Mock cooling | `ar_imms_test_cooling_celsius` | `84a50c616075c86a5817d0fccac3054ccb55d9851bd9d4ccd3f1d7a0dd8142c7` |
+  | Redis | `redis.clients.connected` | `707aad4d838e4bc106281555051e037ac120018303605285c19e9837df6ed409` |
+  | PostgreSQL | `postgresql.backends` | `eb500a91398dc99a9ffb73b52f49188a91a3140389ba0a11bbacea34d13122f6` |
+  | Python/Prometheus | `python_app_requests_total` | `c26e6cdca07d80b6dd758e6f1f503f5354a2a6ac938f8b856a2efd626b5ec913` |
+
+  All four carried Node ID `33333333-4444-4555-8666-777777777777`. The harness
+  reported `owner=agent-managed`, `fallback=PASS`, `container_churn=PASS`, and
+  `otlp=PASS`.
+- Sanitized execution log SHA-256:
+  `009FBF587377D672225F49C8E966858373778A1EC28B78A020EC3A7D0073E97E`.
+  Local evidence is retained under
+  `tmp/pr07-win-profile-d01e16c-20261114/evidence/` and is excluded from the
+  release commit.
+- Exact-head Windows/Ubuntu CI run
+  [43514647904](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43514647904)
+  passed. This closes Windows profile parity for the final PR head.

@@ -1,6 +1,16 @@
 # PR-07 verification report — OpAMP Supervisor and control plane
 
-**Status:** IN_PROGRESS — PR-07c adds pinned Supervisor installation,
+**Current authoritative result:** PASS on exact PR head
+`d01e16c3b3c238e135185292eeca2b90152a8a8d`. Windows/Ubuntu CI run
+[`43514647904`](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43514647904)
+passed both jobs, and genuine elevated Windows Docker/profile parity passed on
+the same head. PR #30 remains open pending review and merge. New installations
+default to managed Supervisor; existing installations retain their stored
+owner until explicit migration, with the legacy runtime available for explicit
+rollback. See the final exact-head section at the end of this report.
+
+**Historical status snapshot (superseded by final exact-head result below):**
+IN_PROGRESS — PR-07c adds pinned Supervisor installation,
 protected credential/config/state provisioning, opt-in single-owner runtime
 selection, and Windows Job Object/Linux process-group containment. Exact code
 head `a878b332f75819a3e200f59d7ab14a818a675c29` passed Windows/Ubuntu CI run
@@ -985,3 +995,52 @@ parity was blocked and that new installations still used legacy ownership.
 - Next: review draft PR #30, mark it ready, merge into
   `chore/v0.1.4a-next`, verify the merge commit and target branch, then begin
   PR-08. Do not conflate PR-07 verification PASS with PR merge state.
+
+## Final exact-head verification — 2026-11-14
+
+- **PR head:** `d01e16c3b3c238e135185292eeca2b90152a8a8d` on
+  `feat/pr-07-opamp`; PR #30 targets `chore/v0.1.4a-next`.
+- **CI:** run
+  [43514647904](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43514647904)
+  passed both Ubuntu and Windows jobs on this exact head. Ubuntu executed full
+  tests, native service lifecycle, isolated Docker recovery, four live profile
+  OTLP checks, managed Supervisor E2E, vet, and build. Windows executed full
+  tests, native service lifecycle, managed Supervisor E2E, vet, and build;
+  hosted Windows Docker tests are skipped and are covered by the elevated
+  workstation run below.
+- **Windows managed profile parity:** a fresh `RunAs`/UAC process reported
+  High Mandatory Level, enabled Administrators SID, and Administrator role.
+  It connected to Docker Desktop `desktop-linux` / Linux Engine 29.5.3
+  (`x86_64`) and verified Collector and Supervisor v0.160.0 digests before
+  executing `go test ./cmd/agentctl -run
+  '^TestLiveDockerApplicationProfilesDeliverOTLP$' -count=1 -v`.
+  Result: PASS in 45.17 seconds; exit code 0; fixture cleanup PASS with zero
+  new containers remaining. Fallback and container churn passed. Real metrics
+  reached the isolated OTLP sink for Redis, PostgreSQL, Python/Prometheus, and
+  mock cooling. Each was attributed to Node
+  `33333333-4444-4555-8666-777777777777` and a distinct provider resource ID.
+- **Pinned binaries:** Collector archive SHA-256
+  `d8de67cf9dc3ffe928610d52b192cb029365bb42dc79a23e0586c040c83293cf`;
+  Collector executable SHA-256
+  `43a7d3eb2b759281b6297a91c830988be39c16e538e8f55aeb4ea31ab7a612cd`;
+  Supervisor v0.160.0 SHA-256
+  `df2dfae96d6b711db31675d2deb8493d3dbada8561b25fe575fd90bd7cac8449`.
+- **Reproducible evidence:** exact source snapshot archive SHA-256
+  `A1D1122D89A0CEAEC041013094D476E1AAFE556C4BC36E813C64AA58131CCBC2`;
+  sanitized Windows execution log SHA-256
+  `009FBF587377D672225F49C8E966858373778A1EC28B78A020EC3A7D0073E97E`.
+  The log and source archive are retained locally under
+  `tmp/pr07-win-profile-d01e16c-20261114/`; compact sanitized evidence is in
+  [Windows profile parity](pr-07-windows-profile-parity.md).
+- Focused Go tests, full `./cmd/... ./internal/...` test/vet/build gates, the
+  OpAMP session race check, and architecture guard passed before this run. A
+  broad `go test ./...` attempt was blocked during package discovery by an
+  unrelated protected fixture directory; no fixture or permission was altered.
+- Final ownership contract: new installs default to managed Supervisor and
+  require the OpAMP URL; `--disable-opamp-supervisor` is the explicit legacy
+  rollback. Reinstall preserves the stored owner, and existing installations
+  require explicit migration. Only one runtime may own Collector lifecycle.
+- **Gate:** PR-07 verification is PASS. Production NestJS Core
+  interoperability remains separate from this Mock Core checkpoint. Next:
+  review and merge PR #30 into `chore/v0.1.4a-next`, verify the merge, then
+  start PR-08.

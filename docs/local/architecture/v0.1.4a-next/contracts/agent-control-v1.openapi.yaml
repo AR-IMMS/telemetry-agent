@@ -197,7 +197,11 @@ components:
         gateway_endpoint:
           type: string
           minLength: 1
-          description: Host:port only; no URL scheme, credentials, path, or whitespace.
+          description: >-
+            Required non-empty host:port; no URL scheme, credentials, path, or
+            whitespace. Contract v1 has no policy-clear/delete operation.
+            Missing or invalid endpoints are rejected and must not replace the
+            currently active or last-known-good configuration.
     InstanceBinding:
       type: object
       required: [instance_uid]

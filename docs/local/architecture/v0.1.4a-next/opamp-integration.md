@@ -156,10 +156,23 @@ uses a token file and the `opampsupervisor.Extensions` feature gate; Windows
 live evidence exercises that path. Agent runtime now resolves the existing
 enrollment credential reference and provisions the token file; reference
 changes cause a contained Supervisor restart. Managed-runtime authentication,
-credential rotation/revocation, session invalidation, and offline revocation
-still need live verification. The Core client uses HTTPS, rejects redirects,
-and rejects insecure base URLs. The Go adapter allows cleartext OpAMP only on
-loopback; non-loopback requires TLS.
+credential rotation/revocation, session invalidation, offline startup, and
+reconnect are verified in the PR-07 Windows/Ubuntu managed-runtime E2E. The
+Core client uses HTTPS, rejects redirects, and rejects insecure base URLs. The
+Go adapter allows cleartext OpAMP only on loopback; non-loopback requires TLS.
+
+The OpAMP server evaluates desired configuration against the reconnecting
+Supervisor's reported remote-config hash/status. A process-wide sent-hash cache
+must not suppress replay when a new session reports missing or failed config.
+Within one session, repeated status messages do not cause duplicate delivery;
+APPLYING/APPLIED for the current hash suppresses replay. This keeps status
+reconciliation authoritative while preserving a bounded duplicate-delivery
+optimization.
+
+Desired Gateway policy v1 requires a non-empty `gateway_endpoint`. It defines
+no policy-clear/delete operation. Missing or invalid endpoints are rejected
+and cannot replace the active or last-known-good configuration; callers must
+not infer deletion semantics from an empty value.
 
 The proposed OpAMP adapter needs only explicit internal Core operations for
 installation authentication, instance binding, desired policy retrieval,
