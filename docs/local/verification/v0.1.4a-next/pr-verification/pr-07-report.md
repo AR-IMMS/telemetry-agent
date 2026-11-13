@@ -563,3 +563,37 @@ gates open and the checkpoint draft while any are unresolved.
   native service install/migration/upgrade/restart/uninstall and Windows
   Agent-managed Docker-profile verification. Do not transfer default runtime
   ownership or merge until those mandatory gates pass.
+
+## Native service lifecycle verification and Windows migration fix — 2026-11-13
+
+- Commit `100ac1fbd48a43c9ea04b970aa567f9bf75ba9c5` added an opt-in native
+  service E2E to PR #30 CI. It builds the PR-06 Agent from
+  `origin/chore/v0.1.4a-next`, installs it, migrates to managed Supervisor,
+  restarts the service, rolls back to legacy ownership, restarts again, and
+  uninstalls. Preflight rejects non-privileged or non-clean hosts; evidence
+  records binary hashes, service owner, process counts, and lifecycle results.
+- Run [43446198767](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43446198767)
+  executed the native Linux lifecycle sequence successfully in 11.75s. Its
+  Ubuntu job failed afterward because the root-written evidence file was mode
+  `0600` and could not be read by the artifact uploader. Commit `42928f9`
+  changes the sanitized report mode to `0644` so the runner can retain it.
+- The same run exposed a Windows migration defect: `Installer.Install` tried
+  to atomically replace `agentctl.exe` while the running Windows service still
+  had it open (`Access is denied`). Commit `62c8a3d` moves binary activation
+  until after prerequisites are prepared, stops an existing installed service
+  before replacement on Windows/Linux, and restarts the prior service if the
+  binary copy fails. Unit coverage verifies stop-before-copy ordering and the
+  Linux first-install no-op. Explicit `agentctl install
+  --disable-opamp-supervisor` provides a controlled, exclusive return to legacy
+  ownership and rejects simultaneous Supervisor enable/disable options.
+- Focused Windows Agent-installation tests pass. Both Linux/amd64 and
+  Windows/amd64 Agent-installation test binaries compile. Earlier scoped local
+  `go vet` and `go build` passed; native privileged service verification remains
+  delegated to CI because the local Windows token cannot control SCM. The local
+  full suite is also affected by loopback socket restrictions and ignored
+  historical test copies under `tmp/`; those paths were preserved.
+- Exact-head rerun for `62c8a3d9caaf220efda213c612da55d3f05729e8` is pending.
+  PR-07 remains IN_PROGRESS. Do not mark the Windows service gate passed until
+  this head proves migration, rollback, restarts, and uninstall on native
+  Windows; do not merge, transfer default ownership, or start PR-08 while
+  required adoption gates remain open.
