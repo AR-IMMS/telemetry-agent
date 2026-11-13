@@ -3,15 +3,11 @@
 package agentlifecycle
 
 import (
-	"crypto/sha1"
 	"crypto/x509"
-	"encoding/hex"
 	"encoding/pem"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
 	"testing"
+
+	"golang.org/x/sys/windows"
 )
 
 func trustManagedRuntimeCertificate(t *testing.T, certificate []byte) {
@@ -24,20 +20,34 @@ func trustManagedRuntimeCertificate(t *testing.T, certificate []byte) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(t.TempDir(), "pr07c-test-root.cer")
-	if err := os.WriteFile(path, certificate, 0600); err != nil {
-		t.Fatal(err)
+	storeName := windows.StringToUTF16Ptr("ROOT")
+	store, err := windows.CertOpenSystemStore(0, storeName)
+	if err != nil {
+		t.Fatalf("open current-user ROOT certificate store: %v", err)
 	}
-	add := exec.Command("certutil.exe", "-user", "-f", "-addstore", "Root", path)
-	if output, err := add.CombinedOutput(); err != nil {
-		t.Fatalf("add temporary test certificate to current-user trust store: %v\n%s", err, output)
+	encoded, err := windows.CertCreateCertificateContext(
+		windows.X509_ASN_ENCODING|windows.PKCS_7_ASN_ENCODING,
+		&parsed.Raw[0], uint32(len(parsed.Raw)),
+	)
+	if err != nil {
+		_ = windows.CertCloseStore(store, 0)
+		t.Fatalf("create test certificate context: %v", err)
 	}
-	fingerprint := sha1.Sum(parsed.Raw)
-	thumbprint := strings.ToUpper(hex.EncodeToString(fingerprint[:]))
+	var stored *windows.CertContext
+	if err := windows.CertAddCertificateContextToStore(store, encoded, windows.CERT_STORE_ADD_REPLACE_EXISTING, &stored); err != nil {
+		_ = windows.CertFreeCertificateContext(encoded)
+		_ = windows.CertCloseStore(store, 0)
+		t.Fatalf("add temporary test certificate to current-user ROOT store: %v", err)
+	}
+	if err := windows.CertFreeCertificateContext(encoded); err != nil {
+		t.Errorf("free temporary certificate context: %v", err)
+	}
 	t.Cleanup(func() {
-		remove := exec.Command("certutil.exe", "-user", "-delstore", "Root", thumbprint)
-		if output, err := remove.CombinedOutput(); err != nil {
-			t.Errorf("remove temporary test certificate from current-user trust store: %v\n%s", err, output)
+		if err := windows.CertDeleteCertificateFromStore(stored); err != nil {
+			t.Errorf("remove temporary test certificate from current-user ROOT store: %v", err)
+		}
+		if err := windows.CertCloseStore(store, 0); err != nil {
+			t.Errorf("close current-user ROOT certificate store: %v", err)
 		}
 	})
 }
