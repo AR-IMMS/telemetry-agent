@@ -30,10 +30,10 @@ recorded these metric/resource pairs:
 
 | Profile | Metric | Resource identity |
 |---|---|---|
-| Redis | `redis.clients.connected` | `node_id=33333333-4444-4555-8666-777777777777`; container-scoped `resource_id` recorded by the test |
-| PostgreSQL | `postgresql.backends` | Same node identity; container-scoped `resource_id` recorded by the test |
-| Python/Prometheus | `python_app_requests_total` | Same node identity; container-scoped `resource_id` recorded by the test |
-| Mock cooling | `ar_imms_test_cooling_celsius` | Same node identity; container-scoped `resource_id` recorded by the test |
+| Redis | `redis.clients.connected` | `node_id=33333333-4444-4555-8666-777777777777`; `resource_id=6975acfce9c1a2067fd14c771e665371b4d2536c5f9ae3e0136a786c229c651f` |
+| PostgreSQL | `postgresql.backends` | Same node identity; `resource_id=fc3c5d7dbb23cf8fc09e02f13c31a3be73e2991d63ea295612dc3d2ae27db8d1` |
+| Python/Prometheus | `python_app_requests_total` | Same node identity; `resource_id=9f170e01c6224da42629b427ded51fa559d28810a089ff1d1ea87787e57ad398` |
+| Mock cooling | `ar_imms_test_cooling_celsius` | Same node identity; `resource_id=594f5d634c35f92d971903cae92fb4524b8c5ce113973c3af6a8cef2b9c416b3` |
 
 The harness passed startup fallback, container churn/recreation, unchanged
 Collector configuration and generation during churn, receiver uniqueness,
