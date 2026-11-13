@@ -413,6 +413,18 @@ service:
 	waitForSupervisorRuntimeReadiness(t, ctx, runtimeDone, healthEndpoint)
 	waitForSupervisorCorePolicy(t, ctx, runtimeDone, core, 4)
 	waitForSupervisorSinkTelemetry(t, ctx, runtimeDone, restartedSink)
+	rollbackSinkBytes := len(rotatedSink.String())
+	if err := core.SetPolicy(installationID.String(), coreapi.DesiredGatewayPolicy{
+		SchemaVersion: "ar-imms/gateway-policy/v1", Revision: 5, GatewayEndpoint: rotatedEndpoint,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	waitForSupervisorCorePolicy(t, ctx, runtimeDone, core, 5)
+	waitForSupervisorSinkGrowth(t, ctx, runtimeDone, rotatedSink, rollbackSinkBytes)
+	rollbackPublication, err := resolvePublishedHash()
+	if err != nil || rollbackPublication.PolicyRevision != 5 || rollbackPublication.ConfigHash != revisionThreeHash {
+		t.Fatalf("resolve prior applied hash after revision-5 rollback: publication=%+v err=%v", rollbackPublication, err)
+	}
 	stopRuntime()
 	select {
 	case err := <-runtimeDone:
@@ -430,7 +442,7 @@ service:
 		t.Fatal("initial, updated, post-rotation, and post-restart Gateway sinks must receive OTLP")
 	}
 	writeManagedControlE2EEvidence(t, result.InstallationID, result.Binding.NodeID)
-	t.Logf("verified enrollment identity=%s Node=%s; policy revisions=1,2,3,4; replacement credential revoked the prior bearer; durable revision-3 publication resolved after Mock Core restart; restarted OpAMP and Agent runtime applied revision 4 with OTLP delivery", result.InstallationID, result.Binding.NodeID)
+	t.Logf("verified enrollment identity=%s Node=%s; policy revisions=1,2,3,4,5; replacement credential revoked the prior bearer; durable revision-3 publication resolved after Mock Core restart; restarted OpAMP and Agent runtime applied revision 4; revision-5 rollback re-attributed the prior applied hash and continued OTLP delivery", result.InstallationID, result.Binding.NodeID)
 }
 
 func managedRuntimeEnrollmentHandler(t *testing.T, corePointer *atomic.Pointer[mockcore.Server], accessToken, replacementToken, bootstrapToken, replacementBootstrap, nodeID string) http.Handler {
@@ -538,7 +550,7 @@ func writeManagedControlE2EEvidence(t *testing.T, installationID, nodeID string)
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		t.Fatalf("create managed control-plane evidence directory: %v", err)
 	}
-	contents := fmt.Sprintf("result=PASS\nos=%s\narchitecture=%s\ncommit=%s\nenrollment=actual-agent-service\ncredential=protected-store-and-secret-free-sqlite\ncredential_replacement=previous_revoked_new_wss_session_verified\ntransport=authenticated-wss\npolicy_revisions=1,2,3,4\nmock_core_restart=verified\nrevision3_publication_resolved_after_restart=verified\nopamp_server_restart=verified\nagent_runtime_restart=verified\ninitial_gateway_otlp=verified\nupdated_gateway_otlp=verified\npost_rotation_gateway_otlp=verified\npost_restart_gateway_otlp=verified\ninstallation_identity=%s\nnode_identity=%s\n", runtime.GOOS, runtime.GOARCH, os.Getenv("GITHUB_SHA"), installationID, nodeID)
+	contents := fmt.Sprintf("result=PASS\nos=%s\narchitecture=%s\ncommit=%s\nenrollment=actual-agent-service\ncredential=protected-store-and-secret-free-sqlite\ncredential_replacement=previous_revoked_new_wss_session_verified\ntransport=authenticated-wss\npolicy_revisions=1,2,3,4,5\nmock_core_restart=verified\nrevision3_publication_resolved_after_restart=verified\nopamp_server_restart=verified\nagent_runtime_restart=verified\nrollback_reuses_revision3_config_hash_at_revision5=verified\nrollback_gateway_otlp=verified\ninitial_gateway_otlp=verified\nupdated_gateway_otlp=verified\npost_rotation_gateway_otlp=verified\npost_restart_gateway_otlp=verified\ninstallation_identity=%s\nnode_identity=%s\n", runtime.GOOS, runtime.GOARCH, os.Getenv("GITHUB_SHA"), installationID, nodeID)
 	if err := os.WriteFile(filepath.Join(directory, "managed-enrollment-opamp-e2e.txt"), []byte(contents), 0600); err != nil {
 		t.Fatalf("write sanitized managed control-plane evidence: %v", err)
 	}
@@ -562,6 +574,24 @@ func waitForSupervisorCorePolicy(t *testing.T, ctx context.Context, done <-chan 
 			t.Fatalf("Agent-managed Supervisor exited before policy revision %d: %v", revision, err)
 		case <-ctx.Done():
 			t.Fatalf("timed out waiting for applied policy revision %d", revision)
+		case <-ticker.C:
+		}
+	}
+}
+
+func waitForSupervisorSinkGrowth(t *testing.T, ctx context.Context, done <-chan error, output *supervisorRuntimeBuffer, previousSize int) {
+	t.Helper()
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if len(output.String()) > previousSize {
+			return
+		}
+		select {
+		case err := <-done:
+			t.Fatalf("Agent-managed Supervisor exited before rollback Gateway OTLP arrived: %v", err)
+		case <-ctx.Done():
+			t.Fatalf("timed out waiting for rollback Gateway OTLP: %v", ctx.Err())
 		case <-ticker.C:
 		}
 	}
