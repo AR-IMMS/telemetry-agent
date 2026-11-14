@@ -31,6 +31,7 @@ Until those decisions are approved, keep all mutating operations disabled and do
 ## Verification
 
 - Read-only repository/source review was performed on integration head `d1429196e8b39a24a624a9ad30619476f09a0a9f`; the two upstream contracts above were fetched from their named refs and inspected directly.
+- Workstation environment check: Go `1.25.5 windows/amd64`; Docker Desktop `4.79.0`, Engine `29.5.3 linux/amd64`, context `desktop-linux`. A normal sandbox process was denied Docker Engine pipe access; the explicitly elevated read-only version check succeeded. No containers were changed. This verifies Docker is available for a future approved E2E, but does not verify PR-09 behavior or native Linux host service behavior.
 - No code or executable tests were changed or claimed in this readiness audit.
 - No contract-dependent scenario is represented as PASS.
 
