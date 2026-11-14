@@ -29,6 +29,21 @@ type engineClient interface {
 	ContainerList(context.Context, moby.ContainerListOptions) (moby.ContainerListResult, error)
 }
 
+type containerInspector interface {
+	ContainerInspect(context.Context, string, moby.ContainerInspectOptions) (moby.ContainerInspectResult, error)
+}
+
+// ContainerInspection contains the explicit allowlist returned by Docker inspection.
+type ContainerInspection struct {
+	ID           string `json:"container_id"`
+	Name         string `json:"name"`
+	Image        string `json:"image"`
+	State        string `json:"state"`
+	Health       string `json:"health,omitempty"`
+	RestartCount int    `json:"restart_count"`
+	StartedAt    string `json:"started_at,omitempty"`
+}
+
 // Provider observes one explicitly configured local Docker Engine.
 type Provider struct {
 	instance discovery.ProviderInstanceID
@@ -63,6 +78,56 @@ func (p *Provider) ID() discovery.ProviderID { return providerID }
 
 // InstanceID returns a stable, non-reversible identifier for the configured endpoint.
 func (p *Provider) InstanceID() discovery.ProviderInstanceID { return p.instance }
+
+// InspectContainer reads only bounded public runtime fields for an exact full Docker ID.
+func (p *Provider) InspectContainer(ctx context.Context, containerID string) (ContainerInspection, error) {
+	if ctx == nil || p == nil || p.client == nil {
+		return ContainerInspection{}, fmt.Errorf("Docker inspection context and provider are required")
+	}
+	if len(containerID) != 64 {
+		return ContainerInspection{}, fmt.Errorf("full Docker container ID is required")
+	}
+	if _, err := hex.DecodeString(containerID); err != nil {
+		return ContainerInspection{}, fmt.Errorf("full Docker container ID is invalid")
+	}
+	client, ok := p.client.(containerInspector)
+	if !ok {
+		return ContainerInspection{}, fmt.Errorf("Docker inspection capability is unavailable")
+	}
+	response, err := client.ContainerInspect(ctx, containerID, moby.ContainerInspectOptions{})
+	if err != nil {
+		return ContainerInspection{}, err
+	}
+	item := response.Container
+	if item.ID != containerID || item.State == nil || item.Config == nil {
+		return ContainerInspection{}, fmt.Errorf("Docker inspection returned incomplete or mismatched identity")
+	}
+	state := strings.ToLower(string(item.State.Status))
+	switch state {
+	case "created", "restarting", "running", "removing", "paused", "exited", "dead":
+	default:
+		return ContainerInspection{}, fmt.Errorf("Docker inspection returned an unsupported state")
+	}
+	name := strings.TrimPrefix(item.Name, "/")
+	image := item.Config.Image
+	if len(name) > 256 || len(image) > 512 || item.RestartCount < 0 {
+		return ContainerInspection{}, fmt.Errorf("Docker inspection fields exceed bounds")
+	}
+	health := ""
+	if item.State.Health != nil {
+		health = strings.ToLower(string(item.State.Health.Status))
+		switch health {
+		case "none", "starting", "healthy", "unhealthy":
+		default:
+			return ContainerInspection{}, fmt.Errorf("Docker inspection returned an unsupported health status")
+		}
+	}
+	startedAt := item.State.StartedAt
+	if len(startedAt) > 64 {
+		return ContainerInspection{}, fmt.Errorf("Docker inspection start time exceeds bounds")
+	}
+	return ContainerInspection{ID: item.ID, Name: name, Image: image, State: state, Health: health, RestartCount: item.RestartCount, StartedAt: startedAt}, nil
+}
 
 // Discover returns a complete snapshot of running and stopped containers.
 func (p *Provider) Discover(ctx context.Context) (discovery.ProviderSnapshot, error) {

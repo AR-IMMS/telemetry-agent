@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/netip"
@@ -18,6 +19,49 @@ type fakeEngine struct {
 	result moby.ContainerListResult
 	err    error
 	all    bool
+}
+
+type fakeInspector struct {
+	response container.InspectResponse
+	err      error
+}
+
+func (f fakeInspector) ContainerInspect(context.Context, string, moby.ContainerInspectOptions) (moby.ContainerInspectResult, error) {
+	return moby.ContainerInspectResult{Container: f.response}, f.err
+}
+
+type fakeEngineWithInspector struct {
+	*fakeEngine
+	fakeInspector
+}
+
+func TestProviderInspectReturnsOnlyAllowlistedContainerState(t *testing.T) {
+	response := container.InspectResponse{ID: strings.Repeat("a", 64), Name: "/redis", RestartCount: 2,
+		Config: &container.Config{Image: "redis:7", Env: []string{"SECRET=do-not-return"}, Labels: map[string]string{"private": "hidden"}},
+		State:  &container.State{Status: "running", StartedAt: "2026-11-14T10:00:00Z", Health: &container.Health{Status: "healthy"}},
+		Mounts: []container.MountPoint{{Source: "C:\\sensitive"}}}
+	provider := &Provider{client: fakeEngineWithInspector{fakeEngine: &fakeEngine{}, fakeInspector: fakeInspector{response: response}}}
+	got, err := provider.InspectContainer(context.Background(), strings.Repeat("a", 64))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != response.ID || got.Name != "redis" || got.Image != "redis:7" || got.State != "running" || got.Health != "healthy" || got.RestartCount != 2 || got.StartedAt != response.State.StartedAt {
+		t.Fatalf("allowlisted inspection = %+v", got)
+	}
+	encoded, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "SECRET") || strings.Contains(string(encoded), "sensitive") || strings.Contains(string(encoded), "private") {
+		t.Fatalf("inspection leaked private Docker fields: %s", encoded)
+	}
+}
+
+func TestProviderInspectRequiresFullNativeContainerID(t *testing.T) {
+	provider := &Provider{client: fakeEngineWithInspector{fakeEngine: &fakeEngine{}, fakeInspector: fakeInspector{err: errors.New("unexpected inspect")}}}
+	if _, err := provider.InspectContainer(context.Background(), "redis"); err == nil {
+		t.Fatal("name-based container lookup was accepted")
+	}
 }
 
 func (f *fakeEngine) ContainerList(ctx context.Context, options moby.ContainerListOptions) (moby.ContainerListResult, error) {
