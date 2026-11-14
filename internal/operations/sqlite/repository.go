@@ -56,18 +56,26 @@ func (r *Repository) RecoverInterrupted(ctx context.Context, now time.Time) (int
 	completedText := completed.Format(time.RFC3339Nano)
 	for _, item := range pending {
 		started, _ := time.Parse(time.RFC3339Nano, item.startedAt)
+		status, errorCode, errorMessage := operations.StatusFailed, "EXECUTION_INTERRUPTED", "read-only operation was interrupted before a result was recorded"
+		if operations.OperationType(item.operationType) == operations.OperationContainerRestart {
+			status, errorCode, errorMessage = operations.StatusUnknown, "OPERATION_OUTCOME_UNKNOWN", "container restart may have taken effect before the Agent stopped; do not retry automatically"
+		}
 		result := operations.Result{SchemaVersion: "ar-imms.operation.result.v1", EventID: uuid.NewString(),
 			OperationID: item.operationID, OperationType: operations.OperationType(item.operationType),
-			InstallationID: item.installationID, BindingID: item.bindingID, Status: operations.StatusFailed,
+			InstallationID: item.installationID, BindingID: item.bindingID, Status: status,
 			Target:    operations.Target{Kind: item.targetKind, ProviderID: item.providerID, ResourceID: item.resourceID},
-			StartedAt: started, CompletedAt: completed, ErrorCode: "EXECUTION_INTERRUPTED",
-			ErrorMessage: "read-only operation was interrupted before a result was recorded", AuditRef: item.operationID}
+			StartedAt: started, CompletedAt: completed, ErrorCode: errorCode,
+			ErrorMessage: errorMessage, AuditRef: item.operationID}
 		payload, err := json.Marshal(result)
 		if err != nil {
 			return 0, fmt.Errorf("encode interrupted operation result: %w", err)
 		}
-		update, err := tx.ExecContext(ctx, `UPDATE operation_execution SET status='FAILED',completed_at=?,result_json=?,error_code=?,error_message=? WHERE operation_id=? AND status='RUNNING'`,
-			completedText, string(payload), result.ErrorCode, result.ErrorMessage, item.operationID)
+		storedStatus := string(result.Status)
+		if result.Status == operations.StatusUnknown {
+			storedStatus = "UNKNOWN_OUTCOME"
+		}
+		update, err := tx.ExecContext(ctx, `UPDATE operation_execution SET status=?,completed_at=?,result_json=?,error_code=?,error_message=? WHERE operation_id=? AND status='RUNNING'`,
+			storedStatus, completedText, string(payload), result.ErrorCode, result.ErrorMessage, item.operationID)
 		if err != nil {
 			return 0, fmt.Errorf("persist interrupted operation result: %w", err)
 		}
@@ -194,8 +202,12 @@ func (r *Repository) Complete(ctx context.Context, request operations.Request, f
 	}
 	defer tx.Rollback()
 	completed := result.CompletedAt.UTC().Format(time.RFC3339Nano)
+	storedStatus := string(result.Status)
+	if result.Status == operations.StatusUnknown {
+		storedStatus = "UNKNOWN_OUTCOME"
+	}
 	update, err := tx.ExecContext(ctx, `UPDATE operation_execution SET status=?,completed_at=?,result_json=?,error_code=?,error_message=? WHERE operation_id=? AND request_hash=? AND status='RUNNING'`,
-		string(result.Status), completed, string(payload), result.ErrorCode, result.ErrorMessage, request.OperationID, fingerprint)
+		storedStatus, completed, string(payload), result.ErrorCode, result.ErrorMessage, request.OperationID, fingerprint)
 	if err != nil {
 		return fmt.Errorf("persist operation terminal result: %w", err)
 	}

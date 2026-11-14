@@ -8,7 +8,7 @@
   "properties": {
     "schema_version": {"const": "ar-imms.operation.request.v1"},
     "operation_id": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_-]+$"},
-    "operation_type": {"enum": ["agent.diagnostics", "container.inspect", "dependency.inspect"]},
+    "operation_type": {"enum": ["agent.diagnostics", "container.inspect", "dependency.inspect", "container.restart"]},
     "installation_id": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_-]+$"},
     "binding_id": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_-]+$"},
     "target": {"$ref": "#/$defs/target"},
@@ -18,6 +18,26 @@
     "requested_at": {"type": "string", "format": "date-time"},
     "expires_at": {"type": "string", "format": "date-time"}
   },
+  "allOf": [{
+    "if": {"properties": {"operation_type": {"const": "container.restart"}}, "required": ["operation_type"]},
+    "then": {"properties": {
+      "target": {
+        "type": "object",
+        "required": ["kind", "provider_id", "resource_id"],
+        "properties": {
+          "kind": {"const": "docker_container"},
+          "provider_id": {"const": "docker"},
+          "resource_id": {"type": "string", "pattern": "^[a-fA-F0-9]{64}$"}
+        }
+      },
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["container_id"],
+        "properties": {"container_id": {"type": "string", "pattern": "^[a-fA-F0-9]{64}$"}}
+      }
+    }}
+  }],
   "$defs": {
     "target": {
       "type": "object",

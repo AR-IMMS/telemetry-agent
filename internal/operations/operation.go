@@ -20,6 +20,8 @@ const (
 	OperationContainerInspect OperationType = "container.inspect"
 	// OperationDependencyInspect returns status for one Agent-managed dependency.
 	OperationDependencyInspect OperationType = "dependency.inspect"
+	// OperationContainerRestart restarts one explicitly opted-in Docker container.
+	OperationContainerRestart OperationType = "container.restart"
 )
 
 const RequestSchemaV1 = "ar-imms.operation.request.v1"
@@ -28,6 +30,7 @@ var (
 	ErrDuplicateHandler  = errors.New("operation handler already registered")
 	ErrUnsupportedType   = errors.New("operation type is unsupported")
 	ErrInvalidParameters = errors.New("operation parameters are invalid")
+	ErrOutcomeUnknown    = errors.New("operation outcome is unknown")
 )
 
 // Request carries a bounded operation envelope decoded from the versioned transport contract.

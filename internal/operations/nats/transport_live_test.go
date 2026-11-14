@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -22,13 +23,14 @@ import (
 	discoverydocker "github.com/ar-imms/telemetry-agent/internal/discovery/docker"
 	"github.com/ar-imms/telemetry-agent/internal/identity"
 	"github.com/ar-imms/telemetry-agent/internal/operations"
+	operationsdocker "github.com/ar-imms/telemetry-agent/internal/operations/dockeradapter"
 	"github.com/ar-imms/telemetry-agent/internal/operations/handlers"
 	operationssqlite "github.com/ar-imms/telemetry-agent/internal/operations/sqlite"
 	"github.com/ar-imms/telemetry-agent/internal/operations/testsupport/mockcore"
 	"github.com/nats-io/nats.go/jetstream"
 )
 
-func TestLiveJetStreamReadOnlyOperationsE2E(t *testing.T) {
+func TestLiveJetStreamOperationsE2E(t *testing.T) {
 	if os.Getenv("AR_IMMS_PR09_NATS_E2E") != "1" {
 		t.Skip("set AR_IMMS_PR09_NATS_E2E=1 with a live authenticated TLS JetStream server")
 	}
@@ -115,8 +117,18 @@ func TestLiveJetStreamReadOnlyOperationsE2E(t *testing.T) {
 	if err := operations.Register(registry, handlers.DependencyInspect{Dependencies: dependencyInspector}); err != nil {
 		t.Fatal(err)
 	}
+	containerRestarter, err := operationsdocker.New(endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := operations.Register(registry, handlers.ContainerRestart{Runtime: containerRestarter, Enabled: true, VerifyInterval: 100 * time.Millisecond}); err != nil {
+		t.Fatal(err)
+	}
 	executor := &operations.Executor{Registry: registry, Store: journal, InstallationID: installation, BindingID: binding}
 	containerID := fixtureContainerID(t, fixture.container)
+	restartContainer := startOptedInRestartContainer(t)
+	restartContainerID := fixtureContainerID(t, restartContainer)
+	restartBefore := inspectRestartObservation(t, containerRestarter, restartContainerID)
 	requests := []operations.Request{
 		{OperationID: "pr09-live-diagnostics-1", OperationType: operations.OperationAgentDiagnostics, Parameters: []byte(`{}`)},
 		{OperationID: "pr09-live-container-inspect-1", OperationType: operations.OperationContainerInspect,
@@ -125,13 +137,16 @@ func TestLiveJetStreamReadOnlyOperationsE2E(t *testing.T) {
 		{OperationID: "pr09-live-dependency-inspect-1", OperationType: operations.OperationDependencyInspect,
 			Target:     operations.Target{Kind: "managed_dependency", ProviderID: "agent", ResourceID: "node-exporter"},
 			Parameters: []byte(`{"name":"node-exporter"}`)},
+		{OperationID: "pr09-live-container-restart-1", OperationType: operations.OperationContainerRestart,
+			Target:     operations.Target{Kind: "docker_container", ProviderID: "docker", ResourceID: restartContainerID},
+			Parameters: []byte(`{"container_id":"` + restartContainerID + `"}`)},
 	}
 	for index := range requests {
 		requests[index].SchemaVersion = operations.RequestSchemaV1
 		requests[index].InstallationID = installation
 		requests[index].BindingID = binding
 		requests[index].RequestedAt = time.Now().UTC().Add(-time.Second).Format(time.RFC3339Nano)
-		requests[index].ExpiresAt = time.Now().UTC().Add(time.Minute).Format(time.RFC3339Nano)
+		requests[index].ExpiresAt = time.Now().UTC().Add(3 * time.Minute).Format(time.RFC3339Nano)
 	}
 	// The durable request must remain available while the Agent is offline.
 	if err := mock.PublishOperation(context.Background(), requests[0]); err != nil {
@@ -169,16 +184,36 @@ func TestLiveJetStreamReadOnlyOperationsE2E(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+		resultWait := 20 * time.Second
+		if request.OperationType == operations.OperationContainerRestart {
+			// The Executor permits up to 30 seconds for a restart outcome to be verified.
+			resultWait = 40 * time.Second
+		}
 		select {
 		case result := <-mock.Results():
 			if result.OperationID != request.OperationID || result.Status != operations.StatusSucceeded || result.InstallationID != installation {
+				if request.OperationType == operations.OperationContainerRestart {
+					restartAfter := inspectRestartObservation(t, containerRestarter, restartContainerID)
+					t.Fatalf("Mock Core received unexpected restart result: %+v; before=%+v after=%+v", result, restartBefore, restartAfter)
+				}
 				t.Fatalf("Mock Core received unexpected result: %+v", result)
 			}
 			if request.OperationType == operations.OperationContainerInspect && strings.Contains(string(result.Result), "PR09_SECRET_FIXTURE") {
 				t.Fatalf("container inspection leaked the environment fixture: %s", result.Result)
 			}
-		case <-time.After(20 * time.Second):
-			t.Fatalf("Mock Core did not receive result for %s", request.OperationType)
+			if request.OperationType == operations.OperationContainerRestart {
+				var restartResult handlers.ContainerRestartResult
+				if err := json.Unmarshal(result.Result, &restartResult); err != nil {
+					t.Fatalf("decode restart verification: %v", err)
+				}
+				startedBefore, beforeErr := time.Parse(time.RFC3339Nano, restartResult.StartedAtBefore)
+				startedAfter, afterErr := time.Parse(time.RFC3339Nano, restartResult.StartedAtAfter)
+				if (restartResult.RestartCountAfter <= restartResult.RestartCountBefore && (beforeErr != nil || afterErr != nil || !startedAfter.After(startedBefore))) || restartResult.State != "running" || restartResult.RecoveryStatus != "RUNNING" {
+					t.Fatalf("container restart was not verified: %+v", restartResult)
+				}
+			}
+		case <-time.After(resultWait):
+			t.Fatalf("Mock Core did not receive result for %s within %s; requested_at=%s expires_at=%s", request.OperationType, resultWait, request.RequestedAt, request.ExpiresAt)
 		}
 	}
 	if health.calls.Load() != 1 {
@@ -186,6 +221,18 @@ func TestLiveJetStreamReadOnlyOperationsE2E(t *testing.T) {
 	}
 	if dependencyInspector.calls.Load() != 1 {
 		t.Fatalf("managed dependency inspector calls=%d, want 1", dependencyInspector.calls.Load())
+	}
+	verifiedRestart := inspectRestartObservation(t, containerRestarter, restartContainerID)
+	if err := mock.PublishOperationWithMessageID(context.Background(), requests[3], "pr09-live-container-restart-redelivery"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case duplicate := <-mock.Results():
+		t.Fatalf("duplicate restart produced another result: %+v", duplicate)
+	case <-time.After(2 * time.Second):
+	}
+	if got := inspectRestartObservation(t, containerRestarter, restartContainerID); got.RestartCount != verifiedRestart.RestartCount || got.StartedAt != verifiedRestart.StartedAt {
+		t.Fatalf("duplicate operation restarted container again: before=%+v after=%+v", verifiedRestart, got)
 	}
 	// A transport redelivery with the same operation ID must use the committed result.
 	if err := mock.PublishOperationWithMessageID(context.Background(), requests[0], "pr09-live-diagnostics-redelivery"); err != nil {
@@ -302,13 +349,13 @@ func TestLiveJetStreamReadOnlyOperationsE2E(t *testing.T) {
 	if err := db.QueryRow(`SELECT published_at FROM operation_result_outbox WHERE operation_id=?`, requests[0].OperationID).Scan(&published); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueryRow(`SELECT COUNT(*) FROM operation_audit_event WHERE operation_id IN (?,?,?,?,?)`, requests[0].OperationID, requests[1].OperationID, requests[2].OperationID, recoveryRequest.OperationID, outboxRecoveryRequest.OperationID).Scan(&auditCount); err != nil {
+	if err := db.QueryRow(`SELECT COUNT(*) FROM operation_audit_event WHERE operation_id IN (?,?,?,?,?,?)`, requests[0].OperationID, requests[1].OperationID, requests[2].OperationID, requests[3].OperationID, recoveryRequest.OperationID, outboxRecoveryRequest.OperationID).Scan(&auditCount); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.QueryRow(`SELECT COUNT(*) FROM operation_execution WHERE operation_id IN (?,?)`, rejectedBinding.OperationID, expiredRequest.OperationID).Scan(&rejectedClaims); err != nil {
 		t.Fatal(err)
 	}
-	if !published.Valid || auditCount != 15 {
+	if !published.Valid || auditCount != 18 {
 		t.Fatalf("outbox published=%v audit events=%d", published.Valid, auditCount)
 	}
 	if rejectedClaims != 0 {
@@ -632,6 +679,46 @@ func fixtureContainerID(t *testing.T, name string) string {
 		t.Fatalf("read isolated NATS container identity: %v: %s", err, strings.TrimSpace(string(output)))
 	}
 	return strings.TrimSpace(string(output))
+}
+
+func startOptedInRestartContainer(t *testing.T) string {
+	t.Helper()
+	name := "arimms-pr09-restart-" + randomFixtureSecret(t)[:12]
+	command := dockerCommand("run", "--detach", "--name", name, "--label",
+		handlers.ContainerRestartOptInLabel+"=true", testNATSImage, "-js")
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("start isolated opted-in Docker restart target: %v: %s", err, strings.TrimSpace(string(output)))
+	}
+	t.Cleanup(func() { _ = dockerCommand("rm", "--force", name).Run() })
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		if strings.TrimSpace(string(mustCombinedOutput(t, dockerCommand("inspect", "--format", "{{.State.Status}}", name)))) == "running" {
+			return name
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("opted-in restart target %s did not enter running state", name)
+	return ""
+}
+
+func inspectRestartObservation(t *testing.T, runtime handlers.ContainerRestartRuntime, containerID string) handlers.ContainerRestartObservation {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	observation, err := runtime.InspectForRestart(ctx, containerID)
+	if err != nil {
+		t.Fatalf("inspect restart target %s: %v", containerID, err)
+	}
+	return observation
+}
+
+func mustCombinedOutput(t *testing.T, command *exec.Cmd) []byte {
+	t.Helper()
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run Docker fixture query: %v: %s", err, strings.TrimSpace(string(output)))
+	}
+	return output
 }
 
 type countedHealth struct {

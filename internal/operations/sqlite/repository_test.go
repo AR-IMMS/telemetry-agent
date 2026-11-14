@@ -102,3 +102,40 @@ func TestRecoverInterruptedPersistsFailureAuditAndOutboxBeforeReplay(t *testing.
 		t.Fatalf("recovered status=%s audit events=%d", status, audits)
 	}
 }
+
+func TestRecoverInterruptedRestartPersistsUnknownOutcomeWithoutReplay(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	repository := New(agentstate.NewSQLiteStore(path))
+	containerID := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	request := operations.Request{SchemaVersion: operations.RequestSchemaV1, OperationID: "op-restart-interrupted",
+		OperationType: operations.OperationContainerRestart, InstallationID: "install-1", BindingID: "binding-1",
+		Target:      operations.Target{Kind: "docker_container", ProviderID: "docker", ResourceID: containerID},
+		Parameters:  json.RawMessage(`{"container_id":"` + containerID + `"}`),
+		RequestedAt: time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano), ExpiresAt: time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano)}
+	started := time.Now().UTC().Add(-time.Second)
+	if _, created, err := repository.Claim(context.Background(), request, "restart-fingerprint", started); err != nil || !created {
+		t.Fatalf("claim interrupted restart created=%t err=%v", created, err)
+	}
+	if count, err := repository.RecoverInterrupted(context.Background(), time.Now().UTC()); err != nil || count != 1 {
+		t.Fatalf("recover count=%d err=%v", count, err)
+	}
+	duplicate, claimed, err := repository.Claim(context.Background(), request, "restart-fingerprint", time.Now().UTC())
+	if err != nil || claimed || duplicate.Result == nil || duplicate.Result.Status != operations.StatusUnknown || duplicate.Result.ErrorCode != "OPERATION_OUTCOME_UNKNOWN" {
+		t.Fatalf("replayed restart=%+v claimed=%t err=%v", duplicate, claimed, err)
+	}
+	var status string
+	db, err := agentstate.NewSQLiteStore(path).OpenDatabase()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := db.QueryRow(`SELECT status FROM operation_execution WHERE operation_id=?`, request.OperationID).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "UNKNOWN_OUTCOME" {
+		t.Fatalf("stored restart status=%s, want UNKNOWN_OUTCOME", status)
+	}
+	if events, err := repository.Pending(context.Background(), 10); err != nil || len(events) != 1 || events[0].OperationID != request.OperationID {
+		t.Fatalf("unknown restart outbox=%+v err=%v", events, err)
+	}
+}

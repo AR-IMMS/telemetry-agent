@@ -43,3 +43,14 @@ func TestOperationsBindingLoaderTracksProtectedCredentialReplacementAndRevocatio
 		t.Fatalf("revoked binding=%+v err=%v", revoked, err)
 	}
 }
+
+func TestOperationsContainerRestartLocalOptInRequiresLiteralTrue(t *testing.T) {
+	for _, value := range []string{"", "false", "1", "TRUE", " true"} {
+		if operationsContainerRestartEnabled(value) {
+			t.Errorf("local opt-in %q unexpectedly enabled container restart", value)
+		}
+	}
+	if !operationsContainerRestartEnabled("true") {
+		t.Fatal("literal true did not enable local container restart opt-in")
+	}
+}

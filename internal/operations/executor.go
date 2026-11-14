@@ -33,6 +33,7 @@ type Status string
 const (
 	StatusSucceeded Status = "SUCCEEDED"
 	StatusFailed    Status = "FAILED"
+	StatusUnknown   Status = "UNKNOWN"
 )
 
 // Result is the versioned, bounded execution response persisted before transport acknowledgment.
@@ -122,8 +123,15 @@ func (e Executor) Execute(ctx context.Context, request Request) (Result, error) 
 	executionContext, cancel := context.WithTimeout(ctx, executionTimeout)
 	defer cancel()
 	payload, executeErr := e.Registry.execute(executionContext, request)
+	result.CompletedAt = time.Now().UTC()
+	if e.Now != nil {
+		result.CompletedAt = e.Now().UTC()
+	}
 	if executeErr != nil {
 		result.Status = StatusFailed
+		if errors.Is(executeErr, ErrOutcomeUnknown) {
+			result.Status = StatusUnknown
+		}
 		result.ErrorCode, result.ErrorMessage = safeOperationError(executeErr)
 	} else {
 		result.Result = payload
@@ -188,6 +196,9 @@ func requestFingerprint(request Request) (string, error) {
 }
 
 func safeOperationError(err error) (string, string) {
+	if errors.Is(err, ErrOutcomeUnknown) {
+		return "OPERATION_OUTCOME_UNKNOWN", "operation was issued but its outcome could not be verified; do not retry automatically"
+	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return "EXECUTION_TIMED_OUT", "operation exceeded its execution deadline"
 	}

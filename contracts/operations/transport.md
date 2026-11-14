@@ -62,7 +62,7 @@ Broker policy permits the Agent to consume only its own command subject and publ
 - A valid request is ACKed only after its terminal result, audit event, and outbox row commit atomically in SQLite.
 - If SQLite claim or completion fails, the message is negatively acknowledged with delay; it is not ACKed as successful.
 - An in-progress duplicate is negatively acknowledged; a terminal duplicate reuses the stored result without invoking the handler again.
-- The Agent holds one installation-scoped Operations process lock before startup recovery or command consumption. After acquiring it, leftover `RUNNING` read-only records are atomically finalized as `FAILED` / `EXECUTION_INTERRUPTED` with audit and outbox evidence. The Agent does not automatically rerun interrupted handlers while Core retry semantics remain unapproved.
+- The Agent holds one installation-scoped Operations process lock before startup recovery or command consumption. After acquiring it, leftover `RUNNING` read-only records are atomically finalized as `FAILED` / `EXECUTION_INTERRUPTED`; interrupted `container.restart` records are finalized as `UNKNOWN` / `OPERATION_OUTCOME_UNKNOWN`. Both include audit and outbox evidence. An uncertain restart is never automatically retried, including after Agent restart; redelivery of the same operation ID returns the persisted result.
 - Handler execution is bounded to 30 seconds or the request expiry, whichever comes first. ACK progress is extended during handler execution so broker redelivery does not create a concurrent local execution.
 - Result publication is independent of command ACK. Broker outage leaves a durable pending outbox event.
 - NATS outage does not stop existing telemetry, reconciliation, or Collector supervision.

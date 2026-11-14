@@ -19,20 +19,22 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/identity"
 	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
 	"github.com/ar-imms/telemetry-agent/internal/operations"
+	operationsdocker "github.com/ar-imms/telemetry-agent/internal/operations/dockeradapter"
 	"github.com/ar-imms/telemetry-agent/internal/operations/handlers"
 	operationsnats "github.com/ar-imms/telemetry-agent/internal/operations/nats"
 	operationssqlite "github.com/ar-imms/telemetry-agent/internal/operations/sqlite"
 )
 
 const (
-	operationsURLEnv         = "AR_IMMS_OPERATIONS_NATS_URL"
-	operationsUserEnv        = "AR_IMMS_OPERATIONS_NATS_USER"
-	operationsPasswordRefEnv = "AR_IMMS_OPERATIONS_NATS_PASSWORD_REF"
-	operationsCAEnv          = "AR_IMMS_OPERATIONS_NATS_CA_FILE"
-	operationsBindingIDEnv   = "AR_IMMS_OPERATIONS_BINDING_ID"
-	operationsRevisionEnv    = "AR_IMMS_OPERATIONS_BINDING_REVISION"
-	operationsStreamEnv      = "AR_IMMS_OPERATIONS_STREAM"
-	operationsDurableEnv     = "AR_IMMS_OPERATIONS_DURABLE"
+	operationsURLEnv            = "AR_IMMS_OPERATIONS_NATS_URL"
+	operationsUserEnv           = "AR_IMMS_OPERATIONS_NATS_USER"
+	operationsPasswordRefEnv    = "AR_IMMS_OPERATIONS_NATS_PASSWORD_REF"
+	operationsCAEnv             = "AR_IMMS_OPERATIONS_NATS_CA_FILE"
+	operationsBindingIDEnv      = "AR_IMMS_OPERATIONS_BINDING_ID"
+	operationsRevisionEnv       = "AR_IMMS_OPERATIONS_BINDING_REVISION"
+	operationsStreamEnv         = "AR_IMMS_OPERATIONS_STREAM"
+	operationsDurableEnv        = "AR_IMMS_OPERATIONS_DURABLE"
+	operationsRestartEnabledEnv = "AR_IMMS_OPERATIONS_CONTAINER_RESTART_ENABLED"
 )
 
 type dockerOperationsInspector struct{ provider *docker.Provider }
@@ -112,6 +114,8 @@ func waitOperationsRetry(ctx context.Context) bool {
 	}
 }
 
+func operationsContainerRestartEnabled(value string) bool { return value == "true" }
+
 func newRuntimeOperationsRunner(statePath string, reporter agenthealth.ObservationReporter) *managedOperationsRunner {
 	url := strings.TrimSpace(os.Getenv(operationsURLEnv))
 	if url == "" {
@@ -163,6 +167,15 @@ func newRuntimeOperationsRunner(statePath string, reporter agenthealth.Observati
 	} else {
 		log.Printf("Remote container inspection unavailable code=operations_docker_adapter_error")
 	}
+	restartEnabled := operationsContainerRestartEnabled(os.Getenv(operationsRestartEnabledEnv))
+	var containerRestarter handlers.ContainerRestartRuntime
+	if restartEnabled {
+		if adapter, err := operationsdocker.New(dockerEndpoint); err == nil {
+			containerRestarter = adapter
+		} else {
+			log.Printf("Remote container restart unavailable code=operations_docker_restart_adapter_error")
+		}
+	}
 	var dependencyInspector handlers.DependencyInspector
 	platform, platformErr := identity.CollectPlatformInfo()
 	if catalog, catalogErr := defaultDependencyCatalog(); catalogErr == nil && platformErr == nil {
@@ -180,6 +193,12 @@ func newRuntimeOperationsRunner(statePath string, reporter agenthealth.Observati
 		},
 	} {
 		if err := registration(); err != nil {
+			log.Printf("Remote Operations disabled code=operations_registry_error")
+			return nil
+		}
+	}
+	if restartEnabled && containerRestarter != nil {
+		if err := operations.Register(registry, handlers.ContainerRestart{Runtime: containerRestarter, Enabled: true}); err != nil {
 			log.Printf("Remote Operations disabled code=operations_registry_error")
 			return nil
 		}

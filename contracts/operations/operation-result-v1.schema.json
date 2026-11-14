@@ -9,10 +9,10 @@
     "schema_version": {"const": "ar-imms.operation.result.v1"},
     "event_id": {"type": "string", "minLength": 1, "maxLength": 128},
     "operation_id": {"type": "string", "minLength": 1, "maxLength": 128},
-    "operation_type": {"enum": ["agent.diagnostics", "container.inspect", "dependency.inspect"]},
+    "operation_type": {"enum": ["agent.diagnostics", "container.inspect", "dependency.inspect", "container.restart"]},
     "installation_id": {"type": "string", "minLength": 1, "maxLength": 128},
     "binding_id": {"type": "string", "minLength": 1, "maxLength": 128},
-    "status": {"enum": ["SUCCEEDED", "FAILED"]},
+    "status": {"enum": ["SUCCEEDED", "FAILED", "UNKNOWN"]},
     "target": {"type": "object", "additionalProperties": false, "properties": {"kind": {"type": "string", "maxLength": 64}, "provider_id": {"type": "string", "maxLength": 128}, "resource_id": {"type": "string", "maxLength": 256}}},
     "started_at": {"type": "string", "format": "date-time"},
     "completed_at": {"type": "string", "format": "date-time"},
@@ -20,5 +20,25 @@
     "error_code": {"type": "string", "maxLength": 64},
     "error_message": {"type": "string", "maxLength": 256},
     "audit_ref": {"type": "string", "minLength": 1, "maxLength": 128}
+  },
+  "allOf": [{
+    "if": {"properties": {"operation_type": {"const": "container.restart"}}, "required": ["operation_type"]},
+    "then": {"properties": {"result": {"$ref": "#/$defs/containerRestartResult"}}}
+  }],
+  "$defs": {
+    "containerRestartResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["restart_count_before", "restart_count_after", "started_at_before", "started_at_after", "state", "recovery_status"],
+      "properties": {
+        "restart_count_before": {"type": "integer", "minimum": 0},
+        "restart_count_after": {"type": "integer", "minimum": 0},
+        "started_at_before": {"type": "string", "format": "date-time"},
+        "started_at_after": {"type": "string", "format": "date-time"},
+        "state": {"enum": ["running", "created", "restarting", "removing", "paused", "exited", "dead"]},
+        "health": {"enum": ["none", "starting", "healthy", "unhealthy"]},
+        "recovery_status": {"enum": ["RUNNING", "STARTING", "UNHEALTHY", "NOT_RUNNING"]}
+      }
+    }
   }
 }

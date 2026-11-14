@@ -134,6 +134,64 @@ func TestExecutorBoundsHandlerExecutionAndPersistsTimeout(t *testing.T) {
 	}
 }
 
+func TestExecutorPersistsAndReplaysUnknownMutationOutcomeWithoutReexecution(t *testing.T) {
+	registry := NewRegistry()
+	handler := &unknownRestartHandler{}
+	if err := Register(registry, handler); err != nil {
+		t.Fatal(err)
+	}
+	store := &executionStoreFake{}
+	executor := Executor{Registry: registry, Store: store, InstallationID: "install-1", BindingID: "binding-1", Now: fixedNow}
+	request := validRequest()
+	request.OperationType = OperationContainerRestart
+	request.Target.ResourceID = strings.Repeat("a", 64)
+	request.Parameters = json.RawMessage(`{}`)
+	first, err := executor.Execute(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := executor.Execute(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Status != StatusUnknown || first.ErrorCode != "OPERATION_OUTCOME_UNKNOWN" || handler.calls != 1 ||
+		second.EventID != first.EventID || store.results != 1 {
+		t.Fatalf("first=%+v second=%+v handler calls=%d persisted=%d", first, second, handler.calls, store.results)
+	}
+}
+
+func TestExecutorRecordsCompletionTimeAfterHandlerFinishes(t *testing.T) {
+	registry := NewRegistry()
+	if err := Register(registry, &testInspectHandler{}); err != nil {
+		t.Fatal(err)
+	}
+	store := &executionStoreFake{}
+	start, completed, calls := fixedNow(), fixedNow().Add(3*time.Second), 0
+	executor := Executor{Registry: registry, Store: store, InstallationID: "install-1", BindingID: "binding-1", Now: func() time.Time {
+		calls++
+		if calls == 1 {
+			return start
+		}
+		return completed
+	}}
+	result, err := executor.Execute(context.Background(), validRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.CompletedAt.Equal(completed) {
+		t.Fatalf("completed_at=%s, want handler completion time %s", result.CompletedAt, completed)
+	}
+}
+
+type unknownRestartHandler struct{ calls int }
+
+func (*unknownRestartHandler) Type() OperationType { return OperationContainerRestart }
+
+func (h *unknownRestartHandler) Execute(context.Context, RequestMetadata, struct{}) (json.RawMessage, error) {
+	h.calls++
+	return nil, ErrOutcomeUnknown
+}
+
 type timeoutHandler struct{}
 
 func (timeoutHandler) Type() OperationType { return OperationAgentDiagnostics }
