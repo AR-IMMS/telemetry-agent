@@ -451,10 +451,32 @@ func waitForNativeInventoryPresent(t *testing.T, ctx context.Context, store agen
 		case <-ctx.Done():
 			t.Fatalf("context ended waiting for Docker inventory recovery: %v", ctx.Err())
 		case <-deadline.C:
-			t.Fatal("Agent inventory did not converge after Docker recovery")
+			t.Fatalf("Agent inventory did not converge after Docker recovery: missing=%v; %s", nativeInventoryMissingResources(store, resourceIDs...), nativeInventoryRecoveryDiagnostic(store, resourceIDs...))
 		case <-ticker.C:
 		}
 	}
+}
+
+func nativeInventoryRecoveryDiagnostic(store agentstate.SQLiteStore, resourceIDs ...string) string {
+	snapshot, err := store.InventoryRepository().Snapshot()
+	if err != nil {
+		return "inventory_snapshot_error=" + err.Error()
+	}
+	var details []string
+	for _, provider := range snapshot.Providers {
+		details = append(details, fmt.Sprintf("provider=%s instance=%s enabled=%t last_error=%s last_attempt=%s last_success=%s", provider.ProviderID, provider.ProviderInstanceID, provider.Enabled, provider.LastErrorCode, provider.LastAttemptAt.UTC().Format(time.RFC3339Nano), provider.LastSuccessAt.UTC().Format(time.RFC3339Nano)))
+	}
+	for _, resourceID := range resourceIDs {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		output, inspectErr := nativeDockerCommand(ctx, "inspect", "--format", "{{.Id}} {{.State.Status}}", resourceID).CombinedOutput()
+		cancel()
+		if inspectErr != nil {
+			details = append(details, fmt.Sprintf("docker_resource=%s inspect_error=%v output=%s", resourceID, inspectErr, strings.TrimSpace(string(output))))
+		} else {
+			details = append(details, "docker_resource="+strings.TrimSpace(string(output)))
+		}
+	}
+	return strings.Join(details, "; ")
 }
 
 func nativeInventoryContainsAll(store agentstate.SQLiteStore, resourceIDs ...string) bool {
