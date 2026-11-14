@@ -1,10 +1,10 @@
 # PR-08 Health & Reporting Verification
 
-- **Status:** IN_PROGRESS
+- **Status:** VERIFIED FOR SUPPORTED PR-08 SCOPE; PR #31 remains draft and unmerged.
 - **Branch:** `feat/pr-08-health-reporting`
 - **Base:** PR-07 merge `700768dff651e73a2e457aa20d94845bc326d971`
-- **Latest implementation head:** `5f9336ec944d9ecaa78e64d36c6c24334e08a649`; final review-fix commit pushed to the existing PR branch.
-- **Implementation commits:** `b634eed40ae7f7b6996384f1370c7ec1994e31ab`, `13398ced1c1d16de992025f8927636d3bc3695e2`, `082f7535047f393108690d0c64c0caf31b76efa4`, `4ab5958b344cd02330b04142a7ef53cad3b4b667`, `7a2601869863fc7a8e6f82c7feed886a40fdbf4a`, `0e0bc19` (runtime evidence attribution and safe status errors), `7f274f3` (bounded owner evidence)
+- **Latest implementation head:** `f528f9b0e1066f7137afc908fd141dfc0bb0afb7`, pushed to the existing PR branch.
+- **Implementation commits:** prior PR-08 commits plus `1ce2106f4884750cea83805fe5b564677c328cd3` (Core/OpAMP/Gateway evidence and exporter diagnostics) and `f528f9b0e1066f7137afc908fd141dfc0bb0afb7` (CI assertion correction and verification update).
 - **PR:** draft [#31](https://github.com/AR-IMMS/telemetry-agent/pull/31), targeting `chore/v0.1.4a-next`.
 
 ## Goal and boundaries
@@ -165,9 +165,15 @@ both runners. Later tests, vet, and build were skipped by workflow dependency
 because `Test` failed; Ubuntu's isolated Docker setup succeeded, but live
 profile tests did not run.
 
-The working follow-up changes that stale test assertion in
-`cmd/agentctl/status_command_test.go`. The corrected focused test passes
-locally. These results are not yet exact-head CI evidence for the correction.
+Commit `f528f9b0e1066f7137afc908fd141dfc0bb0afb7` updates that stale test
+assertion in `cmd/agentctl/status_command_test.go`; the corrected focused test
+passes locally. Exact-head CI run
+[43580653489](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43580653489)
+passed on Windows and Ubuntu. Both jobs passed the full Go test step,
+architecture checks, managed Supervisor fallback/OTLP E2E, vet, and build.
+Ubuntu also passed live Docker/Collector/OTLP and Docker application profile
+E2Es. Windows Docker/profile E2Es and native service lifecycle E2Es on both
+OSes were skipped by workflow conditions and are not counted as covered.
 
 - Passed focused Windows tests for unknown Core/OpAMP evidence, exporter
   network-failure classification, sanitized Collector failures, and the
@@ -188,12 +194,17 @@ locally. These results are not yet exact-head CI evidence for the correction.
   `TestServeStatusServesSnapshotAndStopsWithContext`) were blocked by Windows
   sandbox loopback permissions (`connectex` access denied). The focused tests
   passed; this environment failure is not treated as a product regression.
-- Full Windows/Linux test suites and live managed-runtime E2E for the correction
-  remain pending a new exact-head hosted CI run. Earlier passing run
-  `43577440528` is for a prior committed head and does not cover the correction.
-- The push of `1ce2106` to `origin/feat/pr-08-health-reporting` succeeded. The
-  connected GitHub read API confirmed PR #31 remains open and draft at that
-  head. The GitHub connector denied PR-body updates with HTTP 403
+- The CI artifact records for run `43580653489` are retained by GitHub through
+  2027-02-12: PR-07a Supervisor/profile parity artifact `14108696584`
+  (SHA-256 `b462a28e0410402cfc0d0c11a4e8c3209f15bee63b2974897d14413826ed8705`),
+  Linux managed Supervisor artifact `14108127959` (SHA-256
+  `6fc311eb06971498db0346f13baa73e5461a6ea9d5d207d96992b51fd378c89b`), and
+  Windows managed Supervisor artifact `14108127691` (SHA-256
+  `93bddf91191c5fa6d2d605c1dd77dd4b122d4ab08b0bf37276bd3e21a7e46d71`).
+- Commits `1ce2106` and `f528f9b` were pushed to
+  `origin/feat/pr-08-health-reporting`. The connected GitHub read API confirms
+  PR #31 remains open and draft at corrected head `f528f9b`; exact-head run
+  `43580653489` passed. The GitHub connector denied PR-body updates with HTTP 403
   (`Resource not accessible by integration`); direct `gh` API calls failed
   with a network error, so the PR description is unchanged.
 
@@ -203,8 +214,8 @@ Per the approved PR-08 clarification, external Core health-report transmission i
 
 Outage and recovery cases must use existing owner evidence. The legacy direct Collector output callback can report an observed exporter network failure, while the managed Supervisor path does not currently expose child Collector output to Agent Health. Tests cover classification and recovery boundaries where evidence is available; Core reporting and cross-process Core/OpAMP reconvergence are recorded `BLOCKED`/`NOT_TESTED` with the missing source/contract and follow-up, and do not block PR-08 as a whole. Local snapshots and read-only reporting ports remain available offline.
 
-Remaining PR-08 gates: rerun the full Windows and Linux suites on the updated exact head, retain actual exact-head workflow evidence, validate the changed-document links, and keep contract/source-dependent cases tracked for resolution before final release acceptance.
+The supported PR-08 implementation and verification gates pass. Core report transmission, Core and OpAMP cross-process reconvergence, and managed Supervisor child Collector diagnostics remain `BLOCKED`/`NOT_TESTED` only where the named contract/evidence source is absent; per the approved clarification these do not block PR-08 as a whole. PR #31 has not been marked ready or merged. Its description remains unchanged because the connected GitHub integration denied body writes (HTTP 403), so updating PR metadata or merging requires a write-capable GitHub path.
 
 **Rollback:** additive assessment data and the `doctor` dispatch can be reverted without changing SQLite state or runtime ownership. Existing `/v1/status` JSON fields and status command invocation remain.
 
-**Next checkpoint:** PR-08 cannot be marked PASS until final-head Windows and Linux verification is green and the remaining review findings are resolved.
+**Next checkpoint:** PR-08 is verified for its supported scope. Keep the PR draft until its review description is synchronized through an authorized write path, then follow the integration-branch merge workflow. Do not treat the deferred contract-dependent cases as PR-08 blockers; track them for final release acceptance.
