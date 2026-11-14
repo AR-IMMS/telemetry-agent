@@ -1,6 +1,11 @@
 package agenthealth
 
-import "testing"
+import (
+	"context"
+	"strings"
+	"testing"
+	"time"
+)
 
 func TestReporterReturnsLatestEvaluatedSnapshot(t *testing.T) {
 	reporter := NewReporter(RuntimeObservation{
@@ -40,5 +45,98 @@ func TestReporterReturnsLatestEvaluatedSnapshot(t *testing.T) {
 			"reported applied generation = %d, want 5",
 			got.AppliedGeneration,
 		)
+	}
+}
+
+func TestReporterPassesSnapshotContextToEvidenceSources(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), healthRequestContextKey{}, "health-request"))
+	cancel()
+	reporter := NewReporterWithEvidenceSources(RuntimeObservation{}, func(ctx context.Context, _ time.Time) ComponentEvidence {
+		if ctx.Err() != context.Canceled || ctx.Value(healthRequestContextKey{}) != "health-request" {
+			return unknownEvidence(ComponentInventory, "request_context_missing")
+		}
+		return unknownEvidence(ComponentInventory, "request_cancelled")
+	})
+
+	snapshot := reporter.SnapshotContext(ctx)
+	inventory := componentEvidence(t, snapshot.Assessment, ComponentInventory)
+	if inventory.ReasonCode != "request_cancelled" {
+		t.Fatalf("inventory evidence=%+v, want source to receive caller cancellation", inventory)
+	}
+}
+
+func TestNilReporterSnapshotPreservesLegacyDegradedStatus(t *testing.T) {
+	var reporter *Reporter
+
+	snapshot := reporter.Snapshot()
+	if snapshot.Status != StatusDegraded {
+		t.Fatalf("nil reporter status=%q, want legacy degraded status", snapshot.Status)
+	}
+	if snapshot.Assessment.State != EvidenceUnknown {
+		t.Fatalf("nil reporter assessment=%q, want unknown", snapshot.Assessment.State)
+	}
+}
+
+func TestReportCopiesValidityDeadline(t *testing.T) {
+	reporter := NewReporter(RuntimeObservation{})
+	validUntil := time.Now().UTC().Add(time.Hour)
+	observation := RuntimeObservation{
+		CollectorState:        CollectorStateReady,
+		DesiredGeneration:     2,
+		ActivatedGeneration:   2,
+		AppliedGeneration:     2,
+		ConfigurationObserved: true,
+		ObservedAt:            time.Now().UTC(),
+		ValidUntil:            &validUntil,
+	}
+	reporter.Report(observation)
+	validUntil = time.Now().UTC().Add(-time.Hour)
+
+	collector := componentEvidence(t, reporter.Snapshot().Assessment, ComponentCollector)
+	if collector.Freshness != FreshnessFresh {
+		t.Fatalf("collector freshness=%q after caller mutation, want fresh copied deadline", collector.Freshness)
+	}
+}
+
+func TestReporterIncludesOwnerEvidenceAndRefreshesAssessmentSummary(t *testing.T) {
+	dependencyState := EvidenceHealthy
+	reporter := NewReporterWithEvidenceSources(RuntimeObservation{},
+		func(_ context.Context, at time.Time) ComponentEvidence {
+			return ComponentEvidence{Component: ComponentInventory, State: EvidenceHealthy, Freshness: FreshnessFresh, Completeness: CompletenessComplete, ObservedAt: timePointer(at), ReasonCode: "provider_snapshot_complete"}
+		},
+		func(_ context.Context, at time.Time) ComponentEvidence {
+			return ComponentEvidence{Component: ComponentDependencies, State: dependencyState, Freshness: FreshnessFresh, Completeness: CompletenessComplete, ObservedAt: timePointer(at), ReasonCode: "dependencies_checked"}
+		},
+	)
+
+	snapshot := reporter.Snapshot()
+	inventory := componentEvidence(t, snapshot.Assessment, ComponentInventory)
+	if inventory.State != EvidenceHealthy || inventory.Completeness != CompletenessComplete {
+		t.Fatalf("inventory evidence=%+v, want current complete owner evidence", inventory)
+	}
+	dependencies := componentEvidence(t, snapshot.Assessment, ComponentDependencies)
+	if dependencies.State != EvidenceHealthy || dependencies.Freshness != FreshnessFresh {
+		t.Fatalf("dependency evidence=%+v, want current owner evidence", dependencies)
+	}
+
+	dependencyState = EvidenceDegraded
+	snapshot = reporter.Snapshot()
+	if snapshot.Assessment.State != EvidenceDegraded {
+		t.Fatalf("overall assessment=%q, want degraded when an owner reports a failure", snapshot.Assessment.State)
+	}
+}
+
+func TestReporterBoundsAndRedactsOwnerEvidenceReasonCode(t *testing.T) {
+	reporter := NewReporterWithEvidenceSources(RuntimeObservation{}, func(_ context.Context, at time.Time) ComponentEvidence {
+		return ComponentEvidence{
+			Component: ComponentInventory, State: EvidenceDegraded,
+			Freshness: FreshnessUnknown, Completeness: CompletenessPartial,
+			ObservedAt: timePointer(at), ReasonCode: "token=secret-value\n" + strings.Repeat("x", 600),
+		}
+	})
+
+	evidence := componentEvidence(t, reporter.Snapshot().Assessment, ComponentInventory)
+	if strings.Contains(evidence.ReasonCode, "secret-value") || strings.ContainsAny(evidence.ReasonCode, "\r\n") || len(evidence.ReasonCode) > maxDiagnosticTextLength {
+		t.Fatalf("owner reason code was not bounded and redacted: %q", evidence.ReasonCode)
 	}
 }

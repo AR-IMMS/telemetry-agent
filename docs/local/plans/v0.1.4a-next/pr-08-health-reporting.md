@@ -27,7 +27,11 @@
 - A running process with an unavailable Collector must not be reported as fully healthy; test each component dimension independently.
 - Stale or missing timestamps must yield an explicit unknown/stale result, not a fabricated success; test freshness boundaries.
 - Collector readiness without an observed sink delivery must not set delivery healthy; retain a real OTLP evidence test.
-- Core or Gateway outages must not erase local evidence or trigger health-owned recovery; test outage and reconvergence.
+- Health must preserve local evidence and must not own recovery. Test Core, OpAMP, and Gateway outage/recovery only through existing owner evidence; do not add probes or invent endpoints.
+- Core connectivity evidence must distinguish network failure, authentication failure, and unavailable/stale evidence. OpAMP session evidence is independent of Core availability.
+- Gateway connectivity may use supported Collector exporter diagnostics and telemetry evidence. Collector readiness alone proves neither Gateway connectivity nor successful OTLP receipt.
+- Prefer existing evidence sources: authenticated Core API request outcomes for Core connectivity, Supervisor/OpAMP session evidence for OpAMP connectivity, and supported Collector exporter diagnostics for Gateway connectivity. Do not introduce a probe or status channel to manufacture missing evidence; report `UNKNOWN` when a source is absent or stale.
+- External Core reporting is deferred until its contract is approved and does not block local health snapshots, evidence evaluation, or reporting ports. Contract-dependent outage/recovery cases remain `BLOCKED` or `NOT_TESTED` for release integration, with the exact missing contract/evidence source recorded.
 - Diagnostic snapshots must omit tokens, credentials, private keys, and protected configuration values; test serialized outputs and logs.
 
 ---
@@ -60,7 +64,7 @@
 **Interfaces:**
 
 - Consumes: Task 1 evidence contracts.
-- Produces: an assessment with separate statuses for Agent runtime, Core connectivity, Supervisor, Collector, configuration, inventory, monitoring, dependencies, and telemetry delivery.
+- Produces: local snapshots and an assessment with separate statuses for Agent runtime, Core connectivity, OpAMP session connectivity, Supervisor, Collector, Gateway connectivity, configuration, inventory, monitoring, dependencies, and telemetry delivery. Missing or stale evidence is `UNKNOWN`.
 
 - [ ] Add tests for independently healthy/unhealthy components, stale/missing evidence, and incomplete provider observations.
 - [ ] Implement assessment without direct process, configuration, database, Docker, or service-manager mutation.
@@ -92,7 +96,9 @@
 - Test: existing Agent lifecycle, Supervisor, Collector, Docker, and OTLP E2E harnesses; add only focused fixtures needed for evidence.
 - Update: `docs/local/verification/v0.1.4a-next/pr-verification/pr-08-report.md` and `docs/local/plans/v0.1.4a-next/release-progress.md`.
 
-- [ ] Verify Agent, Supervisor, Collector, Core, and Gateway failure and recovery independently.
+- [ ] Verify Agent, Supervisor, and Collector failure/recovery using existing lifecycle evidence; verify Core, OpAMP, and Gateway outage/recovery only where existing owner evidence is exposed.
+- [ ] Record Core/OpAMP/Gateway cases as `BLOCKED` or `NOT_TESTED` when required owner evidence or an approved contract is absent; state the exact missing source/contract and follow-up.
+- [ ] Do not introduce Core health-report APIs, custom Gateway probes, or a reporting schema. Defer external Core reporting until its contract is approved.
 - [ ] Verify profile/receiver failure while the Collector process remains healthy.
 - [ ] Verify configuration rejection/LKG recovery and status convergence without Health initiating recovery.
 - [ ] Run native Windows and Linux tests; distinguish local tests, mocks, hosted CI, and real infrastructure E2E.
@@ -103,6 +109,6 @@
 - Each health dimension has a named evidence owner and explicit freshness/completeness semantics.
 - Local diagnostics are bounded and secret-free.
 - No health result claims collection or delivery based only on process/configuration/readiness evidence.
-- Approved Core reporting works with bounded retries and idempotency; otherwise the unresolved contract is recorded and no invented API is shipped.
+- External Core reporting remains deferred until its contract is approved; local snapshots and reporting ports work independently and do not invent a wire contract.
 - Failure and recovery tests execute natively on Windows and Linux for supported scenarios.
 - PR-08 report and release tracker match the exact implementation and verification evidence.

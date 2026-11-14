@@ -1,8 +1,8 @@
 package agenthealth
 
-import "strings"
+import "time"
 
-// Status is the summarized local health classification of a running Agent.
+// Status is the compatibility classification for Collector readiness and configuration application.
 type Status string
 
 const (
@@ -21,21 +21,25 @@ const (
 	CollectorStateFailed   CollectorState = "failed"
 )
 
-// RuntimeObservation contains the runtime facts used to evaluate local Agent
-// health. It is transient and must not be persisted as desired Agent state.
+// RuntimeObservation contains transient facts used by the Agent health assessment.
+// Its validity deadline is supplied by the evidence owner and is not persisted as desired state.
 type RuntimeObservation struct {
-	CollectorState      CollectorState
-	DesiredGeneration   uint64
-	ActivatedGeneration uint64
-	AppliedGeneration   uint64
-	PendingTeardowns    int
-	LastError           string
+	CollectorState        CollectorState
+	DesiredGeneration     uint64
+	ActivatedGeneration   uint64
+	AppliedGeneration     uint64
+	PendingTeardowns      int
+	LastError             string
+	ObservedAt            time.Time
+	ValidUntil            *time.Time
+	SupervisorConfigured  bool
+	ConfigurationObserved bool
 }
 
-// Snapshot is the evaluated local health view returned to future CLI, HTTP, and
-// Control API adapters.
+// Snapshot combines the compatible runtime status with independent health evidence.
 type Snapshot struct {
-	Status Status `json:"status"`
+	Status     Status     `json:"status"`
+	Assessment Assessment `json:"assessment"`
 
 	CollectorState      CollectorState     `json:"collectorState"`
 	DesiredGeneration   uint64             `json:"desiredGeneration"`
@@ -48,22 +52,44 @@ type Snapshot struct {
 
 // CollectorFailure is a bounded, sanitized Collector observation exposed by the local status API.
 type CollectorFailure struct {
-	Receiver   string `json:"receiver"`
-	Endpoint   string `json:"endpoint"`
-	Code       string `json:"code"`
-	ObservedAt string `json:"observedAt"`
+	Direction  CollectorFailureDirection `json:"direction,omitempty"`
+	Receiver   string                    `json:"receiver"`
+	Exporter   string                    `json:"exporter,omitempty"`
+	Endpoint   string                    `json:"endpoint"`
+	Code       string                    `json:"code"`
+	ObservedAt string                    `json:"observedAt"`
 }
+
+// CollectorFailureDirection identifies the Collector component role that reported a network failure.
+type CollectorFailureDirection string
+
+const (
+	// CollectorFailureReceiver identifies a source receiver scrape failure.
+	CollectorFailureReceiver CollectorFailureDirection = "receiver"
+	// CollectorFailureExporter identifies an exporter send failure.
+	CollectorFailureExporter CollectorFailureDirection = "exporter"
+)
 
 // Evaluate derives local health from one runtime observation.
 func Evaluate(observation RuntimeObservation) Snapshot {
+	return EvaluateAt(observation, time.Now().UTC())
+}
+
+// EvaluateAt derives the compatible runtime snapshot and its evidence assessment at now.
+func EvaluateAt(observation RuntimeObservation, now time.Time) Snapshot {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	now = now.UTC()
 	snapshot := Snapshot{
 		Status:              StatusDegraded,
+		Assessment:          evaluateAssessment(now, observation),
 		CollectorState:      observation.CollectorState,
 		DesiredGeneration:   observation.DesiredGeneration,
 		ActivatedGeneration: observation.ActivatedGeneration,
 		AppliedGeneration:   observation.AppliedGeneration,
 		PendingTeardowns:    observation.PendingTeardowns,
-		LastError:           strings.TrimSpace(observation.LastError),
+		LastError:           sanitizeError(observation.LastError),
 	}
 
 	if observation.CollectorState == CollectorStateReady &&

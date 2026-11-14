@@ -1,6 +1,9 @@
 package agenthealth
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestReporterRetainsOnlySanitizedCollectorNetworkFailures(t *testing.T) {
 	reporter := NewReporter(RuntimeObservation{})
@@ -16,6 +19,49 @@ func TestReporterRetainsOnlySanitizedCollectorNetworkFailures(t *testing.T) {
 	if failure.Receiver != "redis/alternate_port" || failure.Endpoint != "127.0.0.1:16379" || failure.Code != "connection_failed" || failure.ObservedAt != "2026-11-12T10:00:00Z" {
 		t.Fatalf("collector failure=%+v, want receiver, endpoint, and normalized code only", failure)
 	}
+	collection := componentEvidence(t, snapshot.Assessment, ComponentTelemetryCollection)
+	if collection.State != EvidenceDegraded || collection.Freshness != FreshnessUnknown || collection.ReasonCode != "collector_scrape_failure_observed" {
+		t.Fatalf("collection evidence=%+v, want degraded failure evidence with unknown freshness", collection)
+	}
+	monitoring := componentEvidence(t, snapshot.Assessment, ComponentMonitoring)
+	if monitoring.State != EvidenceDegraded || monitoring.Freshness != FreshnessUnknown || monitoring.ReasonCode != "monitoring_receiver_failure_observed" {
+		t.Fatalf("monitoring evidence=%+v, want degraded receiver failure evidence", monitoring)
+	}
+	delivery := componentEvidence(t, snapshot.Assessment, ComponentTelemetryDelivery)
+	if delivery.State != EvidenceUnknown {
+		t.Fatalf("delivery evidence=%+v, want unknown despite scrape failure", delivery)
+	}
+}
+
+func TestReporterClassifiesExporterNetworkFailureWithoutClaimingReceipt(t *testing.T) {
+	reporter := NewReporter(RuntimeObservation{
+		CollectorState:      CollectorStateReady,
+		DesiredGeneration:   4,
+		ActivatedGeneration: 4,
+		AppliedGeneration:   4,
+	})
+	reporter.ReportCollectorOutput(`2026-11-14T10:00:00Z error Exporting failed. Dropping data. {"kind":"exporter","data_type":"metrics","name":"otlp/default","error":"rpc unavailable: dial tcp 127.0.0.1:4317: connect: connection refused","dropped_items":3}`)
+
+	snapshot := reporter.Snapshot()
+	if len(snapshot.CollectorFailures) != 1 {
+		t.Fatalf("collector failures=%+v, want one exporter network failure", snapshot.CollectorFailures)
+	}
+	failure := snapshot.CollectorFailures[0]
+	if failure.Direction != CollectorFailureExporter || failure.Exporter != "otlp/default" || failure.Endpoint != "127.0.0.1:4317" || failure.Code != "connection_failed" {
+		t.Fatalf("collector failure=%+v, want sanitized exporter endpoint diagnostics", failure)
+	}
+	gateway := componentEvidence(t, snapshot.Assessment, ComponentGatewayConnectivity)
+	if gateway.State != EvidenceDegraded || gateway.Freshness != FreshnessUnknown || gateway.ReasonCode != "collector_exporter_network_failure_observed" {
+		t.Fatalf("Gateway connectivity evidence=%+v, want observed failure with unknown freshness", gateway)
+	}
+	delivery := componentEvidence(t, snapshot.Assessment, ComponentTelemetryDelivery)
+	if delivery.State != EvidenceDegraded || delivery.Freshness != FreshnessUnknown || delivery.ReasonCode != "collector_export_failure_observed" {
+		t.Fatalf("delivery evidence=%+v, want failed export evidence without a success claim", delivery)
+	}
+	collector := componentEvidence(t, snapshot.Assessment, ComponentCollector)
+	if collector.State != EvidenceHealthy {
+		t.Fatalf("Collector process evidence=%+v, want ready process separated from failed export", collector)
+	}
 }
 
 func TestReporterBoundsCollectorFailures(t *testing.T) {
@@ -25,5 +71,22 @@ func TestReporterBoundsCollectorFailures(t *testing.T) {
 	}
 	if got := len(reporter.Snapshot().CollectorFailures); got != maxCollectorFailures {
 		t.Fatalf("collector failures retained=%d, want bounded at %d", got, maxCollectorFailures)
+	}
+}
+
+func TestReporterRedactsCollectorEndpointUserInfo(t *testing.T) {
+	reporter := NewReporter(RuntimeObservation{})
+	reporter.ReportCollectorOutput(`2026-11-12T10:00:00Z error Error scraping metrics {"otelcol.component.id":"redis/alternate_port","otelcol.signal":"metrics","error":"dial tcp private-password@127.0.0.1:16379: connect: connection refused"}`)
+
+	snapshot := reporter.Snapshot()
+	if len(snapshot.CollectorFailures) != 1 {
+		t.Fatalf("collector failures=%+v, want one parsed network failure", snapshot.CollectorFailures)
+	}
+	failure := snapshot.CollectorFailures[0]
+	if failure.Endpoint != "127.0.0.1:16379" {
+		t.Fatalf("endpoint=%q, want userinfo-free host and port", failure.Endpoint)
+	}
+	if strings.Contains(failure.Endpoint, "private-password") {
+		t.Fatalf("collector endpoint exposed userinfo: %+v", failure)
 	}
 }
