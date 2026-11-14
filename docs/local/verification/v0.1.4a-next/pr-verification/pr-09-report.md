@@ -10,6 +10,7 @@
 - The PR-09 plan states that operation names and endpoints are candidates, not an approved catalog. It requires an approved request/response, authorization, target binding, idempotency, audit, timeout, and result-reporting contract before dependent implementation.
 - The CLI contract leaves the local-vs-remote mutation authorization model open and says `restart-container` must not ship until the trust model is approved and enforced. Inspection/log output also requires explicit credential redaction and output bounds.
 - The cross-repository contract queue has no published remote-operations request/response or authorization/idempotency specification. No contract was found that selects operation allowlist, actor authority, expiry, replay behavior, result envelope, or audit reference.
+- Rechecked the actual referenced upstream contracts: [Agent Enrollment OpenAPI on `shared-docs/main`](https://github.com/AR-IMMS/shared-docs/blob/main/contracts/openapi/agent-enrollment.openapi.yaml) states that it does not define Control Plane operations, and says the `control_plane` URL is configuration data only; its reusable Agent bearer scheme is not accepted by any current operation. [Core API Baseline on `core-backend/dev`](https://github.com/AR-IMMS/core-backend/blob/dev/api/baseline.yaml) is a reusable component baseline with `paths: {}` and requires concrete APIs to define their own paths. These sources confirm that neither provides an Operations endpoint or dispatch contract.
 - `internal/discovery/docker.Provider` has a narrow `engineClient` with only `ContainerList`; it projects inventory summaries and is not a diagnostic or operation executor. No inspect/log/restart executor or operations API is implemented.
 - `internal/dependency.Service.Status` reports managed dependency inspection state; it does not provide arbitrary OS service status or restart capability.
 - Docker daemon access is high privilege. Adding inspection/logs without an approved data exposure contract could disclose environment-derived secrets; adding restart or service control without authorization policy would exceed the reviewed trust boundary.
@@ -29,7 +30,7 @@ Until those decisions are approved, keep all mutating operations disabled and do
 
 ## Verification
 
-- Read-only repository/source review was performed on integration head `d1429196e8b39a24a624a9ad30619476f09a0a9f`.
+- Read-only repository/source review was performed on integration head `d1429196e8b39a24a624a9ad30619476f09a0a9f`; the two upstream contracts above were fetched from their named refs and inspected directly.
 - No code or executable tests were changed or claimed in this readiness audit.
 - No contract-dependent scenario is represented as PASS.
 
