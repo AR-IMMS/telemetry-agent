@@ -197,7 +197,7 @@ func configurationEvidence(observation RuntimeObservation) (EvidenceState, strin
 		return EvidenceUnknown, "configuration_observation_missing"
 	}
 	if observation.DesiredGeneration == 0 && observation.ActivatedGeneration == 0 && observation.AppliedGeneration == 0 {
-		return EvidenceUnknown, "configuration_generation_not_observed"
+		return EvidenceUnknown, "configuration_not_initialized"
 	}
 	if observation.DesiredGeneration != observation.ActivatedGeneration ||
 		observation.ActivatedGeneration != observation.AppliedGeneration {

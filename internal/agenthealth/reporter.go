@@ -35,6 +35,7 @@ type Reporter struct {
 
 // NewReporter creates a reporter with an initial runtime observation.
 func NewReporter(observation RuntimeObservation) *Reporter {
+	observation = cloneRuntimeObservation(observation)
 	if observation.ObservedAt.IsZero() {
 		observation.ObservedAt = time.Now().UTC()
 	}
@@ -50,6 +51,7 @@ func (r *Reporter) Report(observation RuntimeObservation) {
 	if r == nil {
 		return
 	}
+	observation = cloneRuntimeObservation(observation)
 	if observation.ObservedAt.IsZero() {
 		observation.ObservedAt = time.Now().UTC()
 	}
@@ -62,6 +64,14 @@ func (r *Reporter) Report(observation RuntimeObservation) {
 	snapshot.CollectorFailures = append([]CollectorFailure(nil), r.snapshot.CollectorFailures...)
 	r.snapshot = snapshot
 	r.mu.Unlock()
+}
+
+func cloneRuntimeObservation(observation RuntimeObservation) RuntimeObservation {
+	if observation.ValidUntil != nil {
+		validUntil := *observation.ValidUntil
+		observation.ValidUntil = &validUntil
+	}
+	return observation
 }
 
 // Snapshot returns the latest published health snapshot.

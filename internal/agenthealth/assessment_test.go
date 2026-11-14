@@ -126,6 +126,19 @@ func TestEvaluateAtDoesNotInferConfigurationObservationFromGenerationValues(t *t
 	}
 }
 
+func TestEvaluateAtReportsObservedUninitializedConfigurationAsCompleteUnknown(t *testing.T) {
+	now := time.Date(2026, time.November, 14, 6, 0, 0, 0, time.UTC)
+	snapshot := EvaluateAt(RuntimeObservation{
+		ConfigurationObserved: true,
+		ObservedAt:            now,
+	}, now)
+
+	configuration := componentEvidence(t, snapshot.Assessment, ComponentConfiguration)
+	if configuration.State != EvidenceUnknown || configuration.Completeness != CompletenessComplete || configuration.ReasonCode != "configuration_not_initialized" {
+		t.Fatalf("configuration evidence=%+v, want complete evidence of uninitialized configuration", configuration)
+	}
+}
+
 func TestEvaluateAtTreatsZeroValidityTimeAsUnknown(t *testing.T) {
 	now := time.Date(2026, time.November, 14, 6, 0, 0, 0, time.UTC)
 	zero := time.Time{}

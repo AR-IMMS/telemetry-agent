@@ -1,6 +1,9 @@
 package agenthealth
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestReporterReturnsLatestEvaluatedSnapshot(t *testing.T) {
 	reporter := NewReporter(RuntimeObservation{
@@ -52,5 +55,26 @@ func TestNilReporterSnapshotPreservesLegacyDegradedStatus(t *testing.T) {
 	}
 	if snapshot.Assessment.State != EvidenceUnknown {
 		t.Fatalf("nil reporter assessment=%q, want unknown", snapshot.Assessment.State)
+	}
+}
+
+func TestReportCopiesValidityDeadline(t *testing.T) {
+	reporter := NewReporter(RuntimeObservation{})
+	validUntil := time.Now().UTC().Add(time.Hour)
+	observation := RuntimeObservation{
+		CollectorState:        CollectorStateReady,
+		DesiredGeneration:     2,
+		ActivatedGeneration:   2,
+		AppliedGeneration:     2,
+		ConfigurationObserved: true,
+		ObservedAt:            time.Now().UTC(),
+		ValidUntil:            &validUntil,
+	}
+	reporter.Report(observation)
+	validUntil = time.Now().UTC().Add(-time.Hour)
+
+	collector := componentEvidence(t, reporter.Snapshot().Assessment, ComponentCollector)
+	if collector.Freshness != FreshnessFresh {
+		t.Fatalf("collector freshness=%q after caller mutation, want fresh copied deadline", collector.Freshness)
 	}
 }
