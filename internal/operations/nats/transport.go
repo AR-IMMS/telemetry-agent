@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 
@@ -26,13 +27,29 @@ const (
 type Config struct {
 	URL            string
 	Username       string
-	Password       string
+	Password       string `json:"-"`
 	CAFile         string
 	InstallationID string
 	BindingID      string
 	Stream         string
 	Durable        string
 }
+
+// BindingSchemaV1 identifies the versioned Core-provisioned Operations broker binding.
+const BindingSchemaV1 = "ar-imms.operations.broker-binding.v1"
+
+// BindingState is one Core-authoritative broker binding revision delivered through
+// the protected local provisioning boundary. Password remains in protected storage.
+type BindingState struct {
+	SchemaVersion string `json:"schema_version"`
+	Revision      string `json:"revision"`
+	Active        bool   `json:"active"`
+	Config        Config `json:"-"`
+}
+
+// BindingLoader reads the current protected binding state. An inactive state revokes
+// only the Operations broker session; it does not affect telemetry or Collector work.
+type BindingLoader func(context.Context) (BindingState, error)
 
 // Client owns one authenticated, TLS-protected NATS connection and JetStream context.
 type Client struct {
@@ -43,10 +60,18 @@ type Client struct {
 
 // Runner reconnects Operations independently so an unavailable broker cannot stop telemetry.
 type Runner struct {
-	Config   Config
-	Executor *operations.Executor
-	Outbox   ResultOutbox
-	Retry    time.Duration
+	Config       Config
+	Binding      BindingLoader
+	Executor     *operations.Executor
+	Outbox       ResultOutbox
+	Retry        time.Duration
+	PollInterval time.Duration
+	connect      func(Config) (runnerSession, error)
+}
+
+type runnerSession interface {
+	Run(context.Context, *operations.Executor, ResultOutbox) error
+	Invalidate()
 }
 
 // Run keeps trying to establish the optional Operations connection until Agent shutdown.
@@ -59,21 +84,104 @@ func (r Runner) Run(ctx context.Context) error {
 		retry = 5 * time.Second
 	}
 	for ctx.Err() == nil {
-		client, err := Connect(r.Config)
+		config := r.Config
+		var revision string
+		if r.Binding != nil {
+			binding, err := r.Binding(ctx)
+			if err != nil || validateBindingState(binding) != nil || !binding.Active {
+				if !wait(ctx, retry) {
+					return nil
+				}
+				continue
+			}
+			config, revision = binding.Config, binding.Revision
+		}
+		dial := r.connect
+		if dial == nil {
+			dial = func(config Config) (runnerSession, error) { return Connect(config) }
+		}
+		client, err := dial(config)
 		if err == nil {
-			err = client.Run(ctx, r.Executor, r.Outbox)
-			client.Close()
+			bindingUpdated := false
+			runContext, cancel := context.WithCancel(ctx)
+			finished := make(chan error, 1)
+			go func() { finished <- client.Run(runContext, r.Executor, r.Outbox) }()
+			if r.Binding == nil {
+				select {
+				case err = <-finished:
+				case <-ctx.Done():
+				}
+			} else {
+				poll := r.PollInterval
+				if poll <= 0 || poll > time.Minute {
+					poll = time.Second
+				}
+				ticker := time.NewTicker(poll)
+				for {
+					select {
+					case err = <-finished:
+						goto sessionDone
+					case <-ctx.Done():
+						goto sessionDone
+					case <-ticker.C:
+						current, loadErr := r.Binding(ctx)
+						if loadErr != nil || validateBindingState(current) != nil || !current.Active {
+							client.Invalidate()
+							cancel()
+							<-finished
+							goto sessionDone
+						}
+						if current.Revision != revision || !reflect.DeepEqual(current.Config, config) {
+							bindingUpdated = true
+							client.Invalidate()
+							cancel()
+							<-finished
+							goto sessionDone
+						}
+					}
+				}
+			sessionDone:
+				ticker.Stop()
+			}
+			client.Invalidate()
+			cancel()
 			if ctx.Err() != nil {
 				return nil
 			}
+			if bindingUpdated {
+				continue
+			}
 		}
-		select {
-		case <-ctx.Done():
+		if !wait(ctx, retry) {
 			return nil
-		case <-time.After(retry):
 		}
 	}
 	return nil
+}
+
+func validateBindingState(binding BindingState) error {
+	if binding.SchemaVersion != BindingSchemaV1 || strings.TrimSpace(binding.Revision) == "" {
+		return fmt.Errorf("unsupported or incomplete Operations broker binding state")
+	}
+	if binding.Active {
+		config := binding.Config
+		if strings.TrimSpace(config.URL) == "" || config.Username == "" || config.Password == "" || config.CAFile == "" ||
+			!safeToken(config.InstallationID) || !safeToken(config.BindingID) || !safeToken(config.Stream) || !safeToken(config.Durable) {
+			return fmt.Errorf("active Operations broker binding is incomplete")
+		}
+	}
+	return nil
+}
+
+func wait(ctx context.Context, duration time.Duration) bool {
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
 }
 
 // Connect validates scoped credentials and establishes a TLS-only reconnecting connection.
@@ -112,6 +220,14 @@ func Connect(config Config) (*Client, error) {
 func (c *Client) Close() {
 	if c != nil && c.connection != nil {
 		c.connection.Drain()
+	}
+}
+
+// Invalidate closes a provisioned broker session immediately during credential
+// replacement or revocation. It deliberately does not drain stale subscriptions.
+func (c *Client) Invalidate() {
+	if c != nil && c.connection != nil {
+		c.connection.Close()
 	}
 }
 

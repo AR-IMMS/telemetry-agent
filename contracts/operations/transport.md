@@ -4,6 +4,39 @@
 **Agent client:** `github.com/nats-io/nats.go v1.50.0`  
 **Provisioning:** Core or deployment infrastructure provisions streams, consumers, and per-installation/binding credentials. Agent does not administer broker resources.
 
+## Broker binding provisioning v1
+
+`ar-imms.operations.broker-binding.v1` is the minimal secret-free binding record
+used by Core and the test Mock Core. Its JSON Schema is
+[broker-binding-v1.schema.json](broker-binding-v1.schema.json). It identifies
+the installation and binding, carries a monotonically increasing binding
+revision, and reports `active` or `revoked`. An active record contains the TLS
+endpoint, binding-scoped username, protected `credential_ref`, CA path, request
+stream, and durable. It never contains a password or token; unknown fields are
+rejected. The mock enforces increasing revisions and clears broker identity
+fields on revocation.
+
+Core/deployment provisions a distinct NATS username/password and exact ACLs for
+each active binding, then places the password under the provided opaque
+reference in the Agent's protected credential store. The opaque reference stays
+stable for that binding; rotation advances the binding revision and atomically
+replaces the protected value at that reference. Revocation advances the
+revision, removes the protected value, and removes the broker user/permissions.
+The Agent polls only its local protected binding state; if the credential
+disappears or the binding is revoked, it closes the existing Operations
+connection immediately and retries without that binding. A replacement
+credential causes the old session to close before the new one connects. This
+local session invalidation is separate from broker-side auth reload: NATS
+configuration reload alone is not assumed to terminate an already-authenticated
+connection. The URL uses the Go NATS client's `nats://` form while the Agent
+always enables TLS and validates the configured CA. Operations revocation does not stop monitoring, collection,
+telemetry export, or Collector lifecycle.
+
+The contract defines the local Core/Agent provisioning handoff and test Mock
+Core behavior; it does not add a production Core endpoint or claim production
+NestJS interoperability. That API remains separately tracked for its owning
+checkpoint.
+
 ## Subjects and durability
 
 | Direction | Subject | Stream | Handling |

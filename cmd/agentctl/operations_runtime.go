@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/credentialstore"
 	"github.com/ar-imms/telemetry-agent/internal/dependency"
 	"github.com/ar-imms/telemetry-agent/internal/discovery/docker"
+	"github.com/ar-imms/telemetry-agent/internal/enrollment"
 	"github.com/ar-imms/telemetry-agent/internal/identity"
 	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
 	"github.com/ar-imms/telemetry-agent/internal/operations"
@@ -28,6 +30,7 @@ const (
 	operationsPasswordRefEnv = "AR_IMMS_OPERATIONS_NATS_PASSWORD_REF"
 	operationsCAEnv          = "AR_IMMS_OPERATIONS_NATS_CA_FILE"
 	operationsBindingIDEnv   = "AR_IMMS_OPERATIONS_BINDING_ID"
+	operationsRevisionEnv    = "AR_IMMS_OPERATIONS_BINDING_REVISION"
 	operationsStreamEnv      = "AR_IMMS_OPERATIONS_STREAM"
 	operationsDurableEnv     = "AR_IMMS_OPERATIONS_DURABLE"
 )
@@ -128,18 +131,19 @@ func newRuntimeOperationsRunner(statePath string, reporter agenthealth.Observati
 	}
 	bindingID := strings.TrimSpace(os.Getenv(operationsBindingIDEnv))
 	passwordRef := strings.TrimSpace(os.Getenv(operationsPasswordRefEnv))
-	password, credentialErr := credentialstore.New(statePath).Get(passwordRef)
-	if credentialErr != nil {
-		log.Printf("Remote Operations disabled code=operations_credential_unavailable")
-		return nil
-	}
-	config := operationsnats.Config{URL: url, Username: os.Getenv(operationsUserEnv), Password: password,
+	config := operationsnats.Config{URL: url, Username: os.Getenv(operationsUserEnv),
 		CAFile: strings.TrimSpace(os.Getenv(operationsCAEnv)), InstallationID: installationID.String(), BindingID: bindingID,
 		Stream: strings.TrimSpace(os.Getenv(operationsStreamEnv)), Durable: strings.TrimSpace(os.Getenv(operationsDurableEnv))}
 	if config.Username == "" || config.CAFile == "" || config.BindingID == "" || config.Stream == "" || config.Durable == "" {
 		log.Printf("Remote Operations disabled code=operations_configuration_incomplete")
 		return nil
 	}
+	revision := strings.TrimSpace(os.Getenv(operationsRevisionEnv))
+	if revision == "" {
+		revision = "protected-credential-current"
+	}
+	credentials := credentialstore.New(statePath)
+	loadBinding := operationsBindingLoader(config, revision, passwordRef, credentials.Get)
 	var healthReader handlers.HealthReader
 	if provider, ok := reporter.(agenthealth.ContextProvider); ok {
 		healthReader = provider
@@ -182,8 +186,26 @@ func newRuntimeOperationsRunner(statePath string, reporter agenthealth.Observati
 	}
 	journal := operationssqlite.New(store)
 	executor := &operations.Executor{Registry: registry, Store: journal, InstallationID: installationID.String(), BindingID: bindingID}
-	return &managedOperationsRunner{runner: &operationsnats.Runner{Config: config, Executor: executor, Outbox: journal},
+	return &managedOperationsRunner{runner: &operationsnats.Runner{Config: config, Binding: loadBinding, Executor: executor, Outbox: journal},
 		journal: journal, lockPath: statePath + ".operations"}
+}
+
+func operationsBindingLoader(config operationsnats.Config, revision, credentialRef string,
+	getCredential func(string) (string, error)) operationsnats.BindingLoader {
+	return func(context.Context) (operationsnats.BindingState, error) {
+		password, err := getCredential(credentialRef)
+		if err != nil {
+			if errors.Is(err, enrollment.ErrCredentialNotFound) {
+				return operationsnats.BindingState{SchemaVersion: operationsnats.BindingSchemaV1,
+					Revision: revision, Active: false}, nil
+			}
+			return operationsnats.BindingState{}, err
+		}
+		current := config
+		current.Password = password
+		return operationsnats.BindingState{SchemaVersion: operationsnats.BindingSchemaV1,
+			Revision: revision, Active: true, Config: current}, nil
+	}
 }
 
 var _ interface {

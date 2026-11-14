@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ar-imms.github.io/contracts/operations/broker-binding-v1.schema.json",
+  "title": "AR-IMMS Operations Broker Binding v1",
+  "description": "Secret-free Core-to-Agent provisioning record for one Operations broker binding. Plaintext credentials are provisioned separately into protected local storage.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "installation_id", "binding_id", "revision", "status"],
+  "properties": {
+    "schema_version": {"const": "ar-imms.operations.broker-binding.v1"},
+    "installation_id": {"type": "string", "format": "uuid", "maxLength": 36},
+    "binding_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"},
+    "revision": {"type": "integer", "minimum": 1},
+    "status": {"enum": ["active", "revoked"]},
+    "endpoint": {"type": "string", "format": "uri", "pattern": "^nats://", "maxLength": 2048},
+    "username": {"type": "string", "minLength": 1, "maxLength": 128},
+    "credential_ref": {"type": "string", "minLength": 1, "maxLength": 256},
+    "ca_file": {"type": "string", "minLength": 1, "maxLength": 2048},
+    "request_stream": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"},
+    "durable": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "active"}}},
+      "then": {"required": ["endpoint", "username", "credential_ref", "ca_file", "request_stream", "durable"]},
+      "else": {"not": {"anyOf": [
+        {"required": ["endpoint"]}, {"required": ["username"]}, {"required": ["credential_ref"]},
+        {"required": ["ca_file"]}, {"required": ["request_stream"]}, {"required": ["durable"]}
+      ]}}
+    }
+  ]
+}

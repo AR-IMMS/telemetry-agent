@@ -2,34 +2,44 @@ package main
 
 import (
 	"context"
-	"runtime"
+	"encoding/json"
+	"strings"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/dependency"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	"github.com/ar-imms/telemetry-agent/internal/enrollment"
+	operationsnats "github.com/ar-imms/telemetry-agent/internal/operations/nats"
 )
 
-func TestDependencyOperationsInspectorReadsNativeManagedDependency(t *testing.T) {
-	platform, err := identity.CollectPlatformInfo()
+func TestOperationsBindingLoaderTracksProtectedCredentialReplacementAndRevocation(t *testing.T) {
+	credential := "first-protected-value"
+	present := true
+	base := operationsnats.Config{URL: "nats://broker.example:4222", Username: "agent-binding-a", CAFile: "ca.pem",
+		InstallationID: "installation-1", BindingID: "binding-a", Stream: "REQUESTS", Durable: "AGENT_A"}
+	loader := operationsBindingLoader(base, "revision-7", "ops-binding-a", func(reference string) (string, error) {
+		if reference != "ops-binding-a" || !present {
+			return "", enrollment.ErrCredentialNotFound
+		}
+		return credential, nil
+	})
+	first, err := loader(context.Background())
+	if err != nil || !first.Active || first.Config.Password != credential || first.Revision != "revision-7" {
+		t.Fatalf("initial binding=%+v err=%v", first, err)
+	}
+	credential = "rotated-protected-value"
+	rotated, err := loader(context.Background())
+	if err != nil || !rotated.Active || rotated.Config.Password != credential {
+		t.Fatalf("rotated binding=%+v err=%v", rotated, err)
+	}
+	encoded, err := json.Marshal(rotated)
 	if err != nil {
 		t.Fatal(err)
 	}
-	catalog, err := defaultDependencyCatalog()
-	if err != nil {
-		t.Fatal(err)
+	if strings.Contains(string(encoded), credential) || strings.Contains(string(encoded), "password") {
+		t.Fatalf("binding state serialization exposed credential material: %s", encoded)
 	}
-	name := "node-exporter"
-	if runtime.GOOS == "windows" {
-		name = "windows-exporter"
+	present = false
+	revoked, err := loader(context.Background())
+	if err != nil || revoked.Active || revoked.Config.Password != "" || revoked.Revision != "revision-7" {
+		t.Fatalf("revoked binding=%+v err=%v", revoked, err)
 	}
-	service := dependency.Service{Catalog: catalog, OS: platform.OS}
-	observation, err := (dependencyOperationsInspector{service: service}).Inspect(context.Background(), name)
-	if err != nil {
-		t.Fatalf("inspect native managed dependency %q: %v", name, err)
-	}
-	if observation.Name != name || observation.Availability == "" || observation.Health == "" {
-		t.Fatalf("native managed dependency observation=%+v", observation)
-	}
-	t.Logf("PR09_DEPENDENCY_INSPECTION platform=%s name=%s availability=%s health=%s drifted=%t",
-		platform.OS, observation.Name, observation.Availability, observation.Health, observation.Drifted)
 }

@@ -21,6 +21,7 @@ type Core struct {
 	consumerName  string
 	mu            sync.Mutex
 	seen          map[string]struct{}
+	bindings      map[string]BrokerBinding
 	results       chan operations.Result
 	consumer      jetstream.ConsumeContext
 }

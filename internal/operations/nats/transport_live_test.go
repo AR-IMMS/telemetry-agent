@@ -3,7 +3,10 @@ package nats
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,6 +17,7 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/credentialstore"
 	"github.com/ar-imms/telemetry-agent/internal/dependency"
 	discoverydocker "github.com/ar-imms/telemetry-agent/internal/discovery/docker"
 	"github.com/ar-imms/telemetry-agent/internal/identity"
@@ -310,6 +314,168 @@ func TestLiveJetStreamReadOnlyOperationsE2E(t *testing.T) {
 	if rejectedClaims != 0 {
 		t.Fatalf("rejected commands created %d execution claims, want 0", rejectedClaims)
 	}
+
+	// Exercise versioned Core broker provisioning, protected-secret replacement,
+	// and revocation against the live NATS server and Agent runner.
+	agentSession.Stop(t)
+	credentialRef := "operations-" + binding
+	credentials := credentialstore.New(statePath)
+	if err := credentials.Put(credentialRef, fixture.agentPassword); err != nil {
+		t.Fatalf("persist initial protected Operations credential: %v", err)
+	}
+	brokerBinding := mockcore.BrokerBinding{SchemaVersion: mockcore.BrokerBindingSchemaV1,
+		Installation: installation, BindingID: binding, Revision: 1, Status: "active", Endpoint: fixture.url,
+		Username: fixture.agentUser, CredentialRef: credentialRef, CAFile: fixture.caFile,
+		RequestStream: requestStream, Durable: agentDurable}
+	if err := mock.ProvisionBrokerBinding(brokerBinding); err != nil {
+		t.Fatalf("Mock Core provision initial binding: %v", err)
+	}
+	loadBinding := func(context.Context) (BindingState, error) {
+		current, exists := mock.BrokerBinding(binding)
+		if !exists {
+			return BindingState{}, fmt.Errorf("Mock Core binding is not provisioned")
+		}
+		state := BindingState{SchemaVersion: BindingSchemaV1, Revision: fmt.Sprintf("%d", current.Revision), Active: current.Status == "active"}
+		if !state.Active {
+			return state, nil
+		}
+		password, err := credentials.Get(current.CredentialRef)
+		if err != nil {
+			return BindingState{}, err
+		}
+		state.Config = Config{URL: current.Endpoint, Username: current.Username, Password: password,
+			CAFile: current.CAFile, InstallationID: current.Installation, BindingID: current.BindingID,
+			Stream: current.RequestStream, Durable: current.Durable}
+		return state, nil
+	}
+	runner := Runner{Binding: loadBinding, Executor: executor, Outbox: journal, PollInterval: 100 * time.Millisecond}
+	runnerContext, stopRunner := context.WithCancel(context.Background())
+	runnerDone := make(chan error, 1)
+	go func() { runnerDone <- runner.Run(runnerContext) }()
+	defer func() {
+		stopRunner()
+		select {
+		case <-runnerDone:
+		case <-time.After(8 * time.Second):
+			t.Error("credential-aware Operations runner did not stop")
+		}
+	}()
+
+	rotationRequest := makeLiveDiagnosticRequest(installation, binding, "pr09-live-binding-rotation")
+	if err := publishEventually(mock, rotationRequest); err != nil {
+		t.Fatalf("publish command after initial broker binding provision: %v", err)
+	}
+	awaitSuccessfulResult(t, mock, rotationRequest.OperationID)
+	if err := waitForNATSUserConnections(fixture.monitorURL, fixture.agentUser, true); err != nil {
+		t.Fatalf("initial Operations binding did not establish a live NATS session: %v", err)
+	}
+
+	rotatedPassword := randomFixtureSecret(t)
+	fixture.provisionAgentCredential(t, rotatedPassword, true)
+	waitForAgentCredential(t, fixture, rotatedPassword)
+	if err := credentials.Put(credentialRef, rotatedPassword); err != nil {
+		t.Fatalf("replace protected Operations credential: %v", err)
+	}
+	brokerBinding.Revision = 2
+	if err := mock.ProvisionBrokerBinding(brokerBinding); err != nil {
+		t.Fatalf("Mock Core publish rotated binding revision: %v", err)
+	}
+	rotationResultRequest := makeLiveDiagnosticRequest(installation, binding, "pr09-live-binding-rotated-result")
+	if err := publishEventually(mock, rotationResultRequest); err != nil {
+		t.Fatalf("publish command after credential rotation: %v", err)
+	}
+	awaitSuccessfulResult(t, mock, rotationResultRequest.OperationID)
+	if err := waitForNATSUserConnections(fixture.monitorURL, fixture.agentUser, true); err != nil {
+		t.Fatalf("rotated credential did not restore one active Operations session: %v", err)
+	}
+	if oldClient, err := Connect(Config{URL: fixture.url, Username: fixture.agentUser, Password: fixture.agentPassword, CAFile: fixture.caFile,
+		InstallationID: installation, BindingID: binding, Stream: requestStream, Durable: agentDurable}); err == nil {
+		oldClient.Invalidate()
+		t.Fatal("old NATS password remained valid after credential replacement")
+	}
+
+	fixture.provisionAgentCredential(t, rotatedPassword, false)
+	if err := credentials.Delete(credentialRef); err != nil {
+		t.Fatalf("remove revoked protected Operations credential: %v", err)
+	}
+	brokerBinding = mockcore.BrokerBinding{SchemaVersion: mockcore.BrokerBindingSchemaV1,
+		Installation: installation, BindingID: binding, Revision: 3, Status: "revoked"}
+	if err := mock.ProvisionBrokerBinding(brokerBinding); err != nil {
+		t.Fatalf("Mock Core revoke binding: %v", err)
+	}
+	if err := waitForNATSUserConnections(fixture.monitorURL, fixture.agentUser, false); err != nil {
+		t.Fatalf("revoked binding retained an active NATS session: %v", err)
+	}
+	if oldClient, err := Connect(Config{URL: fixture.url, Username: fixture.agentUser, Password: rotatedPassword, CAFile: fixture.caFile,
+		InstallationID: installation, BindingID: binding, Stream: requestStream, Durable: agentDurable}); err == nil {
+		oldClient.Invalidate()
+		t.Fatal("revoked NATS credential still authenticated")
+	}
+	revokedRequest := makeLiveDiagnosticRequest(installation, binding, "pr09-live-binding-revoked")
+	if err := mock.PublishOperation(context.Background(), revokedRequest); err != nil {
+		t.Fatalf("publish request while Operations binding revoked: %v", err)
+	}
+	time.Sleep(2 * time.Second)
+	if health.calls.Load() != 5 {
+		t.Fatalf("revoked binding executed %d diagnostics, want only the five pre-revocation commands", health.calls.Load())
+	}
+}
+
+func makeLiveDiagnosticRequest(installation, binding, operationID string) operations.Request {
+	now := time.Now().UTC()
+	return operations.Request{SchemaVersion: operations.RequestSchemaV1, OperationID: operationID,
+		OperationType: operations.OperationAgentDiagnostics, InstallationID: installation, BindingID: binding,
+		RequestedAt: now.Add(-time.Second).Format(time.RFC3339Nano), ExpiresAt: now.Add(time.Minute).Format(time.RFC3339Nano),
+		Parameters: []byte(`{}`)}
+}
+
+func awaitSuccessfulResult(t *testing.T, mock *mockcore.Core, operationID string) {
+	t.Helper()
+	select {
+	case result := <-mock.Results():
+		if result.OperationID != operationID || result.Status != operations.StatusSucceeded {
+			t.Fatalf("unexpected result for %s: %+v", operationID, result)
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatalf("Mock Core did not receive result for %s", operationID)
+	}
+}
+
+func waitForAgentCredential(t *testing.T, fixture natsFixture, password string) {
+	t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		client, err := Connect(Config{URL: fixture.url, Username: fixture.agentUser, Password: password, CAFile: fixture.caFile,
+			InstallationID: fixture.installation, BindingID: "credential-probe", Stream: fixture.requestStream, Durable: fixture.agentDurable})
+		if err == nil {
+			client.Invalidate()
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatal("NATS did not accept the newly provisioned binding credential")
+}
+
+func waitForNATSUserConnections(monitorURL, username string, wantConnected bool) error {
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		response, err := http.Get(monitorURL + "/connz?auth=1&user=" + username)
+		if err == nil {
+			var body struct {
+				NumConnections int `json:"num_connections"`
+			}
+			decodeErr := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&body)
+			_ = response.Body.Close()
+			if decodeErr == nil {
+				connected := body.NumConnections > 0
+				if connected == wantConnected {
+					return nil
+				}
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return fmt.Errorf("NATS connection monitor did not report user %q connected=%t", username, wantConnected)
 }
 
 type liveAgentSession struct {

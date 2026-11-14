@@ -22,8 +22,9 @@ import (
 const testNATSImage = "nats:2.15.3-alpine@sha256:558394a23dd3c36f2d3a64b51865fd09908010e80a542cea5e75c2af543ed62a"
 
 type natsFixture struct {
-	url, caFile, coreUser, corePassword, agentUser, agentPassword string
-	container                                                     string
+	url, caFile, coreUser, corePassword, agentUser, agentPassword      string
+	container, installation, requestStream, resultStream, agentDurable string
+	configPath, monitorURL                                             string
 }
 
 func startTestNATSServer(t *testing.T, installation, requestStream, resultStream, agentDurable string) natsFixture {
@@ -36,24 +37,7 @@ func startTestNATSServer(t *testing.T, installation, requestStream, resultStream
 	corePassword := randomFixtureSecret(t)
 	agentPassword := randomFixtureSecret(t)
 	coreUser, agentUser := "mock-core", "agent"
-	config := fmt.Sprintf(`port: 4222
-tls { cert_file: "/etc/nats/server.pem", key_file: "/etc/nats/server-key.pem" }
-jetstream { store_dir: "/data" }
-authorization {
-  users = [
-    { user: %q, password: %q },
-    { user: %q, password: %q, permissions: {
-      publish: { allow: [%q, %q, %q, %q, %q] },
-      subscribe: { allow: ["_INBOX.>"] }
-    } }
-  ]
-}
-`, coreUser, corePassword, agentUser, agentPassword,
-		"arimms.ops.v1.result."+installation,
-		"$JS.API.CONSUMER.INFO."+requestStream+"."+agentDurable,
-		"$JS.API.CONSUMER.MSG.NEXT."+requestStream+"."+agentDurable,
-		"$JS.ACK."+requestStream+"."+agentDurable+".>",
-		"$JS.API.INFO")
+	config := testNATSConfig(coreUser, corePassword, agentUser, agentPassword, installation, requestStream, agentDurable, true)
 	configPath := filepath.Join(root, "nats.conf")
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
@@ -64,10 +48,17 @@ authorization {
 	}
 	port := listener.Addr().(*net.TCPAddr).Port
 	_ = listener.Close()
+	monitor, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	monitorPort := monitor.Addr().(*net.TCPAddr).Port
+	_ = monitor.Close()
 	container := "arimms-pr09-nats-" + strings.ReplaceAll(randomFixtureSecret(t)[:12], "-", "")
 	command := dockerCommand("create", "--name", container,
 		"--env", "PR09_SECRET_FIXTURE=must-not-be-returned",
 		"--publish", fmt.Sprintf("127.0.0.1:%d:4222", port),
+		"--publish", fmt.Sprintf("127.0.0.1:%d:8222", monitorPort),
 		testNATSImage, "-c", "/etc/nats/nats.conf")
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("create isolated real JetStream fixture: %v: %s", err, strings.TrimSpace(string(output)))
@@ -84,6 +75,7 @@ authorization {
 		t.Fatalf("start isolated real JetStream fixture: %v: %s", err, strings.TrimSpace(string(output)))
 	}
 	url := fmt.Sprintf("nats://127.0.0.1:%d", port)
+	monitorURL := fmt.Sprintf("http://127.0.0.1:%d", monitorPort)
 	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		probe, err := Connect(Config{URL: url, Username: coreUser, Password: corePassword, CAFile: caFile,
@@ -91,13 +83,55 @@ authorization {
 		if err == nil {
 			probe.Close()
 			return natsFixture{url: url, caFile: caFile, coreUser: coreUser, corePassword: corePassword,
-				agentUser: agentUser, agentPassword: agentPassword, container: container}
+				agentUser: agentUser, agentPassword: agentPassword, container: container, installation: installation,
+				requestStream: requestStream, resultStream: resultStream, agentDurable: agentDurable,
+				configPath: configPath, monitorURL: monitorURL}
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
 	logs, _ := dockerCommand("logs", container).CombinedOutput()
 	t.Fatalf("isolated JetStream fixture failed to become ready: %s", strings.TrimSpace(string(logs)))
 	return natsFixture{}
+}
+
+func testNATSConfig(coreUser, corePassword, agentUser, agentPassword, installation, requestStream, agentDurable string, includeAgent bool) string {
+	agentUserConfig := ""
+	if includeAgent {
+		agentUserConfig = fmt.Sprintf(`, { user: %q, password: %q, permissions: {
+      publish: { allow: [%q, %q, %q, %q, %q] },
+      subscribe: { allow: ["_INBOX.>"] }
+    } },`, agentUser, agentPassword,
+			"arimms.ops.v1.result."+installation,
+			"$JS.API.CONSUMER.INFO."+requestStream+"."+agentDurable,
+			"$JS.API.CONSUMER.MSG.NEXT."+requestStream+"."+agentDurable,
+			"$JS.ACK."+requestStream+"."+agentDurable+".>",
+			"$JS.API.INFO")
+	}
+	return fmt.Sprintf(`port: 4222
+http: 8222
+tls { cert_file: "/etc/nats/server.pem", key_file: "/etc/nats/server-key.pem" }
+jetstream { store_dir: "/data" }
+authorization {
+  users = [
+    { user: %q, password: %q }%s
+  ]
+}
+`, coreUser, corePassword, agentUserConfig)
+}
+
+func (f natsFixture) provisionAgentCredential(t *testing.T, password string, active bool) {
+	t.Helper()
+	config := testNATSConfig(f.coreUser, f.corePassword, f.agentUser, password,
+		f.installation, f.requestStream, f.agentDurable, active)
+	if err := os.WriteFile(f.configPath, []byte(config), 0o600); err != nil {
+		t.Fatalf("write isolated broker binding policy: %v", err)
+	}
+	if output, err := dockerCommand("cp", f.configPath, f.container+":/etc/nats/nats.conf").CombinedOutput(); err != nil {
+		t.Fatalf("publish isolated broker binding policy: %v: %s", err, strings.TrimSpace(string(output)))
+	}
+	if output, err := dockerCommand("kill", "--signal", "HUP", f.container).CombinedOutput(); err != nil {
+		t.Fatalf("reload isolated NATS broker binding policy: %v: %s", err, strings.TrimSpace(string(output)))
+	}
 }
 
 func dockerCommand(args ...string) *exec.Cmd {
