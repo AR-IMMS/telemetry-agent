@@ -3,7 +3,7 @@
 - **Status:** IN_PROGRESS
 - **Branch:** `feat/pr-08-health-reporting`
 - **Base:** PR-07 merge `700768dff651e73a2e457aa20d94845bc326d971`
-- **Latest implementation head:** `7f274f3d486a9754e6452702ad969f9eb09e6ff1` (local focused checks, vet, build, and Linux cross-build; final-head CI not yet run)
+- **Latest committed implementation head:** `7f274f3d486a9754e6452702ad969f9eb09e6ff1`; additional review fixes are currently uncommitted in the isolated PR-08 worktree and require a new exact-head CI run before merge.
 - **Implementation commits:** `b634eed40ae7f7b6996384f1370c7ec1994e31ab`, `13398ced1c1d16de992025f8927636d3bc3695e2`, `082f7535047f393108690d0c64c0caf31b76efa4`, `4ab5958b344cd02330b04142a7ef53cad3b4b667`, `7a2601869863fc7a8e6f82c7feed886a40fdbf4a`, `0e0bc19` (runtime evidence attribution and safe status errors), `7f274f3` (bounded owner evidence)
 - **PR:** draft [#31](https://github.com/AR-IMMS/telemetry-agent/pull/31), targeting `chore/v0.1.4a-next`.
 
@@ -34,6 +34,7 @@ The source tree already had a local `/v1/status` API, a `status` CLI command, an
 - Existing Collector network failures are reduced to receiver, host/port, code, and observation time; raw Collector log lines are not retained. The list is bounded at 32, but previously accepted identifier strings had no length limit and `LastError` was exposed verbatim. PR-08 bounds/redacts those diagnostics.
 - Readiness and a successful config-generation application are not proof of scrape or delivery. `doctor` shows those as separate dimensions; explicit scrape failures mark collection degraded, while absence of both success and failure evidence remains unknown. Delivery remains unknown without sink receipt.
 - Health consumes Inventory and Dependency projections through read-only sources composed at the `agentctl` boundary. Inventory reads only provider-status rows through Discovery's capped `ProviderStatusReader` (64 maximum) and uses the Discovery-owned two-minute stale policy. Dependency inspection is bounded by a five-second request deadline; neither adapter mutates owner state or starts a separate polling loop.
+- The HTTP request context now reaches both owner evidence sources. Inventory provider-status reads accept that context and SQLite checks cancellation before opening the database and uses `QueryContext`; Dependency derives its bounded timeout from the same caller context. The inventory read remains capped at 64 rows.
 - A failed Agent-state read now degrades the Agent runtime dimension while leaving Collector, Supervisor ownership, and configuration unknown. An observed Collector failure remains degraded. This avoids turning an Agent database/read error into a fabricated Collector failure or a false legacy-ownership result.
 - No approved Core reporting endpoint or wire contract is present in the local contracts. No Core route, persistence model, retry policy, or status mapping is invented.
 - No global health evidence TTL is defined. PR-08 uses explicit owner-provided validity deadlines; missing observation/validity data remains unknown.
@@ -70,9 +71,52 @@ Pinned evidence: Collector archive SHA-256 `d8de67cf9dc3ffe928610d52b192cb029365
 - Current-head focused verification on `7f274f3d486a9754e6452702ad969f9eb09e6ff1`: targeted `agenthealth` assessment/reporter tests, `internal/agentlifecycle` tests, owner-evidence adapter tests, bounded SQLite provider-status repository tests, and 13 status/help compatibility tests pass on native Windows. `go vet ./...`, `go build ./...`, and `GOOS=linux GOARCH=amd64 go build ./...` pass. Full health-package tests hit two loopback bind/request denials in the sandbox; no full local Windows suite is claimed. Markdown link validation checked 14 local links with zero missing targets; `git diff --check` passes. The architecture guard invocation failed before import analysis with Go template parsing error `unexpected "," in operand`; the same `go list` template succeeds when invoked directly, so the guard result remains unresolved rather than counted as a pass.
 - A fresh UAC prompt is not visible and no elevated process started. Native Linux, final-head Windows/Linux CI, and full regression remain mandatory. Do not treat the earlier successful CI run or skipped E2E jobs as coverage of the current head.
 
+### Review-fix verification — uncommitted
+
+The final review pass moved Inventory and Dependency classification into
+`internal/agenthealth`, made stale Inventory explicitly degraded, and made a
+Collector receiver failure degrade both Monitoring and Telemetry Collection
+while keeping Delivery unknown. Request cancellation now propagates from the
+HTTP handler through `Reporter.SnapshotContext`, owner evidence sources, and
+the SQLite provider-status query. Tests cover stale snapshots, provider
+failure/truncation, bounded dependency projections, Monitoring/Collection/
+Delivery separation, request context propagation, and canceled SQLite reads.
+
+Native Windows checks on this working diff: focused `internal/agenthealth`
+tests pass; the explicit canceled SQLite provider-status test passes; status/
+doctor CLI tests pass; `go vet ./...`, `go build ./...`, and
+`GOOS=linux GOARCH=amd64 go build ./...` pass. The full `internal/discovery/sqlite`
+tests and `TestIntegrationStatusDoesNotInferHealthOrDelivery` first failed
+because the sandbox denied temporary SQLite database creation (`unable to open
+database file (14)`). Re-running with Go's `TEMP` and `TMP` redirected into the
+writable worktree made both packages pass. A previous wider Health package run
+encountered sandbox loopback bind/request denials; exact-head CI must execute
+those full tests on Windows and Linux.
+
+A current `go test ./... -count=1` attempt was not completed. It confirmed
+sandbox loopback denials in `internal/agenthealth` and `internal/coreapi`, plus
+Windows Exporter health timeouts in `internal/dependency`; the run was
+interrupted after further packages stopped producing output. Treat this as an
+incomplete environment-constrained run, not a full-suite result. Exact-head CI
+must execute the complete suite.
+
+The Core/Gateway outage and reconvergence test remains open: no Core health
+reporting or Gateway reachability contract is approved, and this change does
+not create one or initiate recovery. Current health projections remain local
+and source-owned; Delivery stays unknown unless a sink receipt is observed.
+Final standards review found no remaining actionable coding-policy issue. The
+spec review confirms the stale Inventory and Monitoring/Collection separation
+fixes, but retains the Core/Gateway outage-recovery verification gap. PR-08
+stays IN_PROGRESS pending the gap disposition and final-head CI.
+
+The current working diff passes `./scripts/check-architecture.ps1`: 36 package
+documentation checks, 36 package import checks, and the 450-line production
+file guard. This supersedes the earlier pre-fix invocation failure recorded
+above. `git diff --check` also passes.
+
 ## Core reporting and remaining gates
 
-Core health-report transmission is **not implemented**. It stays open pending an approved contract; local assessment remains usable offline. Remaining PR-08 work: complete both review axes, resolve the architecture-guard invocation, run full Windows and Linux test suites, verify failure/recovery projections and no delivery inference on final head, and update this report/tracker after exact-head CI.
+Core health-report transmission is **not implemented**. It stays open pending an approved contract; local assessment remains usable offline. Remaining PR-08 work: obtain a disposition for the Core/Gateway outage-recovery gate without inventing a contract, run full Windows and Linux test suites on the current exact head, and update this report/tracker after exact-head CI.
 
 **Rollback:** additive assessment data and the `doctor` dispatch can be reverted without changing SQLite state or runtime ownership. Existing `/v1/status` JSON fields and status command invocation remain.
 

@@ -1,6 +1,7 @@
 package agenthealth
 
 import (
+	"context"
 	"encoding/json"
 	"net"
 	"strings"
@@ -20,14 +21,20 @@ type Provider interface {
 	Snapshot() Snapshot
 }
 
+// ContextProvider generates the local health snapshot with the request context.
+type ContextProvider interface {
+	// SnapshotContext creates a health snapshot using caller cancellation and request-scoped values.
+	SnapshotContext(context.Context) Snapshot
+}
+
 // ObservationReporter records transient Collector runtime observations.
 type ObservationReporter interface {
 	Report(RuntimeObservation)
 }
 
 // EvidenceSource reads one owner-provided component observation at snapshot time.
-// Sources must be read-only and bound their work to a short duration.
-type EvidenceSource func(time.Time) ComponentEvidence
+// Sources must be read-only and bound their work; the context supports request-scoped cancellation.
+type EvidenceSource func(context.Context, time.Time) ComponentEvidence
 
 // Reporter stores the latest evaluated health snapshot for local runtime
 // consumers such as CLI, HTTP, and future heartbeat adapters.
@@ -89,6 +96,11 @@ func cloneRuntimeObservation(observation RuntimeObservation) RuntimeObservation 
 
 // Snapshot returns the latest published health snapshot.
 func (r *Reporter) Snapshot() Snapshot {
+	return r.SnapshotContext(context.Background())
+}
+
+// SnapshotContext returns the current snapshot while propagating caller cancellation to evidence sources.
+func (r *Reporter) SnapshotContext(ctx context.Context) Snapshot {
 	if r == nil {
 		snapshot := EvaluateAt(RuntimeObservation{}, time.Now().UTC())
 		snapshot.Status = StatusDegraded
@@ -99,6 +111,9 @@ func (r *Reporter) Snapshot() Snapshot {
 		}
 		snapshot.Assessment.State = EvidenceUnknown
 		return snapshot
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
 	r.mu.RLock()
@@ -115,7 +130,7 @@ func (r *Reporter) Snapshot() Snapshot {
 		if source == nil {
 			continue
 		}
-		upsertComponentEvidence(&snapshot.Assessment, source(now))
+		upsertComponentEvidence(&snapshot.Assessment, source(ctx, now))
 	}
 	refreshAssessmentState(now, &snapshot.Assessment)
 
@@ -144,17 +159,21 @@ func applyCollectorFailureEvidence(snapshot *Snapshot) {
 	}
 	for index := range snapshot.Assessment.Components {
 		component := &snapshot.Assessment.Components[index]
-		if component.Component != ComponentTelemetryCollection {
+		switch component.Component {
+		case ComponentMonitoring:
+			component.State = EvidenceDegraded
+			component.Freshness = FreshnessUnknown
+			component.Completeness = CompletenessPartial
+			component.ReasonCode = "monitoring_receiver_failure_observed"
+		case ComponentTelemetryCollection:
+			component.State = EvidenceDegraded
+			component.Freshness = FreshnessUnknown
+			component.Completeness = CompletenessPartial
+			component.ReasonCode = "collector_scrape_failure_observed"
+		default:
 			continue
 		}
-		component.State = EvidenceDegraded
-		component.Freshness = FreshnessUnknown
-		component.Completeness = CompletenessPartial
-		component.ReasonCode = "collector_scrape_failure_observed"
-		if snapshot.Assessment.State != EvidenceDegraded {
-			snapshot.Assessment.State = EvidenceDegraded
-		}
-		return
+		snapshot.Assessment.State = EvidenceDegraded
 	}
 }
 

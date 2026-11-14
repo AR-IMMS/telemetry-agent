@@ -1095,6 +1095,37 @@ This rerun confirms the already-merged PR-07 source on the current base. It
 does not alter the PASS gate or replace native Windows/Ubuntu CI run
 `43519741680`.
 
+## Final Windows profile-parity evidence — 2026-11-14
+
+The latest prepared Windows managed-profile harness was rerun against exact
+PR-07 head `3441c5a705c1d9577e2c1ee683622b562d040296`. The source archive at
+`tmp/pr07-final-head-3441c5a.tar` has SHA-256
+`EA8BAD40CD3E3345B452D8B078E45CA72472357561FAE24EEC215202EB4F7592`.
+Genuine Administrator RunAs confirmed High Mandatory Level, enabled
+Administrators SID, Docker Desktop `desktop-linux` connected to Linux Engine
+29.5.3, and Go 1.25.5 windows/amd64.
+
+`go test ./cmd/agentctl -run '^TestLiveDockerApplicationProfilesDeliverOTLP$' -count=1 -v`
+passed in 46.62 seconds (exit 0). Redis, PostgreSQL, Python/Prometheus, and
+mock-cooling metrics reached the isolated OTLP sink. The test verified
+startup fallback, receiver uniqueness, no Agent-owned duplicate receivers,
+container churn and recreation without Collector configuration/generation
+change, stable node identity, and no duplicate samples. Each profile carried
+Node ID `33333333-4444-4555-8666-777777777777`.
+
+Pinned binary digests match the prior merged-head run: Collector archive
+`d8de67cf9dc3ffe928610d52b192cb029365bb42dc79a23e0586c040c83293cf`, Collector
+executable `43a7d3eb2b759281b6297a91c830988be39c16e538e8f55aeb4ea31ab7a612cd`,
+and Supervisor v0.160.0
+`df2dfae96d6b711db31675d2deb8493d3dbada8561b25fe575fd90bd7cac8449`. The
+sanitized transcript SHA-256 is
+`A00EE59CCC1C30DDD210FA79CADBB1ABD283AC8520A74A0CE823D434EE3C3782`; the raw
+transcript SHA-256 is
+`663530F9D4B870F1BEBA2D8A55205A7D5EE6542E4343CB5CC282DE2D514CB313`.
+Reproducible logs and sink evidence are retained under the ignored
+`tmp/pr07-win-profile-3441c5a-run/` directory. This latest run supersedes the
+40.48-second rerun above for current evidence; both runs passed.
+
 ## Final documentation-head CI artifacts — 2026-11-14
 
 Documentation checkpoint `cd5e7aeddfc96c88a771d71dc68736d1c4da305e` passed

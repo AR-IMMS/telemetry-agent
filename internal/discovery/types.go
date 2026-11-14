@@ -172,7 +172,7 @@ const MaxProviderStatusReadLimit = 64
 // materializing inventory resources.
 type ProviderStatusReader interface {
 	// ReadProviderStatuses returns no more than limit rows and reports whether additional rows were omitted.
-	ReadProviderStatuses(limit int) ([]ProviderStatus, bool, error)
+	ReadProviderStatuses(ctx context.Context, limit int) ([]ProviderStatus, bool, error)
 }
 
 // DiscoveryProvider returns one complete snapshot or an explicit error.

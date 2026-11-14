@@ -1,6 +1,7 @@
 package agenthealth
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -47,6 +48,23 @@ func TestReporterReturnsLatestEvaluatedSnapshot(t *testing.T) {
 	}
 }
 
+func TestReporterPassesSnapshotContextToEvidenceSources(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), healthRequestContextKey{}, "health-request"))
+	cancel()
+	reporter := NewReporterWithEvidenceSources(RuntimeObservation{}, func(ctx context.Context, _ time.Time) ComponentEvidence {
+		if ctx.Err() != context.Canceled || ctx.Value(healthRequestContextKey{}) != "health-request" {
+			return unknownEvidence(ComponentInventory, "request_context_missing")
+		}
+		return unknownEvidence(ComponentInventory, "request_cancelled")
+	})
+
+	snapshot := reporter.SnapshotContext(ctx)
+	inventory := componentEvidence(t, snapshot.Assessment, ComponentInventory)
+	if inventory.ReasonCode != "request_cancelled" {
+		t.Fatalf("inventory evidence=%+v, want source to receive caller cancellation", inventory)
+	}
+}
+
 func TestNilReporterSnapshotPreservesLegacyDegradedStatus(t *testing.T) {
 	var reporter *Reporter
 
@@ -83,10 +101,10 @@ func TestReportCopiesValidityDeadline(t *testing.T) {
 func TestReporterIncludesOwnerEvidenceAndRefreshesAssessmentSummary(t *testing.T) {
 	dependencyState := EvidenceHealthy
 	reporter := NewReporterWithEvidenceSources(RuntimeObservation{},
-		func(at time.Time) ComponentEvidence {
+		func(_ context.Context, at time.Time) ComponentEvidence {
 			return ComponentEvidence{Component: ComponentInventory, State: EvidenceHealthy, Freshness: FreshnessFresh, Completeness: CompletenessComplete, ObservedAt: timePointer(at), ReasonCode: "provider_snapshot_complete"}
 		},
-		func(at time.Time) ComponentEvidence {
+		func(_ context.Context, at time.Time) ComponentEvidence {
 			return ComponentEvidence{Component: ComponentDependencies, State: dependencyState, Freshness: FreshnessFresh, Completeness: CompletenessComplete, ObservedAt: timePointer(at), ReasonCode: "dependencies_checked"}
 		},
 	)
@@ -109,7 +127,7 @@ func TestReporterIncludesOwnerEvidenceAndRefreshesAssessmentSummary(t *testing.T
 }
 
 func TestReporterBoundsAndRedactsOwnerEvidenceReasonCode(t *testing.T) {
-	reporter := NewReporterWithEvidenceSources(RuntimeObservation{}, func(at time.Time) ComponentEvidence {
+	reporter := NewReporterWithEvidenceSources(RuntimeObservation{}, func(_ context.Context, at time.Time) ComponentEvidence {
 		return ComponentEvidence{
 			Component: ComponentInventory, State: EvidenceDegraded,
 			Freshness: FreshnessUnknown, Completeness: CompletenessPartial,

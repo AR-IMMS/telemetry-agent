@@ -66,6 +66,37 @@ func TestStatusHandlerReturnsLatestSnapshot(t *testing.T) {
 	}
 }
 
+type healthRequestContextKey struct{}
+
+type contextSnapshotTestProvider struct {
+	requestContextObserved bool
+}
+
+func (p *contextSnapshotTestProvider) Snapshot() Snapshot {
+	return Snapshot{}
+}
+
+func (p *contextSnapshotTestProvider) SnapshotContext(ctx context.Context) Snapshot {
+	p.requestContextObserved = ctx.Value(healthRequestContextKey{}) == "health-request"
+	return Snapshot{}
+}
+
+func TestStatusHandlerPassesRequestContextToProvider(t *testing.T) {
+	provider := &contextSnapshotTestProvider{}
+	request := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
+	request = request.WithContext(context.WithValue(request.Context(), healthRequestContextKey{}, "health-request"))
+	response := httptest.NewRecorder()
+
+	NewHTTPHandler(provider).ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status response code=%d, want %d", response.Code, http.StatusOK)
+	}
+	if !provider.requestContextObserved {
+		t.Fatal("health provider did not receive the request context")
+	}
+}
+
 func TestStatusHandlerRejectsNonGetRequests(t *testing.T) {
 	reporter := NewReporter(RuntimeObservation{})
 

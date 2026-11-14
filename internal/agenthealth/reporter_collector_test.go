@@ -23,6 +23,10 @@ func TestReporterRetainsOnlySanitizedCollectorNetworkFailures(t *testing.T) {
 	if collection.State != EvidenceDegraded || collection.Freshness != FreshnessUnknown || collection.ReasonCode != "collector_scrape_failure_observed" {
 		t.Fatalf("collection evidence=%+v, want degraded failure evidence with unknown freshness", collection)
 	}
+	monitoring := componentEvidence(t, snapshot.Assessment, ComponentMonitoring)
+	if monitoring.State != EvidenceDegraded || monitoring.Freshness != FreshnessUnknown || monitoring.ReasonCode != "monitoring_receiver_failure_observed" {
+		t.Fatalf("monitoring evidence=%+v, want degraded receiver failure evidence", monitoring)
+	}
 	delivery := componentEvidence(t, snapshot.Assessment, ComponentTelemetryDelivery)
 	if delivery.State != EvidenceUnknown {
 		t.Fatalf("delivery evidence=%+v, want unknown despite scrape failure", delivery)

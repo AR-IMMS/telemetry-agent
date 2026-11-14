@@ -24,170 +24,57 @@ func newAgentHealthEvidenceSources(statePath string) []agenthealth.EvidenceSourc
 	}
 
 	return []agenthealth.EvidenceSource{
-		func(now time.Time) agenthealth.ComponentEvidence {
+		func(ctx context.Context, now time.Time) agenthealth.ComponentEvidence {
 			if inventory == nil {
-				return agenthealth.ComponentEvidence{
-					Component: agenthealth.ComponentInventory, State: agenthealth.EvidenceUnknown,
-					Freshness: agenthealth.FreshnessUnknown, Completeness: agenthealth.CompletenessUnknown,
-					ReasonCode: "inventory_repository_unavailable",
-				}
+				return agenthealth.EvaluateInventoryEvidence(now, nil, false, false)
 			}
-			statuses, truncated, err := inventory.ReadProviderStatuses(discovery.MaxProviderStatusReadLimit)
-			return evaluateInventoryEvidence(now, statuses, truncated, err)
+			statuses, truncated, err := inventory.ReadProviderStatuses(ctx, discovery.MaxProviderStatusReadLimit)
+			observations := make([]agenthealth.InventoryProviderObservation, 0, len(statuses))
+			staleAfter := discovery.DefaultPolicy().StaleAfter
+			for _, status := range statuses {
+				validUntil := time.Time{}
+				if !status.LastSuccessAt.IsZero() {
+					validUntil = status.LastSuccessAt.Add(staleAfter)
+				}
+				observations = append(observations, agenthealth.InventoryProviderObservation{
+					Enabled: status.Enabled, LastAttemptAt: status.LastAttemptAt,
+					LastSuccessValidUntil: validUntil, FailureObserved: status.LastErrorCode != "",
+				})
+			}
+			return agenthealth.EvaluateInventoryEvidence(now, observations, truncated, err == nil)
 		},
-		func(now time.Time) agenthealth.ComponentEvidence {
-			ctx, cancel := context.WithTimeout(context.Background(), dependencyEvidenceTimeout)
+		func(parent context.Context, now time.Time) agenthealth.ComponentEvidence {
+			ctx, cancel := context.WithTimeout(parent, dependencyEvidenceTimeout)
 			defer cancel()
 			statuses, err := defaultListDependencyStatuses(ctx)
-			return evaluateDependencyEvidence(now, statuses, err)
+			observations := make([]agenthealth.DependencyObservation, 0, len(statuses))
+			for _, result := range statuses {
+				observations = append(observations, dependencyObservation(result))
+			}
+			return agenthealth.EvaluateDependencyEvidence(now, observations, err == nil)
 		},
 	}
 }
 
-func evaluateInventoryEvidence(now time.Time, providers []discovery.ProviderStatus, truncated bool, sourceErr error) agenthealth.ComponentEvidence {
-	evidence := agenthealth.ComponentEvidence{
-		Component:    agenthealth.ComponentInventory,
-		State:        agenthealth.EvidenceUnknown,
-		Freshness:    agenthealth.FreshnessUnknown,
-		Completeness: agenthealth.CompletenessUnknown,
-		ReasonCode:   "inventory_not_observed",
-	}
-	if sourceErr != nil {
-		evidence.State = agenthealth.EvidenceDegraded
-		evidence.ReasonCode = "inventory_snapshot_unavailable"
-		return evidence
-	}
-	if truncated {
-		evidence.Completeness = agenthealth.CompletenessPartial
-		evidence.ReasonCode = "inventory_provider_status_truncated"
-		return evidence
-	}
-	if len(providers) == 0 {
-		return evidence
+func dependencyObservation(result dependency.StatusResult) agenthealth.DependencyObservation {
+	availability := agenthealth.DependencyAvailabilityUnknown
+	switch result.Status.Availability {
+	case dependency.AvailabilityEnabled:
+		availability = agenthealth.DependencyAvailabilityEnabled
+	case dependency.AvailabilityDisabled:
+		availability = agenthealth.DependencyAvailabilityDisabled
 	}
 
-	policy := discovery.DefaultPolicy()
-	enabled := 0
-	allSuccessful := true
-	hasFailure := false
-	var lastAttempt time.Time
-	var validUntil time.Time
-	for _, provider := range providers {
-		if !provider.Enabled {
-			continue
-		}
-		enabled++
-		if provider.LastAttemptAt.After(lastAttempt) {
-			lastAttempt = provider.LastAttemptAt
-		}
-		if provider.LastErrorCode != "" {
-			hasFailure = true
-			allSuccessful = false
-		}
-		if provider.LastSuccessAt.IsZero() {
-			allSuccessful = false
-			continue
-		}
-		providerValidUntil := provider.LastSuccessAt.Add(policy.StaleAfter)
-		if validUntil.IsZero() || providerValidUntil.Before(validUntil) {
-			validUntil = providerValidUntil
-		}
-	}
-	if enabled == 0 {
-		evidence.State = agenthealth.EvidenceUnsupported
-		evidence.Completeness = agenthealth.CompletenessComplete
-		evidence.ReasonCode = "no_enabled_inventory_providers"
-		return evidence
-	}
-	if !lastAttempt.IsZero() {
-		observedAt := lastAttempt.UTC()
-		evidence.ObservedAt = &observedAt
-	}
-	if !validUntil.IsZero() {
-		validUntil = validUntil.UTC()
-		evidence.ValidUntil = &validUntil
-		evidence.Freshness = agenthealth.FreshnessFresh
-		if !now.Before(validUntil) {
-			evidence.Freshness = agenthealth.FreshnessStale
-		}
-	}
-	if hasFailure {
-		evidence.State = agenthealth.EvidenceDegraded
-		evidence.Completeness = agenthealth.CompletenessPartial
-		evidence.ReasonCode = "provider_observation_failed"
-		return evidence
-	}
-	if allSuccessful {
-		evidence.State = agenthealth.EvidenceHealthy
-		evidence.Completeness = agenthealth.CompletenessComplete
-		evidence.ReasonCode = "provider_snapshot_complete"
-		return evidence
-	}
-	evidence.Completeness = agenthealth.CompletenessPartial
-	evidence.ReasonCode = "provider_success_not_observed"
-	return evidence
-}
-
-func evaluateDependencyEvidence(now time.Time, results []dependency.StatusResult, sourceErr error) agenthealth.ComponentEvidence {
-	evidence := agenthealth.ComponentEvidence{
-		Component:    agenthealth.ComponentDependencies,
-		State:        agenthealth.EvidenceUnknown,
-		Freshness:    agenthealth.FreshnessUnknown,
-		Completeness: agenthealth.CompletenessUnknown,
-		ReasonCode:   "dependency_status_not_observed",
-	}
-	if sourceErr != nil {
-		evidence.State = agenthealth.EvidenceUnknown
-		evidence.ReasonCode = "dependency_status_unavailable"
-		return evidence
-	}
-	observedAt := now.UTC()
-	evidence.ObservedAt = &observedAt
-	evidence.Freshness = agenthealth.FreshnessFresh
-	evidence.Completeness = agenthealth.CompletenessComplete
-	if len(results) == 0 {
-		evidence.State = agenthealth.EvidenceUnsupported
-		evidence.ReasonCode = "no_supported_dependencies"
-		return evidence
+	health := agenthealth.DependencyHealthUnknown
+	switch result.Status.Health {
+	case dependency.HealthHealthy:
+		health = agenthealth.DependencyHealthHealthy
+	case dependency.HealthUnhealthy:
+		health = agenthealth.DependencyHealthUnhealthy
 	}
 
-	enabled, hasUnknown, hasDegraded := 0, false, false
-	for _, result := range results {
-		if result.InspectionError != nil {
-			hasDegraded = true
-			evidence.Completeness = agenthealth.CompletenessPartial
-			continue
-		}
-		switch result.Status.Availability {
-		case dependency.AvailabilityDisabled:
-			continue
-		case dependency.AvailabilityEnabled:
-			enabled++
-			if result.Status.Health == dependency.HealthUnhealthy || result.Status.Drifted {
-				hasDegraded = true
-			} else if result.Status.Health != dependency.HealthHealthy {
-				hasUnknown = true
-			}
-		default:
-			hasUnknown = true
-		}
+	return agenthealth.DependencyObservation{
+		Availability: availability, Health: health,
+		Drifted: result.Status.Drifted, InspectionFailed: result.InspectionError != nil,
 	}
-	if hasDegraded {
-		evidence.State = agenthealth.EvidenceDegraded
-		evidence.ReasonCode = "dependency_failure_observed"
-		return evidence
-	}
-	if hasUnknown {
-		evidence.State = agenthealth.EvidenceUnknown
-		evidence.ReasonCode = "dependency_status_incomplete"
-		return evidence
-	}
-	if enabled == 0 {
-		evidence.State = agenthealth.EvidenceUnsupported
-		evidence.ReasonCode = "no_enabled_dependencies"
-		return evidence
-	}
-	evidence.State = agenthealth.EvidenceHealthy
-	evidence.ReasonCode = "enabled_dependencies_healthy"
-	return evidence
 }

@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -18,16 +19,19 @@ func NewInventoryRepository(open func() (*sql.DB, error), locker sync.Locker) di
 
 type inventorySQLite struct{ store database }
 
-func (s inventorySQLite) ReadProviderStatuses(limit int) ([]discovery.ProviderStatus, bool, error) {
+func (s inventorySQLite) ReadProviderStatuses(ctx context.Context, limit int) ([]discovery.ProviderStatus, bool, error) {
 	if limit <= 0 || limit > discovery.MaxProviderStatusReadLimit {
 		return nil, false, fmt.Errorf("provider status read limit must be between 1 and %d", discovery.MaxProviderStatusReadLimit)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, false, err
 	}
 	db, err := s.store.openDatabase()
 	if err != nil {
 		return nil, false, err
 	}
 	defer db.Close()
-	rows, err := db.Query(`SELECT payload FROM discovery_provider_status ORDER BY provider_id,provider_instance_id LIMIT ?`, limit+1)
+	rows, err := db.QueryContext(ctx, `SELECT payload FROM discovery_provider_status ORDER BY provider_id,provider_instance_id LIMIT ?`, limit+1)
 	if err != nil {
 		return nil, false, fmt.Errorf("query discovery provider status: %w", err)
 	}

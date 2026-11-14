@@ -43,7 +43,13 @@ func NewHTTPHandler(provider Provider) http.Handler {
 			"application/json; charset=utf-8",
 		)
 
-		if err := json.NewEncoder(response).Encode(provider.Snapshot()); err != nil {
+		var snapshot Snapshot
+		if contextProvider, ok := provider.(ContextProvider); ok {
+			snapshot = contextProvider.SnapshotContext(request.Context())
+		} else {
+			snapshot = provider.Snapshot()
+		}
+		if err := json.NewEncoder(response).Encode(snapshot); err != nil {
 			http.Error(
 				response,
 				"encode health snapshot",
