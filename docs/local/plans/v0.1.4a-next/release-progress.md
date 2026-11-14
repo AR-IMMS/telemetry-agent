@@ -105,9 +105,9 @@ Update this file after each meaningful milestone and checkpoint. Use only `TODO`
 
 ### PR-09 verification update — 2026-11-14
 
-- Exact remote head `f233538d882b1b795fafcdf32e46b7e61f0d3c6b` passed Windows and Ubuntu run [43607835595](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43607835595). The production Operations managed-dependency adapter test ran in both full native suites without a skip condition.
-- Added an isolated live test for a committed-but-unpublished result surviving Agent process restart and JetStream container restart. The second Agent must publish the same durable `EventID` from the original SQLite journal, with no second handler execution. Local compile-only and non-live Operations package tests pass; this change is not yet on the verified remote head because current `gh`/GitHub API access from the shell cannot reach `api.github.com`. The connected GitHub check reader confirmed the listed run and exact head.
-- Credential replacement/revocation and malformed-message exhaustion remain open Phase 1 gates. Phase 2 remains absent pending explicit safety-contract approval.
+- Exact remote head `4d6fc2e1b46aed9520ce5387eb7c97d0f2c12dfc` passed Windows and Ubuntu run [43609275399](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43609275399). Full Go suites, architecture checks, vet and builds passed. The live Ubuntu JetStream/Mock Core/Docker test also passed Agent process restart and durable SQLite result-outbox recovery across JetStream restart. Evidence artifact `14119094541` SHA-256 `e06bc644a54d3e8e53b60aafa40a2dfac4ec2239a52fd8c0bd7d5b160ce4d2c5` is retained in the workflow run.
+- A follow-up malformed-message case is now implemented locally: malformed JSON must be terminally acknowledged, advance the durable consumer ACK floor, and produce no execution/result. `go test ./internal/operations/... -count=1` passes locally; this newest case is not yet on the remote head or covered by CI. Hosted Windows skips live Docker/JetStream Operations; current-head live proof is Linux-only, with earlier native Windows live proof retained at commit `e359bc389cdea04377ca9f52903b7ca8f7923c06`.
+- Credential replacement and active-session revocation remain unverified pending an approved Core/broker provisioning contract and evidence for a broker-supported active-session revocation mechanism. Phase 2 remains absent pending explicit safety-contract approval.
 
 ## Historical PR-07 checkpoint details (superseded by the PR-07 closure above)
 

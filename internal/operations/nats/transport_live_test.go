@@ -275,7 +275,10 @@ func TestLiveJetStreamReadOnlyOperationsE2E(t *testing.T) {
 			t.Fatalf("publish rejected %s command: %v", rejected.OperationID, err)
 		}
 	}
-	waitForConsumerAckFloor(t, consumer, consumerInfo.AckFloor.Consumer+2)
+	if _, err := core.jetstream.Publish(context.Background(), "arimms.ops.v1.request."+installation, []byte(`{"schema_version":`)); err != nil {
+		t.Fatalf("publish malformed command: %v", err)
+	}
+	waitForConsumerAckFloor(t, consumer, consumerInfo.AckFloor.Consumer+3)
 	if health.calls.Load() != 3 {
 		t.Fatalf("rejected commands invoked diagnostics %d times, want 3", health.calls.Load())
 	}
