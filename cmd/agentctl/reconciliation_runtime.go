@@ -161,6 +161,10 @@ func runRuntimeWithReconciliation(ctx context.Context, statePath string, teardow
 				return app.RuntimeComponents{}, fmt.Errorf("compose monitoring proposal refresh: %w", err)
 			}
 			operationsRunner := newRuntimeOperationsRunner(statePath, reporter)
+			var optionalOperations app.OperationsRunner
+			if operationsRunner != nil {
+				optionalOperations = operationsRunner
+			}
 			templateMaterializer, err := newRuntimeTemplateMaterializer(statePath, publisher)
 			if err != nil {
 				return app.RuntimeComponents{}, fmt.Errorf("compose Integration Template materialization: %w", err)
@@ -169,7 +173,7 @@ func runRuntimeWithReconciliation(ctx context.Context, statePath string, teardow
 				Reconciler: controller, Inventory: inventory,
 				RefreshProposals: proposalRefresher.Refresh, RefreshTemplates: templateMaterializer.Refresh,
 				RecordRecoveryFailure: func(state agentstate.State, _ error) error { return recordRecoveryFailure(state) },
-				Operations:            operationsRunner,
+				Operations:            optionalOperations,
 			}, nil
 		},
 	})
