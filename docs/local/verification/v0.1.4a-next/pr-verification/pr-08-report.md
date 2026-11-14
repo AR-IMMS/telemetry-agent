@@ -3,7 +3,7 @@
 - **Status:** IN_PROGRESS
 - **Branch:** `feat/pr-08-health-reporting`
 - **Base:** PR-07 merge `700768dff651e73a2e457aa20d94845bc326d971`
-- **Implementation commits:** `b634eed40ae7f7b6996384f1370c7ec1994e31ab`, `13398ced1c1d16de992025f8927636d3bc3695e2`
+- **Implementation commits:** `b634eed40ae7f7b6996384f1370c7ec1994e31ab`, `13398ced1c1d16de992025f8927636d3bc3695e2`, `082f7535047f393108690d0c64c0caf31b76efa4`, `4ab5958b344cd02330b04142a7ef53cad3b4b667`
 - **PR:** not opened yet.
 
 ## Goal and boundaries
@@ -52,12 +52,15 @@ Pinned evidence: Collector archive SHA-256 `d8de67cf9dc3ffe928610d52b192cb029365
 - Added the evidence model and deterministic freshness evaluation contract tests.
 - Added a local `doctor` command and expanded concise `status` output; successful collection and all delivery remain unverified without positive evidence.
 - Added credential, endpoint-userinfo, and PEM private-key redaction; stripped control characters; and bounded last-error, receiver, endpoint, failure-list, and evidence reason fields.
+- Verified sanitized output in the actual `/v1/status` JSON response with credential, bearer token, private key, and endpoint-userinfo fixtures.
 - Completeness is component-specific: a timestamp without lifecycle state or configuration generations remains partial, not complete.
+- Owner validity deadlines are copied when observations are accepted; an observed zero-generation configuration is complete evidence with an explicit `configuration_not_initialized` reason.
 - Preserved the existing `status` Collector state, generation, and pending teardown lines while adding its compact assessment summary. An explicit scrape failure marks collection degraded with unknown freshness; delivery remains unknown.
 - Focused health-model and CLI status/doctor tests pass on native Windows.
 - Focused verification on the PR-08 worktree passed: health evidence/reporter tests, status/doctor tests, managed Supervisor readiness test, `go vet ./...`, `go build ./...`, architecture guard, and `git diff --check`.
 - Markdown relative-link validation passed for all four changed release documents: zero missing targets.
 - Full `go test ./... -count=1` remains unverified locally. The non-elevated sandbox hit loopback socket denials in HTTP tests. A RunAs probe verified High Mandatory Level and an enabled Administrators SID, but that first runner had a repository path error before tests started. The corrected RunAs launch was canceled by Windows with `The operation was canceled by the user`; its test log was not produced. This is not a product test failure. Final native Windows CI must execute the full suite.
+- On 2026-11-14, the prepared elevated runner was checked again; no UAC prompt was visible and no elevated test process started. No second elevation result is claimed. The runner remains at `tmp/pr08-windows-full-tests-elevated.ps1`; a genuine High Mandatory Level execution is still required.
 - Native Linux, full regression, race, and final-head Windows/Linux CI are still required. The architecture guard, vet, and build have passed locally.
 
 ## Core reporting and remaining gates
