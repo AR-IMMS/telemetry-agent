@@ -155,18 +155,9 @@ func TestLiveJetStreamReadOnlyOperationsE2E(t *testing.T) {
 	if _, err := agent.jetstream.CreateStream(context.Background(), jetstream.StreamConfig{Name: "AGENT_CREATED_STREAM", Subjects: []string{"agent.created.>"}}); err == nil {
 		t.Fatal("Agent credential administered JetStream streams")
 	}
-	agentContext, stopAgent := context.WithCancel(context.Background())
-	agentDone := make(chan error, 1)
-	go func() { agentDone <- agent.Run(agentContext, executor, journal) }()
-	defer func() {
-		stopAgent()
-		select {
-		case <-agentDone:
-		case <-time.After(8 * time.Second):
-			t.Error("Agent Operations consumer did not stop within its shutdown bound")
-		}
-		agent.Close()
-	}()
+	outboxGate := &liveOutboxGate{delegate: journal}
+	agentSession := startLiveAgentSession(agent, executor, outboxGate)
+	defer agentSession.Stop(t)
 
 	for index, request := range requests {
 		if index != 0 {
@@ -223,6 +214,45 @@ func TestLiveJetStreamReadOnlyOperationsE2E(t *testing.T) {
 	if health.calls.Load() != 2 {
 		t.Fatalf("diagnostics calls after JetStream restart=%d, want 2", health.calls.Load())
 	}
+	outboxRecoveryRequest := requests[0]
+	outboxRecoveryRequest.OperationID = "pr09-live-outbox-after-agent-restart"
+	outboxRecoveryRequest.RequestedAt = time.Now().UTC().Add(-time.Second).Format(time.RFC3339Nano)
+	outboxRecoveryRequest.ExpiresAt = time.Now().UTC().Add(time.Minute).Format(time.RFC3339Nano)
+	outboxGate.block.Store(true)
+	if err := publishEventually(mock, outboxRecoveryRequest); err != nil {
+		t.Fatalf("publish command for Agent restart/outbox recovery: %v", err)
+	}
+	committedOutbox := waitForPendingOperation(t, journal, outboxRecoveryRequest.OperationID)
+	if committedOutbox.EventID == "" {
+		t.Fatal("completed operation has no durable result event identity")
+	}
+	// Stop the Agent after its outcome is committed but before the outbox can publish.
+	agentSession.Stop(t)
+	if output, err := dockerCommand("stop", fixture.container).CombinedOutput(); err != nil {
+		t.Fatalf("stop JetStream after the result commit: %v: %s", err, strings.TrimSpace(string(output)))
+	}
+	if output, err := dockerCommand("start", fixture.container).CombinedOutput(); err != nil {
+		t.Fatalf("restart JetStream before Agent recovery: %v: %s", err, strings.TrimSpace(string(output)))
+	}
+	agentConfig := Config{URL: fixture.url, Username: fixture.agentUser, Password: fixture.agentPassword, CAFile: fixture.caFile,
+		InstallationID: installation, BindingID: binding, Stream: requestStream, Durable: agentDurable}
+	agent, err = connectTestNATSEventually(agentConfig)
+	if err != nil {
+		t.Fatalf("reconnect Agent after broker restart: %v", err)
+	}
+	agentSession = startLiveAgentSession(agent, executor, journal)
+	defer agentSession.Stop(t)
+	select {
+	case result := <-mock.Results():
+		if result.OperationID != outboxRecoveryRequest.OperationID || result.EventID != committedOutbox.EventID || result.Status != operations.StatusSucceeded {
+			t.Fatalf("recovered outbox result=%+v, committed event=%s", result, committedOutbox.EventID)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("Agent restart did not publish its committed outbox result after broker recovery")
+	}
+	if health.calls.Load() != 3 {
+		t.Fatalf("diagnostics calls after Agent/outbox recovery=%d, want 3", health.calls.Load())
+	}
 	consumer, err := agent.jetstream.Consumer(context.Background(), requestStream, agentDurable)
 	if err != nil {
 		t.Fatal(err)
@@ -246,8 +276,8 @@ func TestLiveJetStreamReadOnlyOperationsE2E(t *testing.T) {
 		}
 	}
 	waitForConsumerAckFloor(t, consumer, consumerInfo.AckFloor.Consumer+2)
-	if health.calls.Load() != 2 {
-		t.Fatalf("rejected commands invoked diagnostics %d times, want 2", health.calls.Load())
+	if health.calls.Load() != 3 {
+		t.Fatalf("rejected commands invoked diagnostics %d times, want 3", health.calls.Load())
 	}
 	select {
 	case result := <-mock.Results():
@@ -265,18 +295,106 @@ func TestLiveJetStreamReadOnlyOperationsE2E(t *testing.T) {
 	if err := db.QueryRow(`SELECT published_at FROM operation_result_outbox WHERE operation_id=?`, requests[0].OperationID).Scan(&published); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueryRow(`SELECT COUNT(*) FROM operation_audit_event WHERE operation_id IN (?,?,?,?)`, requests[0].OperationID, requests[1].OperationID, requests[2].OperationID, recoveryRequest.OperationID).Scan(&auditCount); err != nil {
+	if err := db.QueryRow(`SELECT COUNT(*) FROM operation_audit_event WHERE operation_id IN (?,?,?,?,?)`, requests[0].OperationID, requests[1].OperationID, requests[2].OperationID, recoveryRequest.OperationID, outboxRecoveryRequest.OperationID).Scan(&auditCount); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.QueryRow(`SELECT COUNT(*) FROM operation_execution WHERE operation_id IN (?,?)`, rejectedBinding.OperationID, expiredRequest.OperationID).Scan(&rejectedClaims); err != nil {
 		t.Fatal(err)
 	}
-	if !published.Valid || auditCount != 12 {
+	if !published.Valid || auditCount != 15 {
 		t.Fatalf("outbox published=%v audit events=%d", published.Valid, auditCount)
 	}
 	if rejectedClaims != 0 {
 		t.Fatalf("rejected commands created %d execution claims, want 0", rejectedClaims)
 	}
+}
+
+type liveAgentSession struct {
+	client  *Client
+	cancel  context.CancelFunc
+	done    chan error
+	stopped atomic.Bool
+}
+
+func startLiveAgentSession(client *Client, executor *operations.Executor, outbox ResultOutbox) *liveAgentSession {
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- client.Run(ctx, executor, outbox) }()
+	return &liveAgentSession{client: client, cancel: cancel, done: done}
+}
+
+func (s *liveAgentSession) Stop(t *testing.T) {
+	t.Helper()
+	if s == nil || !s.stopped.CompareAndSwap(false, true) {
+		return
+	}
+	s.cancel()
+	select {
+	case <-s.done:
+	case <-time.After(8 * time.Second):
+		t.Error("Agent Operations consumer did not stop within its shutdown bound")
+	}
+	s.client.Close()
+}
+
+type liveOutboxGate struct {
+	delegate ResultOutbox
+	block    atomic.Bool
+}
+
+func (g *liveOutboxGate) Pending(ctx context.Context, limit int) ([]operations.OutboxEvent, error) {
+	if g.block.Load() {
+		return nil, nil
+	}
+	return g.delegate.Pending(ctx, limit)
+}
+
+func (g *liveOutboxGate) MarkPublished(ctx context.Context, eventID string, at time.Time) error {
+	return g.delegate.MarkPublished(ctx, eventID, at)
+}
+
+func (g *liveOutboxGate) MarkFailed(ctx context.Context, eventID, code string, next time.Time) error {
+	return g.delegate.MarkFailed(ctx, eventID, code, next)
+}
+
+func waitForPendingOperation(t *testing.T, journal *operationssqlite.Repository, operationID string) operations.OutboxEvent {
+	t.Helper()
+	deadline := time.NewTimer(20 * time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		items, err := journal.Pending(context.Background(), 16)
+		if err == nil {
+			for _, item := range items {
+				if item.OperationID == operationID {
+					return item
+				}
+			}
+		}
+		select {
+		case <-deadline.C:
+			t.Fatalf("operation %s did not appear in the durable result outbox: %v", operationID, err)
+		case <-ticker.C:
+		}
+	}
+}
+
+func connectTestNATSEventually(config Config) (*Client, error) {
+	deadline := time.Now().Add(30 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		client, err := Connect(config)
+		if err == nil {
+			if _, err = client.jetstream.Consumer(context.Background(), config.Stream, config.Durable); err == nil {
+				return client, nil
+			}
+			client.Close()
+		}
+		lastErr = err
+		time.Sleep(250 * time.Millisecond)
+	}
+	return nil, fmt.Errorf("NATS did not accept the Agent connection before the deadline: %w", lastErr)
 }
 
 func waitForConsumerAckFloor(t *testing.T, consumer jetstream.Consumer, minimum uint64) {
