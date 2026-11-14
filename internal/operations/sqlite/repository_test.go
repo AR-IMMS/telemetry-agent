@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"path/filepath"
 	"testing"
@@ -55,6 +56,57 @@ func TestExecutionRepositoryAtomicallyPersistsTerminalAuditAndOutbox(t *testing.
 	}
 	if status != "SUCCEEDED" || audits != 3 || outbox != 1 {
 		t.Fatalf("committed execution status=%s audits=%d outbox=%d", status, audits, outbox)
+	}
+}
+
+func TestCompleteRollsBackExecutionAndAuditWhenOutboxInsertFails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	store := agentstate.NewSQLiteStore(path)
+	repository := New(store)
+	request := operations.Request{SchemaVersion: operations.RequestSchemaV1, OperationID: "op-rollback", OperationType: operations.OperationAgentDiagnostics,
+		InstallationID: "install-1", BindingID: "binding-1", RequestedAt: "2026-11-14T09:59:00Z", ExpiresAt: "2026-11-14T10:01:00Z"}
+	started := time.Date(2026, 11, 14, 10, 0, 0, 0, time.UTC)
+	if _, created, err := repository.Claim(context.Background(), request, "rollback-fingerprint", started); err != nil || !created {
+		t.Fatalf("claim created=%t err=%v", created, err)
+	}
+	db, err := store.OpenDatabase()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TRIGGER reject_operation_outbox BEFORE INSERT ON operation_result_outbox BEGIN SELECT RAISE(ABORT, 'injected outbox failure'); END`); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	result := operations.Result{SchemaVersion: "ar-imms.operation.result.v1", EventID: "event-rollback", OperationID: request.OperationID,
+		OperationType: request.OperationType, InstallationID: request.InstallationID, BindingID: request.BindingID,
+		Status: operations.StatusSucceeded, StartedAt: started, CompletedAt: started.Add(time.Second), AuditRef: request.OperationID}
+	if err := repository.Complete(context.Background(), request, "rollback-fingerprint", result); err == nil {
+		t.Fatal("expected injected outbox failure")
+	}
+
+	db, err = store.OpenDatabase()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var status string
+	var resultJSON sql.NullString
+	var audits, outbox int
+	if err := db.QueryRow(`SELECT status,result_json FROM operation_execution WHERE operation_id=?`, request.OperationID).Scan(&status, &resultJSON); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM operation_audit_event WHERE operation_id=?`, request.OperationID).Scan(&audits); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM operation_result_outbox WHERE operation_id=?`, request.OperationID).Scan(&outbox); err != nil {
+		t.Fatal(err)
+	}
+	if status != "RUNNING" || resultJSON.Valid || audits != 2 || outbox != 0 {
+		t.Fatalf("failed completion left status=%s result_valid=%t audits=%d outbox=%d", status, resultJSON.Valid, audits, outbox)
 	}
 }
 
