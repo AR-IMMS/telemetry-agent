@@ -3,7 +3,8 @@
 - **Status:** VERIFIED FOR SUPPORTED PR-08 SCOPE; PR #31 remains draft and unmerged.
 - **Branch:** `feat/pr-08-health-reporting`
 - **Base:** PR-07 merge `700768dff651e73a2e457aa20d94845bc326d971`
-- **Latest PR head:** `ea4a70189cf57a45b151080c6dfe82fd4cdc945d`, pushed to the existing PR branch. This verification-record commit follows implementation head `f528f9b0e1066f7137afc908fd141dfc0bb0afb7`.
+- **Latest implementation head:** `f528f9b0e1066f7137afc908fd141dfc0bb0afb7`.
+- **Evidence-source decision update:** `39e796efc9dc52fdffbed23cb180abbc0ca54e40`, pushed to the existing PR branch and verified by final-head CI run `43583067475`.
 - **Implementation commits:** prior PR-08 commits plus `1ce2106f4884750cea83805fe5b564677c328cd3` (Core/OpAMP/Gateway evidence and exporter diagnostics) and `f528f9b0e1066f7137afc908fd141dfc0bb0afb7` (CI assertion correction and verification update).
 - **PR:** draft [#31](https://github.com/AR-IMMS/telemetry-agent/pull/31), targeting `chore/v0.1.4a-next`.
 
@@ -216,7 +217,7 @@ Per the approved PR-08 clarification, external Core health-report transmission i
 
 Outage and recovery cases must use existing owner evidence. The legacy direct Collector output callback can report an observed exporter network failure, while the managed Supervisor path does not currently expose child Collector output to Agent Health. Tests cover classification and recovery boundaries where evidence is available; Core reporting and cross-process Core/OpAMP reconvergence are recorded `BLOCKED`/`NOT_TESTED` with the missing source/contract and follow-up, and do not block PR-08 as a whole. Local snapshots and read-only reporting ports remain available offline.
 
-The supported PR-08 implementation and verification gates pass. Exact PR head `ea4a70189cf57a45b151080c6dfe82fd4cdc945d` passed Windows and Ubuntu CI run [43581426398](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43581426398). Both jobs passed full Go tests, architecture checks, managed Supervisor fallback/OTLP E2E, vet, and build. Ubuntu also passed live Docker/Collector/OTLP and Docker profile E2Es. Hosted Windows Docker/profile and native service lifecycle E2Es on both OSes were skipped and remain unverified.
+The supported PR-08 implementation and verification gates pass. Exact PR head `39e796efc9dc52fdffbed23cb180abbc0ca54e40` passed Windows and Ubuntu CI run [43583067475](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43583067475). Both jobs passed full Go tests, architecture checks, managed Supervisor fallback/OTLP E2E, vet, and build. Ubuntu also passed live Docker/Collector/OTLP and Docker profile E2Es. Hosted Windows Docker/profile and native service lifecycle E2Es on both OSes were skipped and remain unverified. The preceding exact head `ea4a70189cf57a45b151080c6dfe82fd4cdc945d` also passed CI run [43581426398](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43581426398).
 
 External Core report transmission remains `BLOCKED` for release integration until its versioned contract is approved. Core/OpAMP reconvergence and managed Supervisor child Collector diagnostics remain `NOT_TESTED` where their existing evidence sources are unavailable. Per the user's approved disposition, these cases do not block PR-08 as a whole. PR #31 has not been marked ready or merged. Its description is stale because the connected GitHub integration denied body writes (HTTP 403), and direct `gh` API calls cannot reach GitHub; updating PR metadata or merging needs a write-capable path.
 
