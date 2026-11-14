@@ -24,15 +24,16 @@ const (
 // RuntimeObservation contains transient facts used by the Agent health assessment.
 // Its validity deadline is supplied by the evidence owner and is not persisted as desired state.
 type RuntimeObservation struct {
-	CollectorState       CollectorState
-	DesiredGeneration    uint64
-	ActivatedGeneration  uint64
-	AppliedGeneration    uint64
-	PendingTeardowns     int
-	LastError            string
-	ObservedAt           time.Time
-	ValidUntil           *time.Time
-	SupervisorConfigured bool
+	CollectorState        CollectorState
+	DesiredGeneration     uint64
+	ActivatedGeneration   uint64
+	AppliedGeneration     uint64
+	PendingTeardowns      int
+	LastError             string
+	ObservedAt            time.Time
+	ValidUntil            *time.Time
+	SupervisorConfigured  bool
+	ConfigurationObserved bool
 }
 
 // Snapshot combines the compatible runtime status with independent health evidence.

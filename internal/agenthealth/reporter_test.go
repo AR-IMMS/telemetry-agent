@@ -42,3 +42,15 @@ func TestReporterReturnsLatestEvaluatedSnapshot(t *testing.T) {
 		)
 	}
 }
+
+func TestNilReporterSnapshotPreservesLegacyDegradedStatus(t *testing.T) {
+	var reporter *Reporter
+
+	snapshot := reporter.Snapshot()
+	if snapshot.Status != StatusDegraded {
+		t.Fatalf("nil reporter status=%q, want legacy degraded status", snapshot.Status)
+	}
+	if snapshot.Assessment.State != EvidenceUnknown {
+		t.Fatalf("nil reporter assessment=%q, want unknown", snapshot.Assessment.State)
+	}
+}

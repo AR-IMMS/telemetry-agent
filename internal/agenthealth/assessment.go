@@ -118,7 +118,7 @@ func evaluateAssessment(now time.Time, observation RuntimeObservation) Assessmen
 		components = append(components, ComponentEvidence{
 			Component: ComponentSupervisor, State: state,
 			Freshness:    evidenceFreshness(now, observation.ObservedAt, observation.ValidUntil),
-			Completeness: evidenceCompleteness(observation.ObservedAt),
+			Completeness: evidenceCompleteness(observation.ObservedAt, observation.CollectorState != ""),
 			ObservedAt:   observedAt, ValidUntil: timePointerFrom(observation.ValidUntil), ReasonCode: reason,
 		})
 	}
@@ -127,7 +127,7 @@ func evaluateAssessment(now time.Time, observation RuntimeObservation) Assessmen
 	components = append(components, ComponentEvidence{
 		Component: ComponentCollector, State: collectorState,
 		Freshness:    evidenceFreshness(now, observation.ObservedAt, observation.ValidUntil),
-		Completeness: evidenceCompleteness(observation.ObservedAt),
+		Completeness: evidenceCompleteness(observation.ObservedAt, observation.CollectorState != ""),
 		ObservedAt:   observedAt, ValidUntil: timePointerFrom(observation.ValidUntil), ReasonCode: collectorReason,
 	})
 
@@ -135,7 +135,7 @@ func evaluateAssessment(now time.Time, observation RuntimeObservation) Assessmen
 	components = append(components, ComponentEvidence{
 		Component: ComponentConfiguration, State: configurationState,
 		Freshness:    evidenceFreshness(now, observation.ObservedAt, observation.ValidUntil),
-		Completeness: evidenceCompleteness(observation.ObservedAt),
+		Completeness: evidenceCompleteness(observation.ObservedAt, configurationWasObserved(observation)),
 		ObservedAt:   observedAt, ValidUntil: timePointerFrom(observation.ValidUntil), ReasonCode: configurationReason,
 	})
 
@@ -193,6 +193,9 @@ func configurationEvidence(observation RuntimeObservation) (EvidenceState, strin
 	if observation.PendingTeardowns > 0 {
 		return EvidenceDegraded, "dependency_teardown_pending"
 	}
+	if !observation.ConfigurationObserved {
+		return EvidenceUnknown, "configuration_observation_missing"
+	}
 	if observation.DesiredGeneration == 0 && observation.ActivatedGeneration == 0 && observation.AppliedGeneration == 0 {
 		return EvidenceUnknown, "configuration_generation_not_observed"
 	}
@@ -224,11 +227,18 @@ func evidenceFreshness(now, observedAt time.Time, validUntil *time.Time) Evidenc
 	return FreshnessFresh
 }
 
-func evidenceCompleteness(observedAt time.Time) EvidenceCompleteness {
+func evidenceCompleteness(observedAt time.Time, claimEvidencePresent bool) EvidenceCompleteness {
 	if observedAt.IsZero() {
 		return CompletenessUnknown
 	}
+	if !claimEvidencePresent {
+		return CompletenessPartial
+	}
 	return CompletenessComplete
+}
+
+func configurationWasObserved(observation RuntimeObservation) bool {
+	return observation.ConfigurationObserved
 }
 
 func timePointer(value time.Time) *time.Time {

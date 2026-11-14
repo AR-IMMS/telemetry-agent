@@ -10,17 +10,22 @@ func TestEvaluateAtKeepsCollectionAndDeliveryUnverifiedWithoutEvidence(t *testin
 	now := time.Date(2026, time.November, 14, 6, 0, 0, 0, time.UTC)
 	validUntil := now.Add(time.Minute)
 	snapshot := EvaluateAt(RuntimeObservation{
-		CollectorState:      CollectorStateReady,
-		DesiredGeneration:   4,
-		ActivatedGeneration: 4,
-		AppliedGeneration:   4,
-		ObservedAt:          now,
-		ValidUntil:          &validUntil,
+		CollectorState:        CollectorStateReady,
+		DesiredGeneration:     4,
+		ActivatedGeneration:   4,
+		AppliedGeneration:     4,
+		ConfigurationObserved: true,
+		ObservedAt:            now,
+		ValidUntil:            &validUntil,
 	}, now)
 
 	collector := componentEvidence(t, snapshot.Assessment, ComponentCollector)
-	if collector.State != EvidenceHealthy || collector.Freshness != FreshnessFresh {
-		t.Fatalf("collector evidence=%+v, want current healthy readiness", collector)
+	if collector.State != EvidenceHealthy || collector.Freshness != FreshnessFresh || collector.Completeness != CompletenessComplete {
+		t.Fatalf("collector evidence=%+v, want complete current healthy readiness", collector)
+	}
+	configuration := componentEvidence(t, snapshot.Assessment, ComponentConfiguration)
+	if configuration.State != EvidenceHealthy || configuration.Completeness != CompletenessComplete {
+		t.Fatalf("configuration evidence=%+v, want complete applied-generation evidence", configuration)
 	}
 	delivery := componentEvidence(t, snapshot.Assessment, ComponentTelemetryDelivery)
 	if delivery.State != EvidenceUnknown || delivery.ReasonCode != "backend_receipt_not_measured" {
@@ -39,12 +44,13 @@ func TestEvaluateAtMarksEvidenceStaleAtItsValidityBoundary(t *testing.T) {
 	now := time.Date(2026, time.November, 14, 6, 0, 0, 0, time.UTC)
 	validUntil := now
 	snapshot := EvaluateAt(RuntimeObservation{
-		CollectorState:      CollectorStateReady,
-		DesiredGeneration:   4,
-		ActivatedGeneration: 4,
-		AppliedGeneration:   4,
-		ObservedAt:          now.Add(-time.Minute),
-		ValidUntil:          &validUntil,
+		CollectorState:        CollectorStateReady,
+		DesiredGeneration:     4,
+		ActivatedGeneration:   4,
+		AppliedGeneration:     4,
+		ConfigurationObserved: true,
+		ObservedAt:            now.Add(-time.Minute),
+		ValidUntil:            &validUntil,
 	}, now)
 
 	collector := componentEvidence(t, snapshot.Assessment, ComponentCollector)
@@ -59,11 +65,12 @@ func TestEvaluateAtMarksEvidenceStaleAtItsValidityBoundary(t *testing.T) {
 func TestEvaluateAtDoesNotInventFreshnessWhenExpiryIsAbsent(t *testing.T) {
 	now := time.Date(2026, time.November, 14, 6, 0, 0, 0, time.UTC)
 	snapshot := EvaluateAt(RuntimeObservation{
-		CollectorState:      CollectorStateReady,
-		DesiredGeneration:   4,
-		ActivatedGeneration: 4,
-		AppliedGeneration:   4,
-		ObservedAt:          now,
+		CollectorState:        CollectorStateReady,
+		DesiredGeneration:     4,
+		ActivatedGeneration:   4,
+		AppliedGeneration:     4,
+		ConfigurationObserved: true,
+		ObservedAt:            now,
 	}, now)
 
 	collector := componentEvidence(t, snapshot.Assessment, ComponentCollector)
@@ -76,11 +83,12 @@ func TestEvaluateAtDoesNotMarkMissingObservationTimeStale(t *testing.T) {
 	now := time.Date(2026, time.November, 14, 6, 0, 0, 0, time.UTC)
 	validUntil := now.Add(-time.Minute)
 	snapshot := EvaluateAt(RuntimeObservation{
-		CollectorState:      CollectorStateReady,
-		DesiredGeneration:   4,
-		ActivatedGeneration: 4,
-		AppliedGeneration:   4,
-		ValidUntil:          &validUntil,
+		CollectorState:        CollectorStateReady,
+		DesiredGeneration:     4,
+		ActivatedGeneration:   4,
+		AppliedGeneration:     4,
+		ConfigurationObserved: true,
+		ValidUntil:            &validUntil,
 	}, now)
 
 	collector := componentEvidence(t, snapshot.Assessment, ComponentCollector)
@@ -89,16 +97,46 @@ func TestEvaluateAtDoesNotMarkMissingObservationTimeStale(t *testing.T) {
 	}
 }
 
+func TestEvaluateAtMarksTimestampOnlyRuntimeEvidencePartial(t *testing.T) {
+	now := time.Date(2026, time.November, 14, 6, 0, 0, 0, time.UTC)
+	snapshot := EvaluateAt(RuntimeObservation{ObservedAt: now}, now)
+
+	collector := componentEvidence(t, snapshot.Assessment, ComponentCollector)
+	if collector.Completeness != CompletenessPartial || collector.State != EvidenceUnknown {
+		t.Fatalf("collector evidence=%+v, want unknown state and partial completeness without a state", collector)
+	}
+	configuration := componentEvidence(t, snapshot.Assessment, ComponentConfiguration)
+	if configuration.Completeness != CompletenessPartial || configuration.State != EvidenceUnknown {
+		t.Fatalf("configuration evidence=%+v, want unknown state and partial completeness without observed generations", configuration)
+	}
+}
+
+func TestEvaluateAtDoesNotInferConfigurationObservationFromGenerationValues(t *testing.T) {
+	now := time.Date(2026, time.November, 14, 6, 0, 0, 0, time.UTC)
+	snapshot := EvaluateAt(RuntimeObservation{
+		DesiredGeneration:   4,
+		ActivatedGeneration: 4,
+		AppliedGeneration:   4,
+		ObservedAt:          now,
+	}, now)
+
+	configuration := componentEvidence(t, snapshot.Assessment, ComponentConfiguration)
+	if configuration.State != EvidenceUnknown || configuration.Completeness != CompletenessPartial || configuration.ReasonCode != "configuration_observation_missing" {
+		t.Fatalf("configuration evidence=%+v, want explicit unknown/partial without owner observation", configuration)
+	}
+}
+
 func TestEvaluateAtTreatsZeroValidityTimeAsUnknown(t *testing.T) {
 	now := time.Date(2026, time.November, 14, 6, 0, 0, 0, time.UTC)
 	zero := time.Time{}
 	snapshot := EvaluateAt(RuntimeObservation{
-		CollectorState:      CollectorStateReady,
-		DesiredGeneration:   4,
-		ActivatedGeneration: 4,
-		AppliedGeneration:   4,
-		ObservedAt:          now.Add(-time.Minute),
-		ValidUntil:          &zero,
+		CollectorState:        CollectorStateReady,
+		DesiredGeneration:     4,
+		ActivatedGeneration:   4,
+		AppliedGeneration:     4,
+		ConfigurationObserved: true,
+		ObservedAt:            now.Add(-time.Minute),
+		ValidUntil:            &zero,
 	}, now)
 
 	collector := componentEvidence(t, snapshot.Assessment, ComponentCollector)
@@ -131,11 +169,12 @@ func TestEvaluateRedactsSensitiveLastErrorValues(t *testing.T) {
 
 func TestEvaluateMarksRuntimeErrorAsDegradedEvidence(t *testing.T) {
 	snapshot := Evaluate(RuntimeObservation{
-		CollectorState:      CollectorStateReady,
-		DesiredGeneration:   4,
-		ActivatedGeneration: 4,
-		AppliedGeneration:   4,
-		LastError:           "runtime failed to persist activation result",
+		CollectorState:        CollectorStateReady,
+		DesiredGeneration:     4,
+		ActivatedGeneration:   4,
+		AppliedGeneration:     4,
+		ConfigurationObserved: true,
+		LastError:             "runtime failed to persist activation result",
 	})
 
 	collector := componentEvidence(t, snapshot.Assessment, ComponentCollector)

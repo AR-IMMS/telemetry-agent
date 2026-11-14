@@ -293,13 +293,14 @@ func (w runtimeWatcher) reportHealth(
 	}
 
 	w.healthReporter.Report(agenthealth.RuntimeObservation{
-		CollectorState:       collectorState,
-		DesiredGeneration:    state.DesiredGeneration,
-		ActivatedGeneration:  state.ActivatedGeneration,
-		AppliedGeneration:    state.AppliedGeneration,
-		PendingTeardowns:     pendingTeardowns,
-		LastError:            lastError,
-		ObservedAt:           time.Now().UTC(),
-		SupervisorConfigured: state.Supervisor.Enabled,
+		CollectorState:        collectorState,
+		DesiredGeneration:     state.DesiredGeneration,
+		ActivatedGeneration:   state.ActivatedGeneration,
+		AppliedGeneration:     state.AppliedGeneration,
+		PendingTeardowns:      pendingTeardowns,
+		LastError:             lastError,
+		ObservedAt:            time.Now().UTC(),
+		SupervisorConfigured:  state.Supervisor.Enabled,
+		ConfigurationObserved: true,
 	})
 }

@@ -49,12 +49,13 @@ func TestRunDoctorExplainsUnknownAndStaleEvidence(t *testing.T) {
 	now := time.Date(2026, time.November, 14, 6, 0, 0, 0, time.UTC)
 	validUntil := now.Add(-time.Second)
 	snapshot := agenthealth.EvaluateAt(agenthealth.RuntimeObservation{
-		CollectorState:      agenthealth.CollectorStateReady,
-		DesiredGeneration:   4,
-		ActivatedGeneration: 4,
-		AppliedGeneration:   4,
-		ObservedAt:          now.Add(-time.Minute),
-		ValidUntil:          &validUntil,
+		CollectorState:        agenthealth.CollectorStateReady,
+		DesiredGeneration:     4,
+		ActivatedGeneration:   4,
+		AppliedGeneration:     4,
+		ConfigurationObserved: true,
+		ObservedAt:            now.Add(-time.Minute),
+		ValidUntil:            &validUntil,
 	}, now)
 	deps := dependencies{fetchHealthStatus: func(context.Context, string) (agenthealth.Snapshot, error) { return snapshot, nil }}
 	var stdout, stderr bytes.Buffer

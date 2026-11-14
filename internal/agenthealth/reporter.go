@@ -68,6 +68,7 @@ func (r *Reporter) Report(observation RuntimeObservation) {
 func (r *Reporter) Snapshot() Snapshot {
 	if r == nil {
 		snapshot := EvaluateAt(RuntimeObservation{}, time.Now().UTC())
+		snapshot.Status = StatusDegraded
 		for index := range snapshot.Assessment.Components {
 			if snapshot.Assessment.Components[index].Component == ComponentAgentRuntime {
 				snapshot.Assessment.Components[index] = unknownEvidence(ComponentAgentRuntime, "health_reporter_unavailable")
