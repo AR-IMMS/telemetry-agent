@@ -1,6 +1,6 @@
 # PR-09 — Safe Infrastructure Diagnostics & Controlled Operations
 
-**Status:** Phase 1 PASS; PR-09 Phase 2 IN PROGRESS. The user approved the narrow `container.restart` safety contract on 2026-11-15; implementation and final-head verification are in progress. The feature remains disabled unless the administrator sets the local opt-in and the target container carries its opt-in label. Current scope and evidence are tracked in the [PR-09 verification report](../../verification/v0.1.4a-next/pr-verification/pr-09-report.md). **Release target:** `v0.1.4a-next`.
+**Status:** Phase 1 PASS; Phase 2 PASS for the Agent/Mock Core checkpoint; PR-09 is ready for review. The user approved the narrow `container.restart` safety contract on 2026-11-15. The feature remains disabled unless the administrator sets the local opt-in and the target container carries its opt-in label. Production NestJS Core interoperability remains separately tracked. Current scope and evidence are tracked in the [PR-09 verification report](../../verification/v0.1.4a-next/pr-verification/pr-09-report.md). **Release target:** `v0.1.4a-next`.
 
 ## Current Phase 1 checkpoint
 
@@ -15,6 +15,8 @@ handling and real NATS session invalidation. Final PR head
 native live Windows/Linux NATS verification.
 
 Phase 2 is approved for implementation under [ADR 0004](../../adr/0004-opt-in-container-restart.md). Runtime registration remains off by default; both the local Agent opt-in and per-container label are required. Production NestJS Core interoperability is separately tracked and does not block Agent/Mock Core verification.
+
+The Phase 2 handler, unit/recovery tests, elevated Windows JetStream/Docker run, native Ubuntu live run, and final-head CI passed. PR #32 remains draft for review. See the final evidence and the Windows hosted-runner limitation in the [PR-09 verification report](../../verification/v0.1.4a-next/pr-verification/pr-09-report.md).
 
 ## Objective and exit boundary
 
