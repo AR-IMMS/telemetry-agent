@@ -1,6 +1,22 @@
 # PR-09 — Safe Infrastructure Diagnostics & Controlled Operations
 
-**Status:** PRE-IMPLEMENTATION PLAN / implementation not started. **Release target:** `v0.1.4a-next`. **Evidence:** required from actual target-repository HEAD, not assumed.
+**Status:** IMPLEMENTATION IN PROGRESS. This document retains the original pre-implementation constraints; the current delivered scope and evidence are tracked in the [PR-09 verification report](../../verification/v0.1.4a-next/pr-verification/pr-09-report.md). **Release target:** `v0.1.4a-next`.
+
+## Current Phase 1 checkpoint
+
+The read-only implementation is present on PR #32. It dispatches
+`agent.diagnostics`, `container.inspect`, and `dependency.inspect` through
+versioned request/result contracts, SQLite execution/audit/outbox state, and
+authenticated NATS JetStream. The broker binding uses secret-free v1
+provisioning metadata and a protected credential reference. Commit
+`4f61193aab8a8456582d58b2a9faddc5e903d3b8` adds replacement/revocation
+handling and real NATS session invalidation; exact-head hosted CI remains
+pending.
+
+Phase 2 is not enabled. The plan's operation-specific safety approval remains
+required before `container.restart` is registered or exposed. Production
+NestJS Core interoperability is separately tracked and does not block the
+Agent/Mock Core Phase 1 checkpoint.
 
 ## Objective and exit boundary
 
