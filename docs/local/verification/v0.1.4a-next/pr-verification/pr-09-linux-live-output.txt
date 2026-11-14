@@ -6,3 +6,11 @@ nats: permissions violation: Permissions Violation for Publish to "$JS.API.STREA
 --- PASS: TestLiveJetStreamReadOnlyOperationsE2E (33.67s)
 PASS
 ok  	github.com/ar-imms/telemetry-agent/internal/operations/nats	33.679s
+
+=== Native Ubuntu CI, PR #32 run 43607102528, PR head 68dea7e70d87d65384882a94b8a298f72b687d45 ===
+Runner: Ubuntu 26.04, Go 1.25.5, Docker-in-Docker 29.5.3.
+Command: go test ./internal/operations/nats -run '^TestLiveJetStreamReadOnlyOperationsE2E$' -count=1 -v
+Result: PASS, TestLiveJetStreamReadOnlyOperationsE2E (34.56s). This run includes live expired-request and obsolete-binding checks; both terminated without handler calls, execution claims, or Core results.
+Command: go test ./cmd/agentctl -run '^TestLiveNativeDockerRedisProfileDeliversOTLP$' -count=1 -v
+Result: PASS, TestLiveNativeDockerRedisProfileDeliversOTLP (94.42s), after the optional Operations nil-interface fix.
+Overall Windows and Ubuntu Verify jobs: PASS. Ubuntu also passed full go test ./..., go vet ./..., go build ./..., and the architecture guard.
