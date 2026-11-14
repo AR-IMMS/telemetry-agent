@@ -3,6 +3,7 @@
 - **Status:** IN_PROGRESS
 - **Branch:** `feat/pr-08-health-reporting`
 - **Base:** PR-07 merge `700768dff651e73a2e457aa20d94845bc326d971`
+- **Implementation commits:** `b634eed40ae7f7b6996384f1370c7ec1994e31ab`, `13398ced1c1d16de992025f8927636d3bc3695e2`
 - **PR:** not opened yet.
 
 ## Goal and boundaries
@@ -23,7 +24,7 @@ The source tree already had a local `/v1/status` API, a `status` CLI command, an
 | Inventory | Inventory SQLite repository | Provider enabled state, last attempt/success, error code, completeness and per-resource presence; existing inventory freshness policy is two minutes | Provider timestamps and explicit `DefaultPolicy().StaleAfter`; completeness belongs to provider snapshot | Not yet aggregated into health; explicit `unknown` |
 | Monitoring | Monitoring profile and endpoint diagnostics | Profile match, endpoint resolution, and timestamped Collector scrape failure; no success counter proving current collection | Failure evidence has source timestamp; no success inference from absence of failures | An observed scrape failure marks collection degraded with unknown freshness; no failure and no success evidence remains unknown |
 | Dependencies | Dependency status adapters | Read-only availability, health, and drift projection in `dependency status` | Queried at command time; not part of the local health snapshot | Not yet aggregated into health; explicit `unknown` |
-| Telemetry collection | OpenTelemetry Collector | A matching receiver failure can prove a collection attempt failed; readiness or lack of failure cannot prove scraping | Failure is timestamped; no verified-success freshness source is available | `unknown` unless explicit failure evidence is surfaced; no success inferred |
+| Telemetry collection | OpenTelemetry Collector | A matching receiver failure can prove a collection attempt failed; readiness or lack of failure cannot prove scraping | Failure is timestamped; no verified-success freshness source is available | `degraded` with unknown freshness on explicit failure; otherwise `unknown`; successful collection remains unverified |
 | Telemetry delivery | Collector/export path | Actual sink receipt is verified only by isolated E2E fixtures; Agent runtime has no production receipt signal | No production freshness/completeness source | `unknown: backend_receipt_not_measured` |
 
 ### Contract and conflict findings
@@ -34,6 +35,7 @@ The source tree already had a local `/v1/status` API, a `status` CLI command, an
 - `inventory status` and `dependency status` already expose owner-produced evidence, but there is no health-owned aggregation adapter. PR-08 reports these dimensions as unknown instead of duplicating their collectors or inspectors.
 - No approved Core reporting endpoint or wire contract is present in the local contracts. No Core route, persistence model, retry policy, or status mapping is invented.
 - No global health evidence TTL is defined. PR-08 uses explicit owner-provided validity deadlines; missing observation/validity data remains unknown.
+- Independent review identified a nil-reporter compatibility status regression and timestamp-only completeness inference; both were corrected in `13398ce` and covered by focused regression tests.
 
 ## PR-07 Windows verification retry
 
