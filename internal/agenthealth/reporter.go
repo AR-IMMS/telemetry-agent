@@ -161,20 +161,51 @@ func applyCollectorFailureEvidence(snapshot *Snapshot) {
 		component := &snapshot.Assessment.Components[index]
 		switch component.Component {
 		case ComponentMonitoring:
-			component.State = EvidenceDegraded
-			component.Freshness = FreshnessUnknown
-			component.Completeness = CompletenessPartial
-			component.ReasonCode = "monitoring_receiver_failure_observed"
 		case ComponentTelemetryCollection:
-			component.State = EvidenceDegraded
-			component.Freshness = FreshnessUnknown
-			component.Completeness = CompletenessPartial
-			component.ReasonCode = "collector_scrape_failure_observed"
 		default:
 			continue
 		}
-		snapshot.Assessment.State = EvidenceDegraded
+		if hasCollectorFailure(snapshot.CollectorFailures, CollectorFailureReceiver) {
+			component.State = EvidenceDegraded
+			component.Freshness = FreshnessUnknown
+			component.Completeness = CompletenessPartial
+			if component.Component == ComponentMonitoring {
+				component.ReasonCode = "monitoring_receiver_failure_observed"
+			} else {
+				component.ReasonCode = "collector_scrape_failure_observed"
+			}
+			snapshot.Assessment.State = EvidenceDegraded
+		}
 	}
+	if hasCollectorFailure(snapshot.CollectorFailures, CollectorFailureExporter) {
+		for index := range snapshot.Assessment.Components {
+			component := &snapshot.Assessment.Components[index]
+			switch component.Component {
+			case ComponentGatewayConnectivity:
+				component.State = EvidenceDegraded
+				component.Freshness = FreshnessUnknown
+				component.Completeness = CompletenessPartial
+				component.ReasonCode = "collector_exporter_network_failure_observed"
+			case ComponentTelemetryDelivery:
+				component.State = EvidenceDegraded
+				component.Freshness = FreshnessUnknown
+				component.Completeness = CompletenessPartial
+				component.ReasonCode = "collector_export_failure_observed"
+			default:
+				continue
+			}
+			snapshot.Assessment.State = EvidenceDegraded
+		}
+	}
+}
+
+func hasCollectorFailure(failures []CollectorFailure, direction CollectorFailureDirection) bool {
+	for _, failure := range failures {
+		if failure.Direction == direction || (direction == CollectorFailureReceiver && failure.Direction == "") {
+			return true
+		}
+	}
+	return false
 }
 
 // ReportCollectorOutput extracts bounded network scrape evidence without retaining raw Collector logs.
@@ -206,7 +237,33 @@ func collectorNetworkFailure(line string) (CollectorFailure, bool) {
 	component, _ := fields["otelcol.component.id"].(string)
 	signal, _ := fields["otelcol.signal"].(string)
 	message, _ := fields["error"].(string)
-	if signal != "metrics" || !strings.Contains(strings.ToLower(message), "dial tcp ") {
+	if message == "" || !strings.Contains(strings.ToLower(message), "dial tcp ") {
+		return CollectorFailure{}, false
+	}
+	kind, _ := fields["kind"].(string)
+	if kind == "" {
+		kind, _ = fields["otelcol.component.kind"].(string)
+	}
+	if kind == "exporter" {
+		name, _ := fields["name"].(string)
+		if name == "" {
+			name = component
+		}
+		if strings.TrimSpace(name) == "" {
+			return CollectorFailure{}, false
+		}
+		endpoint, ok := collectorNetworkEndpoint(message)
+		if !ok {
+			return CollectorFailure{}, false
+		}
+		observedAt := collectorLogTimestamp(line)
+		return CollectorFailure{
+			Direction: CollectorFailureExporter, Exporter: boundDiagnosticText(sanitizeError(name)),
+			Endpoint: boundDiagnosticText(endpoint), Code: "connection_failed",
+			ObservedAt: observedAt.Format(time.RFC3339Nano),
+		}, true
+	}
+	if signal != "metrics" {
 		return CollectorFailure{}, false
 	}
 	receiver := component
@@ -222,27 +279,46 @@ func collectorNetworkFailure(line string) (CollectorFailure, bool) {
 	if !strings.Contains(receiver, "/") {
 		return CollectorFailure{}, false
 	}
-	endpoint := message[strings.Index(strings.ToLower(message), "dial tcp ")+len("dial tcp "):]
+	endpoint, ok := collectorNetworkEndpoint(message)
+	if !ok {
+		return CollectorFailure{}, false
+	}
+	observedAt := collectorLogTimestamp(line)
+	return CollectorFailure{
+		Direction: CollectorFailureReceiver, Receiver: boundDiagnosticText(sanitizeError(receiver)),
+		Endpoint: boundDiagnosticText(endpoint), Code: "connection_failed",
+		ObservedAt: observedAt.Format(time.RFC3339Nano),
+	}, true
+}
+
+func collectorNetworkEndpoint(message string) (string, bool) {
+	start := strings.Index(strings.ToLower(message), "dial tcp ")
+	if start < 0 {
+		return "", false
+	}
+	endpoint := message[start+len("dial tcp "):]
 	end := strings.Index(endpoint, ": ")
 	if end < 0 {
-		return CollectorFailure{}, false
+		return "", false
 	}
 	host, port, err := net.SplitHostPort(endpoint[:end])
 	if err != nil {
-		return CollectorFailure{}, false
+		return "", false
 	}
 	if separator := strings.LastIndexByte(host, '@'); separator >= 0 {
 		host = host[separator+1:]
 	}
 	if host == "" || strings.ContainsAny(host, "/?#@") {
-		return CollectorFailure{}, false
+		return "", false
 	}
-	endpointText := net.JoinHostPort(host, port)
-	observedAt := time.Now().UTC()
+	return net.JoinHostPort(host, port), true
+}
+
+func collectorLogTimestamp(line string) time.Time {
 	if fields := strings.Fields(line); len(fields) > 0 {
 		if parsed, err := time.Parse(time.RFC3339Nano, fields[0]); err == nil {
-			observedAt = parsed.UTC()
+			return parsed.UTC()
 		}
 	}
-	return CollectorFailure{Receiver: boundDiagnosticText(sanitizeError(receiver)), Endpoint: boundDiagnosticText(endpointText), Code: "connection_failed", ObservedAt: observedAt.Format(time.RFC3339Nano)}, true
+	return time.Now().UTC()
 }

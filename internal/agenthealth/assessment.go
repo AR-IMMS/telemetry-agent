@@ -10,6 +10,10 @@ const (
 	ComponentAgentRuntime Component = "agent_runtime"
 	// ComponentCoreConnectivity reports observed connectivity to AR-IMMS Core.
 	ComponentCoreConnectivity Component = "core_connectivity"
+	// ComponentOpAMPConnectivity reports a Supervisor's remote OpAMP session independently of process health.
+	ComponentOpAMPConnectivity Component = "opamp_connectivity"
+	// ComponentGatewayConnectivity reports Collector exporter connectivity failures observed from Collector diagnostics.
+	ComponentGatewayConnectivity Component = "gateway_connectivity"
 	// ComponentSupervisor reports the managed OpAMP Supervisor process when configured.
 	ComponentSupervisor Component = "supervisor"
 	// ComponentCollector reports the supervised Collector lifecycle state.
@@ -87,8 +91,10 @@ type Assessment struct {
 var assessmentComponents = []Component{
 	ComponentAgentRuntime,
 	ComponentCoreConnectivity,
+	ComponentOpAMPConnectivity,
 	ComponentSupervisor,
 	ComponentCollector,
+	ComponentGatewayConnectivity,
 	ComponentConfiguration,
 	ComponentInventory,
 	ComponentMonitoring,
@@ -110,7 +116,8 @@ func evaluateAssessment(now time.Time, observation RuntimeObservation) Assessmen
 		Freshness: FreshnessFresh, Completeness: CompletenessComplete,
 		ObservedAt: timePointer(now), ReasonCode: agentReason,
 	})
-	components = append(components, unknownEvidence(ComponentCoreConnectivity, "core_connectivity_not_observed"))
+	components = append(components, unknownEvidence(ComponentCoreConnectivity, "core_connectivity_evidence_unavailable"))
+	components = append(components, unknownEvidence(ComponentOpAMPConnectivity, "opamp_session_evidence_unavailable"))
 	if !observation.ConfigurationObserved {
 		components = append(components, unknownEvidence(ComponentSupervisor, "supervisor_configuration_not_observed"))
 	} else if !observation.SupervisorConfigured {
@@ -146,6 +153,7 @@ func evaluateAssessment(now time.Time, observation RuntimeObservation) Assessmen
 	})
 
 	components = append(components,
+		unknownEvidence(ComponentGatewayConnectivity, "collector_exporter_connectivity_not_observed"),
 		unknownEvidence(ComponentInventory, "inventory_not_aggregated"),
 		unknownEvidence(ComponentMonitoring, "monitoring_success_not_observed"),
 		unknownEvidence(ComponentDependencies, "dependency_status_not_aggregated"),

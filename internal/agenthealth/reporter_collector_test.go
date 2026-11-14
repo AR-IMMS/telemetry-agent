@@ -33,6 +33,37 @@ func TestReporterRetainsOnlySanitizedCollectorNetworkFailures(t *testing.T) {
 	}
 }
 
+func TestReporterClassifiesExporterNetworkFailureWithoutClaimingReceipt(t *testing.T) {
+	reporter := NewReporter(RuntimeObservation{
+		CollectorState:      CollectorStateReady,
+		DesiredGeneration:   4,
+		ActivatedGeneration: 4,
+		AppliedGeneration:   4,
+	})
+	reporter.ReportCollectorOutput(`2026-11-14T10:00:00Z error Exporting failed. Dropping data. {"kind":"exporter","data_type":"metrics","name":"otlp/default","error":"rpc unavailable: dial tcp 127.0.0.1:4317: connect: connection refused","dropped_items":3}`)
+
+	snapshot := reporter.Snapshot()
+	if len(snapshot.CollectorFailures) != 1 {
+		t.Fatalf("collector failures=%+v, want one exporter network failure", snapshot.CollectorFailures)
+	}
+	failure := snapshot.CollectorFailures[0]
+	if failure.Direction != CollectorFailureExporter || failure.Exporter != "otlp/default" || failure.Endpoint != "127.0.0.1:4317" || failure.Code != "connection_failed" {
+		t.Fatalf("collector failure=%+v, want sanitized exporter endpoint diagnostics", failure)
+	}
+	gateway := componentEvidence(t, snapshot.Assessment, ComponentGatewayConnectivity)
+	if gateway.State != EvidenceDegraded || gateway.Freshness != FreshnessUnknown || gateway.ReasonCode != "collector_exporter_network_failure_observed" {
+		t.Fatalf("Gateway connectivity evidence=%+v, want observed failure with unknown freshness", gateway)
+	}
+	delivery := componentEvidence(t, snapshot.Assessment, ComponentTelemetryDelivery)
+	if delivery.State != EvidenceDegraded || delivery.Freshness != FreshnessUnknown || delivery.ReasonCode != "collector_export_failure_observed" {
+		t.Fatalf("delivery evidence=%+v, want failed export evidence without a success claim", delivery)
+	}
+	collector := componentEvidence(t, snapshot.Assessment, ComponentCollector)
+	if collector.State != EvidenceHealthy {
+		t.Fatalf("Collector process evidence=%+v, want ready process separated from failed export", collector)
+	}
+}
+
 func TestReporterBoundsCollectorFailures(t *testing.T) {
 	reporter := NewReporter(RuntimeObservation{})
 	for i := 0; i < maxCollectorFailures+3; i++ {

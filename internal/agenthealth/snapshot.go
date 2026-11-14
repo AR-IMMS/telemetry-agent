@@ -52,11 +52,23 @@ type Snapshot struct {
 
 // CollectorFailure is a bounded, sanitized Collector observation exposed by the local status API.
 type CollectorFailure struct {
-	Receiver   string `json:"receiver"`
-	Endpoint   string `json:"endpoint"`
-	Code       string `json:"code"`
-	ObservedAt string `json:"observedAt"`
+	Direction  CollectorFailureDirection `json:"direction,omitempty"`
+	Receiver   string                    `json:"receiver"`
+	Exporter   string                    `json:"exporter,omitempty"`
+	Endpoint   string                    `json:"endpoint"`
+	Code       string                    `json:"code"`
+	ObservedAt string                    `json:"observedAt"`
 }
+
+// CollectorFailureDirection identifies the Collector component role that reported a network failure.
+type CollectorFailureDirection string
+
+const (
+	// CollectorFailureReceiver identifies a source receiver scrape failure.
+	CollectorFailureReceiver CollectorFailureDirection = "receiver"
+	// CollectorFailureExporter identifies an exporter send failure.
+	CollectorFailureExporter CollectorFailureDirection = "exporter"
+)
 
 // Evaluate derives local health from one runtime observation.
 func Evaluate(observation RuntimeObservation) Snapshot {

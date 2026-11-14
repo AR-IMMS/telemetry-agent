@@ -3,7 +3,7 @@
 - **Status:** IN_PROGRESS
 - **Branch:** `feat/pr-08-health-reporting`
 - **Base:** PR-07 merge `700768dff651e73a2e457aa20d94845bc326d971`
-- **Latest committed implementation head:** `7f274f3d486a9754e6452702ad969f9eb09e6ff1`; additional review fixes are currently uncommitted in the isolated PR-08 worktree and require a new exact-head CI run before merge.
+- **Latest implementation head:** `5f9336ec944d9ecaa78e64d36c6c24334e08a649`; final review-fix commit pushed to the existing PR branch.
 - **Implementation commits:** `b634eed40ae7f7b6996384f1370c7ec1994e31ab`, `13398ced1c1d16de992025f8927636d3bc3695e2`, `082f7535047f393108690d0c64c0caf31b76efa4`, `4ab5958b344cd02330b04142a7ef53cad3b4b667`, `7a2601869863fc7a8e6f82c7feed886a40fdbf4a`, `0e0bc19` (runtime evidence attribution and safe status errors), `7f274f3` (bounded owner evidence)
 - **PR:** draft [#31](https://github.com/AR-IMMS/telemetry-agent/pull/31), targeting `chore/v0.1.4a-next`.
 
@@ -18,8 +18,9 @@ The source tree already had a local `/v1/status` API, a `status` CLI command, an
 | Dimension | Current owner/source | Available evidence | Freshness and completeness | PR-08 projection |
 |---|---|---|---|---|
 | Agent runtime | Local status HTTP handler | A successful response proves the Agent status endpoint handled a request | Generated for the current response | `healthy`, response timestamp |
-| Core connectivity | Identity/enrollment and Core adapter | Enrollment outcome exists; no current connectivity probe or health-report contract | Current connectivity is unknown | `unknown: core_connectivity_not_observed` |
-| OpAMP Supervisor | Runtime managed-owner path | Persisted managed-owner config; readiness callback only after managed Collector readiness | No separate OpAMP connection assertion; runtime event time only | `unsupported` for legacy owner; managed readiness evidence otherwise |
+| Core connectivity | Existing Core enrollment/control clients | The running Agent has no current authenticated Core request source; enrollment runs as a separate CLI operation and cannot prove current availability | No Agent-owned observation or freshness deadline | `unknown: core_connectivity_evidence_unavailable`; classify network/authentication outcomes only when an existing authenticated request result reaches Health |
+| OpAMP connectivity | Managed Supervisor process and remote OpAMP session owner | Agent observes Supervisor process and Collector readiness; remote WSS session events are not exposed to the Agent | No local connected/disconnected event or validity deadline | `unknown: opamp_session_evidence_unavailable`; Supervisor process health remains a separate component |
+| Gateway connectivity | Collector exporter diagnostics | Legacy Collector output callback recognizes structured exporter network failures; managed Supervisor does not expose child Collector output to the Agent | Failure timestamp is recorded without an owner validity deadline; absence of failure is not success | Observed exporter network failure marks Gateway connectivity degraded with unknown freshness; otherwise unknown |
 | Collector | Runtime watcher and Collector readiness probe | Lifecycle state, desired/activated/applied generations, pending teardown count; sanitized structured scrape-failure observations | Collector/Supervisor completeness requires an observed lifecycle state; freshness needs owner-provided `validUntil` | Healthy/degraded/unknown state, component-specific completeness and explicit freshness |
 | Configuration | Configuration/Runtime state | Generation equality and pending teardowns; applied means generation-bound runtime readiness | Completeness requires the runtime state/generation observation; timestamp alone is partial; no implicit age policy | Healthy only for equal nonzero generations with no pending teardown; otherwise degraded/unknown |
 | Inventory | Inventory SQLite repository | Provider enabled state, last attempt/success, error code, and resource count; Health reads at most 64 provider rows and never loads the resource inventory | Uses provider timestamps and Discovery's `DefaultPolicy().StaleAfter` (two minutes); provider error makes the projection partial; a truncated read remains unknown/partial | Latest provider failure is `degraded`; all enabled providers with successful snapshots are `healthy`; missing evidence is `unknown`; stale last success is marked stale |
@@ -31,12 +32,13 @@ The source tree already had a local `/v1/status` API, a `status` CLI command, an
 ### Contract and conflict findings
 
 - Existing top-level `Snapshot.Status` reflects Collector readiness, applied configuration generations, pending teardowns, and the last runtime error. It is not a full system health result. Existing keys remain for compatibility; the new assessment is additive. A nil reporter retains the existing degraded top-level status while its detailed evidence is unknown.
-- Existing Collector network failures are reduced to receiver, host/port, code, and observation time; raw Collector log lines are not retained. The list is bounded at 32, but previously accepted identifier strings had no length limit and `LastError` was exposed verbatim. PR-08 bounds/redacts those diagnostics.
+- Existing Collector network failures are reduced to direction, receiver or exporter ID, host/port, code, and observation time; raw Collector log lines are not retained. The list is bounded at 32, but previously accepted identifier strings had no length limit and `LastError` was exposed verbatim. PR-08 bounds/redacts those diagnostics. Exporter failures are evidence of a failed send attempt only. The Collector also exposes exporter send-failure internal telemetry when configured; this Agent does not claim receipt from Collector readiness or missing errors. See the [Collector exporter internal telemetry reference](https://github.com/open-telemetry/opentelemetry-collector/blob/main/exporter/exporterhelper/documentation.md).
 - Readiness and a successful config-generation application are not proof of scrape or delivery. `doctor` shows those as separate dimensions; explicit scrape failures mark collection degraded, while absence of both success and failure evidence remains unknown. Delivery remains unknown without sink receipt.
 - Health consumes Inventory and Dependency projections through read-only sources composed at the `agentctl` boundary. Inventory reads only provider-status rows through Discovery's capped `ProviderStatusReader` (64 maximum) and uses the Discovery-owned two-minute stale policy. Dependency inspection is bounded by a five-second request deadline; neither adapter mutates owner state or starts a separate polling loop.
 - The HTTP request context now reaches both owner evidence sources. Inventory provider-status reads accept that context and SQLite checks cancellation before opening the database and uses `QueryContext`; Dependency derives its bounded timeout from the same caller context. The inventory read remains capped at 64 rows.
 - A failed Agent-state read now degrades the Agent runtime dimension while leaving Collector, Supervisor ownership, and configuration unknown. An observed Collector failure remains degraded. This avoids turning an Agent database/read error into a fabricated Collector failure or a false legacy-ownership result.
 - No approved Core reporting endpoint or wire contract is present in the local contracts. No Core route, persistence model, retry policy, or status mapping is invented.
+- The running Agent currently has no authenticated Core management request source after enrollment, and the remote OpAMP server owns WSS session state. No new probe or cross-process status channel is added. Both dimensions remain unknown until existing request/session evidence reaches an approved local evidence port; network failure, authentication failure, disconnected session, and unavailable evidence remain distinct classifications.
 - No global health evidence TTL is defined. PR-08 uses explicit owner-provided validity deadlines; missing observation/validity data remains unknown.
 - Independent review identified a nil-reporter compatibility status regression and timestamp-only completeness inference; both were corrected in `13398ce` and covered by focused regression tests.
 
@@ -78,9 +80,14 @@ The final review pass moved Inventory and Dependency classification into
 Collector receiver failure degrade both Monitoring and Telemetry Collection
 while keeping Delivery unknown. Request cancellation now propagates from the
 HTTP handler through `Reporter.SnapshotContext`, owner evidence sources, and
-the SQLite provider-status query. Tests cover stale snapshots, provider
-failure/truncation, bounded dependency projections, Monitoring/Collection/
-Delivery separation, request context propagation, and canceled SQLite reads.
+the SQLite provider-status query. The current follow-up also adds separate
+OpAMP and Gateway connectivity dimensions, keeps OpAMP session evidence
+unknown unless reported, and classifies Collector exporter network failures
+without treating Collector readiness or missing errors as delivery proof.
+Tests cover stale snapshots, provider failure/truncation, bounded dependency
+projections, Monitoring/Collection/Delivery separation, request context
+propagation, canceled SQLite reads, unknown OpAMP session evidence, and an
+exporter network failure while Collector readiness remains healthy.
 
 Native Windows checks on this working diff: focused `internal/agenthealth`
 tests pass; the explicit canceled SQLite provider-status test passes; status/
@@ -100,23 +107,89 @@ interrupted after further packages stopped producing output. Treat this as an
 incomplete environment-constrained run, not a full-suite result. Exact-head CI
 must execute the complete suite.
 
-The Core/Gateway outage and reconvergence test remains open: no Core health
-reporting or Gateway reachability contract is approved, and this change does
-not create one or initiate recovery. Current health projections remain local
-and source-owned; Delivery stays unknown unless a sink receipt is observed.
-Final standards review found no remaining actionable coding-policy issue. The
-spec review confirms the stale Inventory and Monitoring/Collection separation
-fixes, but retains the Core/Gateway outage-recovery verification gap. PR-08
-stays IN_PROGRESS pending the gap disposition and final-head CI.
+Core reporting and Core/OpAMP outage reconvergence are deferred because the
+Agent lacks an existing current Core request source and the remote OpAMP
+session owner does not expose its session state to this process. These
+contract-dependent gates do not block local PR-08 completion. Gateway failure
+evidence is read from Collector output only where the Agent owns that output
+callback; managed Supervisor child Collector output is not exposed to the
+Agent and remains unknown without another supported evidence source. Delivery
+remains unknown unless a sink receipt is observed. Final standards review
+found no remaining actionable coding-policy issue. The spec review confirms
+the stale Inventory and Monitoring/Collection separation fixes; contract-
+dependent scenarios remain `NOT_TESTED`, not passed.
 
 The current working diff passes `./scripts/check-architecture.ps1`: 36 package
 documentation checks, 36 package import checks, and the 450-line production
 file guard. This supersedes the earlier pre-fix invocation failure recorded
 above. `git diff --check` also passes.
 
-## Core reporting and remaining gates
+### Exact-head CI — 2026-11-14
 
-Core health-report transmission is **not implemented**. It stays open pending an approved contract; local assessment remains usable offline. Remaining PR-08 work: obtain a disposition for the Core/Gateway outage-recovery gate without inventing a contract, run full Windows and Linux test suites on the current exact head, and update this report/tracker after exact-head CI.
+PR head `5f9336ec944d9ecaa78e64d36c6c24334e08a649` passed Actions run
+[43577440528](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43577440528)
+on Windows and Ubuntu. Both runners executed and passed the full `go test
+./... -count=1` step, architecture checks, pinned Supervisor verification,
+managed Supervisor fallback/OTLP E2E, vet, and build. Ubuntu also passed the
+isolated Docker/Collector/OTLP profile E2Es, including Redis, PostgreSQL,
+Python/Prometheus, mock-cooling, and container churn. Windows Docker/profile
+E2Es were skipped by workflow conditions; native service lifecycle E2E was
+skipped on both jobs because this run was for PR #31. These skipped cases are
+not counted as covered by this run.
+
+Sanitized artifacts were downloaded and hashed under the ignored local path
+`tmp/pr08-ci-43577440528/`:
+
+- Windows managed enrollment/OpAMP: artifact `14107151884`, file SHA-256
+  `B328B3CFFAFBC3D125E95D7AC287D4060C8D9DE56B4EFF18F7E6873A1C6B7E86`.
+- Windows managed Supervisor runtime: artifact `14107151884`, file SHA-256
+  `694D05DCB4EC36C73191B6FB93A0DA86D2DC6EA7F91702832802287A648B4F65`.
+- Ubuntu managed enrollment/OpAMP: artifact `14107661061`, file SHA-256
+  `E11E69F71C726A2A04A061032E24759A4CF9CDE3D3919B4D89A4DBED35F22721`.
+- Ubuntu managed Supervisor runtime: artifact `14107661061`, file SHA-256
+  `63D636BFF358408056AD3B54345429E303C1FEAF4F97CB788EB4BAD516E70A73`.
+- Ubuntu profile summary and OTLP sink: artifact `14107431384`, file SHA-256s
+  `A6E21606A94598CA151D08051E40DADE2E598C0219A1DC9B82AD7A07C1CDA47B` and
+  `CAA41CC09E09954BBDA3CE4540062F4AF252E959DF03A42334A7909F6C1F2849`.
+
+## Follow-up verification on working diff
+
+The working diff is based on committed PR head
+`5f9336ec944d9ecaa78e64d36c6c24334e08a649`; these results are local and are
+not yet exact-head CI evidence.
+
+- Passed focused Windows tests for unknown Core/OpAMP evidence, exporter
+  network-failure classification, sanitized Collector failures, and the
+  legacy runtime output callback forwarding exporter diagnostics.
+- Passed the full `internal/agentlifecycle` package after setting Go `TEMP` and
+  `TMP` inside the writable worktree.
+- `go vet ./...`, native `go build ./...`, and
+  `GOOS=linux GOARCH=amd64 go build ./...` passed.
+- `./scripts/check-architecture.ps1` passed package documentation checks for
+  36 source directories, import-boundary checks for 36 packages, and the
+  production Go file-size guard. `git diff --check` passed.
+- Changed-document link validation checked 20 relative links across five
+  changed Markdown files; zero targets were missing.
+- The full `internal/agenthealth` package did not pass locally: two existing
+  HTTP tests (`TestFetchStatusDecodesLiveSnapshot` and
+  `TestServeStatusServesSnapshotAndStopsWithContext`) were blocked by Windows
+  sandbox loopback permissions (`connectex` access denied). The focused tests
+  passed; this environment failure is not treated as a product regression.
+- Full Windows/Linux test suites and live managed-runtime E2E for this updated
+  diff remain pending exact-head hosted CI. Earlier passing run
+  `43577440528` is for the prior committed head and does not cover this diff.
+- GitHub publication is currently unavailable: `gh auth status` reports the
+  `GH_TOKEN` and default account tokens invalid, and GitHub API access returns
+  a network connection error. The local branch remains unpushed; retry push
+  and exact-head CI after repository access is restored.
+
+## Contract disposition and remaining gates
+
+Per the approved PR-08 clarification, external Core health-report transmission is **deferred** until a versioned Core contract is approved. This does not block independent local health work. Core network failure, authentication failure, and unavailable/stale evidence remain distinct; the running Agent currently has no authenticated Core-request result source wired into Health, so this dimension is `UNKNOWN`. OpAMP session evidence is independent and is also `UNKNOWN` until the local Agent receives the Supervisor's existing session evidence. Gateway failure may be classified from supported Collector exporter diagnostics where those diagnostics reach the Agent; Collector readiness or absence of errors does not prove reachability or OTLP receipt. No custom Gateway probe, Core endpoint, or reporting schema is introduced.
+
+Outage and recovery cases must use existing owner evidence. The legacy direct Collector output callback can report an observed exporter network failure, while the managed Supervisor path does not currently expose child Collector output to Agent Health. Tests cover classification and recovery boundaries where evidence is available; Core reporting and cross-process Core/OpAMP reconvergence are recorded `BLOCKED`/`NOT_TESTED` with the missing source/contract and follow-up, and do not block PR-08 as a whole. Local snapshots and read-only reporting ports remain available offline.
+
+Remaining PR-08 gates: rerun the full Windows and Linux suites on the updated exact head, retain actual exact-head workflow evidence, validate the changed-document links, and keep contract/source-dependent cases tracked for resolution before final release acceptance.
 
 **Rollback:** additive assessment data and the `doctor` dispatch can be reverted without changing SQLite state or runtime ownership. Existing `/v1/status` JSON fields and status command invocation remain.
 

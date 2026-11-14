@@ -31,6 +31,14 @@ func TestEvaluateAtKeepsCollectionAndDeliveryUnverifiedWithoutEvidence(t *testin
 	if delivery.State != EvidenceUnknown || delivery.ReasonCode != "backend_receipt_not_measured" {
 		t.Fatalf("delivery evidence=%+v, want unknown without sink receipt", delivery)
 	}
+	opamp := componentEvidence(t, snapshot.Assessment, ComponentOpAMPConnectivity)
+	if opamp.State != EvidenceUnknown || opamp.ReasonCode != "opamp_session_evidence_unavailable" {
+		t.Fatalf("OpAMP evidence=%+v, want unknown without session evidence", opamp)
+	}
+	core := componentEvidence(t, snapshot.Assessment, ComponentCoreConnectivity)
+	if core.State != EvidenceUnknown || core.ReasonCode != "core_connectivity_evidence_unavailable" {
+		t.Fatalf("Core evidence=%+v, want unknown without a current authenticated Core result", core)
+	}
 	collection := componentEvidence(t, snapshot.Assessment, ComponentTelemetryCollection)
 	if collection.State != EvidenceUnknown {
 		t.Fatalf("collection evidence=%+v, want unknown without scrape result evidence", collection)

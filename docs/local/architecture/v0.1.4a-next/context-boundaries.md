@@ -23,7 +23,7 @@ from actual source before moving code.
 | Monitoring Capabilities | Capability catalog, metadata-to-capability matching, supported profile templates, explain status | Inventory projection, pinned Collector manifest; monitoring intents | Native scrape loops or client-specific receiver plugins |
 | Runtime & Installation | Pinned Collector and (after parity) OpAMP Supervisor artifacts, config validation, OS dependencies, activation/LKG evidence, one lifecycle owner | ApplyCandidate port during migration; Supervisor provisioning/status evidence | Core policy ownership or concurrent Collector lifecycle owners |
 | OpAMP Adapter (server side) | Native OpAMP protocol session and translation to Core-owned contracts | Core auth, identity binding, desired policy, status/health APIs | Durable policy authority, mock-only calls, Collector business rules |
-| Health & Reporting | Snapshot/status projections, internal diagnostics, evidence from Agent, Supervisor, Collector and OTLP sink | Runtime and Agent evidence; supported OpAMP status | Claiming collection/delivery from readiness or protocol status alone |
+| Health & Reporting | Local health snapshots, evidence evaluation, diagnostics, and reporting ports | Owner-produced Agent/Core request outcomes, Supervisor OpAMP session evidence, Collector exporter diagnostics, collection evidence, and sink receipts where exposed | Custom Core/Gateway probes or endpoints; treating OpAMP as Core availability; claiming collection/delivery from readiness or protocol status alone |
 | Remote Operations | Typed operation specs, target binding, execution state, audit/outcome | Core-authorized requests; Docker/OS adapter | SSH, arbitrary shell, OpAMP restart misuse |
 
 ## Discovery Provider / Listener contract (proposed)
@@ -57,3 +57,16 @@ and product diagnostics. See [OpAMP integration](opamp-integration.md).
 ## Unresolved boundaries
 
 Core-vs-local config authority; precise identity mapping to OpAMP instance UID; credential attachment to protected receivers; privileged operations executor. These require ADRs prior to the relevant PR.
+
+### Health evidence boundary
+
+Health keeps process health, configuration status, collection health, Core and
+OpAMP connectivity, Gateway connectivity, and telemetry delivery as separate
+dimensions. Each value comes from its owning component's evidence port. Core
+network errors and authentication failures are distinct when an existing
+authenticated Core request result is available; otherwise Core evidence is
+`UNKNOWN`. OpAMP connection/session evidence does not imply Core availability.
+Gateway failures may use supported Collector exporter diagnostics; Collector
+readiness and the absence of exporter errors do not prove Gateway reachability
+or OTLP receipt. Missing or stale observations are `UNKNOWN`. External Core
+health reporting remains deferred until its versioned contract is approved.
