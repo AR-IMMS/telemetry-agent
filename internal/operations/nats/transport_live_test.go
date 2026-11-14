@@ -223,8 +223,40 @@ func TestLiveJetStreamReadOnlyOperationsE2E(t *testing.T) {
 	if health.calls.Load() != 2 {
 		t.Fatalf("diagnostics calls after JetStream restart=%d, want 2", health.calls.Load())
 	}
+	consumer, err := agent.jetstream.Consumer(context.Background(), requestStream, agentDurable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	consumerInfo, err := consumer.Info(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rejectedBinding := requests[0]
+	rejectedBinding.OperationID = "pr09-live-obsolete-binding"
+	rejectedBinding.BindingID = "obsolete-binding"
+	rejectedBinding.RequestedAt = time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano)
+	rejectedBinding.ExpiresAt = time.Now().UTC().Add(time.Minute).Format(time.RFC3339Nano)
+	expiredRequest := requests[0]
+	expiredRequest.OperationID = "pr09-live-expired-request"
+	expiredRequest.RequestedAt = time.Now().UTC().Add(-2 * time.Minute).Format(time.RFC3339Nano)
+	expiredRequest.ExpiresAt = time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano)
+	for _, rejected := range []operations.Request{rejectedBinding, expiredRequest} {
+		if err := mock.PublishOperation(context.Background(), rejected); err != nil {
+			t.Fatalf("publish rejected %s command: %v", rejected.OperationID, err)
+		}
+	}
+	waitForConsumerAckFloor(t, consumer, consumerInfo.AckFloor.Consumer+2)
+	if health.calls.Load() != 2 {
+		t.Fatalf("rejected commands invoked diagnostics %d times, want 2", health.calls.Load())
+	}
+	select {
+	case result := <-mock.Results():
+		t.Fatalf("rejected command produced a result: %+v", result)
+	default:
+	}
 	var published sql.NullString
 	var auditCount int
+	var rejectedClaims int
 	db, err := store.OpenDatabase()
 	if err != nil {
 		t.Fatal(err)
@@ -236,8 +268,33 @@ func TestLiveJetStreamReadOnlyOperationsE2E(t *testing.T) {
 	if err := db.QueryRow(`SELECT COUNT(*) FROM operation_audit_event WHERE operation_id IN (?,?,?,?)`, requests[0].OperationID, requests[1].OperationID, requests[2].OperationID, recoveryRequest.OperationID).Scan(&auditCount); err != nil {
 		t.Fatal(err)
 	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM operation_execution WHERE operation_id IN (?,?)`, rejectedBinding.OperationID, expiredRequest.OperationID).Scan(&rejectedClaims); err != nil {
+		t.Fatal(err)
+	}
 	if !published.Valid || auditCount != 12 {
 		t.Fatalf("outbox published=%v audit events=%d", published.Valid, auditCount)
+	}
+	if rejectedClaims != 0 {
+		t.Fatalf("rejected commands created %d execution claims, want 0", rejectedClaims)
+	}
+}
+
+func waitForConsumerAckFloor(t *testing.T, consumer jetstream.Consumer, minimum uint64) {
+	t.Helper()
+	deadline := time.NewTimer(15 * time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		info, err := consumer.Info(context.Background())
+		if err == nil && info.AckFloor.Consumer >= minimum {
+			return
+		}
+		select {
+		case <-deadline.C:
+			t.Fatalf("JetStream consumer ack floor did not reach %d: info=%+v err=%v", minimum, info, err)
+		case <-ticker.C:
+		}
 	}
 }
 
