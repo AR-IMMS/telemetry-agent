@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ar-imms.github.io/contracts/operations/broker-binding-v1.schema.json",
+  "$id": "https://ar-imms.local/contracts/operations/broker-binding-v1.schema.json",
   "title": "AR-IMMS Operations Broker Binding v1",
   "description": "Secret-free Core-to-Agent provisioning record for one Operations broker binding. Plaintext credentials are provisioned separately into protected local storage.",
   "type": "object",

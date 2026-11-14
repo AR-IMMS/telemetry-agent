@@ -1,6 +1,6 @@
 # PR-09 — Safe Infrastructure Diagnostics & Controlled Operations
 
-**Status:** IMPLEMENTATION IN PROGRESS. This document retains the original pre-implementation constraints; the current delivered scope and evidence are tracked in the [PR-09 verification report](../../verification/v0.1.4a-next/pr-verification/pr-09-report.md). **Release target:** `v0.1.4a-next`.
+**Status:** Phase 1 PASS; PR-09 Phase 2 IN PROGRESS. This document retains the original pre-implementation constraints; the current delivered scope and evidence are tracked in the [PR-09 verification report](../../verification/v0.1.4a-next/pr-verification/pr-09-report.md). **Release target:** `v0.1.4a-next`.
 
 ## Current Phase 1 checkpoint
 
@@ -10,8 +10,9 @@ versioned request/result contracts, SQLite execution/audit/outbox state, and
 authenticated NATS JetStream. The broker binding uses secret-free v1
 provisioning metadata and a protected credential reference. Commit
 `4f61193aab8a8456582d58b2a9faddc5e903d3b8` adds replacement/revocation
-handling and real NATS session invalidation; exact-head hosted CI remains
-pending.
+handling and real NATS session invalidation. Final PR head
+`7ab6ee3b70307f49ec3d378e4c6d2e5575ef3cdf` passed Windows/Ubuntu CI and
+native live Windows/Linux NATS verification.
 
 Phase 2 is not enabled. The plan's operation-specific safety approval remains
 required before `container.restart` is registered or exposed. Production
