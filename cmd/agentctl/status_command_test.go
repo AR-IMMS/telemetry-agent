@@ -69,7 +69,7 @@ func TestRunDoctorExplainsUnknownAndStaleEvidence(t *testing.T) {
 	for _, want := range []string{
 		"Component evidence:",
 		"collector: state=healthy freshness=stale completeness=complete",
-		"core_connectivity: state=unknown freshness=unknown completeness=unknown reason=core_connectivity_not_observed",
+		"core_connectivity: state=unknown freshness=unknown completeness=unknown reason=core_connectivity_evidence_unavailable",
 		"telemetry_delivery: state=unknown freshness=unknown completeness=unknown reason=backend_receipt_not_measured",
 	} {
 		if !strings.Contains(stdout.String(), want) {

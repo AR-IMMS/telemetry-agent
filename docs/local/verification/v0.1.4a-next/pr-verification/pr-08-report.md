@@ -152,17 +152,30 @@ Sanitized artifacts were downloaded and hashed under the ignored local path
   `A6E21606A94598CA151D08051E40DADE2E598C0219A1DC9B82AD7A07C1CDA47B` and
   `CAA41CC09E09954BBDA3CE4540062F4AF252E959DF03A42334A7909F6C1F2849`.
 
-## Follow-up verification on working diff
+## Follow-up verification on pushed commit
 
-The working diff is based on committed PR head
-`5f9336ec944d9ecaa78e64d36c6c24334e08a649`; these results are local and are
-not yet exact-head CI evidence.
+Commit `1ce2106f4884750cea83805fe5b564677c328cd3` added separate OpAMP and
+Gateway connectivity evidence and Collector exporter failure classification.
+Exact-head CI run [43580157943](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43580157943)
+failed on both Windows and Ubuntu in the `Test` step. The sole failure was
+`TestRunDoctorExplainsUnknownAndStaleEvidence`, whose expected output still
+used `core_connectivity_not_observed` after the reason code changed to
+`core_connectivity_evidence_unavailable`. The architecture check passed on
+both runners. Later tests, vet, and build were skipped by workflow dependency
+because `Test` failed; Ubuntu's isolated Docker setup succeeded, but live
+profile tests did not run.
+
+The working follow-up changes that stale test assertion in
+`cmd/agentctl/status_command_test.go`. The corrected focused test passes
+locally. These results are not yet exact-head CI evidence for the correction.
 
 - Passed focused Windows tests for unknown Core/OpAMP evidence, exporter
   network-failure classification, sanitized Collector failures, and the
   legacy runtime output callback forwarding exporter diagnostics.
 - Passed the full `internal/agentlifecycle` package after setting Go `TEMP` and
   `TMP` inside the writable worktree.
+- After correcting the stale CLI expectation, focused
+  `TestRunDoctorExplainsUnknownAndStaleEvidence` passed locally.
 - `go vet ./...`, native `go build ./...`, and
   `GOOS=linux GOARCH=amd64 go build ./...` passed.
 - `./scripts/check-architecture.ps1` passed package documentation checks for
@@ -175,13 +188,14 @@ not yet exact-head CI evidence.
   `TestServeStatusServesSnapshotAndStopsWithContext`) were blocked by Windows
   sandbox loopback permissions (`connectex` access denied). The focused tests
   passed; this environment failure is not treated as a product regression.
-- Full Windows/Linux test suites and live managed-runtime E2E for this updated
-  diff remain pending exact-head hosted CI. Earlier passing run
-  `43577440528` is for the prior committed head and does not cover this diff.
-- GitHub publication is currently unavailable: `gh auth status` reports the
-  `GH_TOKEN` and default account tokens invalid, and GitHub API access returns
-  a network connection error. The local branch remains unpushed; retry push
-  and exact-head CI after repository access is restored.
+- Full Windows/Linux test suites and live managed-runtime E2E for the correction
+  remain pending a new exact-head hosted CI run. Earlier passing run
+  `43577440528` is for a prior committed head and does not cover the correction.
+- The push of `1ce2106` to `origin/feat/pr-08-health-reporting` succeeded. The
+  connected GitHub read API confirmed PR #31 remains open and draft at that
+  head. The GitHub connector denied PR-body updates with HTTP 403
+  (`Resource not accessible by integration`); direct `gh` API calls failed
+  with a network error, so the PR description is unchanged.
 
 ## Contract disposition and remaining gates
 
