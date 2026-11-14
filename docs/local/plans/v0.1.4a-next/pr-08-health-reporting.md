@@ -30,6 +30,8 @@
 - Health must preserve local evidence and must not own recovery. Test Core, OpAMP, and Gateway outage/recovery only through existing owner evidence; do not add probes or invent endpoints.
 - Core connectivity evidence must distinguish network failure, authentication failure, and unavailable/stale evidence. OpAMP session evidence is independent of Core availability.
 - Gateway connectivity may use supported Collector exporter diagnostics and telemetry evidence. Collector readiness alone proves neither Gateway connectivity nor successful OTLP receipt.
+- Prefer existing evidence sources: authenticated Core API request outcomes for Core connectivity, Supervisor/OpAMP session evidence for OpAMP connectivity, and supported Collector exporter diagnostics for Gateway connectivity. Do not introduce a probe or status channel to manufacture missing evidence; report `UNKNOWN` when a source is absent or stale.
+- External Core reporting is deferred until its contract is approved and does not block local health snapshots, evidence evaluation, or reporting ports. Contract-dependent outage/recovery cases remain `BLOCKED` or `NOT_TESTED` for release integration, with the exact missing contract/evidence source recorded.
 - Diagnostic snapshots must omit tokens, credentials, private keys, and protected configuration values; test serialized outputs and logs.
 
 ---
