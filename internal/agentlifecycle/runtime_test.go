@@ -134,6 +134,46 @@ func TestRuntimeWatcherMarksLaunchGenerationAppliedAfterCollectorReady(
 	}
 }
 
+type failingLoadAgentStateRepository struct {
+	agentstate.Repository
+	err error
+}
+
+func (r failingLoadAgentStateRepository) Load() (agentstate.State, error) {
+	return agentstate.State{}, r.err
+}
+
+func TestRuntimeWatcherDoesNotAttributeUnavailableAgentStateToCollector(t *testing.T) {
+	reporter := agenthealth.NewReporter(agenthealth.RuntimeObservation{
+		CollectorState: agenthealth.CollectorStateReady,
+	})
+	watcher := runtimeWatcher{
+		store:          failingLoadAgentStateRepository{err: errors.New("database unavailable")},
+		healthReporter: reporter,
+	}
+
+	watcher.reportHealth(agenthealth.CollectorStateReady, "")
+	snapshot := reporter.Snapshot()
+	for _, target := range []agenthealth.Component{agenthealth.ComponentCollector, agenthealth.ComponentSupervisor} {
+		found := false
+		for _, evidence := range snapshot.Assessment.Components {
+			if evidence.Component != target {
+				continue
+			}
+			found = true
+			if evidence.State != agenthealth.EvidenceUnknown {
+				t.Fatalf("%s evidence=%+v, want unknown when Agent state cannot be read", target, evidence)
+			}
+		}
+		if !found {
+			t.Fatalf("assessment lacks component %q", target)
+		}
+	}
+	if snapshot.CollectorState != "" {
+		t.Fatalf("snapshot CollectorState=%q, want no synthetic failed state", snapshot.CollectorState)
+	}
+}
+
 func TestRuntimeLaunchSnapshotWaitsForConfigActivationLock(t *testing.T) {
 	root := t.TempDir()
 	configPath := filepath.Join(root, "otel.yaml")

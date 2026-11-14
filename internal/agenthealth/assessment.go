@@ -101,13 +101,19 @@ func evaluateAssessment(now time.Time, observation RuntimeObservation) Assessmen
 	components := make([]ComponentEvidence, 0, len(assessmentComponents))
 	observedAt := timePointer(observation.ObservedAt)
 
+	agentState, agentReason := EvidenceHealthy, "status_snapshot_generated"
+	if observation.LastError != "" {
+		agentState, agentReason = EvidenceDegraded, "runtime_error_observed"
+	}
 	components = append(components, ComponentEvidence{
-		Component: ComponentAgentRuntime, State: EvidenceHealthy,
+		Component: ComponentAgentRuntime, State: agentState,
 		Freshness: FreshnessFresh, Completeness: CompletenessComplete,
-		ObservedAt: timePointer(now), ReasonCode: "status_snapshot_generated",
+		ObservedAt: timePointer(now), ReasonCode: agentReason,
 	})
 	components = append(components, unknownEvidence(ComponentCoreConnectivity, "core_connectivity_not_observed"))
-	if !observation.SupervisorConfigured {
+	if !observation.ConfigurationObserved {
+		components = append(components, unknownEvidence(ComponentSupervisor, "supervisor_configuration_not_observed"))
+	} else if !observation.SupervisorConfigured {
 		components = append(components, ComponentEvidence{
 			Component: ComponentSupervisor, State: EvidenceUnsupported,
 			Freshness: FreshnessUnknown, Completeness: CompletenessComplete,
@@ -147,9 +153,18 @@ func evaluateAssessment(now time.Time, observation RuntimeObservation) Assessmen
 		unknownEvidence(ComponentTelemetryDelivery, "backend_receipt_not_measured"),
 	)
 
+	assessment := Assessment{GeneratedAt: now.UTC(), Components: components}
+	refreshAssessmentState(now, &assessment)
+	return assessment
+}
+
+func refreshAssessmentState(now time.Time, assessment *Assessment) {
+	if assessment == nil {
+		return
+	}
 	state := EvidenceHealthy
-	for index := range components {
-		item := &components[index]
+	for index := range assessment.Components {
+		item := &assessment.Components[index]
 		if item.ObservedAt != nil && item.ValidUntil != nil && !now.Before(*item.ValidUntil) {
 			item.Freshness = FreshnessStale
 		}
@@ -161,8 +176,7 @@ func evaluateAssessment(now time.Time, observation RuntimeObservation) Assessmen
 			state = EvidenceUnknown
 		}
 	}
-
-	return Assessment{State: state, GeneratedAt: now.UTC(), Components: components}
+	assessment.State = state
 }
 
 func unknownEvidence(component Component, reason string) ComponentEvidence {
@@ -174,7 +188,7 @@ func unknownEvidence(component Component, reason string) ComponentEvidence {
 }
 
 func collectorEvidence(observation RuntimeObservation) (EvidenceState, string) {
-	if observation.LastError != "" {
+	if observation.CollectorState != "" && observation.LastError != "" {
 		return EvidenceDegraded, "runtime_error_observed"
 	}
 	switch observation.CollectorState {

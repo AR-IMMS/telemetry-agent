@@ -116,10 +116,7 @@ func (w runtimeWatcher) Run(ctx context.Context) error {
 						"reload Agent state after Collector exit: %w",
 						loadErr,
 					)
-					w.reportHealth(
-						agenthealth.CollectorStateFailed,
-						wrapped.Error(),
-					)
+					w.reportHealthStateUnavailable(wrapped.Error())
 
 					return wrapped
 				}
@@ -151,10 +148,7 @@ func (w runtimeWatcher) Run(ctx context.Context) error {
 						"reload Agent state: %w",
 						err,
 					)
-					w.reportHealth(
-						agenthealth.CollectorStateFailed,
-						wrapped.Error(),
-					)
+					w.reportHealthStateUnavailable(wrapped.Error())
 
 					return wrapped
 				}
@@ -273,14 +267,7 @@ func (w runtimeWatcher) reportHealth(
 
 	state, err := w.store.Load()
 	if err != nil {
-		w.healthReporter.Report(agenthealth.RuntimeObservation{
-			CollectorState: agenthealth.CollectorStateFailed,
-			ObservedAt:     time.Now().UTC(),
-			LastError: fmt.Sprintf(
-				"load Agent state for health: %v",
-				err,
-			),
-		})
+		w.reportHealthStateUnavailable(fmt.Sprintf("load Agent state for health: %v", err))
 
 		return
 	}
@@ -302,5 +289,15 @@ func (w runtimeWatcher) reportHealth(
 		ObservedAt:            time.Now().UTC(),
 		SupervisorConfigured:  state.Supervisor.Enabled,
 		ConfigurationObserved: true,
+	})
+}
+
+func (w runtimeWatcher) reportHealthStateUnavailable(lastError string) {
+	if w.healthReporter == nil {
+		return
+	}
+	w.healthReporter.Report(agenthealth.RuntimeObservation{
+		ObservedAt: time.Now().UTC(),
+		LastError:  lastError,
 	})
 }

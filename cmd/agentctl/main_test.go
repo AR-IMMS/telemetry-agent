@@ -1115,7 +1115,7 @@ func TestRunStatusReportsUnavailableAgent(
 	}
 
 	want := "" +
-		"agentctl status: status endpoint is unavailable\n"
+		"agentctl status: status endpoint is unavailable (request_failed)\n"
 
 	if stderr.String() != want {
 		t.Fatalf(

@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -88,6 +90,24 @@ func TestRunDoctorDoesNotPrintEndpointCredentialWhenStatusIsUnavailable(t *testi
 	}
 	if strings.Contains(stderr.String(), "secret-value") {
 		t.Fatalf("doctor error exposed endpoint credentials: %s", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "(timeout)") {
+		t.Fatalf("doctor error lacks safe timeout category: %s", stderr.String())
+	}
+}
+
+func TestRunStatusReportsSafeConnectionFailureCategory(t *testing.T) {
+	deps := dependencies{fetchHealthStatus: func(context.Context, string) (agenthealth.Snapshot, error) {
+		return agenthealth.Snapshot{}, fmt.Errorf("request failed: %w", syscall.ECONNREFUSED)
+	}}
+	var stdout, stderr bytes.Buffer
+
+	code := runStatus(context.Background(), nil, &stdout, &stderr, deps)
+	if code != 1 {
+		t.Fatalf("runStatus() = %d, want 1", code)
+	}
+	if want := "(connection_refused)"; !strings.Contains(stderr.String(), want) {
+		t.Fatalf("status error=%q, want safe category %q", stderr.String(), want)
 	}
 }
 

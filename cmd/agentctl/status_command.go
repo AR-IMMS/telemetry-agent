@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
@@ -87,7 +90,7 @@ func runHealthReport(
 
 	snapshot, err := fetchStatus(ctx, *endpoint)
 	if err != nil {
-		fmt.Fprintf(stderr, "agentctl %s: status endpoint is unavailable\n", command)
+		fmt.Fprintf(stderr, "agentctl %s: status endpoint is unavailable (%s)\n", command, statusErrorCategory(err))
 
 		return 1
 	}
@@ -99,6 +102,24 @@ func runHealthReport(
 	}
 
 	return 0
+}
+
+func statusErrorCategory(err error) string {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "timeout"
+	}
+	var networkError net.Error
+	if errors.As(err, &networkError) && networkError.Timeout() {
+		return "timeout"
+	}
+	var dnsError *net.DNSError
+	if errors.As(err, &dnsError) {
+		return "dns_resolution_failed"
+	}
+	if errors.Is(err, syscall.ECONNREFUSED) {
+		return "connection_refused"
+	}
+	return "request_failed"
 }
 
 func writeStatusSummary(output io.Writer, snapshot agenthealth.Snapshot) {

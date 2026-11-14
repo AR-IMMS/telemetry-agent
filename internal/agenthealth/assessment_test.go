@@ -196,6 +196,32 @@ func TestEvaluateMarksRuntimeErrorAsDegradedEvidence(t *testing.T) {
 	}
 }
 
+func TestEvaluateKeepsRuntimeComponentsUnknownWhenAgentStateCannotBeRead(t *testing.T) {
+	snapshot := Evaluate(RuntimeObservation{
+		LastError: "load Agent state for health: database unavailable",
+	})
+
+	agent := componentEvidence(t, snapshot.Assessment, ComponentAgentRuntime)
+	if agent.State != EvidenceDegraded || agent.ReasonCode != "runtime_error_observed" {
+		t.Fatalf("agent runtime evidence=%+v, want degraded state-read error", agent)
+	}
+
+	collector := componentEvidence(t, snapshot.Assessment, ComponentCollector)
+	if collector.State != EvidenceUnknown || collector.ReasonCode != "collector_state_not_observed" {
+		t.Fatalf("collector evidence=%+v, want unknown without an observed Collector state", collector)
+	}
+
+	supervisor := componentEvidence(t, snapshot.Assessment, ComponentSupervisor)
+	if supervisor.State != EvidenceUnknown || supervisor.ReasonCode != "supervisor_configuration_not_observed" {
+		t.Fatalf("Supervisor evidence=%+v, want unknown without observed ownership configuration", supervisor)
+	}
+
+	configuration := componentEvidence(t, snapshot.Assessment, ComponentConfiguration)
+	if configuration.State != EvidenceUnknown || configuration.ReasonCode != "configuration_observation_missing" {
+		t.Fatalf("configuration evidence=%+v, want unknown without an Agent state snapshot", configuration)
+	}
+}
+
 func componentEvidence(t *testing.T, assessment Assessment, component Component) ComponentEvidence {
 	t.Helper()
 	for _, evidence := range assessment.Components {
