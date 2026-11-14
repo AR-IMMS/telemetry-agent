@@ -3,8 +3,9 @@
 - **Status:** IN_PROGRESS
 - **Branch:** `feat/pr-08-health-reporting`
 - **Base:** PR-07 merge `700768dff651e73a2e457aa20d94845bc326d971`
-- **Implementation commits:** `b634eed40ae7f7b6996384f1370c7ec1994e31ab`, `13398ced1c1d16de992025f8927636d3bc3695e2`, `082f7535047f393108690d0c64c0caf31b76efa4`, `4ab5958b344cd02330b04142a7ef53cad3b4b667`
-- **PR:** not opened yet.
+- **Source-tested head:** `7a2601869863fc7a8e6f82c7feed886a40fdbf4a`
+- **Implementation commits:** `b634eed40ae7f7b6996384f1370c7ec1994e31ab`, `13398ced1c1d16de992025f8927636d3bc3695e2`, `082f7535047f393108690d0c64c0caf31b76efa4`, `4ab5958b344cd02330b04142a7ef53cad3b4b667`, `7a2601869863fc7a8e6f82c7feed886a40fdbf4a` (CLI compatibility correction)
+- **PR:** draft [#31](https://github.com/AR-IMMS/telemetry-agent/pull/31), targeting `chore/v0.1.4a-next`.
 
 ## Goal and boundaries
 
@@ -58,8 +59,9 @@ Pinned evidence: Collector archive SHA-256 `d8de67cf9dc3ffe928610d52b192cb029365
 - Preserved the existing `status` Collector state, generation, and pending teardown lines while adding its compact assessment summary. An explicit scrape failure marks collection degraded with unknown freshness; delivery remains unknown.
 - Focused health-model and CLI status/doctor tests pass on native Windows.
 - Focused verification on the PR-08 worktree passed: health evidence/reporter tests, status/doctor tests, managed Supervisor readiness test, `go vet ./...`, `go build ./...`, architecture guard, and `git diff --check`.
+- Exact-head workflow `43534391725` on pre-fix head `4e52c9e9404205c35db8167fd133253a66f03c75` failed on Windows and Ubuntu in the Go `Test` step. Both runners failed the same six `cmd/agentctl` tests: `TestRunHelpWritesCommandSummary`, `TestRunWithoutCommandWritesHelpToStandardError`, `TestRunWithUnknownCommandWritesHelpToStandardError`, `TestRunStatusRendersLiveAgentHealth`, `TestRunStatusReportsUnavailableAgent`, and `TestRunStatusRendersLastError`. Root causes were stale expected help/status output and the compact status renderer dropping previously shown last-error/Collector-endpoint diagnostics. Commit `7a26018` updates those expectations and restores those compact diagnostics; the six focused tests pass locally. CI must rerun on the pushed fix before the gate can advance.
 - Markdown relative-link validation passed for all four changed release documents: zero missing targets.
-- Full `go test ./... -count=1` remains unverified locally. The non-elevated sandbox hit loopback socket denials in HTTP tests. A RunAs probe verified High Mandatory Level and an enabled Administrators SID, but that first runner had a repository path error before tests started. The corrected RunAs launch was canceled by Windows with `The operation was canceled by the user`; its test log was not produced. This is not a product test failure. Final native Windows CI must execute the full suite.
+- Full `go test ./... -count=1` remains unverified locally. The non-elevated sandbox hit loopback socket denials, an SQLite `unable to open database file (14)` failure, and Windows Exporter health timeouts; output stopped advancing and the run was interrupted after more than four minutes. The earlier corrected RunAs launch was canceled before tests started. The latest attempt could not start PowerShell through the sandbox and produced no elevated runner log. These results are not a completed product test run. Final native Windows and Linux CI must execute the full suite.
 - On 2026-11-14, the prepared elevated runner was checked again. `Start-Process` could not launch the packaged PowerShell path; the native Windows PowerShell launch returned `Access is denied` before UAC. A sandbox-escalated retry produced no runner log or test process, and desktop inspection still showed no UAC prompt. No second elevation result is claimed. The runner remains at `tmp/pr08-windows-full-tests-elevated.ps1`; a genuine High Mandatory Level execution is still required.
 - Native Linux, full regression, race, and final-head Windows/Linux CI are still required. The architecture guard, vet, and build have passed locally.
 
