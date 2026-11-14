@@ -141,6 +141,28 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 	if firstID == secondID {
 		t.Fatalf("Docker returned duplicate resource identities %q", firstID)
 	}
+	probeStatePath := filepath.Join(root, "discovery-probe.db")
+	probeCoordinator := newDockerDiscoveryCoordinator(probeStatePath)
+	if probeCoordinator == nil {
+		t.Fatal("Agent Docker discovery provider did not configure for the explicit isolated engine")
+	}
+	probeCycle, err := probeCoordinator.DiscoverOnce(ctx)
+	if err != nil {
+		t.Fatalf("Agent Docker discovery preflight failed: %v", err)
+	}
+	if len(probeCycle.ProviderResults) != 1 || probeCycle.ProviderResults[0].ErrorCode != "" {
+		t.Fatalf("Agent Docker discovery preflight result=%+v", probeCycle.ProviderResults)
+	}
+	probeInventory, err := agentstate.NewSQLiteStore(probeStatePath).InventoryRepository().Snapshot()
+	if err != nil {
+		t.Fatalf("read Agent Docker discovery preflight inventory: %v", err)
+	}
+	for _, resourceID := range []string{firstID, secondID, thirdID, fourthID} {
+		if !inventoryHasResource(probeInventory, resourceID) {
+			t.Fatalf("Agent Docker discovery preflight omitted live container %s", resourceID)
+		}
+	}
+	t.Logf("PR05_DISCOVERY_PREFLIGHT resources=%d", len(probeInventory.Resources))
 
 	serviceCtx, stopService := context.WithCancel(ctx)
 	serviceDone := make(chan error, 1)
@@ -269,6 +291,15 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 			t.Fatalf("unpause Redis after scrape failure: %v\n%s", err, output)
 		}
 	}
+}
+
+func inventoryHasResource(snapshot discovery.InventorySnapshot, resourceID string) bool {
+	for _, resource := range snapshot.Resources {
+		if resource.Key.ProviderResourceID == resourceID && resource.Presence == discovery.PresencePresent {
+			return true
+		}
+	}
+	return false
 }
 
 func verifyNativeDockerRecovery(t *testing.T, ctx context.Context, manager string, store agentstate.SQLiteStore, sink *lockedTemplateE2EBuffer, logs *nativeCollectorLogReporter, serviceDone <-chan error, resourceIDs ...string) {
