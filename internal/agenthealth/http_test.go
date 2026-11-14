@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -83,6 +84,28 @@ func TestStatusHandlerRejectsNonGetRequests(t *testing.T) {
 			response.Code,
 			http.StatusMethodNotAllowed,
 		)
+	}
+}
+
+func TestStatusHandlerRedactsSensitiveDiagnosticValues(t *testing.T) {
+	reporter := NewReporter(RuntimeObservation{
+		CollectorState: CollectorStateFailed,
+		LastError:      "connect password=runtime-secret Bearer token-secret\n-----BEGIN PRIVATE KEY-----\nprivate-key-secret\n-----END PRIVATE KEY-----",
+	})
+	reporter.ReportCollectorOutput(`2026-11-12T10:00:00Z error Error scraping metrics {"otelcol.component.id":"redis/alternate_port","otelcol.signal":"metrics","error":"dial tcp endpoint-secret@127.0.0.1:16379: connect: connection refused"}`)
+
+	request := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
+	response := httptest.NewRecorder()
+	NewHTTPHandler(reporter).ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status response code=%d, want %d", response.Code, http.StatusOK)
+	}
+	body := response.Body.String()
+	for _, secret := range []string{"runtime-secret", "token-secret", "private-key-secret", "endpoint-secret"} {
+		if strings.Contains(body, secret) {
+			t.Fatalf("status JSON exposed %q: %s", secret, body)
+		}
 	}
 }
 
