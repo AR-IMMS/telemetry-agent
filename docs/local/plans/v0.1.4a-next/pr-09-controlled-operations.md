@@ -1,6 +1,6 @@
 # PR-09 — Safe Infrastructure Diagnostics & Controlled Operations
 
-**Status:** Phase 1 PASS; PR-09 Phase 2 IN PROGRESS. This document retains the original pre-implementation constraints; the current delivered scope and evidence are tracked in the [PR-09 verification report](../../verification/v0.1.4a-next/pr-verification/pr-09-report.md). **Release target:** `v0.1.4a-next`.
+**Status:** Phase 1 PASS; PR-09 Phase 2 IN PROGRESS. The user approved the narrow `container.restart` safety contract on 2026-11-15; implementation and final-head verification are in progress. The feature remains disabled unless the administrator sets the local opt-in and the target container carries its opt-in label. Current scope and evidence are tracked in the [PR-09 verification report](../../verification/v0.1.4a-next/pr-verification/pr-09-report.md). **Release target:** `v0.1.4a-next`.
 
 ## Current Phase 1 checkpoint
 
@@ -14,16 +14,13 @@ handling and real NATS session invalidation. Final PR head
 `7ab6ee3b70307f49ec3d378e4c6d2e5575ef3cdf` passed Windows/Ubuntu CI and
 native live Windows/Linux NATS verification.
 
-Phase 2 is not enabled. The plan's operation-specific safety approval remains
-required before `container.restart` is registered or exposed. Production
-NestJS Core interoperability is separately tracked and does not block the
-Agent/Mock Core Phase 1 checkpoint.
+Phase 2 is approved for implementation under [ADR 0004](../../adr/0004-opt-in-container-restart.md). Runtime registration remains off by default; both the local Agent opt-in and per-container label are required. Production NestJS Core interoperability is separately tracked and does not block Agent/Mock Core verification.
 
 ## Objective and exit boundary
 
 Ship resource-targeted read-only Docker diagnostics plus optional opt-in container/service restart with durable authorization and idempotency; no SSH/arbitrary shell/AI remediation.
 
-## Current release-mission constraint
+## Historical broader proposal (superseded by ADR 0004)
 
 Execute PR-09 only after PR-07 and PR-08 pass. The operation names and endpoints
 listed below are candidates from an earlier plan, not an approved operation
@@ -34,9 +31,21 @@ in those reviewed contracts. If no mutation policy is approved and enforceable,
 keep all mutating operations disabled. This constraint supersedes any broader
 scope implied by the candidate list in this plan.
 
+The earlier candidate list below is not the approved PR-09 Phase 2 catalog. `container.logs`, service operations, discovery refresh, monitoring reconcile, a new Core HTTP endpoint, and any other mutation remain out of scope.
+
+## Approved Phase 2 contract
+
+- Core remains the business authorization authority; the authenticated scoped Core publisher is the source of commands. The Agent enforces local execution safety.
+- Local opt-in: `AR_IMMS_OPERATIONS_CONTAINER_RESTART_ENABLED=true`; unset or any other value keeps the handler out of the registry.
+- Per-target opt-in: `ar-imms.operations.container-restart.enabled=true` on a Docker container.
+- Target: exact full 64-hex Docker ID in both target and parameters; inspect immediately before the action; require same ID, label, and `running` state.
+- Side effect: one Docker Engine restart call, no retries. Docker uses the container-configured stop timeout or engine default.
+- Verification: same ID with either an increased `RestartCount` or a strictly newer `StartedAt`; report container recovery separately. If verification is uncertain, persist `UNKNOWN` and never repeat the action on replay or startup recovery.
+- Docker socket access may be host-level privilege; the label is an eligibility signal, not a security boundary.
+
 ## Baseline / current architecture constraints
 
-Operations are NOT OpAMP `Restart` (that concerns Agent). Core owns human RBAC/approval/audit; Agent must independently enforce narrowed signed/secure operation intent and exact target verification. Docker socket access is high privilege.
+Operations are not OpAMP `Restart` (that concerns the Agent). Core owns business authorization/audit; Agent enforces authenticated binding scope, expiry, exact target, local opt-ins, and outcome safety. Docker socket access is high privilege.
 
 ## Affected contexts and anticipated code areas
 
