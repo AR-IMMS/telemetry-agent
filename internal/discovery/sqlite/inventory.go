@@ -18,6 +18,45 @@ func NewInventoryRepository(open func() (*sql.DB, error), locker sync.Locker) di
 
 type inventorySQLite struct{ store database }
 
+func (s inventorySQLite) ReadProviderStatuses(limit int) ([]discovery.ProviderStatus, bool, error) {
+	if limit <= 0 || limit > discovery.MaxProviderStatusReadLimit {
+		return nil, false, fmt.Errorf("provider status read limit must be between 1 and %d", discovery.MaxProviderStatusReadLimit)
+	}
+	db, err := s.store.openDatabase()
+	if err != nil {
+		return nil, false, err
+	}
+	defer db.Close()
+	rows, err := db.Query(`SELECT payload FROM discovery_provider_status ORDER BY provider_id,provider_instance_id LIMIT ?`, limit+1)
+	if err != nil {
+		return nil, false, fmt.Errorf("query discovery provider status: %w", err)
+	}
+	defer rows.Close()
+	statuses := make([]discovery.ProviderStatus, 0, limit)
+	truncated := false
+	for rows.Next() {
+		if len(statuses) == limit {
+			truncated = true
+			break
+		}
+		var payload []byte
+		if err := rows.Scan(&payload); err != nil {
+			return nil, false, err
+		}
+		var status discovery.ProviderStatus
+		if err := json.Unmarshal(payload, &status); err != nil {
+			return nil, false, fmt.Errorf("decode discovery provider status: %w", err)
+		}
+		statuses = append(statuses, status)
+	}
+	if !truncated {
+		if err := rows.Err(); err != nil {
+			return nil, false, err
+		}
+	}
+	return statuses, truncated, nil
+}
+
 func (s inventorySQLite) Snapshot() (discovery.InventorySnapshot, error) {
 	db, err := s.store.openDatabase()
 	if err != nil {

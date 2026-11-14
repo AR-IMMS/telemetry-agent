@@ -25,12 +25,17 @@ type ObservationReporter interface {
 	Report(RuntimeObservation)
 }
 
+// EvidenceSource reads one owner-provided component observation at snapshot time.
+// Sources must be read-only and bound their work to a short duration.
+type EvidenceSource func(time.Time) ComponentEvidence
+
 // Reporter stores the latest evaluated health snapshot for local runtime
 // consumers such as CLI, HTTP, and future heartbeat adapters.
 type Reporter struct {
-	mu          sync.RWMutex
-	observation RuntimeObservation
-	snapshot    Snapshot
+	mu              sync.RWMutex
+	observation     RuntimeObservation
+	snapshot        Snapshot
+	evidenceSources []EvidenceSource
 }
 
 // NewReporter creates a reporter with an initial runtime observation.
@@ -44,6 +49,14 @@ func NewReporter(observation RuntimeObservation) *Reporter {
 		observation: observation,
 		snapshot:    Evaluate(observation),
 	}
+}
+
+// NewReporterWithEvidenceSources creates a Reporter that adds read-only owner
+// evidence to each snapshot without changing runtime observation ownership.
+func NewReporterWithEvidenceSources(observation RuntimeObservation, sources ...EvidenceSource) *Reporter {
+	reporter := NewReporter(observation)
+	reporter.evidenceSources = append([]EvidenceSource(nil), sources...)
+	return reporter
 }
 
 // Report evaluates and publishes one new runtime observation.
@@ -90,12 +103,39 @@ func (r *Reporter) Snapshot() Snapshot {
 
 	r.mu.RLock()
 	observation := r.observation
-	snapshot := EvaluateAt(observation, time.Now().UTC())
-	snapshot.CollectorFailures = append([]CollectorFailure(nil), r.snapshot.CollectorFailures...)
-	applyCollectorFailureEvidence(&snapshot)
+	failures := append([]CollectorFailure(nil), r.snapshot.CollectorFailures...)
+	sources := append([]EvidenceSource(nil), r.evidenceSources...)
 	r.mu.RUnlock()
 
+	now := time.Now().UTC()
+	snapshot := EvaluateAt(observation, now)
+	snapshot.CollectorFailures = failures
+	applyCollectorFailureEvidence(&snapshot)
+	for _, source := range sources {
+		if source == nil {
+			continue
+		}
+		upsertComponentEvidence(&snapshot.Assessment, source(now))
+	}
+	refreshAssessmentState(now, &snapshot.Assessment)
+
 	return snapshot
+}
+
+func upsertComponentEvidence(assessment *Assessment, evidence ComponentEvidence) {
+	if assessment == nil || evidence.Component == "" {
+		return
+	}
+	evidence.ReasonCode = sanitizeError(evidence.ReasonCode)
+	evidence.ObservedAt = timePointerFrom(evidence.ObservedAt)
+	evidence.ValidUntil = timePointerFrom(evidence.ValidUntil)
+	for index := range assessment.Components {
+		if assessment.Components[index].Component == evidence.Component {
+			assessment.Components[index] = evidence
+			return
+		}
+	}
+	assessment.Components = append(assessment.Components, evidence)
 }
 
 func applyCollectorFailureEvidence(snapshot *Snapshot) {

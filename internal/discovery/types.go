@@ -165,6 +165,16 @@ type InventoryRepository interface {
 	RecordProviderFailure(status ProviderStatus) error
 }
 
+// MaxProviderStatusReadLimit caps provider-status-only diagnostic reads.
+const MaxProviderStatusReadLimit = 64
+
+// ProviderStatusReader reads a bounded provider-status projection without
+// materializing inventory resources.
+type ProviderStatusReader interface {
+	// ReadProviderStatuses returns no more than limit rows and reports whether additional rows were omitted.
+	ReadProviderStatuses(limit int) ([]ProviderStatus, bool, error)
+}
+
 // DiscoveryProvider returns one complete snapshot or an explicit error.
 type DiscoveryProvider interface {
 	ID() ProviderID

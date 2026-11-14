@@ -124,10 +124,15 @@ func runCollectorRuntime(
 		serveStatus = agenthealth.ServeStatus
 	}
 
-	reporter := agenthealth.NewReporter(
+	var evidenceSources []agenthealth.EvidenceSource
+	if deps.healthEvidenceSources != nil {
+		evidenceSources = deps.healthEvidenceSources(statePath)
+	}
+	reporter := agenthealth.NewReporterWithEvidenceSources(
 		agenthealth.RuntimeObservation{
 			CollectorState: agenthealth.CollectorStateStarting,
 		},
+		evidenceSources...,
 	)
 
 	runContext, cancelRun := context.WithCancel(ctx)

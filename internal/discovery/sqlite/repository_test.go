@@ -3,6 +3,7 @@ package sqlite_test
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -51,6 +52,51 @@ func TestInventoryRepositoryKeepsFailureEvidenceAndWriteCAS(t *testing.T) {
 	if after.Revision != before.Revision || after.WriteRevision != before.WriteRevision+1 || len(after.Resources) != 1 ||
 		after.Providers[0].LastErrorCode != "daemon_unavailable" || !after.Providers[0].LastSuccessAt.Equal(at) {
 		t.Fatalf("failure changed material evidence or lost provider status: %+v", after)
+	}
+}
+
+func TestInventoryRepositoryReadsBoundedProviderStatusesWithoutResources(t *testing.T) {
+	store := agentstate.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	repository := discoverysqlite.NewInventoryRepository(store.OpenDatabase, &sync.Mutex{})
+	at := time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)
+	for index := 0; index < 3; index++ {
+		instance := discovery.ProviderInstanceID(fmt.Sprintf("instance-%d", index))
+		resourceID := fmt.Sprintf("container-%d", index)
+		providerSnapshot := discovery.ProviderSnapshot{
+			ProviderID: "docker", ProviderInstanceID: instance, Complete: true, ObservedAt: at,
+			Resources: []discovery.ResourceObservation{{ProviderResourceID: resourceID, Kind: discovery.ResourceContainer}},
+		}
+		resource := discovery.Resource{
+			Key:  discovery.ResourceKey{Provider: "docker", ProviderInstance: instance, ProviderResourceID: resourceID},
+			Kind: discovery.ResourceContainer, Presence: discovery.PresencePresent, FirstSeenAt: at, LastSeenAt: at,
+		}
+		if err := repository.CommitProviderSnapshot(uint64(index), providerSnapshot, []discovery.Resource{resource}, true); err != nil {
+			t.Fatalf("commit provider snapshot %d: %v", index, err)
+		}
+	}
+
+	reader, ok := repository.(discovery.ProviderStatusReader)
+	if !ok {
+		t.Fatal("inventory repository does not expose bounded provider status reader")
+	}
+	statuses, truncated, err := reader.ReadProviderStatuses(2)
+	if err != nil {
+		t.Fatalf("read limited provider statuses: %v", err)
+	}
+	if len(statuses) != 2 || !truncated {
+		t.Fatalf("limited statuses=(%d, truncated=%t), want (2, true)", len(statuses), truncated)
+	}
+	statuses, truncated, err = reader.ReadProviderStatuses(discovery.MaxProviderStatusReadLimit)
+	if err != nil {
+		t.Fatalf("read provider statuses: %v", err)
+	}
+	if len(statuses) != 3 || truncated {
+		t.Fatalf("all statuses=(%d, truncated=%t), want (3, false)", len(statuses), truncated)
+	}
+	for _, limit := range []int{0, discovery.MaxProviderStatusReadLimit + 1} {
+		if _, _, err := reader.ReadProviderStatuses(limit); err == nil {
+			t.Fatalf("ReadProviderStatuses(%d) error=nil, want invalid limit error", limit)
+		}
 	}
 }
 
