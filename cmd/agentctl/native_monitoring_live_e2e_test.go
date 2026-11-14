@@ -157,6 +157,7 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 		}
 	})
 	waitForNativeDelivery(t, ctx, serviceDone, sinkOutput, collectorLogs, nodeID, firstID, secondID, fourthID)
+	waitForNativeInventoryPresent(t, ctx, store, firstID, secondID, fourthID)
 	assertNativeReceiverUniqueness(t, collectorLogs.output())
 	if duplicates := nativeDuplicateMetricSamples(sinkOutput.String()); len(duplicates) > 0 {
 		t.Fatalf("duplicate Redis OTLP points detected: %v", duplicates)
