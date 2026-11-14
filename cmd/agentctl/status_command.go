@@ -116,6 +116,12 @@ func writeStatusSummary(output io.Writer, snapshot agenthealth.Snapshot) {
 	writeSummaryComponent(output, snapshot.Assessment, agenthealth.ComponentCollector)
 	writeSummaryComponent(output, snapshot.Assessment, agenthealth.ComponentConfiguration)
 	writeSummaryComponent(output, snapshot.Assessment, agenthealth.ComponentTelemetryDelivery)
+	if snapshot.LastError != "" {
+		fmt.Fprintf(output, "Last error: %s\n", snapshot.LastError)
+	}
+	for _, failure := range snapshot.CollectorFailures {
+		fmt.Fprintf(output, "Collector endpoint failure: receiver=%s endpoint=%s code=%s\n", failure.Receiver, failure.Endpoint, failure.Code)
+	}
 }
 
 func writeSummaryComponent(output io.Writer, assessment agenthealth.Assessment, component agenthealth.Component) {

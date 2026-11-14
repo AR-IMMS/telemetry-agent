@@ -1028,6 +1028,15 @@ func TestRunStatusRendersLiveAgentHealth(
 					ActivatedGeneration: 4,
 					AppliedGeneration:   4,
 					PendingTeardowns:    0,
+					Assessment: agenthealth.Assessment{
+						State: agenthealth.EvidenceUnknown,
+						Components: []agenthealth.ComponentEvidence{
+							{Component: agenthealth.ComponentAgentRuntime, State: agenthealth.EvidenceHealthy, Freshness: agenthealth.FreshnessFresh},
+							{Component: agenthealth.ComponentCollector, State: agenthealth.EvidenceHealthy, Freshness: agenthealth.FreshnessFresh},
+							{Component: agenthealth.ComponentConfiguration, State: agenthealth.EvidenceHealthy, Freshness: agenthealth.FreshnessFresh},
+							{Component: agenthealth.ComponentTelemetryDelivery, State: agenthealth.EvidenceUnknown, Freshness: agenthealth.FreshnessUnknown},
+						},
+					},
 				}, nil
 			},
 		},
@@ -1053,7 +1062,13 @@ func TestRunStatusRendersLiveAgentHealth(
 		"Agent health: healthy\n" +
 		"Collector state: ready\n" +
 		"Configuration generations: desired=4 activated=4 applied=4\n" +
-		"Pending dependency teardowns: 0\n"
+		"Pending dependency teardowns: 0\n" +
+		"Status scope: Collector/configuration runtime readiness (legacy projection)\n" +
+		"agent_runtime: healthy (freshness=fresh)\n" +
+		"Evidence assessment: unknown\n" +
+		"collector: healthy (freshness=fresh)\n" +
+		"configuration: healthy (freshness=fresh)\n" +
+		"telemetry_delivery: unknown (freshness=unknown)\n"
 
 	if stdout.String() != want {
 		t.Fatalf(
@@ -1100,8 +1115,7 @@ func TestRunStatusReportsUnavailableAgent(
 	}
 
 	want := "" +
-		"Agent is not running or status endpoint is unreachable: " +
-		"connect: connection refused\n"
+		"agentctl status: status endpoint is unavailable\n"
 
 	if stderr.String() != want {
 		t.Fatalf(
@@ -1136,6 +1150,11 @@ func TestRunStatusRendersLastError(
 					AppliedGeneration:   3,
 					PendingTeardowns:    1,
 					LastError:           "Collector exited unexpectedly",
+					CollectorFailures: []agenthealth.CollectorFailure{{
+						Receiver: "redis",
+						Endpoint: "redis:6379",
+						Code:     "connection_failed",
+					}},
 				}, nil
 			},
 		},
@@ -1154,7 +1173,14 @@ func TestRunStatusRendersLastError(
 		"Collector state: failed\n" +
 		"Configuration generations: desired=4 activated=4 applied=3\n" +
 		"Pending dependency teardowns: 1\n" +
-		"Last error: Collector exited unexpectedly\n"
+		"Status scope: Collector/configuration runtime readiness (legacy projection)\n" +
+		"agent_runtime: unknown (freshness=unknown)\n" +
+		"Evidence assessment: unknown\n" +
+		"collector: unknown (freshness=unknown)\n" +
+		"configuration: unknown (freshness=unknown)\n" +
+		"telemetry_delivery: unknown (freshness=unknown)\n" +
+		"Last error: Collector exited unexpectedly\n" +
+		"Collector endpoint failure: receiver=redis endpoint=redis:6379 code=connection_failed\n"
 
 	if stdout.String() != want {
 		t.Fatalf(

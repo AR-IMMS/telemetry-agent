@@ -33,6 +33,7 @@ Commands:
   inventory   Read persisted resource discovery inventory.
   discovery   Review and approve durable monitoring proposals.
   status      Show live Agent health.
+  doctor      Explain available health evidence and unknown dimensions.
   enroll      Bind this Agent installation to an AR-IMMS Core node.
   install     Install and start the Agent as a managed service.
   uninstall   Safely remove the Agent and its managed dependencies.
@@ -88,6 +89,7 @@ Commands:
   inventory   Read persisted resource discovery inventory.
   discovery   Review and approve durable monitoring proposals.
   status      Show live Agent health.
+  doctor      Explain available health evidence and unknown dimensions.
   enroll      Bind this Agent installation to an AR-IMMS Core node.
   install     Install and start the Agent as a managed service.
   uninstall   Safely remove the Agent and its managed dependencies.
@@ -139,6 +141,7 @@ Commands:
   inventory   Read persisted resource discovery inventory.
   discovery   Review and approve durable monitoring proposals.
   status      Show live Agent health.
+  doctor      Explain available health evidence and unknown dimensions.
   enroll      Bind this Agent installation to an AR-IMMS Core node.
   install     Install and start the Agent as a managed service.
   uninstall   Safely remove the Agent and its managed dependencies.
