@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ar-imms.local/contracts/operations/operation-request-v1.schema.json",
+  "title": "AR-IMMS Agent Operation Request v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "operation_id", "operation_type", "installation_id", "binding_id", "parameters", "requested_at", "expires_at"],
+  "properties": {
+    "schema_version": {"const": "ar-imms.operation.request.v1"},
+    "operation_id": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_-]+$"},
+    "operation_type": {"enum": ["agent.diagnostics", "container.inspect", "dependency.inspect"]},
+    "installation_id": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_-]+$"},
+    "binding_id": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_-]+$"},
+    "target": {"$ref": "#/$defs/target"},
+    "parameters": {"type": "object", "maxProperties": 16},
+    "requested_by": {"type": "string", "maxLength": 256},
+    "authorization_ref": {"type": "string", "maxLength": 256},
+    "requested_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"type": "string", "maxLength": 64},
+        "provider_id": {"type": "string", "maxLength": 128},
+        "resource_id": {"type": "string", "maxLength": 256}
+      }
+    }
+  }
+}

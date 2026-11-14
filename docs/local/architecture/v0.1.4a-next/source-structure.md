@@ -181,3 +181,24 @@ The verified baseline also found `internal/enrollment/service.go` is 454 lines, 
 
 
 The CI guard also checks the repository's existing `doc.go` rule for every Go source directory under `cmd/` and `internal/`; it does not create package directories or impose a proposed context layout.
+
+## 7. PR-09 Phase 1 implementation map
+
+This is a source-verified implementation map, not a requirement to move the
+existing packages into the proposed tree:
+
+| Responsibility | Current implementation |
+|---|---|
+| Operation contracts, typed registry, validation, idempotency, dispatch | `internal/operations` |
+| Health, exact Docker inspection, managed dependency inspection handlers | `internal/operations/handlers` |
+| Additive execution journal, audit events, result outbox, interrupted read-only recovery | `internal/operations/sqlite` and SQLite migration v14 |
+| TLS-authenticated JetStream consumer and outbox publisher | `internal/operations/nats` |
+| Mock Core and isolated live testbed | `internal/operations/testsupport/mockcore` and `internal/operations/nats` tests |
+| Optional runtime composition | `internal/app` and `cmd/agentctl` |
+
+Core remains the business authorization authority. The Agent's request checks
+cover transport scope, installation/binding, expiry, operation allowlist, and
+exact target; actor and authorization references are audit correlations only.
+The Agent exposes only the three read-only operations in v1. Mutations and
+sensitive log retrieval are excluded. PR-09.5 must audit ownership and actual
+imports before any structural migration.

@@ -24,7 +24,29 @@ from actual source before moving code.
 | Runtime & Installation | Pinned Collector and (after parity) OpAMP Supervisor artifacts, config validation, OS dependencies, activation/LKG evidence, one lifecycle owner | ApplyCandidate port during migration; Supervisor provisioning/status evidence | Core policy ownership or concurrent Collector lifecycle owners |
 | OpAMP Adapter (server side) | Native OpAMP protocol session and translation to Core-owned contracts | Core auth, identity binding, desired policy, status/health APIs | Durable policy authority, mock-only calls, Collector business rules |
 | Health & Reporting | Local health snapshots, evidence evaluation, diagnostics, and reporting ports | Owner-produced Agent/Core request outcomes, Supervisor OpAMP session evidence, Collector exporter diagnostics, collection evidence, and sink receipts where exposed | Custom Core/Gateway probes or endpoints; treating OpAMP as Core availability; claiming collection/delivery from readiness or protocol status alone |
-| Remote Operations | Typed operation specs, target binding, execution state, audit/outcome | Core-authorized requests; Docker/OS adapter | SSH, arbitrary shell, OpAMP restart misuse |
+| Operations | Typed operation specs, target binding, execution state, local audit, and result outbox | Core-authorized requests; Health snapshot, Docker inspect, managed dependency status | IAM decisions, SSH, arbitrary shell, OpAMP restart misuse |
+
+### PR-09 implemented boundary (Phase 1)
+
+The current read-only implementation lives in `internal/operations` with
+typed handlers in `internal/operations/handlers`, a SQLite journal/outbox in
+`internal/operations/sqlite`, and the authenticated JetStream adapter in
+`internal/operations/nats`. `cmd/agentctl` and `internal/app` compose these
+adapters only when Operations credentials/configuration are present; NATS
+unavailability does not own or stop telemetry lifecycle. The registry exposes
+only `agent.diagnostics`, `container.inspect`, and `dependency.inspect`.
+Operations owns replay identity, execution state, audit evidence, and result
+publication; Health, Inventory/Docker, and Runtime/dependency implementations
+remain the sources of their respective evidence.
+
+The Agent-local v1 request/result schemas are implementation contracts for the
+Mock Core and testbed. They do not define production Core authorization or
+interoperability. Read-only work interrupted after its durable claim is closed
+as a recorded failure and sent through the result outbox before new commands
+are consumed; the Agent does not silently repeat a read without an approved
+retry contract. `container.restart`, arbitrary operations, and sensitive
+container logs remain unavailable pending their separate safety/exposure
+contracts.
 
 ## Discovery Provider / Listener contract (proposed)
 
@@ -56,7 +78,7 @@ and product diagnostics. See [OpAMP integration](opamp-integration.md).
 
 ## Unresolved boundaries
 
-Core-vs-local config authority; precise identity mapping to OpAMP instance UID; credential attachment to protected receivers; privileged operations executor. These require ADRs prior to the relevant PR.
+Core-vs-local config authority; precise identity mapping to OpAMP instance UID; credential attachment to protected receivers; and production Core/JetStream provisioning interoperability remain open. `container.restart` requires its operation-specific safety approval and verification before it can be enabled.
 
 ### Health evidence boundary
 
