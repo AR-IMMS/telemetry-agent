@@ -23,9 +23,10 @@ try {
     $domainRoots = @(
         "$modulePath/internal/configuration",
         "$modulePath/internal/discovery",
-        "$modulePath/internal/enrollment",
         "$modulePath/internal/identity",
-        "$modulePath/internal/integration"
+        "$modulePath/internal/integration",
+        "$modulePath/internal/inventory",
+        "$modulePath/internal/monitoringprofile"
     )
     $adapterRoots = @(
         "$modulePath/internal/agentinstallation",
@@ -34,8 +35,15 @@ try {
         "$modulePath/internal/bootstrap",
         "$modulePath/internal/collectorruntime",
         "$modulePath/internal/coreapi",
-        "$modulePath/internal/credentialstore",
+        "$modulePath/internal/coreconfig",
         "$modulePath/internal/dependency",
+        "$modulePath/internal/discovery/sqlite",
+        "$modulePath/internal/configuration/sqlite",
+        "$modulePath/internal/identity/credentials",
+        "$modulePath/internal/identity/enrollment/sqlite",
+        "$modulePath/internal/identity/sqlite",
+        "$modulePath/internal/inventory/docker",
+        "$modulePath/internal/inventory/sqlite",
         "$modulePath/internal/reconciliation",
         "$modulePath/internal/supervisor"
     )
@@ -107,6 +115,16 @@ try {
             }
         }
 
+        # Nested persistence/provider packages are adapters, not domain packages.
+        # Their parent context remains guarded when it imports these adapters.
+        $isContextAdapter = $false
+        foreach ($adapter in $adapterRoots) {
+            if ($package -eq $adapter -or $package.StartsWith("$adapter/", [StringComparison]::Ordinal)) {
+                $isContextAdapter = $true
+                break
+            }
+        }
+        if ($isContextAdapter) { continue }
         $isDomain = $false
         foreach ($root in $domainRoots) {
             if ($package -eq $root -or $package.StartsWith("$root/", [StringComparison]::Ordinal)) {
