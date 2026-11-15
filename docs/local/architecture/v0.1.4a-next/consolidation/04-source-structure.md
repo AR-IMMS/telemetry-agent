@@ -1,9 +1,9 @@
 # PR-09.5 — Flexible Source Structure
 
-**Status:** architecture-approved (2026-11-15). OD-01 through OD-06 and this capability-oriented physical map are approved. Package names and candidate destinations remain flexible, and this tree is not a required scaffold.
+**Status:** architecture-approved (2026-11-15). The user explicitly approved all five PR-09.5 planning documents, including this revised source-grounded physical map and the final migration-plan clarifications. Package names and candidate destinations remain flexible, and this tree is not a required scaffold.
 **Evidence:** source ownership and transaction inventory from [source audit](01-current-source-audit.md) at `b2599b8db31bfedfd75e360423d5aa98cfbcb5dc`, checked against the code tree at `c45456143ab482255daf1fad0c05f8d8af98ba11`. The later PR-09.5 commits through `d1a3fb7b670d8198db4c71f99806c3dec706d9da` change documentation only. The code tree adds `internal/platform/sqlite/migrate`; migration callbacks remain registered through `internal/agentstate`. The approved ownership decisions are recorded in [02-context-ownership](02-context-ownership.md).
 
-**Evidence boundary:** source ownership, imports, consumers, rows, and transaction behavior were audited on the immutable PR-09 integration tree. Approved destinations were checked against the PR-09.5 code tree at `c45456143ab482255daf1fad0c05f8d8af98ba11`; later commits through the documented HEAD changed docs only. Source paths below are verified candidates; approved package boundaries are flexible guidance, not proof that a package already exists. This does not infer source behavior from diagrams or package names. The code-graph index is older than this snapshot and is exploratory only; direct source and import evidence control this disposition.
+**Evidence boundary:** source ownership, imports, consumers, rows, and transaction behavior were audited on the immutable PR-09 integration tree. Candidate destinations were checked against the PR-09.5 code tree at `c45456143ab482255daf1fad0c05f8d8af98ba11`; later commits through the documented HEAD changed docs only. Source paths below are verified candidates; package boundaries remain proposed guidance, not proof that a package already exists. This does not infer source behavior from diagrams or package names. The code-graph index is older than this snapshot and is exploratory only; direct source and import evidence control this disposition.
 
 ## Structure principles
 
@@ -16,7 +16,7 @@
 
 ## Concrete target tree
 
-This is the proposed physical navigation after migration, grounded in the source snapshot above. Read each level as **Context → Capability → technical layer only when justified**. It is not a mandatory package scaffold: keep a capability flat where its types and use cases remain cohesive, and introduce a technical layer only for an actual adapter, transaction, or platform boundary. The matrix below maps current source candidates and dependencies. Tree nodes are candidate destinations, not a checklist for creating empty folders. Tests move with the production capability unless they are shared infrastructure.
+This is the proposed physical navigation after migration, grounded in the source snapshot above. Read each level as **Context → Capability → technical layer only when justified**. It is not a mandatory package scaffold: keep a capability flat where its types and use cases remain cohesive, and introduce a technical layer only for an actual adapter, transaction, or platform boundary. The matrix below maps current source candidates and dependencies. Tree nodes are candidate destinations, not a checklist for creating empty folders. Tests move with the production capability unless they are shared infrastructure. In the matrix, source paths are relative to `internal/` unless they begin with another repository-root path; target package names are also relative to `internal/`. A brace or wildcard expression groups files listed by capability and is not a literal package name.
 
 ```text
 cmd/agentctl/                                  CLI and service delivery edge
@@ -25,9 +25,9 @@ internal/
 ├── identity/
 │   ├── host/                                  machine ID, OS and platform facts
 │   ├── installation/                          installation ID and durable Core binding
-│   │   └── sqlite/                             identity rows only if repository separation helps
+│   ├── sqlite/                                installation identity repository and shared transactional reader
 │   ├── enrollment/                            attempt lifecycle and retry/resume rules
-│   │   └── sqlite/                             enrollment rows and binding transaction
+│   │   └── sqlite/                             attempt rows; same-context identity validation
 │   └── credentials/                           protected credential-store interface/adapters
 ├── inventory/
 │   ├── observation/                           provider snapshots, normalization and completeness
@@ -40,16 +40,16 @@ internal/
 │   └── templates/                             match evaluation only; definitions remain in Configuration
 ├── configuration/
 │   ├── desiredstate/                          accepted instances and desired revisions
-│   ├── remoteconfig/                           Core snapshot, local/Core authority and revisions
-│   ├── proposals/                             proposal lifecycle, approval and decision rules
+│   ├── remoteconfig/                          Core snapshot, local/Core authority and revisions
+│   ├── proposals/                             proposal lifecycle and approval decisions
 │   ├── templates/                             template definitions, ownership and revisions
 │   ├── materialization/                       CAS plan and desired-state projection
 │   ├── reconciliation/                        desired-to-effective decisions and apply requests
-│   ├── rendering/                              deterministic layer merge and candidate input
-│   └── sqlite/                                 repositories and cross-capability transactions
+│   ├── rendering/                             conditional: deterministic merge if imports justify ownership
+│   └── sqlite/                                context-owned repositories and atomic cross-capability writes
 ├── runtime/
 │   ├── bootstrap/                             first-run setup and recovery entrypoints
-│   ├── artifacts/                             only if artifact behavior is shared by real callers
+│   ├── artifacts/                             conditional; default to capability-local artifact behavior
 │   ├── dependencies/
 │   │   ├── catalog/                            managed dependency definitions
 │   │   ├── node_exporter/                       Node Exporter capability and platform behavior
@@ -59,7 +59,7 @@ internal/
 │   │   ├── capabilities/                       pinned-binary capability catalog/query
 │   │   ├── configuration/                      compile and validate candidate configuration
 │   │   └── activation/                          single-owner activation, readiness, LKG/recovery
-│   ├── opamp/                                  managed Supervisor provisioning/config/status adapter
+│   ├── opamp/                                 managed Supervisor provisioning/config/status adapter
 │   ├── service/                                Agent install, Windows Service/systemd lifecycle
 │   └── process/                                child-process identity, stop and cleanup
 ├── health/
@@ -86,7 +86,7 @@ infra/                                          isolated Docker/OTLP testbeds
 docs/                                           architecture, contracts, plans, runbooks and evidence
 ```
 
-The current tree does not yet contain `internal/inventory`, `internal/monitoring`, `internal/runtime`, or the proposed Configuration sub-capability packages. These are destinations inferred from existing source responsibilities, not verified current packages. `runtime/artifacts` and shared dependency `adapters` are conditional seams: keep artifact handling inside each capability unless at least two current callers share the same behavior and can use one small interface. Do not create those directories during a mechanical move.
+The current tree does not yet contain `internal/inventory`, `internal/monitoring`, or `internal/runtime`. It does contain `internal/configuration` and `internal/configuration/sqlite`; the named Configuration capability packages are proposed subdivisions, not current package paths. The other destinations are inferred from existing source responsibilities, not verified current packages. `runtime/artifacts` and shared dependency `adapters` are conditional seams: keep artifact handling inside each capability unless at least two current callers share the same behavior and can use one small interface. Do not create those directories during a mechanical move.
 
 Protocol and test ownership stay outside the seven business contexts:
 
@@ -104,7 +104,7 @@ There is no target `internal/state` or generic state hub. `internal/platform/sql
 
 ### Package disposition matrix by context and capability
 
-Each row names a responsibility, source candidates, intended boundary, dependencies and invariants. Movement is incremental: split mixed files/models by semantic owner only after callers and translations are characterized. A package may remain at its current path if moving it does not improve ownership.
+Each row names a responsibility, source candidates, intended package boundary, dependencies and invariants. The source audit establishes what exists; the target column records a proposal, not a claim that the package already exists. Movement is incremental: split mixed files/models by semantic owner only after callers and translations are characterized. A package may remain at its current path if moving it does not improve ownership.
 
 | Context navigation | Capability groups in this proposal |
 |---|---|
@@ -122,8 +122,8 @@ Each row names a responsibility, source candidates, intended boundary, dependenc
 | Capability and responsibility | Current source → intended package | Dependencies / invariants to preserve |
 |---|---|---|
 | Host identity: machine IDs, OS/platform facts, release metadata | `identity/machine*.go`, `identity/platform*.go`, `identity/os_release.go` → `identity/host` | OS adapters only; stable identity inputs, Windows/Linux behavior, and platform-specific file isolation. |
-| Installation identity: parse/create ID and bind the durable installation record | `identity/installation_id.go`, `identity/installation_identity.go`, `identity/sqlite/repository.go`, `agentstate/sqlite_identity.go` → `identity/installation` plus a repository adapter | Host identity and SQLite repository port; stable installation ID, Core-bound Node identity and atomic initialize/read semantics. |
-| Enrollment and binding: attempt lifecycle, uncertain outcomes, retry/resume | `enrollment/{model,service}.go`, `enrollment/sqlite/repository.go`, `agentstate/sqlite_enrollment.go`, `agentstate/sqlite_enrollment_schema.go` → `identity/enrollment` plus SQLite adapter | Installation identity, Core enrollment port and protected credential port; preserve persisted uncertainty, retry classification, binding/attempt atomicity and Core response semantics. Enrollment owns attempt decisions; Identity owns the stable binding value. |
+| Installation identity: parse/create ID and bind the durable installation record | `identity/{installation_id,installation_identity}.go`, `identity/sqlite/repository.go`, `agentstate/sqlite_identity.go` → `identity/installation` plus `identity/sqlite` repository | Host identity and SQLite repository port; stable installation ID, Core-bound Node identity and atomic initialize/read semantics. `identity/sqlite.ReadInstallationID` is also used by enrollment persistence to validate binding within the enrollment transaction. |
+| Enrollment and binding: attempt lifecycle, uncertain outcomes, retry/resume | `enrollment/{model,service}.go`, `enrollment/sqlite/repository.go`, `agentstate/sqlite_enrollment.go`, `agentstate/sqlite_enrollment_schema.go` → `identity/enrollment` plus `identity/enrollment/sqlite` | Installation identity, Core enrollment port and protected credential port; preserve persisted uncertainty, retry classification, binding/attempt atomicity and Core response semantics. Enrollment owns attempt decisions; Identity owns the stable binding value. Keep installation validation inside the same enrollment SQL transaction through a narrow same-context identity query; do not introduce a cross-context persistence dependency or generic state package. |
 | Credential protection: store, replace and revoke secret material | `credentialstore/store*.go` → `identity/credentials` | OS ACL/DPAPI or Linux file permissions; the store receives secret references/material only at its boundary, and secrets never enter logs, SQLite rows, CLI output or diagnostics. |
 
 `coreapi` is currently a narrow shared HTTP adapter, not all Identity business logic. Keep its transport boundary explicit; split enrollment requests from control/configuration endpoints only after the consumed contracts and DTO translation are mapped. `coreconfig.GatewaySnapshot` authority/revision semantics belong to Configuration's `remoteconfig`, not host Identity.
@@ -152,15 +152,15 @@ Template matching is a Monitoring computation over Configuration-owned template 
 
 | Capability and responsibility | Current source → intended package | Dependencies / transaction invariants to preserve |
 |---|---|---|
-| Desired state: accepted Integration instances and revisioned reads/writes | `configuration/{integration.go,sqlite/integration.go}`, `integration.IntegrationInstance`, `agentstate/sqlite_configuration.go` and integration schema → `configuration/desiredstate` | Monitoring's resolved intent, SQLite repository; expected revision checked in the same write, stable IDs, no-op revisions remain no-op. Split shared `integration` structs by owner with explicit translation. |
+| Desired state: accepted Integration instances and revisioned reads/writes | `configuration/{integration.go,sqlite/integration.go}`, `integration.IntegrationInstance`, `agentstate/sqlite_configuration.go` and integration schema → `configuration/desiredstate` plus the Configuration SQLite adapter | Monitoring's resolved intent, SQLite repository; expected revision checked in the same write, stable IDs, no-op revisions remain no-op. Split shared `integration` structs by owner with explicit translation. |
 | Remote configuration: authenticated Core Gateway snapshot, accepted revision and effective authority | `coreconfig/gateway.go`, `agentstate/sqlite_core_gateway*.go`, Core control DTO use in `coreapi/control.go` → `configuration/remoteconfig` plus Core API adapter | Core API authentication and local/bootstrap input; preserve approved Core/local authority and revision rules. Do not decide still-open policy such as namespace relinquishment here. |
-| Proposals: candidate creation, validation, dismissal and approval decision | `discovery/{proposal,proposal_validation}.go`, `discovery/sqlite/proposal.go`, `configuration/approval.go`, `configuration/sqlite/approval.go`, `agentstate/sqlite_proposal_schema.go` → `configuration/proposals` | Inventory observation plus Monitoring recommendation; proposal lifecycle is Configuration-owned. Preserve migration 12, proposal identity/revisions/history, and one transaction for proposal creation/approval plus desired-state transition. `discovery/reconcile.go` remains Inventory missing-resource reconciliation. The transaction coordinator belongs to Configuration's SQLite adapter; do not split it into event-driven writes. |
+| Proposals: candidate creation, validation, dismissal and approval decision | `discovery/{proposal,proposal_validation}.go`, `discovery/sqlite/proposal.go`, `configuration/approval.go`, `configuration/sqlite/approval.go`, `agentstate/sqlite_proposal_schema.go` → `configuration/proposals` with proposal persistence and cross-capability transaction in `configuration/sqlite` | Inventory observation plus Monitoring recommendation; proposal lifecycle is Configuration-owned. Preserve migration 12, proposal identity/revisions/history, and one transaction for proposal creation/approval plus desired-state transition. `discovery/reconcile.go` remains Inventory missing-resource reconciliation. Keep the atomic write in one Configuration-owned SQLite transaction; do not split it into event-driven writes or separate repositories that commit independently. |
 | Templates: reusable configuration definitions, authority, revisions and persistence | `integration/template.go` models, `configuration/template.go`, `configuration/sqlite/template.go`, `agentstate/sqlite_template_schema.go` → `configuration/templates` | Monitoring match results, desiredstate and Inventory revision port; preserve owner, tombstone/ID reuse rules and deterministic setting resolution. Matching itself stays in Monitoring. |
 | Materialization: plan template bindings into desired instances | `configuration/materialization.go`, `configuration/sqlite/materialization.go` → `configuration/materialization` | Templates, Inventory snapshot/revision and desired state; preserve one CAS over Inventory, template and desired revisions, stable generated IDs, and atomic batch writes. |
 | Reconciliation: decide desired-to-effective convergence and request apply | `reconciliation/{controller,ports,sqlite}.go`, `reconciliation/contracts/ports.go`, `agentstate/sqlite_reconciliation*.go` → `configuration/reconciliation`; Runtime owns apply implementation | Desired revision, compiler/validator and Runtime apply-result contract; preserve periodic/startup recovery, bounded retry and status/revision attribution. `internal/app` starts/stops worker; it does not decide. |
 | Rendering: merge deterministic base/profile/OS/vendor/local layers and write candidate input | `config/{types,merge,renderer,writer,validator,readiness,metrics_pipeline}.go` → `configuration/rendering` only if ownership/import tests confirm; otherwise retain focused `internal/config` | Configuration layers, Identity values, Monitoring intent; deterministic merge, validation before activation, explicit provenance and no arbitrary remote YAML. Runtime's Collector compiler/capability validation remains separate. |
 
-Configuration is intentionally split by lifecycle, not one directory of generic services. The current `integration` and `discovery` packages mix policy with profile/evidence models; do not move a file wholesale when it contains multiple owners. The proposal/desired-state transaction is the strongest cross-package atomic boundary and must remain one SQLite transaction after extraction.
+Configuration is intentionally split by capability, not one directory of generic services. The current `integration` and `discovery` packages mix policy with profile/evidence models; do not move a file wholesale when it contains multiple owners. The proposed `configuration/sqlite` is the technical adapter boundary for Configuration-owned repositories and cross-capability atomic writes; keep business decisions in their capability packages. The proposal/desired-state transaction is the strongest cross-capability atomic boundary and must remain one SQLite transaction after extraction. Split the SQLite adapter further only if transaction ownership stays singular and repository imports become clearer.
 
 #### Runtime
 
@@ -172,7 +172,7 @@ Configuration is intentionally split by lifecycle, not one directory of generic 
 | Dependency provisioning/lifecycle: Node Exporter | `dependency/node_exporter/*.go` → `runtime/dependencies/node_exporter` with platform files retained inside the capability unless a shared adapter seam is proven | Catalog, artifact ports, systemd/process adapters; preserve managed ownership, idempotent install/enable/reconcile/teardown, host privilege and no removal of unowned installs. |
 | Dependency provisioning/lifecycle: Windows Exporter | `dependency/windows_exporter_*.go` (currently root-level files) → `runtime/dependencies/windows_exporter` | Catalog, MSI/artifact and Windows SCM adapters; preserve preflight/admin checks, ownership markers, service recovery and safe uninstall. |
 | Dependency provisioning/lifecycle: LibreHardwareMonitor | `dependency/libre_hardware_monitor/*.go` → `runtime/dependencies/libre_hardware_monitor` | Catalog, artifact, Windows task/firewall/process adapters; preserve secret-free config, firewall/task ownership, health checks and cleanup. |
-| Shared dependency platform primitives | `dependency/{service,process}.go` and any truly shared helpers → `runtime/dependencies/adapters` only after importer audit | Capability packages; platform-neutral contracts and Windows/Linux build constraints. Do not force exporter-specific lifecycles into a generic lifecycle framework. |
+| Shared dependency platform primitives | `dependency/{service,process}.go` and any truly shared helpers → remain within their consuming capability initially; `runtime/dependencies/adapters` only after importer audit proves a shared boundary | Capability packages; platform-neutral contracts and Windows/Linux build constraints. Do not force exporter-specific lifecycles into a generic lifecycle framework. |
 | Collector catalog, compile and validate | `collectorruntime/{capability,manifest,compiler,validation}.go` → `runtime/collector/{capabilities,configuration}` | Monitoring query, Configuration rendered input, Identity platform; pinned manifest is canonical and candidate validation occurs before activation. |
 | Collector activation, readiness, rollback and recovery | `agentlifecycle/{candidate*,configuration,rollback,activation_recovery,runtime*,teardown*,baseline}.go`, `supervisor/{supervisor,lifecycle,readiness,child*}.go` → `runtime/collector/activation` and `runtime/process` only where process ownership is distinct | Configuration apply request, Collector adapter and durable activation journal; one lifecycle owner, generation evidence, readiness, LKG and terminal-state guard. Preserve controlled legacy fallback during OpAMP Supervisor migration and never run two lifecycle owners concurrently. |
 | Managed OpAMP Supervisor provisioning and status | `opampsupervisorconfig/config.go`, `agentlifecycle/supervisor_runtime.go`, `bootstrap/supervisor_artifact.go` → `runtime/opamp` | Runtime artifact, Collector lifecycle and Core control adapter; Supervisor is a managed dependency/protocol participant, not the OpAMP Server and never a second simultaneous Collector owner. |
@@ -255,7 +255,7 @@ docs/
 
 **Capability-based navigation:** the architecture index now links each context to the canonical ownership map, its capability section here, and the release behavior/acceptance overview. Keep the package tree only here; do not duplicate it in the README.
 
-**Status consistency:** the user explicitly approved all five planning documents, including this revised physical tree, and lifted the planning-only restriction. The PR-09.5 plan and architecture index record the same approval and scope. Keep this document the sole canonical package tree; other indexes link to it without copying its contents.
+**Status consistency:** OD-01 through OD-06 and this physical map are approved. The PR-09.5 plan, consolidation index, target-architecture status and release tracker record the same approval and implementation scope. Keep this document the sole canonical package tree; other indexes link to it without copying its contents.
 
 **Archival opportunity:** do not move records as part of source migration. After architecture approval, a separate documentation-only cleanup may move the superseded unversioned package tree in `source-structure.md` and stale implementation checklists to `docs/local/archive/`, or leave them in place with their supersession banners. Before moving, verify inbound links, dated decision provenance and policy-history needs; preserve links or add a short archival index. Do not archive release contracts, verification evidence, runbooks, or historical decisions that explain a still-supported migration path. Keep the long `architecture-overview.md` behavior scenarios, acceptance matrix and decision history; archive only its clearly superseded package-map subsection in a later, separate docs-only change if the audit confirms no unique policy text is lost.
 

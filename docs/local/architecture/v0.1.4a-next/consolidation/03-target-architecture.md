@@ -1,6 +1,6 @@
 # PR-09.5 — Target Architecture
 
-**Status:** architecture-approved target (2026-11-15); implementation is authorized only within PR-09.5a through PR-09.5g and subject to the migration plan's per-slice verification gates.
+**Status:** architecture-approved target (2026-11-15). All five PR-09.5 planning documents, including the revised physical map, are approved; implementation is authorized through PR-09.5g under the migration plan's per-slice verification gates. PR-10 remains excluded.
 **Source snapshot:** `b2599b8db31bfedfd75e360423d5aa98cfbcb5dc`.
 **Release target:** `v0.1.4a-next`.
 
@@ -138,8 +138,8 @@ The service host coordinates clocks, cancellation, startup ordering, worker star
 
 ## Approved decisions and remaining review
 
-**Approved target decisions:** seven named contexts; Configuration proposal lifecycle and atomic desired-state transition (Docker observes Redis → Monitoring recommends the Redis profile → Configuration creates/approves the proposal with the desired-state update in one transaction); Runtime-owned pinned Collector capability catalog queried by Monitoring (including `redisreceiver` support); centralized migration coordinator with context-owned migration definitions/repositories registered at composition; Runtime-managed dependency definition/provision/lifecycle organized by justified capability; Application Host lifecycle coordination separated from context-owned workflow decisions; preservation of approved Core/local authority and revision semantics. The user approved this target and all four companion planning documents on 2026-11-15 and authorized implementation through PR-09.5g; that authorization does not include PR-10 or new behavior/policy decisions.
+**Approved target decisions:** seven named contexts; Configuration proposal lifecycle and atomic desired-state transition (Docker observes Redis → Monitoring recommends the Redis profile → Configuration creates/approves the proposal with the desired-state update in one transaction); Runtime-owned pinned Collector capability catalog queried by Monitoring (including `redisreceiver` support); centralized migration coordinator with context-owned migration definitions/repositories registered at composition; Runtime-managed dependency definition/provision/lifecycle organized by justified capability; Application Host lifecycle coordination separated from context-owned workflow decisions; preservation of approved Core/local authority and revision semantics. The user explicitly approved this target, all four companion planning documents, and the final review clarifications on 2026-11-15. Implementation through PR-09.5g is authorized, but PR-10 and new behavior/policy decisions are excluded.
 
 **Per-slice implementation gates:** settle exact cross-context interface and error/transaction semantics before the slice that consumes each contract; validate dependency capability grouping from actual callers; verify policy prerequisites against the pinned shared policy. Independent Core/security/control-plane policy questions remain in their existing decision records and are not resolved by this approval.
 
-No unresolved item is silently decided here. The complete target architecture, source structure, ownership decisions, and migration plan are approved. Remaining contract details must be settled before the slice that depends on them; they do not reopen architecture approval unless they require a change to an approved boundary or behavior.
+No unresolved item is silently decided here. The target architecture and source structure are approved. Remaining contract details must be settled before the slice that depends on them; this approval does not resolve outstanding control-plane policy.

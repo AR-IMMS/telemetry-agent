@@ -1,7 +1,9 @@
 # PR-09.5 Consolidation Review Set
 
-**Status:** architecture approved (2026-11-15); implementation through PR-09.5g
-is authorized. PR-09.5a is in progress. The audit is anchored to integration merge
+**Status:** all five PR-09.5 planning documents and OD-01 through OD-06 are
+architecture-approved (2026-11-15). Implementation through PR-09.5g is
+authorized under the migration plan's per-slice gates; PR-10 is excluded. The
+audit is anchored to integration merge
 `b2599b8db31bfedfd75e360423d5aa98cfbcb5dc`.
 
 Read in this order:
