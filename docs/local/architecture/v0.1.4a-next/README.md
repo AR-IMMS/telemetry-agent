@@ -44,6 +44,23 @@ earlier source-to-target package guesses without deleting their history.
    [test matrix](../../verification/v0.1.4a-next/test-matrix.md).
 9. [Runbook readiness](../../runbooks/v0.1.4a-next/README.md).
 
+## Browse by context
+
+Use the ownership map for responsibility and contracts, the source structure
+for current-to-target package disposition, and the architecture overview for
+behavior and acceptance scope. Package destinations are flexible guidance;
+this index does not duplicate the package tree.
+
+| Context | Ownership and contracts | Source disposition | Behavior and acceptance |
+|---|---|---|---|
+| Identity | [Ownership map](consolidation/02-context-ownership.md) | [Identity](consolidation/04-source-structure.md#identity) | [Architecture overview](architecture-overview.md) |
+| Inventory | [Ownership map](consolidation/02-context-ownership.md) | [Inventory](consolidation/04-source-structure.md#inventory) | [Architecture overview](architecture-overview.md) |
+| Monitoring | [Ownership map](consolidation/02-context-ownership.md) | [Monitoring](consolidation/04-source-structure.md#monitoring) | [Architecture overview](architecture-overview.md) |
+| Configuration | [Ownership map](consolidation/02-context-ownership.md) | [Configuration](consolidation/04-source-structure.md#configuration) | [Architecture overview](architecture-overview.md) |
+| Runtime | [Ownership map](consolidation/02-context-ownership.md) | [Runtime](consolidation/04-source-structure.md#runtime) | [Architecture overview](architecture-overview.md) |
+| Health | [Ownership map](consolidation/02-context-ownership.md) | [Health](consolidation/04-source-structure.md#health) | [Architecture overview](architecture-overview.md) |
+| Operations | [Ownership map](consolidation/02-context-ownership.md) | [Operations](consolidation/04-source-structure.md#operations) | [Architecture overview](architecture-overview.md) |
+
 ## Decision status
 
 The target favors OTel-first collection, native Windows/Linux operation,
