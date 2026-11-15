@@ -12,12 +12,14 @@ proposal package is dated 2026-11-12.
 [target architecture](consolidation/03-target-architecture.md),
 [flexible source structure](consolidation/04-source-structure.md), and
 [PR-09.5 migration plan](../../plans/v0.1.4a-next/pr-09.5-architecture-consolidation.md)
-for source consolidation. These are planning documents awaiting architecture
-approval; they do not authorize refactoring. The release
+for source consolidation. The user approved the complete consolidation set on
+2026-11-15 and authorized implementation through PR-09.5g; PR-10 remains
+excluded. The release
 [architecture overview](architecture-overview.md) remains canonical for
 product behavior and capability scope. The consolidation set is canonical for
-the source audit and approved OD-01–OD-06 ownership decisions. Its physical
-tree and migration sequence remain under architecture review. It supersedes
+the source audit, approved OD-01–OD-06 ownership decisions, target architecture
+and source structure. Its physical tree is flexible implementation guidance.
+It supersedes
 earlier source-to-target package guesses without deleting their history.
 
 ## Read order

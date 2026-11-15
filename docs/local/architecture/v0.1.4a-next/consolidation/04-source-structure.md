@@ -1,9 +1,9 @@
 # PR-09.5 — Flexible Source Structure
 
-**Status:** concrete, source-grounded target for review; package names remain flexible and the tree is not a required scaffold.
-**Evidence:** [source audit](01-current-source-audit.md) at `b2599b8db31bfedfd75e360423d5aa98cfbcb5dc`; ownership decisions in [02-context-ownership](02-context-ownership.md).
+**Status:** architecture-approved source structure (2026-11-15); package names remain flexible and the tree is not a required scaffold. OD-01 through OD-06 are approved ownership decisions. Implementation remains incremental and subject to the migration plan's per-slice contracts and verification gates.
+**Evidence:** source ownership and transaction inventory from [source audit](01-current-source-audit.md) at `b2599b8db31bfedfd75e360423d5aa98cfbcb5dc`, checked against the current PR-09.5 worktree at `98fed3a42fa80bb860040344b717ce217cb2b235`. The current branch adds `internal/platform/sqlite/migrate`; context migration callbacks remain registered through `internal/agentstate`. The approved decisions are recorded in [02-context-ownership](02-context-ownership.md).
 
-**Evidence boundary:** the active worktree is an older, dirty ancestor and is not the source of truth for the target map. This disposition uses the immutable PR-09 integration tree recorded by the source audit and its path/import/transaction inventory. The available code-graph index is older than that integration tree, so its community scores are exploratory only and were not used to assign owners.
+**Evidence boundary:** source ownership, imports, consumers, rows, and transaction behavior were audited on the immutable PR-09 integration tree. This revision checked proposed paths against the current PR-09.5 source tree. It does not infer source behavior from diagrams or package names. The code-graph index is older than the current HEAD and is exploratory only; direct source and import evidence control this disposition.
 
 ## Structure principles
 
@@ -16,7 +16,7 @@
 
 ## Concrete target tree
 
-This is the proposed physical navigation after migration, grounded in the source snapshot above. It is not a mandatory package scaffold: keep a capability flat where its types and use cases remain cohesive, and introduce a technical layer only for an actual adapter, transaction, or platform boundary. Parenthetical source paths are the current baseline locations, not proposed permanent duplicate packages.
+This is the proposed physical navigation after migration, grounded in the source snapshot above. It is not a mandatory package scaffold: keep a capability flat where its types and use cases remain cohesive, and introduce a technical layer only for an actual adapter, transaction, or platform boundary. Parenthetical source paths are the current baseline locations, not proposed permanent duplicate packages. Tree nodes are candidate package boundaries only where the matrix names a current cohesive source capability; they are not a checklist for creating empty folders.
 
 ```text
 cmd/agentctl/                                  CLI and service delivery edge
@@ -48,10 +48,10 @@ internal/
 │   ├── artifacts/                             pin, download, validate and publish binaries/config
 │   ├── dependencies/
 │   │   ├── catalog/                            managed dependency definitions
-│   │   ├── nodeexporter/                       Linux dependency capability
-│   │   ├── windowsexporter/                    Windows dependency capability
-│   │   ├── librehardwaremonitor/                Windows hardware dependency capability
-│   │   └── adapters/                           shared OS/service/process seams only if justified
+│   │   ├── nodeexporter/                       Linux install, service, health and recovery capability
+│   │   ├── windowsexporter/                    Windows MSI, service, health and recovery capability
+│   │   └── librehardwaremonitor/                Windows hardware process/task/config capability
+│   │       # Share artifact, lifecycle or platform adapters only after caller evidence supports a seam.
 │   ├── collector/
 │   │   ├── capabilities/                       catalog derived from pinned Collector binary
 │   │   ├── configuration/                      compile and validate candidate config
@@ -69,12 +69,11 @@ internal/
 │   ├── dockeradapter/                          exact-target inspect/restart adapter
 │   ├── nats/                                   authenticated JetStream session and result publish
 │   └── sqlite/                                 execution journal, audit and result outbox
-├── adapters/
-│   └── coreapi/                                Core HTTP protocol translation shared by owners
 ├── platform/
 │   ├── sqlite/                                 connection policy
 │   │   └── migrate/                            generic ordered migration executor
 │   └── events/                                 bounded post-commit advisory notifications
+├── coreapi/                                     shared authenticated Core HTTP protocol adapter
 ├── opampserver/                                separate Go OpAMP server/service boundary
 └── mockcore/                                   replaceable contract test service, test-only authority
 
@@ -86,11 +85,21 @@ docs/                                           architecture, contracts, plans, 
 
 `internal/opampserver` is a Core-facing protocol service and remains outside Agent business contexts. `internal/mockcore` is a contract test service, not a policy owner. `internal/operations/testsupport/mockcore` remains a narrow Operations/NATS fixture unless its actual consumers can use the full Mock Core without adding production dependencies. Neither is nested under Runtime's `opamp/`, which is only the Agent's managed OpAMP Supervisor integration.
 
-There is no target `internal/state` or generic state hub. The current `internal/agentstate` is a transitional multi-context persistence adapter. Context repositories own their tables and transaction semantics. One technical migration coordinator executes ordered migration definitions registered by the composition root; the platform coordinator imports no business context. Preserve migration versions 1–14, order, and every existing atomic transaction. Retire `agentstate` only when all active consumers use owner repositories, migration-upgrade/reopen fixtures pass, and no state/path/process-lock behavior remains stranded there.
+There is no target `internal/state` or generic state hub. The current branch already has `internal/platform/sqlite/migrate` as the context-independent ordered migration executor. `internal/agentstate` remains the transitional multi-context persistence adapter and currently registers the migration sequence; moving registration and each context-owned definition is still future work. Context repositories own table semantics and transaction boundaries. The composition root may assemble their ordered definitions; the platform coordinator imports no business context. Preserve migration versions 1–14, order, and every existing atomic transaction. Retire `agentstate` only when all active consumers use owner repositories, migration-upgrade/reopen fixtures pass, and no state/path/process-lock behavior remains stranded there.
 
 ### Package disposition matrix by context and capability
 
 Each row names a responsibility, source candidates, intended boundary, dependencies and invariants. Movement is incremental: split mixed files/models by semantic owner only after callers and translations are characterized. A package may remain at its current path if moving it does not improve ownership.
+
+| Context navigation | Capability groups in this proposal |
+|---|---|
+| [Identity](#identity) | Host and installation identity, enrollment/binding, protected credentials |
+| [Inventory](#inventory) | Provider observations, Docker adapter, inventory snapshots and persistence |
+| [Monitoring](#monitoring) | Profiles, matching/recommendations, endpoint diagnostics, template matching |
+| [Configuration](#configuration) | Desired and remote state, proposals, templates, materialization, reconciliation, rendering |
+| [Runtime](#runtime) | Bootstrap/artifacts, managed dependencies, Collector, OpAMP Supervisor, Agent service and processes |
+| [Health and Operations](#health-and-operations) | Evidence snapshots/reporting; typed commands, adapters, audit and result delivery |
+| [Supporting boundaries](#supporting-technical-and-protocol-boundaries) | Composition/CLI, SQLite migrations, Core/OpAMP protocol services and test infrastructure |
 
 #### Identity
 
@@ -169,9 +178,9 @@ The existing `internal/dependency` has 72 production Go files, but the source al
 | Boundary | Current source → intended boundary | Dependencies / invariants to preserve |
 |---|---|---|
 | Composition and worker host | `app/runtime.go`, `cmd/agentctl/composition.go` and command wiring → `internal/app` / `cmd/agentctl` | App starts/stops workers and composes context ports; contexts decide business workflows; CLI flags/output/exit codes remain compatible. |
-| SQLite connection and migration coordination | `platform/sqlite/sqlite.go`, `agentstate/sqlite_schema.go`, context `*/sqlite` repositories → `platform/sqlite` and its technical `migrate` subpackage, plus context-owned ordered definitions registered by App | One database; one coordinator; schema versions 1–14 and order unchanged; no context imports by platform; per-operation atomic transactions unchanged. No replacement `state` package. |
+| SQLite connection and migration coordination | Current: `platform/sqlite/sqlite.go`, new `platform/sqlite/migrate/{doc.go,migrate.go}`, `agentstate/sqlite_schema.go`, and context `*/sqlite` repositories. Target: keep connection policy and ordered execution in `platform/sqlite`; move table semantics and migration callbacks alongside context-owned repositories, with ordered registration in App/composition. | One database; one coordinator; schema versions 1–14 and order unchanged; no context imports by platform; per-operation atomic transactions unchanged. No replacement `state` package. |
 | Advisory events | `platform/events/dispatcher.go` → `platform/events` | Post-commit wakeups only; SQLite and startup/periodic recovery remain authoritative. |
-| Core HTTP protocol adapter | `coreapi/{enrollment_client,control}.go` → retain `internal/coreapi` or move to `internal/adapters/coreapi` after consumer split | Identity enrollment, Configuration remoteconfig and Runtime status call sites; keep transport DTOs at edge and do not merge client protocol with business policy. |
+| Core HTTP protocol adapter | `coreapi/{enrollment_client,control}.go` → retain `internal/coreapi` as a shared protocol adapter; split client files only if consumer contracts require distinct seams | Identity enrollment, Configuration remoteconfig and Runtime status call sites; keep transport DTOs at edge and do not merge client protocol with business policy. Avoid moving it into a generic adapters bucket without a demonstrated dependency improvement. |
 | OpAMP Server | `opampserver/{server,config}.go` → retain `internal/opampserver` as separate service adapter | Core API, Identity binding and OpAMP protocol; not Runtime's managed OpAMP Supervisor and not an Agent business context. |
 | Full Mock Core | `mockcore/*` → retain `internal/mockcore` test infrastructure | Versioned Core/OpAMP contract fixtures; replaceable by endpoint/config, never production policy authority. |
 | Operations Mock Core | `operations/testsupport/mockcore/*` → retain as narrow Operations test fixture | NATS binding/authorization scenarios; consolidate with full Mock Core only if it reduces duplicated test behavior without coupling production packages. |
@@ -212,10 +221,10 @@ docs/
 |---|---|---|
 | `docs/README.md` and `docs/ARCHITECTURE.md` | Repository entrypoint and implemented PoC baseline, respectively; both link to the v0.1.4a-next target. | Keep short and navigational. Do not copy the release capability matrix or target package tree into them. |
 | `architecture-overview.md` | Product behavior, scope, release constraints and acceptance scenarios. | Section 12 is now explicitly marked as a superseded package map and points here. Sections 16 and 20 retain control-plane and feature-scope questions; OD-06 authority/revision preservation is clarified without resolving those separate policies. Preserve behavior scenarios and decision history. |
-| `consolidation/01-current-source-audit.md` | Source facts at the recorded immutable merge, import observations, migrations and atomicity. | Canonical current-source audit. Do not duplicate package inventories in other architecture docs. Refresh at each implementation baseline. |
+| `consolidation/01-current-source-audit.md` | Source facts at immutable PR-09 merge `b2599b8`, import observations, migrations and atomicity. | Canonical pinned-baseline audit, not a continuously current inventory. Do not duplicate package inventories in other architecture docs; refresh at each implementation baseline. |
 | `consolidation/02-context-ownership.md` | Approved OD-01–OD-06 logical ownership and collaboration flow. | Canonical context owner map. Keep package destinations in this document only as short links, not a second tree. |
-| `consolidation/03-target-architecture.md` | Target context contracts, collaboration flow and separate Go-import direction. | Canonical interaction/dependency diagrams. The context-boundaries document remains a compact logical summary. |
-| `consolidation/04-source-structure.md` | Capability tree, source-to-target disposition, boundaries, retention/removal criteria and documentation audit. | Canonical physical target approved 2026-11-15; update the migration plan from this file rather than maintaining duplicate move maps. |
+| `consolidation/03-target-architecture.md` | Target context contracts, collaboration flow and separate Go-import direction. | Canonical approved interaction/dependency diagrams. The context-boundaries document remains a compact logical summary. |
+| `consolidation/04-source-structure.md` | Capability tree, source-to-target disposition, boundaries, retention/removal criteria and documentation audit. | Canonical approved physical target; update the migration plan from this file rather than maintaining duplicate move maps. |
 | `plans/v0.1.4a-next/pr-09.5-architecture-consolidation.md` | Ordered implementation slices, gates, characterization, verification and rollback. | Canonical migration execution plan; avoid repeating full ownership tables here. |
 | `verification/v0.1.4a-next/pr-verification/` | Evidence and checkpoint outcomes. | Canonical claims about what is implemented/tested; plans and architecture diagrams are not verification evidence. |
 | `context-boundaries.md`, `source-structure.md`, `state-and-event-model.md`, `opamp-integration.md` | Logical context summary, historical package proposal, persistence invariants and OpAMP runtime/contracts. | Keep targeted, link to the consolidation set for current placement. `source-structure.md` is already marked historical and superseded; retain it for design history, not as migration input. |
@@ -227,7 +236,7 @@ docs/
 
 | Existing package or facade | Retention reason during migration | Removal / final-location criteria |
 |---|---|---|
-| `internal/agentstate` | Current SQLite initialization, legacy state import, activation journal, cross-process locks and migrations are coupled here. It is not a target context or a new state hub. | Remove only after all active callers use context-owned repositories; migration 1–14 registration and upgrade/reopen fixtures pass; state-path and lock behavior have named owners; no production imports remain. |
+| `internal/agentstate` | Current SQLite initialization, legacy state import, activation journal, cross-process locks and migration registration are coupled here. The ordered technical executor now exists at `internal/platform/sqlite/migrate`; `agentstate` is not a target context or a new state hub. | Remove only after all active callers use context-owned repositories; migration 1–14 definitions/registration and upgrade/reopen fixtures pass; state-path and lock behavior have named owners; no production imports remain. |
 | `internal/discovery` proposal symbols and `discovery/sqlite/proposal` | Existing CLI, proposal history and approval code still use these types/repository contracts. | Retain only as a forwarding adapter while Configuration owns migration-12 reads/writes and atomic approval. Remove after all callers use Configuration contracts and CLI/data fixtures pass. |
 | `internal/integration` shared types | Current Monitoring definitions and Configuration desired instances/templates share types in the same package. | Split owner types with explicit translation; keep aliases only for callers proven to require source compatibility. Remove aliases when repository-wide Go/import/CLI searches show zero consumers and persisted JSON/API representations remain unchanged. |
 | `internal/coreapi` | Shared authenticated HTTP transport currently serves enrollment and Agent management calls. | Keep as a technical adapter until Identity, Configuration and Runtime consumers have explicit ports/DTO translation. Split only if independent client ownership reduces coupling; remove old package only at zero imports with protocol contract tests. |
