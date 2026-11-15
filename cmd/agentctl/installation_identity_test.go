@@ -10,7 +10,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
 	"github.com/ar-imms/telemetry-agent/internal/agentlifecycle"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 )
 
 func TestPrepareAgentInstallationIdentityReusesPersistentID(t *testing.T) {
@@ -175,9 +175,9 @@ func (stubStatusListener) Close() error { return nil }
 
 func (stubStatusListener) Addr() net.Addr { return &net.TCPAddr{} }
 
-func mustIdentityID(t *testing.T, value string) identity.InstallationID {
+func mustIdentityID(t *testing.T, value string) installationid.InstallationID {
 	t.Helper()
-	id, err := identity.ParseInstallationID(value)
+	id, err := installationid.ParseInstallationID(value)
 	if err != nil {
 		t.Fatalf("ParseInstallationID(%q) error = %v", value, err)
 	}

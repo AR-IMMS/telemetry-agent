@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 )
 
 // prepareAgentInstallationIdentity loads operational state before asking the
@@ -23,7 +23,7 @@ func prepareAgentInstallationIdentity(statePath string) error {
 		strings.TrimSpace(collector.HealthEndpoint) == "" {
 		return fmt.Errorf("Agent operational state has incomplete Collector context")
 	}
-	if _, err := identity.EnsureInstallationIdentity(
+	if _, err := installationid.EnsureInstallationIdentity(
 		agentstate.NewIdentityStore(statePath),
 		rand.Reader,
 	); err != nil {

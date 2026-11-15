@@ -19,9 +19,9 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
-	discoverydocker "github.com/ar-imms/telemetry-agent/internal/discovery/docker"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
+	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
 )
 
 const templateRuntimeE2EEnv = "AR_IMMS_S4_TEMPLATE_RUNTIME_E2E"
@@ -109,7 +109,7 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	discoveryCoordinator, err := discovery.NewCoordinator(store.InventoryRepository(), []discovery.DiscoveryProvider{provider}, discovery.DefaultPolicy(), 5*time.Second)
+	discoveryCoordinator, err := inventoryctx.NewCoordinator(store.InventoryRepository(), []inventoryctx.DiscoveryProvider{provider}, inventoryctx.DefaultPolicy(), 5*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,0 +1,39 @@
+# PR-09.5b Ubuntu Docker Inventory Provider Evidence
+
+- GitHub Actions run: [43751443760](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43751443760)
+- PR branch head: `1cce2cc787d4d62a528b99fb96444d4ef7570c57`
+- Actions checkout merge commit: `91b65d692d670504e6a69fee4f49b335bc5d0c6f`
+- Merge parents: integration `79bb5a3092f55b3645d667d4f5481bde6c44700e`; PR head `1cce2cc787d4d62a528b99fb96444d4ef7570c57`
+- Runner: `ubuntu-latest`
+- Isolated Docker Engine: `29.5.3 linux/x86_64`
+- Isolated Redis fixture: `arimms-pr095b-inventory-43751443760-1`
+- Fixture container ID: `d6a8c46cdba0cea267ed8a02838c1cca84b65bfef2291a8ee3dad98b3521695d`
+- State path: `/home/runner/work/_temp/pr095b-inventory/agent.db`
+- Artifact: `pr095b-docker-inventory-Linux` (downloaded to system temp outside the checkout)
+
+## Executed tests
+
+`go test ./cmd/agentctl -run '^TestLiveDockerInventoryWhenExplicitlyEnabled$' -count=1 -v`
+
+```text
+=== RUN   TestLiveDockerInventoryWhenExplicitlyEnabled
+--- PASS: TestLiveDockerInventoryWhenExplicitlyEnabled (0.35s)
+PASS
+ok   github.com/ar-imms/telemetry-agent/cmd/agentctl  0.351s
+```
+
+`go test ./cmd/agentctl -run '^TestLiveDockerUnavailableRetainsInventory$' -count=1 -v`
+
+```text
+=== RUN   TestLiveDockerUnavailableRetainsInventory
+--- PASS: TestLiveDockerUnavailableRetainsInventory (0.01s)
+PASS
+ok   github.com/ar-imms/telemetry-agent/cmd/agentctl  0.011s
+```
+
+## Downloaded log digests
+
+- `linux-live-inventory.log`: SHA-256 `9C24323B00E1488FF358690A357EE734016985B7F42F9C23B3894025EC062125`
+- `linux-unavailable-inventory.log`: SHA-256 `1905A38529DEE7C39A9CDED021C01BAECF59E69FBDE1B613C00DC348247C6D82`
+
+Run jobs completed successfully on Windows and Ubuntu. Windows correctly skipped Docker-only provider checks; Windows Go tests against Docker Desktop's Linux Engine are recorded separately. The Linux job removed the isolated fixture and completed the evidence-artifact upload.

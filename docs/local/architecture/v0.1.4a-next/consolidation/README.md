@@ -8,7 +8,7 @@ audit is anchored to integration merge
 
 Read in this order:
 
-1. [Current source audit](01-current-source-audit.md) — verified packages,
+1. [Pre-consolidation source audit](01-current-source-audit.md) — verified baseline packages,
    imports, SQLite migrations/transactions, CLI and compatibility surfaces.
 2. [Context ownership map](02-context-ownership.md) — existing source to the
    seven business contexts plus supporting boundaries and approved OD-01–OD-06 decisions.
@@ -21,8 +21,8 @@ Read in this order:
 
 The [release architecture overview](../architecture-overview.md) remains
 canonical for product behavior and acceptance scope. These documents are
-canonical for source audit, approved OD-01–OD-06 ownership, target architecture,
-and source structure.
+canonical for the frozen PR-09 source audit, approved OD-01–OD-06 ownership, target architecture,
+and the current capability-oriented source disposition in 04.
 Earlier design history is retained; superseded package guesses are labeled as
 such. Remaining contracts are validated before their dependent slice under
 the approved migration order. Stop after PR-09.5g; PR-10 remains excluded.

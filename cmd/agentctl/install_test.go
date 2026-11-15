@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentinstallation"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 )
 
 func TestRunInstallStagesCurrentBinaryAndOwnedLayout(t *testing.T) {

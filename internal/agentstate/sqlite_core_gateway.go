@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
 )
 
@@ -322,7 +322,7 @@ func checkGatewayInstallation(tx *sql.Tx, supplied string) error {
 	if !initialized {
 		return fmt.Errorf("Core Gateway snapshot requires an initialized installation identity")
 	}
-	incoming, err := identity.ParseInstallationID(supplied)
+	incoming, err := installationid.ParseInstallationID(supplied)
 	if err != nil {
 		return fmt.Errorf("validate snapshot installation identity: %w", err)
 	}

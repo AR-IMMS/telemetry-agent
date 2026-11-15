@@ -1,8 +1,8 @@
 package agentstate
 
 import (
-	"github.com/ar-imms/telemetry-agent/internal/enrollment"
-	enrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/enrollment/sqlite"
+	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
+	enrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
 )
 
 func (s SQLiteStore) enrollmentRepository() enrollment.AttemptRepository {

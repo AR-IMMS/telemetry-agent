@@ -5,7 +5,7 @@ package agentinstallation
 import (
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 )
 
 func TestNewRemoverResolvesLinuxFinalizer(t *testing.T) {

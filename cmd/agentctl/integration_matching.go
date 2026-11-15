@@ -12,9 +12,9 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
+	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 )
 
 type integrationMatchOutput struct {
@@ -130,7 +130,7 @@ func runIntegrationMatch(ctx context.Context, args []string, stdout, stderr io.W
 	return 0
 }
 
-func projectInventory(snapshot discovery.InventorySnapshot, asOf time.Time) integration.MatchSnapshot {
+func projectInventory(snapshot inventoryctx.InventorySnapshot, asOf time.Time) integration.MatchSnapshot {
 	resources := make([]integration.MatchResource, 0, len(snapshot.Resources))
 	for _, resource := range snapshot.Resources {
 		attributes := make(map[string]string, len(resource.Attributes))
@@ -162,7 +162,7 @@ func projectInventory(snapshot discovery.InventorySnapshot, asOf time.Time) inte
 	})
 	return integration.MatchSnapshot{
 		InventoryRevision: snapshot.Revision, AsOf: asOf,
-		StaleAfter: discovery.DefaultPolicy().StaleAfter, Resources: resources,
+		StaleAfter: inventoryctx.DefaultPolicy().StaleAfter, Resources: resources,
 	}
 }
 

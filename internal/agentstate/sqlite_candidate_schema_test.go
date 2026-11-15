@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	identityenrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
+	identityinstallationsqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
 )
 
 func TestCandidateJournalMigrationPreservesVersionSixLifecycleState(t *testing.T) {
@@ -26,10 +29,10 @@ func TestCandidateJournalMigrationPreservesVersionSixLifecycleState(t *testing.T
 		}
 	}
 	for _, migrate := range []func(*sql.DB) error{
-		migrateInstallationIdentity,
+		identityinstallationsqlite.Migrations()[0].Apply,
 		migrateCoreGatewaySnapshot,
 		migrateCoreGatewayRuntime,
-		migrateEnrollmentAttempts,
+		identityenrollmentsqlite.Migrations()[0].Apply,
 		migrateIntegrationDesiredState,
 	} {
 		if err := migrate(db); err != nil {

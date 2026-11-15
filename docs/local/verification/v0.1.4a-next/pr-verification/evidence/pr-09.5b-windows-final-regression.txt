@@ -1,0 +1,32 @@
+# PR-09.5b Windows Final Regression Evidence
+
+- Worktree: `feat/pr-09.5b-identity-inventory`
+- Verified source/test commit: `051b3cfd2e00e12f69fcd1ab620ca726d8fa2a79` (based on branch head `6598205ffa7973af0f1c0a89ad083ffd5cfd8af4`)
+- Environment: Windows PowerShell, Go `1.25.5 windows/amd64`; Docker Desktop Linux Engine `29.5.3 linux/amd64`
+- Fixture source: clean integration baseline `79bb5a3092f55b3645d667d4f5481bde6c44700e`, generated with its Agent SQLite, Identity, Enrollment, desired-state and Inventory repositories
+- Fixture path: `internal/agentstate/testdata/pr095b-baseline-populated-v14.db`
+- Fixture SHA-256: `EB83B28B146DB310431F39ABF57EBFD5985FE5F81DBCA93D4DABA4B1689C59B0`
+
+## Commands and results
+
+```text
+go test ./... -count=1
+PASS — all packages with tests passed; reconciliation/contracts has no test files.
+
+go test -race ./internal/identity/... ./internal/inventory/... ./internal/agentstate/... -count=1
+PASS — all selected packages passed with the race detector.
+
+go vet ./...
+PASS
+
+go build ./...
+PASS
+
+powershell -NoProfile -File scripts/check-architecture.ps1
+PASS — 46 source directories/packages; only the documented 454-line enrollment allowance.
+
+git diff --check
+PASS
+```
+
+`TestPreMovePopulatedDatabaseSurvivesOpenAndReopen` passed. It opened the populated v14 database twice with the current Identity and Inventory owners and verified Agent state, installation identity, enrollment attempt, desired integrations, Docker Inventory snapshot and provider failure evidence, and schema version 14. A temporary negative architecture fixture importing `internal/coreapi` from Inventory was rejected by the guard and removed. These runs covered source/test commit `051b3cfd2e00e12f69fcd1ab620ca726d8fa2a79`. PR head `32a5b06ff9c6c89b4f33e66a0c065ec5b077c994` passed final-head Windows/Ubuntu CI run `43754822432`; see the PR-09.5 report for executed and conditionally skipped gates. Live Docker provider tests on Windows and Ubuntu are recorded separately in the adjacent evidence files.

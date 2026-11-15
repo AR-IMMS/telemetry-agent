@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 )
 
 // DefaultAgentServiceName is the OS service identity used by default layouts.

@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/credentialstore"
-	"github.com/ar-imms/telemetry-agent/internal/enrollment"
+	credentialstore "github.com/ar-imms/telemetry-agent/internal/identity/credentials"
+	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
 	"github.com/ar-imms/telemetry-agent/internal/opampsupervisorconfig"
 	"github.com/ar-imms/telemetry-agent/internal/processowner"
 	"github.com/ar-imms/telemetry-agent/internal/supervisor"

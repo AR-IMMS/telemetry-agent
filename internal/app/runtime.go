@@ -11,7 +11,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentlifecycle"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
+	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 	"github.com/ar-imms/telemetry-agent/internal/reconciliation"
 )
@@ -39,7 +39,7 @@ type OperationsRunner interface {
 // RuntimeComponents are the executable-built domain adapters the Agent Service coordinates.
 type RuntimeComponents struct {
 	Reconciler Reconciler
-	Inventory  *discovery.Coordinator
+	Inventory  *inventoryctx.Coordinator
 	// RefreshProposals refreshes runtime proposal state after inventory evaluation.
 	RefreshProposals func(context.Context) error
 	// RefreshTemplates projects Templates after a successful inventory cycle.
@@ -157,7 +157,7 @@ func runAgentControlLoops(ctx context.Context, components RuntimeComponents) err
 		defer close(discoveryDone)
 		err := components.Inventory.RunWithCycle(serviceContext, DiscoveryPollInterval, func(error) {
 			log.Printf("Discovery inventory cycle failed code=inventory_store_error")
-		}, func(result discovery.CycleResult) error {
+		}, func(result inventoryctx.CycleResult) error {
 			if components.RefreshTemplates != nil && DiscoveryCycleSucceeded(result) {
 				if err := components.RefreshTemplates(serviceContext); err != nil {
 					log.Printf("Template materialization refresh failed code=materialization_error")
@@ -179,7 +179,7 @@ func runAgentControlLoops(ctx context.Context, components RuntimeComponents) err
 }
 
 // DiscoveryCycleSucceeded reports whether every configured provider completed without an error.
-func DiscoveryCycleSucceeded(result discovery.CycleResult) bool {
+func DiscoveryCycleSucceeded(result inventoryctx.CycleResult) bool {
 	for _, provider := range result.ProviderResults {
 		if provider.ErrorCode != "" {
 			return false

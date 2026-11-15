@@ -22,7 +22,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 )
 
 const applicationProfilesE2EEnv = "AR_IMMS_PR06_APPLICATION_PROFILE_E2E"
@@ -119,7 +119,7 @@ func TestLiveDockerApplicationProfilesDeliverOTLP(t *testing.T) {
 	if err := store.Save(testState); err != nil {
 		t.Fatal(err)
 	}
-	installationID, err := identity.EnsureInstallationIdentity(agentstate.NewIdentityStore(statePath), rand.Reader)
+	installationID, err := installationid.EnsureInstallationIdentity(agentstate.NewIdentityStore(statePath), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}

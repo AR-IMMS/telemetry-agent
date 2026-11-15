@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	redisintegration "github.com/ar-imms/telemetry-agent/internal/integration/redis"
 	"gopkg.in/yaml.v3"

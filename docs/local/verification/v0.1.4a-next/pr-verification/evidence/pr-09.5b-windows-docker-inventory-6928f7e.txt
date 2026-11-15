@@ -1,0 +1,37 @@
+# PR-09.5b Windows Docker Inventory Provider Evidence
+
+- Executable source commit: `6928f7e1211bf2be0bc54510849f1a198df0f037`
+- Host test runner: Windows PowerShell, Go `go1.25.5 windows/amd64`
+- Docker engine: Docker Desktop Linux Engine `29.5.3 linux/amd64`
+- Docker endpoint: `npipe:////./pipe/dockerDesktopLinuxEngine`
+- Isolated Redis fixture: `arimms-pr095b-inventory-ef5b1fc98e6d`
+- Fixture container ID: `5258f5782cea9e5b38f74866e440f42636d290830d2c68aab4a6b3deac3f0525`
+- Fixture cleanup: verified absent from `docker ps -a` after tests
+- Test state and original logs were stored outside the source checkout under `%TEMP%\ar-imms-pr095b-live-4ffed13670c444af88237d95f0019a03`.
+
+## Commands and results
+
+`go test ./cmd/agentctl -run '^TestLiveDockerInventoryWhenExplicitlyEnabled$' -count=1 -v`
+
+```text
+=== RUN   TestLiveDockerInventoryWhenExplicitlyEnabled
+--- PASS: TestLiveDockerInventoryWhenExplicitlyEnabled (0.53s)
+PASS
+ok  github.com/ar-imms/telemetry-agent/cmd/agentctl  0.725s
+```
+
+`go test ./cmd/agentctl -run '^TestLiveDockerUnavailableRetainsInventory$' -count=1 -v`
+
+```text
+=== RUN   TestLiveDockerUnavailableRetainsInventory
+--- PASS: TestLiveDockerUnavailableRetainsInventory (0.02s)
+PASS
+ok  github.com/ar-imms/telemetry-agent/cmd/agentctl  0.176s
+```
+
+## Original log digests
+
+- `provider-e2e.log`: SHA-256 `37F39DCCFFE0980AC0FC667F505E8A99D288CAD7803E5041924A22691B81B70B`
+- `unavailable-provider-e2e.log`: SHA-256 `90A2BB58C9E735D18C66986BC66F47E71C14EFB35DFFA10723EDDE013389357C`
+
+This verifies Go tests on Windows against Docker Desktop's Linux Engine. It does not claim a native Windows-container engine test or native Linux-host test. The separate Ubuntu CI provider run is pending the workflow update.

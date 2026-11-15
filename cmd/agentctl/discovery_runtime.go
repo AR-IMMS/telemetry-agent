@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
-	discoverydocker "github.com/ar-imms/telemetry-agent/internal/discovery/docker"
+	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
 )
 
 const (
@@ -17,7 +17,7 @@ const (
 )
 
 // newDockerDiscoveryCoordinator opts in only when an explicit local endpoint is set.
-func newDockerDiscoveryCoordinator(statePath string) *discovery.Coordinator {
+func newDockerDiscoveryCoordinator(statePath string) *inventoryctx.Coordinator {
 	endpoint := strings.TrimSpace(os.Getenv(dockerDiscoveryEndpointEnv))
 	if endpoint == "" {
 		return nil
@@ -25,7 +25,7 @@ func newDockerDiscoveryCoordinator(statePath string) *discovery.Coordinator {
 	repository := agentstate.NewSQLiteStore(statePath).InventoryRepository()
 	provider, err := discoverydocker.NewProvider(endpoint)
 	if err != nil {
-		status := discovery.ProviderStatus{
+		status := inventoryctx.ProviderStatus{
 			ProviderID: "docker", ProviderInstanceID: "configured", Enabled: true,
 			LastAttemptAt: time.Now().UTC(), LastErrorCode: "invalid_configuration",
 		}
@@ -35,7 +35,7 @@ func newDockerDiscoveryCoordinator(statePath string) *discovery.Coordinator {
 		log.Printf("Docker discovery is enabled but the endpoint is invalid code=invalid_configuration")
 		return nil
 	}
-	coordinator, err := discovery.NewCoordinator(repository, []discovery.DiscoveryProvider{provider}, discovery.DefaultPolicy(), discoveryProviderTimeout)
+	coordinator, err := inventoryctx.NewCoordinator(repository, []inventoryctx.DiscoveryProvider{provider}, inventoryctx.DefaultPolicy(), discoveryProviderTimeout)
 	if err != nil {
 		log.Printf("Docker discovery could not start code=invalid_configuration")
 		return nil

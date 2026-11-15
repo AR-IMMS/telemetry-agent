@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 )
 
 func TestSQLiteIdentityRepositoryInitializesAndReusesCommittedID(t *testing.T) {
@@ -130,16 +130,16 @@ func TestSQLiteIdentityConcurrentInitializationReturnsCommittedID(t *testing.T) 
 	path := filepath.Join(t.TempDir(), "state.db")
 	first := NewIdentityStore(path)
 	second := NewIdentityStore(path)
-	candidates := []identity.InstallationID{
+	candidates := []installationid.InstallationID{
 		mustInstallationID(t, "11111111-2222-4333-8444-555555555555"),
 		mustInstallationID(t, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"),
 	}
-	results := make(chan identity.InstallationID, len(candidates))
+	results := make(chan installationid.InstallationID, len(candidates))
 	errorsFound := make(chan error, len(candidates))
 	var wait sync.WaitGroup
-	for index, repository := range []identity.InstallationIdentityRepository{first, second} {
+	for index, repository := range []installationid.InstallationIdentityRepository{first, second} {
 		wait.Add(1)
-		go func(index int, repository identity.InstallationIdentityRepository) {
+		go func(index int, repository installationid.InstallationIdentityRepository) {
 			defer wait.Done()
 			id, err := repository.EnsureInstallationID(candidates[index])
 			if err != nil {
@@ -155,7 +155,7 @@ func TestSQLiteIdentityConcurrentInitializationReturnsCommittedID(t *testing.T) 
 	for err := range errorsFound {
 		t.Fatalf("concurrent EnsureInstallationID() error = %v", err)
 	}
-	var committed identity.InstallationID
+	var committed installationid.InstallationID
 	for id := range results {
 		if committed.String() == "" {
 			committed = id
@@ -259,9 +259,9 @@ func TestSQLiteIdentityStoreResolvesLegacyJSONPath(t *testing.T) {
 	}
 }
 
-func mustInstallationID(t *testing.T, value string) identity.InstallationID {
+func mustInstallationID(t *testing.T, value string) installationid.InstallationID {
 	t.Helper()
-	id, err := identity.ParseInstallationID(value)
+	id, err := installationid.ParseInstallationID(value)
 	if err != nil {
 		t.Fatalf("ParseInstallationID(%q) error = %v", value, err)
 	}

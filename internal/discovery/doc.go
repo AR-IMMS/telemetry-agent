@@ -1,5 +1,5 @@
-// Package discovery coordinates complete provider snapshots, maintains a
-// normalized resource inventory, and manages durable monitoring proposals for
-// operator review. It intentionally does not own Integration matching,
-// desired-state approval, Collector configuration, or activation.
+// Package discovery retains the proposal lifecycle pending its 09.5c move to Configuration.
+//
+// Inventory observations and providers live in internal/inventory. This package
+// does not own desired-state persistence or approval transactions.
 package discovery

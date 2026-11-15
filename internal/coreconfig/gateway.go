@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 )
 
 var (
@@ -87,7 +87,7 @@ type GatewayRuntimeRepository interface {
 // ValidateSnapshot rejects malformed identity, revision, or Gateway address.
 // This is local schema validation, not proof of Core authentication.
 func ValidateSnapshot(snapshot GatewaySnapshot) error {
-	if _, err := identity.ParseInstallationID(snapshot.InstallationID); err != nil {
+	if _, err := installationid.ParseInstallationID(snapshot.InstallationID); err != nil {
 		return fmt.Errorf("validate Core Gateway installation ID: %w", err)
 	}
 	if snapshot.Revision == 0 || snapshot.Revision > math.MaxInt64 {

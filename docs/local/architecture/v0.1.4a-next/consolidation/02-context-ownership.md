@@ -1,6 +1,6 @@
 # PR-09.5 — Context Ownership Map
 
-**Status:** approved ownership decisions; source structure and contracts remain for architecture review
+**Status:** approved ownership decisions. The `Existing source candidates` column is baseline evidence; current package destinations and implementation status are in [04-source-structure](04-source-structure.md).
 **Baseline:** `b2599b8db31bfedfd75e360423d5aa98cfbcb5dc`
 **Rule:** ownership follows business invariants and transaction boundaries, not current folder names.
 

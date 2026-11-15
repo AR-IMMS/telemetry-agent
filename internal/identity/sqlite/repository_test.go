@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
 )
 
@@ -13,11 +13,11 @@ func TestRepositoryUsesSharedStateDatabaseAndKeepsFirstInstallationID(t *testing
 	store := agentstate.NewSQLiteStore(path)
 	repository := identitysqlite.New(store.OpenDatabase)
 
-	first, err := identity.ParseInstallationID("11111111-2222-4333-8444-555555555555")
+	first, err := installationid.ParseInstallationID("11111111-2222-4333-8444-555555555555")
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := identity.ParseInstallationID("21111111-2222-4333-8444-555555555555")
+	second, err := installationid.ParseInstallationID("21111111-2222-4333-8444-555555555555")
 	if err != nil {
 		t.Fatal(err)
 	}

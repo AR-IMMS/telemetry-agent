@@ -18,10 +18,10 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/credentialstore"
 	"github.com/ar-imms/telemetry-agent/internal/dependency"
-	discoverydocker "github.com/ar-imms/telemetry-agent/internal/discovery/docker"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	credentialstore "github.com/ar-imms/telemetry-agent/internal/identity/credentials"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
+	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
 	"github.com/ar-imms/telemetry-agent/internal/operations"
 	operationsdocker "github.com/ar-imms/telemetry-agent/internal/operations/dockeradapter"
 	"github.com/ar-imms/telemetry-agent/internal/operations/handlers"
@@ -34,7 +34,7 @@ func TestLiveJetStreamOperationsE2E(t *testing.T) {
 	if os.Getenv("AR_IMMS_PR09_NATS_E2E") != "1" {
 		t.Skip("set AR_IMMS_PR09_NATS_E2E=1 with a live authenticated TLS JetStream server")
 	}
-	installationID, err := identity.ParseInstallationID("11111111-2222-4333-8444-555555555555")
+	installationID, err := installationid.ParseInstallationID("11111111-2222-4333-8444-555555555555")
 	if err != nil {
 		t.Fatal(err)
 	}

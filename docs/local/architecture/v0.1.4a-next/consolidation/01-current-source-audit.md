@@ -1,8 +1,10 @@
-# PR-09.5 — Current Source Audit
+# PR-09.5 — Pre-consolidation Source Audit
 
-**Status:** VERIFIED SOURCE SNAPSHOT, with review findings and proposed follow-ups separated below
+**Status:** VERIFIED HISTORICAL BASELINE, with review findings and proposed follow-ups separated below
 **Baseline:** integration merge `b2599b8db31bfedfd75e360423d5aa98cfbcb5dc` (PR #32)
 **Scope:** source tree, tests, local architecture/policy documents, and verification reports at that commit.
+
+**Snapshot use:** This audit intentionally describes the pre-consolidation PR-09 tree and is retained as historical evidence. Current capability destinations and completed moves are maintained in [04-source-structure](04-source-structure.md); do not read the baseline paths below as the current package tree.
 
 ## Evidence boundary
 

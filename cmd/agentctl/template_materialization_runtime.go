@@ -12,9 +12,9 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
+	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 )
@@ -22,7 +22,7 @@ import (
 const materializationCASAttempts = 3
 
 type runtimeTemplateMaterializer struct {
-	inventory        discovery.InventoryRepository
+	inventory        inventoryctx.InventoryRepository
 	templates        configuration.TemplateRepository
 	desired          configuration.IntegrationRepository
 	service          configuration.MaterializationService
@@ -102,7 +102,7 @@ func (r runtimeTemplateMaterializer) Refresh(ctx context.Context) error {
 		plan, err := configuration.BuildMaterializationPlan(configuration.MaterializationInput{
 			InventoryRevision: inventory.Revision, InventoryWriteRevision: inventory.WriteRevision,
 			Templates: templates, Desired: desired, Resources: matchSnapshot.Resources, Matches: matches,
-			StaleAfter: discovery.DefaultPolicy().StaleAfter,
+			StaleAfter: inventoryctx.DefaultPolicy().StaleAfter,
 		})
 		if err != nil {
 			return fmt.Errorf("build Integration materialization plan: %w", err)

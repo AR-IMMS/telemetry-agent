@@ -13,9 +13,9 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/coreapi"
-	"github.com/ar-imms/telemetry-agent/internal/credentialstore"
-	"github.com/ar-imms/telemetry-agent/internal/enrollment"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	credentialstore "github.com/ar-imms/telemetry-agent/internal/identity/credentials"
+	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 	"github.com/charmbracelet/x/term"
 )
 
@@ -115,7 +115,7 @@ func runAgentEnrollment(
 	if err != nil {
 		return enrollment.EnrollmentResult{}, err
 	}
-	installationID, err := identity.EnsureInstallationIdentity(
+	installationID, err := installationid.EnsureInstallationIdentity(
 		agentstate.NewIdentityStore(statePath),
 		rand.Reader,
 	)

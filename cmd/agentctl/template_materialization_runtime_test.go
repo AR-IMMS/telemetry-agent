@@ -9,8 +9,8 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/app"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
+	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
 )
 
@@ -21,13 +21,13 @@ func (supportedTemplateCapability) Assess(required []string) (integration.Capabi
 }
 
 type mutableTemplateProvider struct {
-	snapshot discovery.ProviderSnapshot
+	snapshot inventoryctx.ProviderSnapshot
 	err      error
 }
 
-func (p *mutableTemplateProvider) ID() discovery.ProviderID                 { return "docker" }
-func (p *mutableTemplateProvider) InstanceID() discovery.ProviderInstanceID { return "local" }
-func (p *mutableTemplateProvider) Discover(context.Context) (discovery.ProviderSnapshot, error) {
+func (p *mutableTemplateProvider) ID() inventoryctx.ProviderID                 { return "docker" }
+func (p *mutableTemplateProvider) InstanceID() inventoryctx.ProviderInstanceID { return "local" }
+func (p *mutableTemplateProvider) Discover(context.Context) (inventoryctx.ProviderSnapshot, error) {
 	return p.snapshot, p.err
 }
 
@@ -43,7 +43,7 @@ func TestRuntimeTemplateMaterializerProjectsStableInstancesAndNoOps(t *testing.T
 		t.Fatal(err)
 	}
 	provider := &mutableTemplateProvider{snapshot: redisProviderSnapshot("container-a")}
-	coordinator, err := discovery.NewCoordinator(store.InventoryRepository(), []discovery.DiscoveryProvider{provider}, discovery.DefaultPolicy(), time.Second)
+	coordinator, err := inventoryctx.NewCoordinator(store.InventoryRepository(), []inventoryctx.DiscoveryProvider{provider}, inventoryctx.DefaultPolicy(), time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestNativeRedisProfileDoesNotCreateAgentInstancesDuringContainerChurn(t *te
 		t.Fatal(err)
 	}
 	provider := &mutableTemplateProvider{snapshot: nativeRedisProviderSnapshot("container-a")}
-	coordinator, err := discovery.NewCoordinator(store.InventoryRepository(), []discovery.DiscoveryProvider{provider}, discovery.DefaultPolicy(), time.Second)
+	coordinator, err := inventoryctx.NewCoordinator(store.InventoryRepository(), []inventoryctx.DiscoveryProvider{provider}, inventoryctx.DefaultPolicy(), time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,21 +166,21 @@ func TestNativeRedisProfileDoesNotCreateAgentInstancesDuringContainerChurn(t *te
 	}
 }
 
-func nativeRedisProviderSnapshot(ids ...string) discovery.ProviderSnapshot {
-	resources := make([]discovery.ResourceObservation, 0, len(ids))
+func nativeRedisProviderSnapshot(ids ...string) inventoryctx.ProviderSnapshot {
+	resources := make([]inventoryctx.ResourceObservation, 0, len(ids))
 	for _, id := range ids {
-		resources = append(resources, discovery.ResourceObservation{
-			ProviderResourceID: id, Kind: discovery.ResourceContainer, LifecycleState: "running",
+		resources = append(resources, inventoryctx.ResourceObservation{
+			ProviderResourceID: id, Kind: inventoryctx.ResourceContainer, LifecycleState: "running",
 			Attributes: map[string]string{
 				"container.image.repository":       "docker.io/library/redis",
 				"label.ar-imms.monitoring.enabled": "true",
 				"label.ar-imms.monitoring.profile": "redis",
 				"label.ar-imms.workload.id":        "cache-service",
 			},
-			Endpoints: []discovery.Endpoint{{Address: "127.0.0.1", Port: 6379, Protocol: "tcp", Scope: discovery.EndpointHost, Provenance: "published_port"}},
+			Endpoints: []inventoryctx.Endpoint{{Address: "127.0.0.1", Port: 6379, Protocol: "tcp", Scope: inventoryctx.EndpointHost, Provenance: "published_port"}},
 		})
 	}
-	return discovery.ProviderSnapshot{ProviderID: "docker", ProviderInstanceID: "local", Complete: true, Resources: resources}
+	return inventoryctx.ProviderSnapshot{ProviderID: "docker", ProviderInstanceID: "local", Complete: true, Resources: resources}
 }
 
 func TestRuntimeTemplateUpdateChangesGeneratedInstancesButPreservesManualState(t *testing.T) {
@@ -196,7 +196,7 @@ func TestRuntimeTemplateUpdateChangesGeneratedInstancesButPreservesManualState(t
 		t.Fatal(err)
 	}
 	provider := &mutableTemplateProvider{snapshot: redisProviderSnapshot("container-a", "container-b")}
-	coordinator, err := discovery.NewCoordinator(store.InventoryRepository(), []discovery.DiscoveryProvider{provider}, discovery.DefaultPolicy(), time.Second)
+	coordinator, err := inventoryctx.NewCoordinator(store.InventoryRepository(), []inventoryctx.DiscoveryProvider{provider}, inventoryctx.DefaultPolicy(), time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +275,7 @@ func TestRuntimeTemplateMaterializerPreservesFailureAndTracksResourceLifecycle(t
 		t.Fatal(err)
 	}
 	provider := &mutableTemplateProvider{snapshot: redisProviderSnapshot("container-a")}
-	coordinator, err := discovery.NewCoordinator(store.InventoryRepository(), []discovery.DiscoveryProvider{provider}, discovery.DefaultPolicy(), time.Second)
+	coordinator, err := inventoryctx.NewCoordinator(store.InventoryRepository(), []inventoryctx.DiscoveryProvider{provider}, inventoryctx.DefaultPolicy(), time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -407,14 +407,14 @@ func redisRuntimeTemplate() integration.IntegrationTemplate {
 	}
 }
 
-func redisProviderSnapshot(ids ...string) discovery.ProviderSnapshot {
-	resources := make([]discovery.ResourceObservation, 0, len(ids))
+func redisProviderSnapshot(ids ...string) inventoryctx.ProviderSnapshot {
+	resources := make([]inventoryctx.ResourceObservation, 0, len(ids))
 	for index, id := range ids {
-		resources = append(resources, discovery.ResourceObservation{
-			ProviderResourceID: id, Kind: discovery.ResourceContainer, LifecycleState: "running",
+		resources = append(resources, inventoryctx.ResourceObservation{
+			ProviderResourceID: id, Kind: inventoryctx.ResourceContainer, LifecycleState: "running",
 			Attributes: map[string]string{"container.image.repository": "docker.io/library/redis"},
-			Endpoints:  []discovery.Endpoint{{Address: "127.0.0.1", Port: uint16(6379 + index), Protocol: "tcp", Scope: discovery.EndpointHost, Provenance: "published_port"}},
+			Endpoints:  []inventoryctx.Endpoint{{Address: "127.0.0.1", Port: uint16(6379 + index), Protocol: "tcp", Scope: inventoryctx.EndpointHost, Provenance: "published_port"}},
 		})
 	}
-	return discovery.ProviderSnapshot{ProviderID: "docker", ProviderInstanceID: "local", Complete: true, ObservedAt: time.Now().UTC(), Resources: resources}
+	return inventoryctx.ProviderSnapshot{ProviderID: "docker", ProviderInstanceID: "local", Complete: true, ObservedAt: time.Now().UTC(), Resources: resources}
 }

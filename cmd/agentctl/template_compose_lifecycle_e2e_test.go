@@ -16,9 +16,9 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/app"
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
-	discoverydocker "github.com/ar-imms/telemetry-agent/internal/discovery/docker"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
+	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
 )
 
 const composeLifecycleE2EEnv = "AR_IMMS_S4_COMPOSE_LIFECYCLE_E2E"
@@ -119,7 +119,7 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	coordinator, err := discovery.NewCoordinator(store.InventoryRepository(), []discovery.DiscoveryProvider{provider}, discovery.DefaultPolicy(), 5*time.Second)
+	coordinator, err := inventoryctx.NewCoordinator(store.InventoryRepository(), []inventoryctx.DiscoveryProvider{provider}, inventoryctx.DefaultPolicy(), 5*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +127,7 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runDiscoveryCycle := func() discovery.InventorySnapshot {
+	runDiscoveryCycle := func() inventoryctx.InventorySnapshot {
 		t.Helper()
 		cycle, err := coordinator.DiscoverOnce(ctx)
 		if err != nil || !app.DiscoveryCycleSucceeded(cycle) {
@@ -227,8 +227,8 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 		t.Fatalf("Compose recreation reused Docker container ID %q", oldA)
 	}
 	firstMissInventory := runDiscoveryCycle()
-	assertComposePresence(t, firstMissInventory, oldA, discovery.PresencePresent, 1)
-	assertComposePresence(t, firstMissInventory, newA, discovery.PresencePresent, 0)
+	assertComposePresence(t, firstMissInventory, oldA, inventoryctx.PresencePresent, 1)
+	assertComposePresence(t, firstMissInventory, newA, inventoryctx.PresencePresent, 0)
 	assertComposeDesired(t, store, []string{oldA, newA, stableB}, true)
 	assertEnabledComposeTemplateResources(t, store, []string{oldA, newA, stableB})
 	afterRestartState, err := store.Load()
@@ -242,7 +242,7 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 	t.Logf("measured permitted first-miss overlap: old=%s and new=%s both active in applied generation=%d", oldA, newA, overlapState.AppliedGeneration)
 
 	secondMissInventory := runDiscoveryCycle()
-	assertComposePresence(t, secondMissInventory, oldA, discovery.PresenceMissing, 2)
+	assertComposePresence(t, secondMissInventory, oldA, inventoryctx.PresenceMissing, 2)
 	assertComposeDesired(t, store, []string{newA, stableB}, true)
 	assertEnabledComposeTemplateResources(t, store, []string{newA, stableB})
 	finalState, finalConfig := waitForRedisReceiverCount(t, ctx, serviceDone, store, configPath, overlapState.AppliedGeneration, 2)
@@ -261,8 +261,8 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 		t.Fatalf("--force-recreate reused Docker container ID %q", stableB)
 	}
 	forceFirstMiss := runDiscoveryCycle()
-	assertComposePresence(t, forceFirstMiss, stableB, discovery.PresencePresent, 1)
-	assertComposePresence(t, forceFirstMiss, newB, discovery.PresencePresent, 0)
+	assertComposePresence(t, forceFirstMiss, stableB, inventoryctx.PresencePresent, 1)
+	assertComposePresence(t, forceFirstMiss, newB, inventoryctx.PresencePresent, 0)
 	assertComposeDesired(t, store, []string{newA, stableB, newB}, true)
 	assertEnabledComposeTemplateResources(t, store, []string{newA, stableB, newB})
 	forceOverlapState, forceOverlapConfig := waitForRedisReceiverCount(t, ctx, serviceDone, store, configPath, finalState.AppliedGeneration, 3)
@@ -272,7 +272,7 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 	t.Logf("measured force-recreate first-miss overlap: old=%s and new=%s active in applied generation=%d", stableB, newB, forceOverlapState.AppliedGeneration)
 
 	forceSecondMiss := runDiscoveryCycle()
-	assertComposePresence(t, forceSecondMiss, stableB, discovery.PresenceMissing, 2)
+	assertComposePresence(t, forceSecondMiss, stableB, inventoryctx.PresenceMissing, 2)
 	assertComposeDesired(t, store, []string{stableB}, false)
 	assertComposeDesired(t, store, []string{newA, newB}, true)
 	assertEnabledComposeTemplateResources(t, store, []string{newA, newB})
@@ -428,7 +428,7 @@ func composeProjectRedisTemplate(id, project string) integration.IntegrationTemp
 	return template
 }
 
-func assertComposeInventory(t *testing.T, snapshot discovery.InventorySnapshot, project, redisID string, dependencies bool) {
+func assertComposeInventory(t *testing.T, snapshot inventoryctx.InventorySnapshot, project, redisID string, dependencies bool) {
 	t.Helper()
 	foundRedis, foundPostgres, foundPython := false, false, false
 	for _, resource := range snapshot.Resources {
@@ -437,11 +437,11 @@ func assertComposeInventory(t *testing.T, snapshot discovery.InventorySnapshot, 
 		}
 		switch {
 		case resource.Key.ProviderResourceID == redisID:
-			foundRedis = resource.Presence == discovery.PresencePresent
+			foundRedis = resource.Presence == inventoryctx.PresencePresent
 		case resource.Attributes["container.image.repository"] == "docker.io/library/postgres":
-			foundPostgres = resource.Presence == discovery.PresencePresent
+			foundPostgres = resource.Presence == inventoryctx.PresencePresent
 		case resource.Attributes["container.image.repository"] == "docker.io/library/python":
-			foundPython = resource.Presence == discovery.PresencePresent
+			foundPython = resource.Presence == inventoryctx.PresencePresent
 		}
 	}
 	if !foundRedis || (dependencies && (!foundPostgres || !foundPython)) {
@@ -449,7 +449,7 @@ func assertComposeInventory(t *testing.T, snapshot discovery.InventorySnapshot, 
 	}
 }
 
-func assertComposePresence(t *testing.T, snapshot discovery.InventorySnapshot, resourceID string, want discovery.Presence, missingSnapshots uint32) {
+func assertComposePresence(t *testing.T, snapshot inventoryctx.InventorySnapshot, resourceID string, want inventoryctx.Presence, missingSnapshots uint32) {
 	t.Helper()
 	for _, resource := range snapshot.Resources {
 		if resource.Key.ProviderResourceID == resourceID {

@@ -29,9 +29,10 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/coreapi"
-	"github.com/ar-imms/telemetry-agent/internal/credentialstore"
-	"github.com/ar-imms/telemetry-agent/internal/enrollment"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	credentialstore "github.com/ar-imms/telemetry-agent/internal/identity/credentials"
+	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 	"github.com/ar-imms/telemetry-agent/internal/mockcore"
 	"github.com/ar-imms/telemetry-agent/internal/opampserver"
 )
@@ -94,7 +95,7 @@ func TestManagedSupervisorEnrollmentAndRemoteGatewayE2E(t *testing.T) {
 	)
 	const nodeID = "33333333-4444-4555-8666-777777777777"
 	statePath := filepath.Join(root, "agent-state.db")
-	installationID, err := identity.EnsureInstallationIdentity(agentstate.NewIdentityStore(statePath), rand.Reader)
+	installationID, err := installationid.EnsureInstallationIdentity(agentstate.NewIdentityStore(statePath), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}

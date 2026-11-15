@@ -14,7 +14,7 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/coreapi"
 	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 )
 
 const managementPrefix = "/api/v1/agent-management/"
@@ -62,14 +62,14 @@ func New(seed ProvisionedInstallation) (*Server, error) {
 	if strings.TrimSpace(seed.AccessToken) == "" || strings.TrimSpace(seed.AccessToken) != seed.AccessToken {
 		return nil, fmt.Errorf("mock Core access token is required")
 	}
-	if _, err := identity.ParseInstallationID(seed.InstallationID); err != nil {
+	if _, err := installationid.ParseInstallationID(seed.InstallationID); err != nil {
 		return nil, fmt.Errorf("mock Core installation ID is invalid")
 	}
-	if _, err := identity.ParseInstallationID(seed.NodeID); err != nil {
+	if _, err := installationid.ParseInstallationID(seed.NodeID); err != nil {
 		return nil, fmt.Errorf("mock Core Node ID is invalid")
 	}
 	if seed.InstanceUID != "" {
-		if _, err := identity.ParseInstallationID(seed.InstanceUID); err != nil {
+		if _, err := installationid.ParseInstallationID(seed.InstanceUID); err != nil {
 			return nil, fmt.Errorf("mock Core OpAMP instance UID is invalid")
 		}
 	}
@@ -424,7 +424,7 @@ func requestID() string {
 }
 
 func invalidID(value string) bool {
-	_, err := identity.ParseInstallationID(value)
+	_, err := installationid.ParseInstallationID(value)
 	return err != nil
 }
 

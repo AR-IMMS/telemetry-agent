@@ -17,7 +17,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/config"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/dependency"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	redisintegration "github.com/ar-imms/telemetry-agent/internal/integration/redis"
 	"gopkg.in/yaml.v3"

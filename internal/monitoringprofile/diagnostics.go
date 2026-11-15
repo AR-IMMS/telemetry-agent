@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
+	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 )
 
 // EndpointState classifies endpoint evidence for one opted-in resource.
@@ -46,7 +46,7 @@ type EndpointDiagnostic struct {
 	ProfileID      string
 	State          EndpointState
 	CandidateCount int
-	Endpoint       discovery.Endpoint
+	Endpoint       inventoryctx.Endpoint
 	EvidenceSource string
 	EvidenceCode   string
 	EvidenceTime   time.Time
@@ -54,12 +54,12 @@ type EndpointDiagnostic struct {
 
 // DiagnoseEndpoint resolves one endpoint using the profile's ordered strategies.
 // A resolved candidate is not considered reachable without matching OTel error evidence.
-func DiagnoseEndpoint(profile Profile, osName string, endpoints []discovery.Endpoint, otelEvidence []CollectorScrapeEvidence) EndpointDiagnostic {
+func DiagnoseEndpoint(profile Profile, osName string, endpoints []inventoryctx.Endpoint, otelEvidence []CollectorScrapeEvidence) EndpointDiagnostic {
 	return DiagnoseEndpointWithAttributes(profile, osName, endpoints, otelEvidence, nil)
 }
 
 // DiagnoseEndpointWithAttributes resolves one profile endpoint using provider metadata such as port overrides.
-func DiagnoseEndpointWithAttributes(profile Profile, osName string, endpoints []discovery.Endpoint, otelEvidence []CollectorScrapeEvidence, attributes map[string]string) EndpointDiagnostic {
+func DiagnoseEndpointWithAttributes(profile Profile, osName string, endpoints []inventoryctx.Endpoint, otelEvidence []CollectorScrapeEvidence, attributes map[string]string) EndpointDiagnostic {
 	result := EndpointDiagnostic{ProfileID: profile.ID, State: EndpointMissing, EvidenceSource: EvidenceAgentInventory}
 	strategies := make([]EndpointStrategy, 0, len(profile.EndpointStrategies))
 	for _, strategy := range profile.EndpointStrategies {
@@ -83,14 +83,14 @@ func DiagnoseEndpointWithAttributes(profile Profile, osName string, endpoints []
 			result.EvidenceCode = "invalid_target_port"
 			return result
 		}
-		candidates := make([]discovery.Endpoint, 0, len(endpoints))
+		candidates := make([]inventoryctx.Endpoint, 0, len(endpoints))
 		for _, endpoint := range endpoints {
 			if endpoint.Scope != strategy.Scope || endpoint.Provenance != strategy.Provenance || !strings.EqualFold(endpoint.Protocol, "tcp") || strings.TrimSpace(endpoint.Address) == "" {
 				continue
 			}
 			if targetPort != 0 {
 				containerPort := endpoint.ContainerPort
-				if containerPort == 0 && endpoint.Scope == discovery.EndpointContainer {
+				if containerPort == 0 && endpoint.Scope == inventoryctx.EndpointContainer {
 					containerPort = endpoint.Port
 				}
 				if containerPort != targetPort {
@@ -104,7 +104,7 @@ func DiagnoseEndpointWithAttributes(profile Profile, osName string, endpoints []
 		}
 		result.CandidateCount = len(candidates)
 		if len(candidates) > 1 {
-			if strategy.Scope != discovery.EndpointContainer || strategy.Provenance != "container_network" {
+			if strategy.Scope != inventoryctx.EndpointContainer || strategy.Provenance != "container_network" {
 				result.State = EndpointAmbiguous
 				return result
 			}
@@ -223,7 +223,7 @@ func scrapeFailureEndpoint(message string) (string, bool) {
 	return endpoint, true
 }
 
-func evidenceMatchesEndpoint(target string, candidate discovery.Endpoint) bool {
+func evidenceMatchesEndpoint(target string, candidate inventoryctx.Endpoint) bool {
 	host, portText, err := net.SplitHostPort(target)
 	if err != nil {
 		return false
@@ -232,7 +232,7 @@ func evidenceMatchesEndpoint(target string, candidate discovery.Endpoint) bool {
 	if err != nil || uint16(port) != candidate.Port {
 		return false
 	}
-	if candidate.Scope == discovery.EndpointHost {
+	if candidate.Scope == inventoryctx.EndpointHost {
 		// Docker Desktop rules intentionally dial loopback regardless of the host bind address.
 		return host == "127.0.0.1" || host == "localhost" || host == candidate.Address
 	}

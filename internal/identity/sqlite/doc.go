@@ -1,6 +1,7 @@
 // Package sqlite adapts installation identity persistence to SQLite.
 //
-// It accepts a database opener and returns the committed installation ID; the
-// caller owns schema migration and database lifecycle. This package does not
-// own identity generation policy, other Agent state, or secret storage.
+// It provides the Identity migration definition and installation repository; the
+// composition boundary registers its migration in the global version order. This
+// package does not own database lifecycle, identity generation policy, other Agent
+// state, or secret storage.
 package sqlite
