@@ -1,5 +1,12 @@
 # Context boundaries and public contracts
 
+**Source ownership status:** This document defines logical target responsibilities,
+not verified source placement. For the audited merged tree and current package
+ownership, use the [PR-09.5 source audit](consolidation/01-current-source-audit.md)
+and [ownership map](consolidation/02-context-ownership.md). If a package mapping
+below conflicts with those source-grounded findings, treat the old mapping as a
+historical proposal until architecture approval; do not move code mechanically.
+
 **Status:** DESIGN BASELINE / not implemented. Distinguish state owner, application command and external adapter. Avoid identical directory scaffolding where there is no complexity.
 
 ## Current release-mission terminology
@@ -18,35 +25,13 @@ from actual source before moving code.
 | Context | Owns | Consumes/emits | Forbidden responsibility |
 |---|---|---|---|
 | Identity & Connectivity | Stable installation ID, binding, credentials, Agent-to-Core business API session | Enrollment Core client, installation identity contract | Monitoring policy decisions, direct Collector writes, OpAMP instance authentication by self-report |
-| Configuration & Policy | Desired configuration, profile ownership (policy OPEN), CAS revisions, materialization and reconciliation intent | Monitoring intent, `DesiredConfigurationChanged`; calls Runtime apply port | Process supervision, scraping, arbitrary Core YAML |
+| Configuration & Policy | Desired state, approved Core/local authority and revisions, proposal lifecycle/approval, templates, materialization and reconciliation decisions | Inventory evidence, Monitoring recommendations, `DesiredConfigurationChanged`; requests Runtime apply | Profile matching, process supervision, scraping, arbitrary Core YAML |
 | Resource Inventory | Provider-scoped observations, source IDs, provenance, normalized identities/history, completeness | Docker listener, future process/K8s/device providers; `InventorySnapshotCommitted` | Receiver creation, probing secrets, assumption that IP == identity |
-| Monitoring Capabilities | Capability catalog, metadata-to-capability matching, supported profile templates, explain status | Inventory projection, pinned Collector manifest; monitoring intents | Native scrape loops or client-specific receiver plugins |
-| Runtime & Installation | Pinned Collector and (after parity) OpAMP Supervisor artifacts, config validation, OS dependencies, activation/LKG evidence, one lifecycle owner | ApplyCandidate port during migration; Supervisor provisioning/status evidence | Core policy ownership or concurrent Collector lifecycle owners |
+| Monitoring Capabilities | Profile definitions/matching, metadata recommendations, endpoint diagnostics and monitoring intent | Inventory projection and a narrow query to Runtime's pinned Collector capability catalog | Owning or duplicating the canonical capability catalog, native scrape loops or client-specific receiver plugins |
+| Runtime & Installation | Pinned Collector and verified OpAMP Supervisor artifacts, config validation, OS dependencies, activation/LKG evidence, one lifecycle owner | ApplyCandidate port during migration; Supervisor provisioning/status evidence | Core policy ownership or concurrent Collector lifecycle owners |
 | OpAMP Adapter (server side) | Native OpAMP protocol session and translation to Core-owned contracts | Core auth, identity binding, desired policy, status/health APIs | Durable policy authority, mock-only calls, Collector business rules |
-| Health & Reporting | Local health snapshots, evidence evaluation, diagnostics, and reporting ports | Owner-produced Agent/Core request outcomes, Supervisor OpAMP session evidence, Collector exporter diagnostics, collection evidence, and sink receipts where exposed | Custom Core/Gateway probes or endpoints; treating OpAMP as Core availability; claiming collection/delivery from readiness or protocol status alone |
-| Operations | Typed operation specs, target binding, execution state, local audit, and result outbox | Core-authorized requests; Health snapshot, Docker inspect, managed dependency status | IAM decisions, SSH, arbitrary shell, OpAMP restart misuse |
-
-### PR-09 implemented boundary (Phase 1)
-
-The current read-only implementation lives in `internal/operations` with
-typed handlers in `internal/operations/handlers`, a SQLite journal/outbox in
-`internal/operations/sqlite`, and the authenticated JetStream adapter in
-`internal/operations/nats`. `cmd/agentctl` and `internal/app` compose these
-adapters only when Operations credentials/configuration are present; NATS
-unavailability does not own or stop telemetry lifecycle. The registry exposes
-only `agent.diagnostics`, `container.inspect`, and `dependency.inspect`.
-Operations owns replay identity, execution state, audit evidence, and result
-publication; Health, Inventory/Docker, and Runtime/dependency implementations
-remain the sources of their respective evidence.
-
-The Agent-local v1 request/result schemas are implementation contracts for the
-Mock Core and testbed. They do not define production Core authorization or
-interoperability. Read-only work interrupted after its durable claim is closed
-as a recorded failure and sent through the result outbox before new commands
-are consumed; the Agent does not silently repeat a read without an approved
-retry contract. `container.restart`, arbitrary operations, and sensitive
-container logs remain unavailable pending their separate safety/exposure
-contracts.
+| Health & Reporting | Snapshot/status projections, internal diagnostics, evidence from Agent, Supervisor, Collector and OTLP sink | Runtime and Agent evidence; supported OpAMP status | Claiming collection/delivery from readiness or protocol status alone |
+| Remote Operations | Typed operation specs, target binding, execution state, audit/outcome | Core-authorized requests; Docker/OS adapter | SSH, arbitrary shell, OpAMP restart misuse |
 
 ## Discovery Provider / Listener contract (proposed)
 
@@ -62,7 +47,7 @@ contracts.
 
 ## Single owner constraint
 
-The legacy Agent compiler materialization path and OTel Receiver Creator must not both instantiate the same receiver/resource. A feature-flagged migration must switch ownership per target and prove parity. Existing proposal/approval records/CLI retained as migration compatibility until explicit deprecation, not part of vNext routine DX.
+The legacy Agent compiler materialization path and OTel Receiver Creator must not both instantiate the same receiver/resource. A feature-flagged migration must switch ownership per target and prove parity. Configuration owns proposal lifecycle and approval; existing proposal records/CLI remain only until their consumers migrate, migration-12 fixtures pass, and zero-consumer plus rollback checks permit removal.
 
 PR-05's approved Docker/Redis identity, label opt-in, endpoint strategy, ownership, rollback, and evidence semantics are specified in [discovery-monitoring-contracts.md](discovery-monitoring-contracts.md). That contract assigns dynamic receiver lifecycle to OTel only for opted-in Docker targets while preserving Agent-managed Redis receivers for the legacy path.
 
@@ -78,17 +63,11 @@ and product diagnostics. See [OpAMP integration](opamp-integration.md).
 
 ## Unresolved boundaries
 
-Core-vs-local config authority; precise identity mapping to OpAMP instance UID; credential attachment to protected receivers; and production Core/JetStream provisioning interoperability remain open. `container.restart` requires its operation-specific safety approval and verification before it can be enabled.
-
-### Health evidence boundary
-
-Health keeps process health, configuration status, collection health, Core and
-OpAMP connectivity, Gateway connectivity, and telemetry delivery as separate
-dimensions. Each value comes from its owning component's evidence port. Core
-network errors and authentication failures are distinct when an existing
-authenticated Core request result is available; otherwise Core evidence is
-`UNKNOWN`. OpAMP connection/session evidence does not imply Core availability.
-Gateway failures may use supported Collector exporter diagnostics; Collector
-readiness and the absence of exporter errors do not prove Gateway reachability
-or OTLP receipt. Missing or stale observations are `UNKNOWN`. External Core
-health reporting remains deferred until its versioned contract is approved.
+Policy beyond already-approved Core/local authority and revision semantics,
+precise identity mapping to OpAMP instance UID, and production Core/JetStream
+provisioning interoperability remain separate open decisions where the
+control-plane contract has not been approved. PR-09's Agent Operations
+executor and narrow `container.restart` safety policy are implemented and
+verified, but restart stays disabled by default. The source ownership choices
+for persistence migration, proposals and capability catalog are tracked in the
+[PR-09.5 ownership map](consolidation/02-context-ownership.md).

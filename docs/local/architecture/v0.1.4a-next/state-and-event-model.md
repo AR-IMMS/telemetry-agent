@@ -14,7 +14,7 @@ One local SQLite WAL database remains authoritative. `platform/sqlite` owns open
 | `CollectorGenerationApplied` | Runtime terminal activation journal | Health/reporting |
 | `CollectorGenerationFailed` | Runtime recorded failure/recovery | Health/reporting |
 
-Events carry IDs/revision/fingerprint only, never credentials, full config or mutable object graphs. No-op commits emit no change events. Dispatcher: bounded queues, stable subscription order, startup/stop, nonreentrant publish, timeout/full error, panic isolation and idempotent handlers. **Publish only after commit, outside locks.** Existing startup and periodic SQLite reconciliation remain and repair missed wakeups. No external broker/outbox in MVP.
+Events carry IDs/revision/fingerprint only, never credentials, full config or mutable object graphs. No-op commits emit no change events. Dispatcher: bounded queues, stable subscription order, startup/stop, nonreentrant publish, timeout/full error, panic isolation and idempotent handlers. **Publish only after commit, outside locks.** Existing startup and periodic SQLite reconciliation remain and repair missed wakeups. This statement applies to internal domain wakeups only; PR-09 Operations separately uses authenticated JetStream and a durable result outbox under its own contract.
 
 ## Lifecycle semantics
 

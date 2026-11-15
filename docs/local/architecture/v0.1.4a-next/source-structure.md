@@ -1,4 +1,13 @@
-# Proposed Source Structure and Migration Map
+# Historical Proposed Source Structure and Migration Map
+
+**Supersession:** The package mappings in this document predate the PR-09
+source audit and are hypotheses, not approved moves. The
+[PR-09.5 current source audit](consolidation/01-current-source-audit.md),
+[context ownership map](consolidation/02-context-ownership.md), and
+[flexible target structure](consolidation/04-source-structure.md) are the
+current review set. Retain this document as design history; update it only
+after architecture approval, and do not apply its former package moves as a
+checklist.
 
 **Structure note (mandatory):** This directory tree is a reference baseline, not a mandatory layout; adapt or extend it (e.g., `infrastructure/`, additional adapters, or different subpackages) when justified by domain complexity, while preserving bounded-context ownership, clear Domain/Application/Infrastructure responsibilities, and dependency rules.
 
@@ -181,24 +190,3 @@ The verified baseline also found `internal/enrollment/service.go` is 454 lines, 
 
 
 The CI guard also checks the repository's existing `doc.go` rule for every Go source directory under `cmd/` and `internal/`; it does not create package directories or impose a proposed context layout.
-
-## 7. PR-09 Phase 1 implementation map
-
-This is a source-verified implementation map, not a requirement to move the
-existing packages into the proposed tree:
-
-| Responsibility | Current implementation |
-|---|---|
-| Operation contracts, typed registry, validation, idempotency, dispatch | `internal/operations` |
-| Health, exact Docker inspection, managed dependency inspection handlers | `internal/operations/handlers` |
-| Additive execution journal, audit events, result outbox, interrupted read-only recovery | `internal/operations/sqlite` and SQLite migration v14 |
-| TLS-authenticated JetStream consumer and outbox publisher | `internal/operations/nats` |
-| Mock Core and isolated live testbed | `internal/operations/testsupport/mockcore` and `internal/operations/nats` tests |
-| Optional runtime composition | `internal/app` and `cmd/agentctl` |
-
-Core remains the business authorization authority. The Agent's request checks
-cover transport scope, installation/binding, expiry, operation allowlist, and
-exact target; actor and authorization references are audit correlations only.
-The Agent exposes only the three read-only operations in v1. Mutations and
-sensitive log retrieval are excluded. PR-09.5 must audit ownership and actual
-imports before any structural migration.

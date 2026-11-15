@@ -1,8 +1,12 @@
 # v0.1.4a-next — implementation plan index
 
-**Status:** IN_PROGRESS — PR-01 through PR-06 are merged. PR-07 remains open in draft PR #30 pending Windows Agent-managed Docker profile parity. Later checkpoints remain conditional on their reviewed contracts and verification gates. Reconcile each plan's source paths and evidence
-against current HEAD before its work begins. See the [documentation integration
-status](../../architecture/v0.1.4a-next/integration-status.md).
+**Status:** PR-01 through PR-09 are merged into `chore/v0.1.4a-next`. PR-09.5
+is in architecture planning, awaiting explicit approval; PR-10 has not started.
+The audited PR-09 merge is
+`b2599b8db31bfedfd75e360423d5aa98cfbcb5dc`. Reconcile source paths and evidence
+against the accepted integration baseline before implementation. See the
+[source audit](../../architecture/v0.1.4a-next/consolidation/01-current-source-audit.md)
+and [release progress](release-progress.md).
 
 **Release goal:** installable and verified Linux/Windows `v0.1.4a-next`, not just a source refactor. All plans are authored now; they are **review-ready conditional plans**, not claims that code is implemented or tests passed. Before each PR starts, reconcile source paths and baselines against current HEAD and previous PR verification.
 
@@ -22,10 +26,11 @@ status](../../architecture/v0.1.4a-next/integration-status.md).
 
 Plans 05/07/09 have explicit **go/no-go decisions**. Their blocked gates cannot be silently deferred while claiming full release. The release proceeds sequentially through PR-07, PR-08, PR-09, mandatory PR-09.5, and PR-10. Context migration can be split into smaller PRs without changing contract.
 
-PR-07's immediate target is a Go OpAMP server plus contract-compatible Go Mock
-Core; production NestJS Core interoperability and shared-contract publication
-remain separate approval gates. The three PR-07 slices are checkpoints, not a
-requirement for exactly three GitHub PRs. The ≤450-line automated gate in these plans supplements the shared policy: files
+PR-07 through PR-09 are historical completed checkpoints; production NestJS
+Core interoperability and audit/idempotency retention compatibility remain
+separate follow-ups. PR-09.5 is a mandatory, behavior-preserving architecture
+consolidation. Its planning documents stop at the human approval gate; they do
+not authorize source moves. The ≤450-line automated gate in these plans supplements the shared policy: files
 above its usual 300–400-line range still need justification.
 
 ## Deliverables per checkpoint

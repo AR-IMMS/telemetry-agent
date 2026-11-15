@@ -1,20 +1,18 @@
 # OpAMP and Supervisor integration — v0.1.4a-next
 
-**Status:** PR-07a Windows and Ubuntu WSL capability tests and PR-07b
-Mock-Core-backed protocol/auth tests pass. Exact-head Windows/Ubuntu CI run
-[43461962938](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43461962938)
-passed the managed-runtime and native service lifecycle E2Es, including the
-Windows uninstall process-exit regression. The earlier run [43456929985](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43456929985)
-exposed the race where SCM reported `STOPPED` before the service process
-released its executable; commits `2f2f42b` and `a878b33` wait for process exit
-and keep the helper within the architecture guard. PR-07c also wires a reversible
-managed runtime; new installations require `--opamp-server-url`, pinned
-Supervisor provisioning,
-protected token/config/state paths, credential-reference change detection,
-single-owner runtime selection, and contained Agent-owned Supervisor process
-cleanup. Elevated Windows Agent-managed Docker-profile parity has now passed;
-final-head regression remains open. Production Core interoperability remains
-separate. Hosted Windows CI skips Docker tests.
+**Status at PR-09 merge:** PR-07 is merged and its Agent/Mock Core adoption
+gates passed. PR #30 final-head Windows/Ubuntu CI run
+[43519741680](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43519741680)
+passed. Native elevated Windows Agent-managed Docker-profile parity delivered
+Redis, PostgreSQL, Python/Prometheus, and mock-cooling telemetry to the OTLP
+sink. New installations require `--opamp-server-url` and default to the pinned
+Supervisor; protected token/config/state paths, credential-reference change
+detection, single-owner runtime selection, and contained Agent-owned process
+cleanup are implemented. Existing installations preserve their persisted owner
+until explicit migration; controlled legacy rollback remains available.
+Production Core interoperability remains separate, and hosted Windows CI
+skips Docker profile E2E. Earlier migration steps and CI races below are retained
+as history; the PR-07 verification report is the authority for the final gate.
 
 ## Target topology
 
@@ -33,7 +31,7 @@ flowchart LR
     Agent <-->|Enrollment and business APIs| Core
     Agent -->|Provisioning and local config| Supervisor
     Server <-->|Native OpAMP| Supervisor
-    Supervisor -->|Sole Collector lifecycle owner after parity| Collector
+    Supervisor -->|Sole Collector lifecycle owner for migrated installs| Collector
     Collector --> Gateway
     Collector -.->|health and diagnostic evidence| Agent
 ```
@@ -206,7 +204,8 @@ and implemented in Core.
    local config updates, service lifecycle, offline recovery, rollback, and
    PR-05/06 monitoring parity on native Windows and Linux.
 
-These are review checkpoints, not a requirement for exactly three GitHub PRs.
+These were review checkpoints, not a requirement for exactly three GitHub PRs;
+all three completed under PR #30.
 Keep each change scoped and independently reversible. Follow the [PR-07 plan](../../plans/v0.1.4a-next/pr-07-opamp.md) and [verification report](../../verification/v0.1.4a-next/pr-verification/pr-07-report.md).
 
 ## Exclusions and gates
@@ -214,6 +213,7 @@ Keep each change scoped and independently reversible. Follow the [PR-07 plan](..
 Remote package updates, arbitrary commands, remote container operations,
 unrestricted Collector YAML, a second business backend, and production Core
 repository changes are out of this Agent checkpoint unless separately approved.
-Do not mark mock-backed tests as production Core E2E. Keep PR-07 in progress
-until required platform, ownership, rollback, delivery, and compatibility gates
-are evidenced; preserve all untested cases as `NOT RUN` or `BLOCKED`.
+Do not mark mock-backed tests as production Core E2E. PR-07 platform, ownership,
+rollback, and delivery gates are recorded as complete in its verification report;
+production Core interoperability remains open. Preserve any untested cases as
+`NOT RUN` or `BLOCKED`.
