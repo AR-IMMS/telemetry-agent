@@ -10,8 +10,7 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/configuration"
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
+	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 )
 
@@ -56,10 +55,10 @@ func runDiscoveryProposals(ctx context.Context, args []string, stdout, stderr io
 		return integrationCommandError(stderr, "discovery proposals "+command, err)
 	}
 	store := agentstate.NewSQLiteStore(*statePath)
-	proposals := store.ProposalRepository()
+	proposalRepo := store.ProposalRepository()
 	switch command {
 	case "list":
-		items, err := proposals.ProposalSnapshot()
+		items, err := proposalRepo.ProposalSnapshot()
 		if err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
@@ -70,7 +69,7 @@ func runDiscoveryProposals(ctx context.Context, args []string, stdout, stderr io
 		if *id == "" {
 			return usageDiscovery(stderr, "inspect requires --id")
 		}
-		items, err := proposals.ProposalSnapshot()
+		items, err := proposalRepo.ProposalSnapshot()
 		if err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
@@ -82,12 +81,12 @@ func runDiscoveryProposals(ctx context.Context, args []string, stdout, stderr io
 				return 0
 			}
 		}
-		return integrationCommandError(stderr, command, discovery.ErrUnknownProposal)
+		return integrationCommandError(stderr, command, proposals.ErrUnknownProposal)
 	case "dismiss":
 		if *id == "" || *revision == 0 {
 			return usageDiscovery(stderr, "dismiss requires --id and --revision")
 		}
-		manager := discovery.NewProposalManager(proposals)
+		manager := proposals.NewProposalManager(proposalRepo)
 		if err := manager.Dismiss(*id, *revision, time.Now().UTC()); err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
@@ -107,7 +106,7 @@ func runDiscoveryProposals(ctx context.Context, args []string, stdout, stderr io
 		if err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
-		instance, nextRevision, err := service.Approve(ctx, configuration.ApprovalRequest{
+		instance, nextRevision, err := service.Approve(ctx, proposals.ApprovalRequest{
 			ProposalID: *id, ProposalRevision: *revision, ExpectedDesiredRevision: *desiredRevision, Inputs: values,
 		})
 		if err != nil {

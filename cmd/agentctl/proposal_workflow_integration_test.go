@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
+	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 )
 
@@ -33,13 +33,13 @@ func TestPersistedInventoryToProposalAndExplicitApproval(t *testing.T) {
 	if err := refresher.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	proposals, err := store.ProposalRepository().ProposalSnapshot()
-	if err != nil || len(proposals) != 1 || proposals[0].Status != discovery.ProposalPending {
-		t.Fatalf("proposal snapshot=%+v err=%v", proposals, err)
+	proposalList, err := store.ProposalRepository().ProposalSnapshot()
+	if err != nil || len(proposalList) != 1 || proposalList[0].Status != proposals.ProposalPending {
+		t.Fatalf("proposal snapshot=%+v err=%v", proposalList, err)
 	}
 	var output, stderr strings.Builder
 	code := runDiscovery(context.Background(), []string{
-		"proposals", "approve", "--state-path", statePath, "--id", proposals[0].ID,
+		"proposals", "approve", "--state-path", statePath, "--id", proposalList[0].ID,
 		"--revision", "1", "--expected-desired-revision", "0",
 	}, &output, &stderr)
 	if code != 0 {

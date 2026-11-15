@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
 	identityenrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
 	identityinstallationsqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
 	inventorysqlite "github.com/ar-imms/telemetry-agent/internal/inventory/sqlite"
@@ -18,6 +19,23 @@ import (
 // coordinator before any state access. The migration functions retain their
 // SQL and transaction ownership while context adapters are extracted.
 func ensureSQLiteSchema(db *sql.DB) error {
+	configurationMigrations := configurationsqlite.Migrations()
+	migration6, err := migrationForVersion(configurationMigrations, 6)
+	if err != nil {
+		return err
+	}
+	migration9, err := migrationForVersion(configurationMigrations, 9)
+	if err != nil {
+		return err
+	}
+	migration12, err := migrationForVersion(configurationMigrations, 12)
+	if err != nil {
+		return err
+	}
+	migration13, err := migrationForVersion(configurationMigrations, 13)
+	if err != nil {
+		return err
+	}
 	migrations := []sqlitemigrate.Migration{
 		{Version: 1, Name: "Agent state and activation journal", Apply: initializeBaseSchema},
 	}
@@ -27,20 +45,29 @@ func ensureSQLiteSchema(db *sql.DB) error {
 		sqlitemigrate.Migration{Version: 4, Name: "Core Gateway runtime", Apply: migrateCoreGatewayRuntime},
 	)
 	migrations = append(migrations, identityenrollmentsqlite.Migrations()...)
+	migrations = append(migrations, migration6)
 	migrations = append(migrations,
-		sqlitemigrate.Migration{Version: 6, Name: "Integration desired state", Apply: migrateIntegrationDesiredState},
 		sqlitemigrate.Migration{Version: 7, Name: "Candidate activation mapping", Apply: migrateCandidateActivationMapping},
 		sqlitemigrate.Migration{Version: 8, Name: "Candidate attempt history", Apply: migrateCandidateAttemptHistory},
-		sqlitemigrate.Migration{Version: 9, Name: "Reconciliation diagnostics", Apply: migrateReconciliationDiagnostics},
 	)
+	migrations = append(migrations, migration9)
 	migrations = append(migrations, inventorysqlite.Migrations()...)
+	migrations = append(migrations, migration12, migration13)
 	migrations = append(migrations,
-		sqlitemigrate.Migration{Version: 12, Name: "Monitoring proposals", Apply: migrateMonitoringProposals},
-		sqlitemigrate.Migration{Version: 13, Name: "Integration templates", Apply: migrateIntegrationTemplates},
 		sqlitemigrate.Migration{Version: 14, Name: "Operations execution and outbox", Apply: migrateOperationsExecution},
 	)
 	return sqlitemigrate.Apply(db, migrations)
 }
+
+func migrationForVersion(migrations []sqlitemigrate.Migration, version int) (sqlitemigrate.Migration, error) {
+	for _, migration := range migrations {
+		if migration.Version == version {
+			return migration, nil
+		}
+	}
+	return sqlitemigrate.Migration{}, fmt.Errorf("Configuration SQLite migration %d is not registered", version)
+}
+
 func initializeBaseSchema(db *sql.DB) error {
 	statements := []string{
 		`CREATE TABLE IF NOT EXISTS schema_migrations (

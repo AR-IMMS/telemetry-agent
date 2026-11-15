@@ -1,4 +1,4 @@
-package agentstate
+package sqlite
 
 import (
 	"database/sql"

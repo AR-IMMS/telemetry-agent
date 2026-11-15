@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
+	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 )
 
@@ -24,9 +24,9 @@ func TestSQLiteApprovalCommitsProposalAndDesiredStateAtomically(t *testing.T) {
 	if err != nil || instance.Revision != 1 || revision != 1 {
 		t.Fatalf("approval instance=%+v desired revision=%d err=%v", instance, revision, err)
 	}
-	proposals, err := store.ProposalRepository().ProposalSnapshot()
-	if err != nil || proposals[0].Status != discovery.ProposalApproved || proposals[0].ApprovedInstanceID != instance.ID || proposals[0].ApprovedCandidateDigest != proposal.CandidateDigest {
-		t.Fatalf("proposal after approval=%+v err=%v", proposals, err)
+	proposalList, err := store.ProposalRepository().ProposalSnapshot()
+	if err != nil || proposalList[0].Status != proposals.ProposalApproved || proposalList[0].ApprovedInstanceID != instance.ID || proposalList[0].ApprovedCandidateDigest != proposal.CandidateDigest {
+		t.Fatalf("proposal after approval=%+v err=%v", proposalList, err)
 	}
 	commit.Instance = instance
 	if got, desired, err := store.ApprovalRepository().CommitApproval(commit); err != nil || got.Revision != 1 || desired != 1 {
@@ -60,20 +60,20 @@ func TestSQLiteApprovalRollsBackEveryWriteWhenTerminalProposalUpdateFails(t *tes
 	if err != nil || snapshot.Revision != 0 || len(snapshot.Instances) != 0 {
 		t.Fatalf("partial desired mutation survived rollback: %+v err=%v", snapshot, err)
 	}
-	proposals, err := store.ProposalRepository().ProposalSnapshot()
-	if err != nil || proposals[0].Status != discovery.ProposalPending {
-		t.Fatalf("proposal changed despite rollback: %+v err=%v", proposals, err)
+	proposalList, err := store.ProposalRepository().ProposalSnapshot()
+	if err != nil || proposalList[0].Status != proposals.ProposalPending {
+		t.Fatalf("proposal changed despite rollback: %+v err=%v", proposalList, err)
 	}
 }
 
 func TestSQLiteApprovalRejectsStaleDesiredAndInventorySnapshots(t *testing.T) {
 	for _, test := range []struct {
 		name   string
-		mutate func(*configuration.ApprovalCommit)
+		mutate func(*proposals.ApprovalCommit)
 		want   error
 	}{
-		{name: "desired revision", mutate: func(commit *configuration.ApprovalCommit) { commit.ExpectedDesiredRevision = 1 }, want: configuration.ErrRevisionConflict},
-		{name: "inventory write revision", mutate: func(commit *configuration.ApprovalCommit) { commit.InventoryWriteRevision = 1 }, want: configuration.ErrApprovalStale},
+		{name: "desired revision", mutate: func(commit *proposals.ApprovalCommit) { commit.ExpectedDesiredRevision = 1 }, want: configuration.ErrRevisionConflict},
+		{name: "inventory write revision", mutate: func(commit *proposals.ApprovalCommit) { commit.InventoryWriteRevision = 1 }, want: proposals.ErrApprovalStale},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
@@ -101,16 +101,16 @@ func TestSQLiteApprovalRejectsDuplicateResourceBinding(t *testing.T) {
 	}
 	second := sqliteProposalFixture(t)
 	second.Identity.IntegrationID = "postgresql"
-	second.ID, _ = discovery.StableProposalID(second.Identity)
+	second.ID, _ = proposals.StableProposalID(second.Identity)
 	second.CandidateDigest = "sha256:" + repeatedProposalHex('d')
 	second.ResourceFingerprint = "sha256:" + repeatedProposalHex('e')
 	second.Revision = 1
-	second.Status = discovery.ProposalPending
+	second.Status = proposals.ProposalPending
 	if err := store.ProposalRepository().PutProposal(second, 0); err != nil {
 		t.Fatal(err)
 	}
 	commit := approvalFixture(second, 1)
-	if _, _, err := store.ApprovalRepository().CommitApproval(commit); !errors.Is(err, configuration.ErrApprovalBindingConflict) {
+	if _, _, err := store.ApprovalRepository().CommitApproval(commit); !errors.Is(err, proposals.ErrApprovalBindingConflict) {
 		t.Fatalf("duplicate binding error=%v", err)
 	}
 }
@@ -125,7 +125,7 @@ func TestSQLiteApprovalRejectsEquivalentManualIntegration(t *testing.T) {
 	if _, _, err := store.IntegrationRepository().Put(manual, 0); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := store.ApprovalRepository().CommitApproval(approvalFixture(proposal, 1)); !errors.Is(err, configuration.ErrApprovalDuplicate) {
+	if _, _, err := store.ApprovalRepository().CommitApproval(approvalFixture(proposal, 1)); !errors.Is(err, proposals.ErrApprovalDuplicate) {
 		t.Fatalf("duplicate manual configuration error=%v", err)
 	}
 }
@@ -163,8 +163,8 @@ func TestSQLiteApprovalConcurrentRepeatAdvancesDesiredSetOnce(t *testing.T) {
 	}
 }
 
-func approvalFixture(proposal discovery.Proposal, expectedDesired uint64) configuration.ApprovalCommit {
-	return configuration.ApprovalCommit{
+func approvalFixture(proposal proposals.Proposal, expectedDesired uint64) proposals.ApprovalCommit {
+	return proposals.ApprovalCommit{
 		ProposalID: proposal.ID, ProposalRevision: proposal.Revision, ExpectedDesiredRevision: expectedDesired,
 		ExpectedCandidateDigest: proposal.CandidateDigest, VerifiedCandidateDigest: proposal.CandidateDigest,
 		InventoryWriteRevision: 0,

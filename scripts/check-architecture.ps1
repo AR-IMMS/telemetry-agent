@@ -55,6 +55,22 @@ try {
     }
     $platformAdapterRoots = @('golang.org/x/sys/windows/registry')
 
+    # Inventory reports provider evidence and must not depend on profile policy.
+    # Configuration owns proposal lifecycle and must not depend on the legacy
+    # Discovery package. Keep these context edges explicit while packages move.
+    $forbiddenContextEdges = @(
+        @{
+            SourceRoot = "$modulePath/internal/inventory"
+            TargetRoot = "$modulePath/internal/monitoringprofile"
+            Reason = 'Inventory emits normalized observations; Monitoring owns profile interpretation.'
+        },
+        @{
+            SourceRoot = "$modulePath/internal/configuration"
+            TargetRoot = "$modulePath/internal/discovery"
+            Reason = 'Configuration owns proposal lifecycle and persistence; Discovery is not a target context.'
+        }
+    )
+
     # Reconciliation owns the consumer-side runtime ports. It may depend on
     # runtime contract values, but not on the concrete lifecycle package.
     $reconciliationContextRoot = "$modulePath/internal/reconciliation"
@@ -89,6 +105,18 @@ try {
         $imports = @()
         if (-not [string]::IsNullOrWhiteSpace($parts[1])) {
             $imports = @($parts[1] -split ',' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        }
+
+        foreach ($rule in $forbiddenContextEdges) {
+            $isSourceContext = $package -eq $rule.SourceRoot -or
+                $package.StartsWith("$($rule.SourceRoot)/", [StringComparison]::Ordinal)
+            if (-not $isSourceContext) { continue }
+            foreach ($imported in $imports) {
+                if ($imported -eq $rule.TargetRoot -or
+                    $imported.StartsWith("$($rule.TargetRoot)/", [StringComparison]::Ordinal)) {
+                    $violations.Add("forbidden context dependency: $package -> $imported ($($rule.Reason))")
+                }
+            }
         }
 
         $isPlatformPackage = $package -eq $platformPackageRoot -or

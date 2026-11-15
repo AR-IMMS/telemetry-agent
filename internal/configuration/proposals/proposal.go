@@ -1,4 +1,4 @@
-package discovery
+package proposals
 
 import (
 	"bytes"
@@ -26,7 +26,7 @@ var (
 
 var integrationProposalIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
 
-// ProposalStatus represents the review lifecycle owned by Discovery & Inventory.
+// ProposalStatus represents the review lifecycle owned by Configuration.
 type ProposalStatus string
 
 const (

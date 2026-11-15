@@ -10,9 +10,8 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
+	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals"
 	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
-	discoverysqlite "github.com/ar-imms/telemetry-agent/internal/discovery/sqlite"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
@@ -57,7 +56,7 @@ func TestRepositoriesUseSharedStateDatabaseAndRetainCASContracts(t *testing.T) {
 	if _, err := configurationsqlite.NewMaterializationRepository(store.OpenDatabase, locker).ApplyTemplateProjection(configuration.MaterializationBatch{}); !errors.Is(err, configuration.ErrInvalidMaterialization) {
 		t.Fatalf("invalid materialization error=%v", err)
 	}
-	if _, _, err := configurationsqlite.NewApprovalRepository(store.OpenDatabase, locker).CommitApproval(configuration.ApprovalCommit{}); !errors.Is(err, discovery.ErrInvalidProposal) {
+	if _, _, err := configurationsqlite.NewApprovalRepository(store.OpenDatabase, locker).CommitApproval(proposals.ApprovalCommit{}); !errors.Is(err, proposals.ErrInvalidProposal) {
 		t.Fatalf("invalid approval error=%v", err)
 	}
 }
@@ -132,8 +131,8 @@ func TestApprovalRepositoryCommitsProposalAndDesiredStateTogether(t *testing.T) 
 		t.Fatalf("commit inventory: %v", err)
 	}
 	proposal := pendingProposal(t, at)
-	proposals := discoverysqlite.NewProposalRepository(store.OpenDatabase, locker)
-	if err := proposals.PutProposal(proposal, 0); err != nil {
+	proposalRepo := configurationsqlite.NewProposalRepository(store.OpenDatabase, locker)
+	if err := proposalRepo.PutProposal(proposal, 0); err != nil {
 		t.Fatalf("persist proposal: %v", err)
 	}
 	instance := integration.IntegrationInstance{
@@ -141,7 +140,7 @@ func TestApprovalRepositoryCommitsProposalAndDesiredStateTogether(t *testing.T) 
 		Configuration: map[string]any{"endpoint": "127.0.0.1:6379"}, Enabled: true, Source: integration.SourceDiscovery,
 		Binding: &integration.ResourceBinding{Provider: proposal.Identity.Provider, ProviderInstance: proposal.Identity.ProviderInstance, ResourceID: proposal.Identity.ResourceID},
 	}
-	commit := configuration.ApprovalCommit{
+	commit := proposals.ApprovalCommit{
 		ProposalID: proposal.ID, ProposalRevision: proposal.Revision, ExpectedDesiredRevision: 0,
 		ExpectedCandidateDigest: proposal.CandidateDigest, VerifiedCandidateDigest: proposal.CandidateDigest,
 		InventoryWriteRevision: 1, Instance: instance,
@@ -150,8 +149,8 @@ func TestApprovalRepositoryCommitsProposalAndDesiredStateTogether(t *testing.T) 
 	if err != nil || revision != 1 || approved.Revision != 1 {
 		t.Fatalf("approved instance=%+v revision=%d err=%v", approved, revision, err)
 	}
-	currentProposals, err := proposals.ProposalSnapshot()
-	if err != nil || len(currentProposals) != 1 || currentProposals[0].Status != discovery.ProposalApproved || currentProposals[0].ApprovedInstanceID != instance.ID {
+	currentProposals, err := proposalRepo.ProposalSnapshot()
+	if err != nil || len(currentProposals) != 1 || currentProposals[0].Status != proposals.ProposalApproved || currentProposals[0].ApprovedInstanceID != instance.ID {
 		t.Fatalf("approved proposals=%+v err=%v", currentProposals, err)
 	}
 	desired, err := configurationsqlite.NewIntegrationRepository(store.OpenDatabase, locker).Snapshot()
@@ -177,20 +176,20 @@ func localTemplate(id string, status integration.TemplateStatus) integration.Int
 	}
 }
 
-func pendingProposal(t *testing.T, at time.Time) discovery.Proposal {
+func pendingProposal(t *testing.T, at time.Time) proposals.Proposal {
 	t.Helper()
-	identity := discovery.ProposalIdentity{Provider: "docker", ProviderInstance: "local", ResourceID: "container-a", IntegrationID: "redis"}
-	id, err := discovery.StableProposalID(identity)
+	identity := proposals.ProposalIdentity{Provider: "docker", ProviderInstance: "local", ResourceID: "container-a", IntegrationID: "redis"}
+	id, err := proposals.StableProposalID(identity)
 	if err != nil {
 		t.Fatal(err)
 	}
-	proposal := discovery.Proposal{
-		ID: id, Identity: identity, Revision: 1, Status: discovery.ProposalPending, DefinitionVersion: "1.0.0",
+	proposal := proposals.Proposal{
+		ID: id, Identity: identity, Revision: 1, Status: proposals.ProposalPending, DefinitionVersion: "1.0.0",
 		ResourceFingerprint: "sha256:" + repeatedHex('a'), CandidateDigest: "sha256:" + repeatedHex('b'),
 		CandidateConfiguration: json.RawMessage(`{"endpoint":"127.0.0.1:6379"}`), CapabilityEvidence: json.RawMessage(`{"status":"supported"}`),
 		InventoryRevision: 1, CreatedAt: at, UpdatedAt: at,
 	}
-	if err := discovery.ValidateProposal(proposal); err != nil {
+	if err := proposals.ValidateProposal(proposal); err != nil {
 		t.Fatal(err)
 	}
 	return proposal

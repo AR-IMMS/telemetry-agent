@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
+	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
@@ -240,20 +240,20 @@ func TestLiveDockerProposalAndExplicitApproval(t *testing.T) {
 		matchState.AppliedGeneration != before.AppliedGeneration || matchDesired.Revision != desiredBefore.Revision {
 		t.Fatalf("read-only match mutated lifecycle or desired state: before=%+v after=%+v desired %d -> %d", before, matchState, desiredBefore.Revision, matchDesired.Revision)
 	}
-	proposals, err := store.ProposalRepository().ProposalSnapshot()
+	proposalList, err := store.ProposalRepository().ProposalSnapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
-	var selected *discovery.Proposal
-	for i := range proposals {
-		proposal := &proposals[i]
+	var selected *proposals.Proposal
+	for i := range proposalList {
+		proposal := &proposalList[i]
 		if proposal.Identity.Provider == "docker" && proposal.Identity.ResourceID == fixtureID && proposal.Identity.IntegrationID == "redis" {
 			selected = proposal
 			break
 		}
 	}
-	if selected == nil || selected.Status != discovery.ProposalPending || selected.CandidateDigest == "" {
-		t.Fatalf("Redis proposal=%+v; all proposals=%+v", selected, proposals)
+	if selected == nil || selected.Status != proposals.ProposalPending || selected.CandidateDigest == "" {
+		t.Fatalf("Redis proposal=%+v; all proposals=%+v", selected, proposalList)
 	}
 	var listed, approvalOutput, stderr bytes.Buffer
 	if code := runDiscovery(context.Background(), []string{"proposals", "list", "--state-path", statePath}, &listed, &stderr); code != 0 {
@@ -334,7 +334,7 @@ func TestLiveDatabaseFixturesMatchIntoNeedsInputProposals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	observations := make([]discovery.ProposalObservation, 0, 2)
+	observations := make([]proposals.ProposalObservation, 0, 2)
 	fixtureResults := make([]integration.MatchResult, 0, 2)
 	for _, result := range report.Results {
 		if result.Resource.ResourceID != postgresID && result.Resource.ResourceID != mongoID {
@@ -350,23 +350,23 @@ func TestLiveDatabaseFixturesMatchIntoNeedsInputProposals(t *testing.T) {
 	if len(observations) != 2 {
 		t.Fatalf("test-only matcher observations=%+v, want PostgreSQL and MongoDB fixtures", observations)
 	}
-	manager := discovery.NewProposalManager(store.ProposalRepository())
+	manager := proposals.NewProposalManager(store.ProposalRepository())
 	if err := manager.Refresh(observations, report.EvaluatedAt); err != nil {
 		t.Fatal(err)
 	}
-	proposals, err := store.ProposalRepository().ProposalSnapshot()
+	proposalList, err := store.ProposalRepository().ProposalSnapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, fixture := range []struct{ id, definition string }{{postgresID, "postgresql-fixture"}, {mongoID, "mongodb-fixture"}} {
 		found := false
-		for _, proposal := range proposals {
+		for _, proposal := range proposalList {
 			if proposal.Identity.ResourceID == fixture.id && proposal.Identity.IntegrationID == fixture.definition {
-				found = proposal.Status == discovery.ProposalNeedsInput && len(proposal.RequiredInputs) == 2 && proposal.CandidateDigest == ""
+				found = proposal.Status == proposals.ProposalNeedsInput && len(proposal.RequiredInputs) == 2 && proposal.CandidateDigest == ""
 			}
 		}
 		if !found {
-			t.Fatalf("fixture %s did not produce a needs_input proposal; fixture_results=%+v proposals=%+v", fixture.id, fixtureResults, proposals)
+			t.Fatalf("fixture %s did not produce a needs_input proposal; fixture_results=%+v proposals=%+v", fixture.id, fixtureResults, proposalList)
 		}
 	}
 }
