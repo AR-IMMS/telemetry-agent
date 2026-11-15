@@ -189,7 +189,7 @@ func DiscoveryCycleSucceeded(result inventoryctx.CycleResult) bool {
 }
 
 func isExpectedReconciliationOutcome(err error) bool {
-	return errors.Is(err, agentstate.ErrReconciliationBlocked) || errors.Is(err, agentstate.ErrReconciliationExhausted) ||
-		errors.Is(err, agentstate.ErrReconciliationBackoff) || errors.Is(err, agentstate.ErrReconciliationApplied) ||
-		errors.Is(err, agentstate.ErrReconciliationAwaitingLifecycle)
+	return errors.Is(err, reconciliation.ErrAttemptBlocked) || errors.Is(err, reconciliation.ErrAttemptBudgetExhausted) ||
+		errors.Is(err, reconciliation.ErrAttemptBackoff) || errors.Is(err, reconciliation.ErrTargetAlreadyApplied) ||
+		errors.Is(err, reconciliation.ErrAwaitingLifecycle)
 }

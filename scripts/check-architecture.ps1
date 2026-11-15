@@ -48,6 +48,12 @@ try {
         "$modulePath/internal/supervisor"
     )
 
+    # Configuration consumes Runtime-owned immutable candidate/application
+    # contracts during reconciliation. Concrete Collector Runtime packages remain
+    # forbidden to Configuration.
+    $contextContractImportAllowlist = @{
+        "$modulePath/internal/configuration/reconciliation|$modulePath/internal/collectorruntime/contracts" = 'OD-05: Configuration owns reconciliation decisions and depends on Runtime only through the candidate/application contract.'
+    }
     # One observed transition: identity currently reads the Windows registry
     # directly. Keep the exception specific and reasoned until an adapter exists.
     $transitionalImportAllowlist = @{
@@ -174,6 +180,10 @@ try {
             }
             foreach ($adapter in $adapterRoots) {
                 if ($imported -eq $adapter -or $imported.StartsWith("$adapter/", [StringComparison]::Ordinal)) {
+                    if ($contextContractImportAllowlist.ContainsKey($edge) -and
+                        $imported -eq "$modulePath/internal/collectorruntime/contracts") {
+                        break
+                    }
                     $violations.Add("domain package imports adapter: $package -> $imported")
                     break
                 }

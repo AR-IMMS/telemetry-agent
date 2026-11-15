@@ -11,10 +11,11 @@ import (
 
 // ValidateCandidate invokes the pinned Collector validator without activation.
 func ValidateCandidate(ctx context.Context, runner bootstrap.CommandRunner, binaryPath string, candidate Candidate, environment []string) error {
-	if len(candidate.content) == 0 {
+	content := candidate.Bytes()
+	if len(content) == 0 {
 		return fmt.Errorf("%w: candidate is empty", ErrNativeValidation)
 	}
-	digest := sha256.Sum256(candidate.content)
+	digest := sha256.Sum256(content)
 	if candidate.Digest() != hex.EncodeToString(digest[:]) {
 		return fmt.Errorf("%w: candidate digest does not match its bytes", ErrNativeValidation)
 	}

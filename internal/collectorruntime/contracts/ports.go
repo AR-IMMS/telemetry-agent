@@ -2,10 +2,16 @@ package contracts
 
 import (
 	"context"
+	"errors"
 
-	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
 	"github.com/ar-imms/telemetry-agent/internal/config"
 )
+
+// ErrStaleCandidate reports that the desired state or baseline changed before candidate admission.
+var ErrStaleCandidate = errors.New("Collector candidate inputs are stale")
+
+// ErrInvalidCandidate marks a candidate rejected by Runtime compilation or pinned-binary validation.
+var ErrInvalidCandidate = errors.New("invalid Collector candidate")
 
 // BaselineSnapshot is the clean Collector render input and freshness identity
 // consumed by reconciliation. It excludes the generated Integration candidate
@@ -29,7 +35,7 @@ type CandidateApplyRequest struct {
 	DesiredSetRevision  uint64
 	ExpectedGeneration  uint64
 	BaselineFingerprint string
-	Candidate           collectorruntime.Candidate
+	Candidate           Candidate
 }
 
 // CandidateActivationOutcome reports the lifecycle stage reached by one

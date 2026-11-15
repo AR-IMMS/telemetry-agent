@@ -14,6 +14,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
+	runtimecontracts "github.com/ar-imms/telemetry-agent/internal/collectorruntime/contracts"
 	"github.com/ar-imms/telemetry-agent/internal/config"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/dependency"
@@ -108,7 +109,7 @@ func TestReconcileLatestRepeatsWhenBaselineFingerprintChangesAfterApply(t *testi
 		Desired: desired, Baseline: baseline, Resolver: &testResolver{}, Compiler: &testCompiler{},
 		Validator: func(context.Context, collectorruntime.Candidate) error { return nil },
 		Applier:   &testApplier{}, Attempts: &testAttempts{},
-		Outcomes: fixedOutcome{mapping: agentstate.CandidateMapping{Outcome: "applied"}, generation: 5, found: true},
+		Outcomes: fixedOutcome{mapping: CandidateOutcome{Outcome: "applied"}, generation: 5, found: true},
 	}
 	result, err := controller.reconcileLatest(context.Background())
 	if err != nil {
@@ -120,7 +121,7 @@ func TestReconcileLatestRepeatsWhenBaselineFingerprintChangesAfterApply(t *testi
 }
 
 func TestReconcileAcknowledgesAppliedOnlyFromM2Journal(t *testing.T) {
-	controller := Controller{Desired: &snapshotReader{snapshot: configuration.DesiredSnapshot{Revision: 12}}, Baseline: staticBaseline{}, Resolver: &testResolver{}, Compiler: &testCompiler{}, Validator: func(context.Context, collectorruntime.Candidate) error { return nil }, Applier: &testApplier{}, Attempts: &testAttempts{}, Outcomes: fixedOutcome{mapping: agentstate.CandidateMapping{Outcome: "applied"}, generation: 37, found: true}}
+	controller := Controller{Desired: &snapshotReader{snapshot: configuration.DesiredSnapshot{Revision: 12}}, Baseline: staticBaseline{}, Resolver: &testResolver{}, Compiler: &testCompiler{}, Validator: func(context.Context, collectorruntime.Candidate) error { return nil }, Applier: &testApplier{}, Attempts: &testAttempts{}, Outcomes: fixedOutcome{mapping: CandidateOutcome{Outcome: "applied"}, generation: 37, found: true}}
 	result, err := controller.Reconcile(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -131,7 +132,7 @@ func TestReconcileAcknowledgesAppliedOnlyFromM2Journal(t *testing.T) {
 }
 
 func TestPermanentCapabilityFailureBlocksWithoutRetry(t *testing.T) {
-	failure := classify("compile", collectorruntime.ErrUnsupportedCapability)
+	failure := classify("compile", errors.Join(runtimecontracts.ErrInvalidCandidate, collectorruntime.ErrUnsupportedCapability))
 	if failure.Class != FailurePermanent || attemptStatus(failure.Class, 1) != StatusBlocked {
 		t.Fatalf("unsupported capability classification = %+v", failure)
 	}
@@ -292,7 +293,8 @@ service:
 	}
 	compiler := collectorruntime.NewCompiler(capabilities)
 	options := agentlifecycle.CollectorConfigurationOptions{Platform: platform, Catalog: definitions, Layers: layers, BinaryPath: "otelcol-contrib", ConfigPath: configPath, RenderValues: values, ValidationEnvironment: []string{"OTEL_GATEWAY_ENDPOINT=127.0.0.1:4317"}, Runner: successfulCandidateRunner{}}
-	controller := Controller{Desired: repository, Baseline: testCleanBaseline{store: store, platform: platform, dependencies: definitions, layers: layers, values: values}, Resolver: resolver, Compiler: compiler, Validator: func(context.Context, collectorruntime.Candidate) error { return nil }, Applier: testM2Applier{store: store, options: options}, Attempts: NewSQLiteAttemptsFromStore(store), Outcomes: CandidateOutcomes{Store: store}}
+	attempts := agentstate.NewSQLiteAttemptsFromStore(store)
+	controller := Controller{Desired: repository, Baseline: testCleanBaseline{store: store, platform: platform, dependencies: definitions, layers: layers, values: values}, Resolver: resolver, Compiler: compiler, Validator: func(context.Context, collectorruntime.Candidate) error { return nil }, Applier: testM2Applier{store: store, options: options}, Attempts: attempts, Outcomes: attempts}
 	first, err := controller.Reconcile(context.Background())
 	if err != nil || first.Status != StatusApplied {
 		t.Fatalf("plug reconciliation=%+v err=%v", first, err)
@@ -437,7 +439,7 @@ func (testAttempts) RecordCandidate(Attempt, string) error { return nil }
 func (testAttempts) FinishAttempt(Attempt, Outcome) error  { return nil }
 
 type fixedOutcome struct {
-	mapping    agentstate.CandidateMapping
+	mapping    CandidateOutcome
 	generation uint64
 	found      bool
 }
@@ -465,7 +467,7 @@ func (a *staleOnceApplier) ApplyCandidate(_ context.Context, request CandidateAp
 	a.revisions = append(a.revisions, request.DesiredSetRevision)
 	if !a.stale {
 		a.stale = true
-		return CandidateActivationOutcome{}, agentstate.ErrStaleCandidate
+		return CandidateActivationOutcome{}, ErrStalePlan
 	}
 	return CandidateActivationOutcome{Generation: request.ExpectedGeneration + 1, Result: "activated"}, nil
 }
@@ -553,6 +555,6 @@ func (a testM2Applier) ApplyCandidate(ctx context.Context, request CandidateAppl
 	return outcome, nil
 }
 
-func (o fixedOutcome) Lookup(uint64, string, string) (agentstate.CandidateMapping, uint64, bool, error) {
+func (o fixedOutcome) Lookup(uint64, string, string) (CandidateOutcome, uint64, bool, error) {
 	return o.mapping, o.generation, o.found, nil
 }

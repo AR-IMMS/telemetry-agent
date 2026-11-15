@@ -8,33 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
+	"github.com/ar-imms/telemetry-agent/internal/collectorruntime/contracts"
 	"github.com/ar-imms/telemetry-agent/internal/config"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
-)
-
-// MaxAttempts is the durable per-target automatic attempt budget.
-const MaxAttempts = 5
-
-// Status is the operator-facing desired-to-applied convergence state.
-type Status string
-
-const (
-	StatusPending        Status = "Pending"
-	StatusApplied        Status = "Applied"
-	StatusBlocked        Status = "Blocked"
-	StatusNeedsAttention Status = "Needs Attention"
-)
-
-// FailureClass controls whether reconciliation blocks or retries a typed failure.
-type FailureClass string
-
-const (
-	FailurePermanent  FailureClass = "permanent"
-	FailureTransient  FailureClass = "transient"
-	FailureActivation FailureClass = "activation"
 )
 
 // Failure gives diagnostics a stable stage, code, and retry classification.
@@ -52,34 +29,6 @@ func (f Failure) Error() string {
 	return f.Err.Error()
 }
 func (f Failure) Unwrap() error { return f.Err }
-
-// Target identifies one desired integration and clean-baseline failure target.
-type Target struct {
-	DesiredRevision     uint64
-	DesiredGeneration   uint64
-	BaselineFingerprint string
-}
-
-// Attempt identifies one durably charged reconciliation execution.
-type Attempt struct {
-	ID        int64
-	Epoch     uint64
-	Target    Target
-	Number    uint64
-	StartedAt time.Time
-}
-
-// Outcome is safe structured diagnostic evidence for an attempt.
-type Outcome struct {
-	Status          Status
-	Stage           string
-	Code            string
-	Class           FailureClass
-	CandidateDigest string
-	Generation      uint64
-	SafeDetail      string
-	RetryAt         time.Time
-}
 
 // Result reports what a reconciliation pass established without implying health or delivery.
 type Result struct {
@@ -100,17 +49,17 @@ type resolver interface {
 	Resolve(integration.IntegrationInstance) (integration.ResolvedInstance, error)
 }
 type compiler interface {
-	Compile(input config.RenderInput, resolved []integration.ResolvedInstance) (collectorruntime.Candidate, error)
+	Compile(input config.RenderInput, resolved []integration.ResolvedInstance) (contracts.Candidate, error)
 }
 
-type candidateValidator func(context.Context, collectorruntime.Candidate) error
+type candidateValidator func(context.Context, contracts.Candidate) error
 type attemptRepository interface {
 	BeginAttempt(Target) (Attempt, error)
 	RecordCandidate(Attempt, string) error
 	FinishAttempt(Attempt, Outcome) error
 }
 type candidateOutcomeReader interface {
-	Lookup(uint64, string, string) (agentstate.CandidateMapping, uint64, bool, error)
+	Lookup(uint64, string, string) (CandidateOutcome, uint64, bool, error)
 }
 
 // Controller performs one serialized desired-to-candidate convergence pass.
@@ -150,11 +99,11 @@ func (c *Controller) Reconcile(ctx context.Context) (Result, error) {
 	result := Result{DesiredRevision: target.DesiredRevision, DesiredGeneration: target.DesiredGeneration, BaselineFingerprint: target.BaselineFingerprint, Status: StatusPending}
 	attempt, err := c.Attempts.BeginAttempt(target)
 	if err != nil {
-		if errors.Is(err, agentstate.ErrReconciliationApplied) {
+		if errors.Is(err, ErrTargetAlreadyApplied) {
 			result.Status = StatusApplied
 			return result, nil
 		}
-		if errors.Is(err, agentstate.ErrReconciliationAwaitingLifecycle) {
+		if errors.Is(err, ErrAwaitingLifecycle) {
 			return result, nil
 		}
 		return result, err
@@ -211,7 +160,7 @@ func (c *Controller) Reconcile(ctx context.Context) (Result, error) {
 	}
 	activation, err := c.Applier.ApplyCandidate(ctx, CandidateApplyRequest{DesiredSetRevision: snapshot.Revision, ExpectedGeneration: baseline.DesiredGeneration, BaselineFingerprint: baseline.Fingerprint, Candidate: candidate})
 	if err != nil {
-		if errors.Is(err, ErrStalePlan) || errors.Is(err, agentstate.ErrStaleCandidate) {
+		if errors.Is(err, ErrStalePlan) || errors.Is(err, contracts.ErrStaleCandidate) {
 			result.Stale = true
 			return finish(Outcome{Status: StatusPending, Stage: "admission", Code: "stale_plan", SafeDetail: "desired inputs changed; a later pass will read the latest snapshot"}, nil)
 		}
@@ -239,7 +188,7 @@ func (c *Controller) Reconcile(ctx context.Context) (Result, error) {
 	return finish(Outcome{Status: StatusPending, Stage: "activation", Code: "awaiting_m2_terminal_outcome", CandidateDigest: candidate.Digest(), Generation: activation.Generation, SafeDetail: "candidate admitted; awaiting lifecycle readiness evidence"}, nil)
 }
 
-func (c *Controller) awaitTerminal(ctx context.Context, revision uint64, fingerprint, digest string) (agentstate.CandidateMapping, uint64, error) {
+func (c *Controller) awaitTerminal(ctx context.Context, revision uint64, fingerprint, digest string) (CandidateOutcome, uint64, error) {
 	interval := c.PollInterval
 	if interval <= 0 {
 		interval = 250 * time.Millisecond
@@ -291,7 +240,7 @@ func (c *Controller) Run(ctx context.Context, interval time.Duration) error {
 }
 
 func logPassFailure(err error) {
-	if errors.Is(err, agentstate.ErrReconciliationBlocked) || errors.Is(err, agentstate.ErrReconciliationExhausted) || errors.Is(err, agentstate.ErrReconciliationBackoff) || errors.Is(err, agentstate.ErrReconciliationApplied) || errors.Is(err, agentstate.ErrReconciliationAwaitingLifecycle) {
+	if errors.Is(err, ErrAttemptBlocked) || errors.Is(err, ErrAttemptBudgetExhausted) || errors.Is(err, ErrAttemptBackoff) || errors.Is(err, ErrTargetAlreadyApplied) || errors.Is(err, ErrAwaitingLifecycle) {
 		return
 	}
 	var failure Failure
@@ -338,8 +287,7 @@ func classify(stage string, err error) Failure {
 	}
 	class := FailureTransient
 	code := stage + "_failed"
-	if errors.Is(err, integration.ErrInvalidInstance) || errors.Is(err, integration.ErrUnknownDefinition) || errors.Is(err, integration.ErrInvalidContribution) ||
-		errors.Is(err, collectorruntime.ErrUnsupportedCapability) || errors.Is(err, collectorruntime.ErrInvalidIntent) || errors.Is(err, collectorruntime.ErrComponentIDConflict) || errors.Is(err, collectorruntime.ErrInvalidCatalog) || errors.Is(err, collectorruntime.ErrCompilation) || errors.Is(err, collectorruntime.ErrNativeValidation) {
+	if errors.Is(err, integration.ErrInvalidInstance) || errors.Is(err, integration.ErrUnknownDefinition) || errors.Is(err, integration.ErrInvalidContribution) || errors.Is(err, contracts.ErrInvalidCandidate) {
 		class = FailurePermanent
 		code = "invalid_candidate"
 	}
