@@ -141,6 +141,28 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 	if firstID == secondID {
 		t.Fatalf("Docker returned duplicate resource identities %q", firstID)
 	}
+	probeStatePath := filepath.Join(root, "discovery-probe.db")
+	probeCoordinator := newDockerDiscoveryCoordinator(probeStatePath)
+	if probeCoordinator == nil {
+		t.Fatal("Agent Docker discovery provider did not configure for the explicit isolated engine")
+	}
+	probeCycle, err := probeCoordinator.DiscoverOnce(ctx)
+	if err != nil {
+		t.Fatalf("Agent Docker discovery preflight failed: %v", err)
+	}
+	if len(probeCycle.ProviderResults) != 1 || probeCycle.ProviderResults[0].ErrorCode != "" {
+		t.Fatalf("Agent Docker discovery preflight result=%+v", probeCycle.ProviderResults)
+	}
+	probeInventory, err := agentstate.NewSQLiteStore(probeStatePath).InventoryRepository().Snapshot()
+	if err != nil {
+		t.Fatalf("read Agent Docker discovery preflight inventory: %v", err)
+	}
+	for _, resourceID := range []string{firstID, secondID, thirdID, fourthID} {
+		if !inventoryHasResource(probeInventory, resourceID) {
+			t.Fatalf("Agent Docker discovery preflight omitted live container %s", resourceID)
+		}
+	}
+	t.Logf("PR05_DISCOVERY_PREFLIGHT resources=%d", len(probeInventory.Resources))
 
 	serviceCtx, stopService := context.WithCancel(ctx)
 	serviceDone := make(chan error, 1)
@@ -157,6 +179,7 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 		}
 	})
 	waitForNativeDelivery(t, ctx, serviceDone, sinkOutput, collectorLogs, nodeID, firstID, secondID, fourthID)
+	waitForNativeInventoryPresent(t, ctx, store, firstID, secondID, fourthID)
 	assertNativeReceiverUniqueness(t, collectorLogs.output())
 	if duplicates := nativeDuplicateMetricSamples(sinkOutput.String()); len(duplicates) > 0 {
 		t.Fatalf("duplicate Redis OTLP points detected: %v", duplicates)
@@ -268,6 +291,15 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 			t.Fatalf("unpause Redis after scrape failure: %v\n%s", err, output)
 		}
 	}
+}
+
+func inventoryHasResource(snapshot discovery.InventorySnapshot, resourceID string) bool {
+	for _, resource := range snapshot.Resources {
+		if resource.Key.ProviderResourceID == resourceID && resource.Presence == discovery.PresencePresent {
+			return true
+		}
+	}
+	return false
 }
 
 func verifyNativeDockerRecovery(t *testing.T, ctx context.Context, manager string, store agentstate.SQLiteStore, sink *lockedTemplateE2EBuffer, logs *nativeCollectorLogReporter, serviceDone <-chan error, resourceIDs ...string) {
@@ -450,10 +482,32 @@ func waitForNativeInventoryPresent(t *testing.T, ctx context.Context, store agen
 		case <-ctx.Done():
 			t.Fatalf("context ended waiting for Docker inventory recovery: %v", ctx.Err())
 		case <-deadline.C:
-			t.Fatal("Agent inventory did not converge after Docker recovery")
+			t.Fatalf("Agent inventory did not converge after Docker recovery: missing=%v; %s", nativeInventoryMissingResources(store, resourceIDs...), nativeInventoryRecoveryDiagnostic(store, resourceIDs...))
 		case <-ticker.C:
 		}
 	}
+}
+
+func nativeInventoryRecoveryDiagnostic(store agentstate.SQLiteStore, resourceIDs ...string) string {
+	snapshot, err := store.InventoryRepository().Snapshot()
+	if err != nil {
+		return "inventory_snapshot_error=" + err.Error()
+	}
+	var details []string
+	for _, provider := range snapshot.Providers {
+		details = append(details, fmt.Sprintf("provider=%s instance=%s enabled=%t last_error=%s last_attempt=%s last_success=%s", provider.ProviderID, provider.ProviderInstanceID, provider.Enabled, provider.LastErrorCode, provider.LastAttemptAt.UTC().Format(time.RFC3339Nano), provider.LastSuccessAt.UTC().Format(time.RFC3339Nano)))
+	}
+	for _, resourceID := range resourceIDs {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		output, inspectErr := nativeDockerCommand(ctx, "inspect", "--format", "{{.Id}} {{.State.Status}}", resourceID).CombinedOutput()
+		cancel()
+		if inspectErr != nil {
+			details = append(details, fmt.Sprintf("docker_resource=%s inspect_error=%v output=%s", resourceID, inspectErr, strings.TrimSpace(string(output))))
+		} else {
+			details = append(details, "docker_resource="+strings.TrimSpace(string(output)))
+		}
+	}
+	return strings.Join(details, "; ")
 }
 
 func nativeInventoryContainsAll(store agentstate.SQLiteStore, resourceIDs ...string) bool {

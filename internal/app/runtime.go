@@ -31,6 +31,11 @@ type Reconciler interface {
 	Run(context.Context, time.Duration) error
 }
 
+// OperationsRunner is an optional remote read-only command consumer. It must recover independently from broker outages.
+type OperationsRunner interface {
+	Run(context.Context) error
+}
+
 // RuntimeComponents are the executable-built domain adapters the Agent Service coordinates.
 type RuntimeComponents struct {
 	Reconciler Reconciler
@@ -41,6 +46,7 @@ type RuntimeComponents struct {
 	RefreshTemplates func(context.Context) error
 	// RecordRecoveryFailure persists lifecycle recovery failure details.
 	RecordRecoveryFailure func(agentstate.State, error) error
+	Operations            OperationsRunner
 }
 
 // RuntimeBuilder composes domain/runtime adapters with the app-owned advisory publisher.
@@ -103,6 +109,37 @@ func RunRuntime(ctx context.Context, options RuntimeOptions) error {
 }
 
 func runControlLoops(ctx context.Context, components RuntimeComponents) error {
+	if ctx == nil || components.Reconciler == nil {
+		return fmt.Errorf("Agent control-loop context and reconciler are required")
+	}
+	if components.Operations == nil {
+		return runAgentControlLoops(ctx, components)
+	}
+	serviceContext, cancel := context.WithCancel(ctx)
+	defer cancel()
+	controlDone := make(chan error, 1)
+	operationsDone := make(chan error, 1)
+	go func() { controlDone <- runAgentControlLoops(serviceContext, components) }()
+	go func() { operationsDone <- components.Operations.Run(serviceContext) }()
+	select {
+	case err := <-controlDone:
+		cancel()
+		operationsErr := <-operationsDone
+		if err != nil {
+			return err
+		}
+		return operationsErr
+	case err := <-operationsDone:
+		cancel()
+		controlErr := <-controlDone
+		if err != nil {
+			return err
+		}
+		return controlErr
+	}
+}
+
+func runAgentControlLoops(ctx context.Context, components RuntimeComponents) error {
 	if ctx == nil || components.Reconciler == nil {
 		return fmt.Errorf("Agent control-loop context and reconciler are required")
 	}

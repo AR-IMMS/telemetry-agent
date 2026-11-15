@@ -1,12 +1,12 @@
 # PR-08 Health & Reporting Verification
 
-- **Status:** VERIFIED FOR SUPPORTED PR-08 SCOPE; PR #31 remains draft and unmerged.
+- **Status:** PASS — supported PR-08 scope verified and merged.
 - **Branch:** `feat/pr-08-health-reporting`
 - **Base:** PR-07 merge `700768dff651e73a2e457aa20d94845bc326d971`
 - **Latest implementation head:** `f528f9b0e1066f7137afc908fd141dfc0bb0afb7`.
 - **Evidence-source decision update:** `39e796efc9dc52fdffbed23cb180abbc0ca54e40`, pushed to the existing PR branch and verified by final-head CI run `43583067475`.
 - **Implementation commits:** prior PR-08 commits plus `1ce2106f4884750cea83805fe5b564677c328cd3` (Core/OpAMP/Gateway evidence and exporter diagnostics) and `f528f9b0e1066f7137afc908fd141dfc0bb0afb7` (CI assertion correction and verification update).
-- **PR:** draft [#31](https://github.com/AR-IMMS/telemetry-agent/pull/31), targeting `chore/v0.1.4a-next`.
+- **PR:** [#31](https://github.com/AR-IMMS/telemetry-agent/pull/31), merged into `chore/v0.1.4a-next` at `d1429196e8b39a24a624a9ad30619476f09a0a9f`.
 
 ## Goal and boundaries
 
@@ -219,8 +219,8 @@ Outage and recovery cases must use existing owner evidence. The legacy direct Co
 
 The supported PR-08 implementation and verification gates pass. Exact PR head `39e796efc9dc52fdffbed23cb180abbc0ca54e40` passed Windows and Ubuntu CI run [43583067475](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43583067475). Both jobs passed full Go tests, architecture checks, managed Supervisor fallback/OTLP E2E, vet, and build. Ubuntu also passed live Docker/Collector/OTLP and Docker profile E2Es. Hosted Windows Docker/profile and native service lifecycle E2Es on both OSes were skipped and remain unverified. The preceding exact head `ea4a70189cf57a45b151080c6dfe82fd4cdc945d` also passed CI run [43581426398](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43581426398).
 
-External Core report transmission remains `BLOCKED` for release integration until its versioned contract is approved. Core/OpAMP reconvergence and managed Supervisor child Collector diagnostics remain `NOT_TESTED` where their existing evidence sources are unavailable. Per the user's approved disposition, these cases do not block PR-08 as a whole. PR #31 has not been marked ready or merged. Its description is stale because the connected GitHub integration denied body writes (HTTP 403), and direct `gh` API calls cannot reach GitHub; updating PR metadata or merging needs a write-capable path.
+External Core report transmission remains `BLOCKED` for release integration until its versioned contract is approved. Core/OpAMP reconvergence and managed Supervisor child Collector diagnostics remain `NOT_TESTED` where their existing evidence sources are unavailable. Per the user's approved disposition, these cases do not block PR-08 as a whole. The PR description was synchronized through the authenticated workstation GitHub CLI before merge. PR #31 merged using the repository's established merge-commit method after both final-head CI jobs passed.
 
 **Rollback:** additive assessment data and the `doctor` dispatch can be reverted without changing SQLite state or runtime ownership. Existing `/v1/status` JSON fields and status command invocation remain.
 
-**Next checkpoint:** PR-08 is verified for its supported scope. The PR description still needs synchronization through a write-capable GitHub path. Once updated, mark the PR ready and follow the integration-branch merge workflow. Do not treat the deferred contract-dependent cases as PR-08 blockers; track them for final release acceptance.
+**Next checkpoint:** PR-08 is complete. PR-09 remains blocked until its operation catalog, authorization/idempotency/audit/target contract, and mutation security ADR are approved. Do not treat PR-08's explicitly deferred external Core reporting as a PR-08 blocker; retain it for release integration follow-up.

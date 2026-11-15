@@ -106,6 +106,7 @@ jobs:
 
       - name: Start isolated Docker Engine for PR-05 recovery E2E
         if: runner.os == 'Linux'
+        id: isolated_docker_engine
         shell: pwsh
         run: |
           $socketDirectory = Join-Path $env:RUNNER_TEMP 'arimms-pr05-dind'
@@ -133,6 +134,29 @@ jobs:
 
       - name: Test
         run: go test ./... -count=1
+
+      - name: Live JetStream Operations and Docker inspection E2E
+        if: always() && runner.os == 'Linux' && steps.isolated_docker_engine.outcome == 'success'
+        shell: pwsh
+        env:
+          AR_IMMS_PR09_NATS_E2E: '1'
+          AR_IMMS_PR09_EVIDENCE_DIR: ${{ runner.temp }}/pr09-evidence
+        run: |
+          $evidenceDirectory = $env:AR_IMMS_PR09_EVIDENCE_DIR
+          New-Item -ItemType Directory -Force -Path $evidenceDirectory | Out-Null
+          $logPath = Join-Path $evidenceDirectory 'linux-live-jetstream-operations.log'
+          go test ./internal/operations/nats -run '^TestLiveJetStreamOperationsE2E$' -count=1 -v *> $logPath
+          $testExitCode = $LASTEXITCODE
+          Get-Content -LiteralPath $logPath
+          if ($testExitCode -ne 0) { throw "PR-09 native Linux JetStream Operations E2E failed: $testExitCode" }
+
+      - name: Upload PR-09 live Operations evidence
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v6
+        with:
+          name: pr09-jetstream-operations-${{ runner.os }}
+          path: ${{ runner.temp }}/pr09-evidence/
+          if-no-files-found: warn
 
       - name: Build PR-06 Agent and current Agent for native service lifecycle E2E
         if: github.event_name == 'pull_request' && github.event.pull_request.number == 30
