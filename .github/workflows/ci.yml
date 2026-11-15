@@ -135,6 +135,59 @@ jobs:
       - name: Test
         run: go test ./... -count=1
 
+      - name: Live Docker Inventory provider E2E
+        if: always() && runner.os == 'Linux' && steps.isolated_docker_engine.outcome == 'success'
+        shell: pwsh
+        env:
+          AR_IMMS_S4_E2E: '1'
+          AR_IMMS_S4_E2E_STATE: ${{ runner.temp }}/pr095b-inventory/agent.db
+          AR_IMMS_PR095B_EVIDENCE_DIR: ${{ runner.temp }}/pr095b-inventory
+        run: |
+          $evidenceDirectory = $env:AR_IMMS_PR095B_EVIDENCE_DIR
+          New-Item -ItemType Directory -Force -Path $evidenceDirectory | Out-Null
+          $dockerHost = $env:AR_IMMS_PR05_FIXTURE_DOCKER_HOST
+          $fixtureName = "arimms-pr095b-inventory-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $logPath = Join-Path $evidenceDirectory 'linux-live-inventory.log'
+          $unavailableLogPath = Join-Path $evidenceDirectory 'linux-unavailable-inventory.log'
+          $environmentPath = Join-Path $evidenceDirectory 'environment.txt'
+          $fixtureCreated = $false
+          try {
+            docker --host $dockerHost pull redis:7-alpine
+            if ($LASTEXITCODE -ne 0) { throw 'Could not pull the isolated Redis inventory fixture image' }
+            docker --host $dockerHost run --detach --name $fixtureName --label ar-imms.test=pr-09.5b-inventory redis:7-alpine *> $null
+            if ($LASTEXITCODE -ne 0) { throw 'Could not create the isolated Redis inventory fixture' }
+            $fixtureCreated = $true
+            $fixtureID = (docker --host $dockerHost inspect --format '{{.Id}}' $fixtureName).Trim()
+            if ($LASTEXITCODE -ne 0 -or $fixtureID.Length -ne 64) { throw 'Could not verify the exact Docker fixture ID' }
+            $engine = (docker --host $dockerHost info --format '{{.ServerVersion}} {{.OSType}}/{{.Architecture}}').Trim()
+            @("commit=$env:GITHUB_SHA", "engine=$engine", "fixture_name=$fixtureName", "fixture_id=$fixtureID", "state_path=$env:AR_IMMS_S4_E2E_STATE") | Set-Content -LiteralPath $environmentPath
+            $env:AR_IMMS_DOCKER_DISCOVERY_ENDPOINT = $dockerHost
+            $env:AR_IMMS_S4_E2E_CONTAINER_ID = $fixtureID
+            $env:AR_IMMS_S4_E2E_EXPECT_PRESENCE = 'present'
+            go test ./cmd/agentctl -run '^TestLiveDockerInventoryWhenExplicitlyEnabled$' -count=1 -v *> $logPath
+            $testExitCode = $LASTEXITCODE
+            Get-Content -LiteralPath $logPath
+            if ($testExitCode -ne 0) { throw "Live Docker Inventory E2E failed: $testExitCode" }
+            $env:AR_IMMS_S4_E2E_UNAVAILABLE_ENDPOINT = "unix:///tmp/arimms-pr095b-unavailable-$env:GITHUB_RUN_ID.sock"
+            go test ./cmd/agentctl -run '^TestLiveDockerUnavailableRetainsInventory$' -count=1 -v *> $unavailableLogPath
+            $unavailableExitCode = $LASTEXITCODE
+            Get-Content -LiteralPath $unavailableLogPath
+            if ($unavailableExitCode -ne 0) { throw "Unavailable Docker provider retention E2E failed: $unavailableExitCode" }
+          } finally {
+            Remove-Item Env:\AR_IMMS_DOCKER_DISCOVERY_ENDPOINT -ErrorAction SilentlyContinue
+            Remove-Item Env:\AR_IMMS_S4_E2E_CONTAINER_ID -ErrorAction SilentlyContinue
+            Remove-Item Env:\AR_IMMS_S4_E2E_EXPECT_PRESENCE -ErrorAction SilentlyContinue
+            Remove-Item Env:\AR_IMMS_S4_E2E_UNAVAILABLE_ENDPOINT -ErrorAction SilentlyContinue
+            if ($fixtureCreated) { docker --host $dockerHost rm --force $fixtureName; if ($LASTEXITCODE -ne 0) { Write-Warning "Could not remove fixture $fixtureName" } }
+          }
+
+      - name: Upload PR-09.5b Docker inventory evidence
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v6
+        with:
+          name: pr095b-docker-inventory-${{ runner.os }}
+          path: ${{ runner.temp }}/pr095b-inventory/
+          if-no-files-found: warn
       - name: Live JetStream Operations and Docker inspection E2E
         if: always() && runner.os == 'Linux' && steps.isolated_docker_engine.outcome == 'success'
         shell: pwsh
