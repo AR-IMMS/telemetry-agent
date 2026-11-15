@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/reconciliation"
+	"github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation"
 )
 
 func TestIntegrationStatusDoesNotInferHealthOrDelivery(t *testing.T) {
