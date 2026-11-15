@@ -1,6 +1,6 @@
 # PR-09.5 — Flexible Source Structure
 
-**Status:** architecture-approved (2026-11-15). The user explicitly approved all five PR-09.5 planning documents, including this revised source-grounded physical map and the final migration-plan clarifications. Package names and candidate destinations remain flexible, and this tree is not a required scaffold.
+**Status:** architecture-approved (2026-11-15). The user approved all five PR-09.5 planning documents, including this source-grounded physical map and final migration-plan clarifications. Package names and candidate destinations remain flexible; this tree is not a required scaffold.
 **Evidence:** source ownership and transaction inventory from [source audit](01-current-source-audit.md) at `b2599b8db31bfedfd75e360423d5aa98cfbcb5dc`, checked against the code tree at `c45456143ab482255daf1fad0c05f8d8af98ba11`. The later PR-09.5 commits through `d1a3fb7b670d8198db4c71f99806c3dec706d9da` change documentation only. The code tree adds `internal/platform/sqlite/migrate`; migration callbacks remain registered through `internal/agentstate`. The approved ownership decisions are recorded in [02-context-ownership](02-context-ownership.md).
 
 **Evidence boundary:** source ownership, imports, consumers, rows, and transaction behavior were audited on the immutable PR-09 integration tree. Candidate destinations were checked against the PR-09.5 code tree at `c45456143ab482255daf1fad0c05f8d8af98ba11`; later commits through the documented HEAD changed docs only. Source paths below are verified candidates; package boundaries remain proposed guidance, not proof that a package already exists. This does not infer source behavior from diagrams or package names. The code-graph index is older than this snapshot and is exploratory only; direct source and import evidence control this disposition.
@@ -16,7 +16,9 @@
 
 ## Concrete target tree
 
-This is the proposed physical navigation after migration, grounded in the source snapshot above. Read each level as **Context → Capability → technical layer only when justified**. It is not a mandatory package scaffold: keep a capability flat where its types and use cases remain cohesive, and introduce a technical layer only for an actual adapter, transaction, or platform boundary. The matrix below maps current source candidates and dependencies. Tree nodes are candidate destinations, not a checklist for creating empty folders. Tests move with the production capability unless they are shared infrastructure. In the matrix, source paths are relative to `internal/` unless they begin with another repository-root path; target package names are also relative to `internal/`. A brace or wildcard expression groups files listed by capability and is not a literal package name.
+This is a proposed physical navigation after migration, grounded in the source snapshot above. Read each level as **Context → Capability → technical layer only when justified**. It is not a mandatory package scaffold: keep a capability flat where its types and use cases remain cohesive, and introduce a technical layer only for an actual adapter, transaction, or platform boundary. The matrix maps current source candidates, consumer dependencies, and invariants. Tree nodes are candidate destinations, not a checklist for creating empty folders. Tests move with the production capability unless they are shared infrastructure. In the matrix, source paths are relative to `internal/` unless they begin with another repository-root path; target package names are also relative to `internal/`. A brace or wildcard expression groups files listed by capability and is not a literal package name.
+
+The collaboration/data-flow view and Go import view are separate: business collaboration does not imply an import. [02-context-ownership](02-context-ownership.md) describes ownership and collaboration; [03-target-architecture](03-target-architecture.md) separately defines allowed import direction. The dependency column below names contracts/adapters a capability consumes; it does not redraw business-flow arrows.
 
 ```text
 cmd/agentctl/                                  CLI and service delivery edge
@@ -127,6 +129,20 @@ Each row names a responsibility, source candidates, intended package boundary, d
 | Credential protection: store, replace and revoke secret material | `credentialstore/store*.go` → `identity/credentials` | OS ACL/DPAPI or Linux file permissions; the store receives secret references/material only at its boundary, and secrets never enter logs, SQLite rows, CLI output or diagnostics. |
 
 `coreapi` is currently a narrow shared HTTP adapter, not all Identity business logic. Keep its transport boundary explicit; split enrollment requests from control/configuration endpoints only after the consumed contracts and DTO translation are mapped. `coreconfig.GatewaySnapshot` authority/revision semantics belong to Configuration's `remoteconfig`, not host Identity.
+
+#### Cross-context model ownership and translation
+
+These source types are currently shared or located outside their target owner. Treat the destination owner as the canonical business model; other contexts consume a narrow read model or translate at their adapter/contract boundary. Do not preserve one ambiguous shared `integration` or `discovery` model merely to avoid a small explicit mapping.
+
+| Current model/source | Canonical target owner | Other consumers and translation boundary | Invariants |
+|---|---|---|---|
+| `discovery.ResourceObservation`, `ProviderSnapshot`, and `Resource` | Inventory observation/inventory model | Monitoring reads inventory evidence through a query contract; Configuration materialization consumes snapshot identity/revision, not Inventory persistence types. | Provider-scoped `resource_id`, optional stable `workload_id`, completeness/provenance and historical identity remain distinct. |
+| `integration.IntegrationDefinition`, registry and profile-resolution types | Monitoring profiles | Configuration receives a resolved monitoring intent through a contract; no profile matching or Collector activation side effect crosses with it. | Profile schema/version and extensibility remain stable; pinned capability support comes from Runtime's narrow query. |
+| `integration.IntegrationInstance` and `ResourceBinding` | Configuration desired state | Monitoring supplies resolved intent; Inventory supplies observed identity. Translate at the Configuration input boundary and preserve persisted representation/revision semantics. | Stable desired IDs, explicit binding identity and no-op revisions remain unchanged. |
+| `integration.IntegrationTemplate` and template ownership/revision fields | Configuration templates | Monitoring's `TemplateMatchResult`/`TemplateMatchReport` is evaluation evidence consumed through a narrow contract. | Owner, status/tombstone, ID reuse, deterministic setting resolution, and template/Inventory/desired revision CAS remain intact. |
+| `discovery.Proposal`, `ProposalEvidence`, and proposal status | Configuration proposals | Inventory supplies observed evidence; Monitoring supplies a recommendation; Configuration creates/approves and owns persistence. | Migration 12 history and proposal creation/approval plus desired-state transition remain one Configuration-owned transaction. |
+| `collectorruntime.Capability` and manifest-derived capability set | Runtime Collector capability catalog | Monitoring asks a narrow supports/query contract; it does not import Runtime's mutable catalog implementation or keep a duplicate catalog. | The pinned Collector binary/manifest remains the single capability source. |
+| `coreconfig.GatewaySnapshot` and accepted remote revision | Configuration remoteconfig | `coreapi` owns wire DTO/authentication translation; Identity owns enrollment/binding. | Preserve approved Core/local authority and revision behavior; unresolved policy remains separate. |
 
 #### Inventory
 

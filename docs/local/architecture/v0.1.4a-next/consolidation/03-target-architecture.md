@@ -1,6 +1,6 @@
 # PR-09.5 — Target Architecture
 
-**Status:** architecture-approved target (2026-11-15). All five PR-09.5 planning documents, including the revised physical map, are approved; implementation is authorized through PR-09.5g under the migration plan's per-slice verification gates. PR-10 remains excluded.
+**Status:** architecture-approved target (2026-11-15). The user approved all five PR-09.5 planning documents, including the revised physical map; implementation is authorized through PR-09.5g under the migration plan's per-slice verification gates. PR-10 remains excluded.
 **Source snapshot:** `b2599b8db31bfedfd75e360423d5aa98cfbcb5dc`.
 **Release target:** `v0.1.4a-next`.
 
