@@ -1,5 +1,15 @@
 $ErrorActionPreference = 'Stop'
-$repoRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
+$repoPrefix = $repoRoot.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+
+function Get-RepoRelativePath([string]$Path) {
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    if (-not $fullPath.StartsWith($repoPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Path is outside the repository root: $fullPath"
+    }
+    return $fullPath.Substring($repoPrefix.Length).Replace('\', '/')
+}
+
 Push-Location $repoRoot
 try {
     $modulePath = (& go list -m).Trim()
@@ -41,6 +51,7 @@ try {
     # runtime contract values, but not on the concrete lifecycle package.
     $reconciliationContextRoot = "$modulePath/internal/reconciliation"
     $agentLifecyclePackage = "$modulePath/internal/agentlifecycle"
+    $platformPackageRoot = "$modulePath/internal/platform"
 
     # This pre-existing file is 454 lines. Avoid a mechanical split in the
     # foundation checkpoint; it may not grow and should be reduced in a
@@ -49,7 +60,7 @@ try {
         'internal/enrollment/service.go' = @{ MaxLines = 454; Reason = 'Pre-existing enrollment service; split only with a meaningful ownership boundary.' }
     }
 
-    $packageLines = & go list -f '{{.ImportPath}}|{{join .Imports ","}}' ./internal/... ./cmd/agentctl
+    $packageLines = & go list -f '{{.ImportPath}}|{{range .Imports}}{{.}},{{end}}' ./internal/... ./cmd/agentctl
     if ($LASTEXITCODE -ne 0) {
         throw 'go list failed while checking architecture imports.'
     }
@@ -59,7 +70,7 @@ try {
         Group-Object DirectoryName
     foreach ($packageDirectory in $packageDirectories) {
         if (-not (Test-Path -LiteralPath (Join-Path $packageDirectory.Name 'doc.go'))) {
-            $relativeDirectory = [System.IO.Path]::GetRelativePath($repoRoot, $packageDirectory.Name).Replace('\\', '/')
+            $relativeDirectory = Get-RepoRelativePath $packageDirectory.Name
             $violations.Add("Go package lacks required doc.go: $relativeDirectory")
         }
     }
@@ -69,7 +80,18 @@ try {
         $package = $parts[0]
         $imports = @()
         if (-not [string]::IsNullOrWhiteSpace($parts[1])) {
-            $imports = $parts[1] -split ','
+            $imports = @($parts[1] -split ',' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        }
+
+        $isPlatformPackage = $package -eq $platformPackageRoot -or
+            $package.StartsWith("$platformPackageRoot/", [StringComparison]::Ordinal)
+        if ($isPlatformPackage) {
+            foreach ($imported in $imports) {
+                if ($imported.StartsWith("$modulePath/internal/", [StringComparison]::Ordinal) -and
+                    -not $imported.StartsWith("$platformPackageRoot/", [StringComparison]::Ordinal)) {
+                    $violations.Add("platform package imports a business or application package: $package -> $imported")
+                }
+            }
         }
 
         $isReconciliationPackage = $package -eq $reconciliationContextRoot -or
@@ -121,7 +143,7 @@ try {
         if (($firstLines -join "`n") -match '// Code generated .* DO NOT EDIT\.') { continue }
         $lineCount = [System.IO.File]::ReadAllLines($file.FullName).Length
         if ($lineCount -gt 450) {
-            $relativePath = [System.IO.Path]::GetRelativePath($repoRoot, $file.FullName).Replace('\', '/')
+            $relativePath = Get-RepoRelativePath $file.FullName
             if ($transitionalSizeAllowlist.ContainsKey($relativePath)) {
                 $allowance = $transitionalSizeAllowlist[$relativePath]
                 if ($lineCount -gt $allowance.MaxLines) {

@@ -1,0 +1,10 @@
+PR-09.5a Linux focused race output
+Checkout: 696ebe0c723ebd60eb8a942fdf6340e93e406248 (source-equivalent to c45456143ab482255daf1fad0c05f8d8af98ba11)
+Runtime: Docker Desktop Linux Engine 29.5.3, linux/x86_64
+Image: golang:1.25.5, sha256:8bbd14091f2c61916134fa6aeb8f76b18693fcb29a39ec6d8be9242c0a7e9260
+Command: docker run --rm --init --mount type=bind,source=<repo>,target=/src --workdir /src golang:1.25.5 go test -race ./internal/platform/sqlite/migrate ./internal/agentstate ./internal/platform/sqlite/... -count=1
+Result: PASS, exit 0
+
+ok  	github.com/ar-imms/telemetry-agent/internal/platform/sqlite/migrate	1.017s
+ok  	github.com/ar-imms/telemetry-agent/internal/agentstate	31.153s
+ok  	github.com/ar-imms/telemetry-agent/internal/platform/sqlite	1.062s

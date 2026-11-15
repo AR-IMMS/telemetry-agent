@@ -5,6 +5,15 @@
 > **Scope:** Telemetry Agent on native Windows/Linux; AR-IMMS Core management integration; OpenTelemetry Collector; local diagnostics and narrowly authorized infrastructure operations.<br>
 > **Evidence baseline:** Phase-1 read-only source audit at commit `477e831d39525b2aa08ea1a6ea2a5be82ed91d12` (2026-11-11), uploaded source tree, previous Redis/Template verification reports and architecture discussions. Working-tree cleanliness was **not established** by the audit because the docs submodule was inaccessible. Verify all assumptions against current HEAD before implementation.
 
+**Implementation-status reconciliation:** This remains the release-level target and
+capability specification. Its source audit and implementation-status statements
+were written before PR-07 through PR-09 completed; do not use those historical
+status labels as current facts. Current implementation evidence is in the
+[release tracker](../../plans/v0.1.4a-next/release-progress.md) and the
+PR-specific verification reports. For source ownership and migration planning,
+use the [PR-09.5 consolidation review set](consolidation/README.md). This
+addendum preserves earlier design history while making current status discoverable.
+
 ## 0. Document conventions
 
 - **EXISTING:** Implemented in the audited repository or previously documented in verification evidence; does not imply all platforms are live-E2E verified.
@@ -56,7 +65,7 @@ Enrollment identity/credential storage; Gateway snapshot support; SQLite WAL and
 
 1. **OTel-first.** Prefer supported Collector receivers/processors/exporters/connectors/extensions and standard OTLP/Prometheus instrumentation.
 2. **One active owner.** For each monitored resource/pipeline, exactly one mechanism instantiates receivers: Agent compiler **or** Collector Receiver Creator. Do not enable both for the same targets.
-3. **Core manages its published configuration scope, Agent manages effective local state, Collector executes; Core/local precedence remains OPEN.** Core never requires per-container manual endpoint management.
+3. **Core manages its published configuration scope, Agent manages effective local state, Collector executes.** Preserve approved Core/local authority and revision semantics (OD-06); separately unresolved control-plane precedence details remain OPEN. Core never requires per-container manual endpoint management.
 4. **Durable truth, ephemeral notifications.** SQLite owns local truth. Internal typed events accelerate reactions but cannot substitute for restart reconciliation.
 5. **Safe-by-default discovery.** No per-service discovery approval workflow in the vNext target. Only pre-authorized capability/configuration policies may activate receivers; observation alone never grants credentials, endpoint access or dependency installation.
 6. **Capability honesty.** UI/CLI must distinguish Discovered → Eligible → Desired → Applied → Observably Healthy → Delivery Evidence. Missing evidence is UNKNOWN, not SUCCESS.
@@ -69,16 +78,16 @@ Enrollment identity/credential storage; Gateway snapshot support; SQLite WAL and
 
 | ADR | Decision | Status |
 |---|---|---|
-| ADR-VN-01 | Six functional contexts + `app`, `platform`, and separate `operations` capability | PROPOSED |
+| ADR-VN-01 | Seven business contexts (Identity, Inventory, Monitoring, Configuration, Runtime, Health, Operations) plus `app` and `platform` support | PROPOSED target; source ownership is under PR-09.5 review |
 | ADR-VN-02 | SQLite WAL remains single local database with context-owned repositories | PROPOSED |
-| ADR-VN-03 | Typed, bounded in-process event dispatcher; periodic recovery retained | PROPOSED |
+| ADR-VN-03 | Typed, bounded in-process event dispatcher; periodic recovery retained | IMPLEMENTED in PR-02; preserve as advisory notification only |
 | ADR-VN-04 | OpenTelemetry Collector owns telemetry, not Agent | ACCEPTED principle |
-| ADR-VN-05 | Generic Monitoring Profiles first; specialized native Go definitions only if required | PROPOSED |
-| ADR-VN-06 | OpAMP transport of versioned AR-IMMS config; authority/merge policies remain OPEN | PARTIALLY ACCEPTED |
+| ADR-VN-05 | Generic Monitoring Profiles first; specialized native Go definitions only if required | IMPLEMENTED/VERIFIED in PR-06; see profile reports |
+| ADR-VN-06 | OpAMP transport of versioned AR-IMMS config; preserve approved Core/local authority and revision semantics, track remaining merge policy separately | PARTIALLY ACCEPTED; see OD-06 and control-plane decision queue |
 | ADR-VN-07 (historical) | Keep AR-IMMS Collector supervisor; do **not** run OpAMP Supervisor simultaneously | SUPERSEDED as target by PR-07 proposal; retained as migration history |
-| ADR-VN-07R | Adopt official OTel OpAMP Supervisor after exact-version capability/parity checks; transfer lifecycle ownership once and never co-run owners | PROPOSED; no artifact or parity verification claimed |
-| ADR-VN-08 | OTel-native Observer + Receiver Creator is preferred for supported endpoint lifecycles; migration requires parity spike, with exactly one owner | ACCEPTED DIRECTION / VALIDATION PENDING |
-| ADR-VN-09 | Operations API separate from OpAMP and monitoring configurations | PROPOSED |
+| ADR-VN-07R | Adopt official OTel OpAMP Supervisor after exact-version capability/parity checks; transfer lifecycle ownership once and never co-run owners | IMPLEMENTED/VERIFIED in PR-07; see release tracker and PR-07 report |
+| ADR-VN-08 | OTel-native Observer + Receiver Creator is preferred for supported endpoint lifecycles; migration requires parity spike, with exactly one owner | IMPLEMENTED/VERIFIED for approved Docker profiles in PR-05; preserve scope in report |
+| ADR-VN-09 | Operations API separate from OpAMP and monitoring configurations | IMPLEMENTED/VERIFIED for Agent/Mock Core in PR-09; production Core interoperability remains open |
 | ADR-VN-10 | Existing Windows exporter/LHM/Node exporter as managed baseline/optional dependencies | PROPOSED |
 
 ---
@@ -129,7 +138,7 @@ flowchart TB
 
 **Inputs:** enrollment token, approved Core origin, local identity, protected credential, network events. **Outputs:** authenticated Core/OpAMP transport, enrollment result, connectivity facts; no monitoring side effects.
 
-**Features:** initial enrollment; resume lost-response attempt; credential protection; reconnect/backoff; revocation handling; TLS verification; Core identity mapping; OpAMP client lifecycle. **Status:** enrollment EXISTING; general OpAMP PROPOSED.
+**Features:** initial enrollment; resume lost-response attempt; credential protection; reconnect/backoff; revocation handling; TLS verification; Core identity mapping; OpAMP client lifecycle. **Status:** enrollment EXISTING; managed OpAMP Supervisor lifecycle and parity EXISTING/VERIFIED in PR-07. Production NestJS Core interoperability remains an explicit follow-up.
 
 **Invariants:** identity stable across Agent/OS restarts; Node binding not silently reassigned; no fallback to an unauthenticated endpoint; `instance_uid` is not itself proof of authorization; credential material never appears in logs/events/CLI.
 
@@ -171,7 +180,7 @@ flowchart TB
 - **Tier C / Specialized:** Go definition for validated non-generic settings or contribution logic; receiver must actually be present in pinned Collector.
 - **Tier D / New capability:** external exporter or custom OTel component/distribution via OCB, with explicit version/capability validation.
 
-**Features:** catalog `list/inspect`, explain unsupported/blockers, matching evidence, automatic supported capability selection (no per-service prompts), generic profile schema validation, pinned manifest introspection. Built-in Redis Go Definition EXISTING; generic config-only profiles PROPOSED.
+**Features:** catalog `list/inspect`, explain unsupported/blockers, matching evidence, automatic supported capability selection (no per-service prompts), generic profile schema validation, pinned manifest introspection. Redis, PostgreSQL, Python/Prometheus and mock-cooling profiles are implemented and verified in PR-06/07; see the release tracker for platform-specific evidence.
 
 **Rules:** don't require Go rebuild solely to instantiate an already supported generic receiver; no arbitrary YAML injection; do not infer platform availability from upstream docs; no automatic deployment of new binaries from untrusted profiles.
 
@@ -531,7 +540,13 @@ Gateway delivery: UNKNOWN (no backend acknowledgement)
 
 ---
 
-## 12. Suggested Go source map and strict architectural rules
+## 12. Historical Go source map and strict architectural rules
+
+> **Superseded package map:** The tree below predates the PR-09.5 source audit
+> and OD-01–OD-06. Do not use its package names or ownership guesses as a move
+> list. The current capability tree and source-to-target disposition are in
+> [PR-09.5 flexible source structure](consolidation/04-source-structure.md).
+> Retain the constraints and migration cautions here as historical context.
 
 > Final import/package paths require audit of current HEAD. This is a logical target, not a mechanical move plan.
 
@@ -826,10 +841,10 @@ Each test stores: ID, OS/build, actual Collector binary checksum/version/capabil
 ## 16. Open architecture questions (must resolve before feature implementation)
 
 1. **No per-service prompts [DECIDED]:** Supported safe preconfigured capabilities auto-converge. Existing proposal/approval persistence remains backward-compatible during migration; decide separately how to deprecate legacy CLI/UI and enforce permissions for protected endpoints and secret-backed integrations.
-2. **Profile ownership:** How does a locally installed Agent transition to Core-managed authority, and can a Core-managed namespace be relinquished? Define disable/delete precedence.
+2. **Core authority policy beyond OD-06:** How does an installation transition to Core-managed authority, and can a Core-managed namespace be relinquished? Define disable/delete precedence. This is a control-plane policy question, not a context-ownership question; preserve approved authority/revision behavior during structural work.
 3. **Prometheus generic bindings:** Exact symbolic endpoint resolver, address restrictions, selector grammar, duplicate prevention and secret references.
 4. **OTel delegation [DECIDED DIRECTION]:** Prefer Docker/Host observers and Receiver Creator for supported runtime endpoint lifecycles, without Agent duplicating receiver execution. Validate pinned distribution, Linux/Windows reachability, identity parity and existing Redis E2E before switching active owner.
-5. **OpAMP server and runtime placement [PROPOSED]:** Go protocol adapter, Go Mock Core for the initial testbed, and official OTel OpAMP Supervisor after exact artifact/platform checks. Production Core API placement, auth, and interoperability need separate review; lifecycle ownership transfer waits for parity.
+5. **OpAMP server and runtime placement [PR-07 IMPLEMENTED/VERIFIED]:** Go protocol adapter, contract-compatible Go Mock Core for the testbed, and official OTel OpAMP Supervisor as the default required managed runtime for new installations after parity. Existing installations preserve persisted ownership until explicit migration; legacy rollback remains controlled. Production Core API interoperability and its separately owned security contracts remain open.
 6. **OpAMP config unit:** Snapshot vs delta, revision/hash canonicalization, 1-profile vs whole namespace atomicity, and status projection mapping.
 7. **Offline policy after revocation:** Continue locally running monitoring vs disable Core-controlled sensitive configs after trusted revocation evidence. No speculative choice without security review.
 8. **Gateway reachability/commit:** Applied generation requires readiness, not OTLP delivery. Decide how to surface delivery problem without rolling back healthy Collector needlessly.
@@ -837,7 +852,7 @@ Each test stores: ID, OS/build, actual Collector binary checksum/version/capabil
 10. **LHM packaging:** Exact LHM and exporter binaries/services, supported sensors, license and safe optional install/repair/uninstall ownership.
 11. **Operations transport and privilege:** Agent-poll vs other outbound channel; can Docker and OS restart operations be executed within enforceable least privilege? If not, disable mutations.
 12. **Health precision:** Which per-integration scrape evidence is actually available with pinned Collector? UNKNOWN if only aggregated metrics exist.
-13. **SQLite cross-context transaction:** Preserve atomic approval+desired state while splitting repository ownership; avoid event-based pseudo-transaction.
+13. **SQLite cross-context transaction:** Preserve atomic proposal/approval plus desired-state writes while splitting repository ownership; avoid event-based pseudo-transaction. OD-03 settles the centralized coordinator ownership, not the details of each transaction implementation.
 14. **Version/support policy:** Verify whether a compatible Supervisor artifact exists for the pinned Collector v0.160.0 on both target OSes; pin actual artifact/protocol versions and compatibility evidence. Do not assume version-number alignment.
 
 ---
@@ -868,7 +883,7 @@ Phase-1 audit reported:
 5. Preserve legacy CLI, SQLite and public contracts or include explicit migration tests and upgrade path.
 6. Add typed dispatcher early **without removing recovery polling**. Document queue capacity, publish failure and shutdown.
 7. Use standard OTel components instead of new telemetry execution logic; document why a bespoke adapter is unavoidable.
-8. Do not add broad generic frameworks, runtime scripting, custom plugin loader, message broker, or direct SQL cross-context writes. Collector lifecycle has exactly one active owner; the proposed migration replaces the Agent owner with OTel OpAMP Supervisor only after parity, without concurrent ownership.
+8. Do not add broad generic frameworks, runtime scripting, custom plugin loader, or direct SQL cross-context writes. The no-broker rule applies to internal advisory domain events; PR-09 Operations has its separately approved JetStream contract. Collector lifecycle has exactly one active owner; PR-07 verified managed Supervisor adoption for new installations, with explicit migration and controlled legacy rollback.
 9. Domain entities and public Go APIs get meaningful GoDoc; focus on invariants, pre/postconditions, side effects, concurrency/transactions, authorization and failure semantics; no boilerplate per-line comments.
 10. Enforce import restrictions, file-size limits, cross-platform build and critical race/concurrency checks mechanically in CI.
 11. Verify real E2E with actual pinned Collector binary and isolated sink; show evidence rather than test names alone.
@@ -913,7 +928,7 @@ Phase-1 audit reported:
 
 - **Problem:** OTel observers identify endpoints and `receiver_creator` responds to **preconfigured** rules, not arbitrary unknown protocols/services. Raw Docker metadata can be incomplete or misleading for service identification and network reachability.
 - **Solution:** a minimal extensible Discovery Provider contract (`provider_id`, `scope`, `complete_snapshot`, observations with stable source IDs, metadata provenance, candidate endpoints, observed timestamp) feeding a registry for asset-aware identity and capability hints. A `CapabilityResolver` maps metadata to **existing pinned Collector capabilities**, and a `ConfigurationProvisioner` updates rules only on **capability/config changes**, not each container restart.
-- **No duplicate receiver owner:** OTel Observer + Receiver Creator handles instance-level endpoint starts/stops for the chosen targets; Agent's registry never starts a second receiver for the same target. Legacy Agent materialization is retained behind migration controls until E2E parity is proven.
+- **No duplicate receiver owner:** OTel Observer + Receiver Creator handles instance-level endpoint starts/stops for the approved targets; Agent's registry never starts a second receiver for the same target. PR-05 parity is recorded in its Windows/Linux verification reports; retain any compatibility path only where those reports specify it.
 - **No per-service approvals:** trusted enabled built-in monitoring works without per-container prompts. Unknown/inaccessible/unsupported services are visible as unsupported/unreachable/unconfigured, not automatically probed or assigned credentials.
 - **Expansion proof:** Docker + generic profile in release; mock cooling/power (e.g., Prometheus endpoint or an external Modbus exporter) demonstrates adapter extensibility. No bespoke Modbus receiver is required for the release.
 
@@ -930,7 +945,7 @@ Phase-1 audit reported:
 ## 20. Architecture approval checklist
 
 - [ ] Product scope and non-goals reviewed; six functional contexts and Operations boundary approved.
-- [ ] Context owner matrix confirmed against current source, not package names alone.
+- [ ] PR-09.5 capability map and package disposition reviewed against the immutable source baseline; OD-01–OD-06 are approved ownership constraints, while complete target/tree/migration approval remains pending.
 - [ ] Existing working Redis/Template/Collector/LKG behavior and SQLite contracts explicitly frozen for refactor PRs.
 - [ ] Built-in host profiles and ownership-safe Windows Exporter/LHM/LHM Exporter/Node Exporter behavior approved.
 - [ ] Automatic monitoring vs manual proposal/approval precedence decided.

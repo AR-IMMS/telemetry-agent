@@ -7,10 +7,33 @@ import (
 	"fmt"
 	"os"
 	"time"
+
+	sqlitemigrate "github.com/ar-imms/telemetry-agent/internal/platform/sqlite/migrate"
 )
 
-// ensureSQLiteSchema applies idempotent schema setup before any state access.
+// ensureSQLiteSchema registers the existing schema versions with the technical
+// coordinator before any state access. The migration functions retain their
+// SQL and transaction ownership while context adapters are extracted.
 func ensureSQLiteSchema(db *sql.DB) error {
+	return sqlitemigrate.Apply(db, []sqlitemigrate.Migration{
+		{Version: 1, Name: "Agent state and activation journal", Apply: initializeBaseSchema},
+		{Version: 2, Name: "Installation identity", Apply: migrateInstallationIdentity},
+		{Version: 3, Name: "Core Gateway snapshot", Apply: migrateCoreGatewaySnapshot},
+		{Version: 4, Name: "Core Gateway runtime", Apply: migrateCoreGatewayRuntime},
+		{Version: 5, Name: "Enrollment attempts", Apply: migrateEnrollmentAttempts},
+		{Version: 6, Name: "Integration desired state", Apply: migrateIntegrationDesiredState},
+		{Version: 7, Name: "Candidate activation mapping", Apply: migrateCandidateActivationMapping},
+		{Version: 8, Name: "Candidate attempt history", Apply: migrateCandidateAttemptHistory},
+		{Version: 9, Name: "Reconciliation diagnostics", Apply: migrateReconciliationDiagnostics},
+		{Version: 10, Name: "Discovery inventory", Apply: migrateDiscoveryInventory},
+		{Version: 11, Name: "Inventory write revision", Apply: migrateInventoryWriteRevision},
+		{Version: 12, Name: "Monitoring proposals", Apply: migrateMonitoringProposals},
+		{Version: 13, Name: "Integration templates", Apply: migrateIntegrationTemplates},
+		{Version: 14, Name: "Operations execution and outbox", Apply: migrateOperationsExecution},
+	})
+}
+
+func initializeBaseSchema(db *sql.DB) error {
 	statements := []string{
 		`CREATE TABLE IF NOT EXISTS schema_migrations (
 			version INTEGER PRIMARY KEY,
@@ -33,43 +56,7 @@ func ensureSQLiteSchema(db *sql.DB) error {
 			return fmt.Errorf("initialize Agent SQLite schema: %w", err)
 		}
 	}
-	if err := migrateInstallationIdentity(db); err != nil {
-		return err
-	}
-	if err := migrateCoreGatewaySnapshot(db); err != nil {
-		return err
-	}
-	if err := migrateCoreGatewayRuntime(db); err != nil {
-		return err
-	}
-	if err := migrateEnrollmentAttempts(db); err != nil {
-		return err
-	}
-	if err := migrateIntegrationDesiredState(db); err != nil {
-		return err
-	}
-	if err := migrateCandidateActivationMapping(db); err != nil {
-		return err
-	}
-	if err := migrateCandidateAttemptHistory(db); err != nil {
-		return err
-	}
-	if err := migrateReconciliationDiagnostics(db); err != nil {
-		return err
-	}
-	if err := migrateDiscoveryInventory(db); err != nil {
-		return err
-	}
-	if err := migrateInventoryWriteRevision(db); err != nil {
-		return err
-	}
-	if err := migrateMonitoringProposals(db); err != nil {
-		return err
-	}
-	if err := migrateIntegrationTemplates(db); err != nil {
-		return err
-	}
-	return migrateOperationsExecution(db)
+	return nil
 }
 
 // migrateInstallationIdentity atomically creates the identity schema and its
