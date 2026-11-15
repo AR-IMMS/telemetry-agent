@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	"github.com/ar-imms/telemetry-agent/internal/inventory"
-	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
 	"github.com/distribution/reference"
 	"github.com/moby/moby/api/types/container"
 	moby "github.com/moby/moby/client"
@@ -253,8 +252,8 @@ func allowedLabel(key string) bool {
 	switch key {
 	case "com.docker.compose.project", "com.docker.compose.service", "com.docker.compose.version",
 		"org.opencontainers.image.title", "org.opencontainers.image.version",
-		monitoringprofile.LabelMonitoringEnabled, monitoringprofile.LabelMonitoringProfile, monitoringprofile.LabelWorkloadID,
-		monitoringprofile.LabelMonitoringPort:
+		inventory.DockerLabelMonitoringEnabled, inventory.DockerLabelMonitoringProfile, inventory.DockerLabelWorkloadID,
+		inventory.DockerLabelMonitoringPort:
 		return true
 	default:
 		return false

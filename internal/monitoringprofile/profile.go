@@ -13,13 +13,13 @@ import (
 
 const (
 	// LabelMonitoringEnabled opts one Docker workload into Agent monitoring.
-	LabelMonitoringEnabled = "ar-imms.monitoring.enabled"
+	LabelMonitoringEnabled = inventoryctx.DockerLabelMonitoringEnabled
 	// LabelMonitoringProfile selects one reviewed monitoring profile.
-	LabelMonitoringProfile = "ar-imms.monitoring.profile"
+	LabelMonitoringProfile = inventoryctx.DockerLabelMonitoringProfile
 	// LabelMonitoringPort optionally overrides a workload's profile default TCP port.
-	LabelMonitoringPort = "ar-imms.monitoring.port"
+	LabelMonitoringPort = inventoryctx.DockerLabelMonitoringPort
 	// LabelWorkloadID is an optional stable logical identity supplied by the workload owner.
-	LabelWorkloadID = "ar-imms.workload.id"
+	LabelWorkloadID = inventoryctx.DockerLabelWorkloadID
 
 	// RedisCapability identifies the pinned Collector Redis metrics receiver.
 	RedisCapability = "otel.receiver.redis.metrics"
