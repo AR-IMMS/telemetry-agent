@@ -51,6 +51,7 @@ try {
     # runtime contract values, but not on the concrete lifecycle package.
     $reconciliationContextRoot = "$modulePath/internal/reconciliation"
     $agentLifecyclePackage = "$modulePath/internal/agentlifecycle"
+    $platformPackageRoot = "$modulePath/internal/platform"
 
     # This pre-existing file is 454 lines. Avoid a mechanical split in the
     # foundation checkpoint; it may not grow and should be reduced in a
@@ -80,6 +81,17 @@ try {
         $imports = @()
         if (-not [string]::IsNullOrWhiteSpace($parts[1])) {
             $imports = @($parts[1] -split ',' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        }
+
+        $isPlatformPackage = $package -eq $platformPackageRoot -or
+            $package.StartsWith("$platformPackageRoot/", [StringComparison]::Ordinal)
+        if ($isPlatformPackage) {
+            foreach ($imported in $imports) {
+                if ($imported.StartsWith("$modulePath/internal/", [StringComparison]::Ordinal) -and
+                    -not $imported.StartsWith("$platformPackageRoot/", [StringComparison]::Ordinal)) {
+                    $violations.Add("platform package imports a business or application package: $package -> $imported")
+                }
+            }
         }
 
         $isReconciliationPackage = $package -eq $reconciliationContextRoot -or
