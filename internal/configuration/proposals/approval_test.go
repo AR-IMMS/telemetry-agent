@@ -1,19 +1,17 @@
-package configuration
+package proposals
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/ar-imms/telemetry-agent/internal/integration"
 	"testing"
 	"time"
-
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
 )
 
 func TestApprovalServiceRevalidatesAndBuildsDiscoveryBoundInstance(t *testing.T) {
-	proposal := approvalTestProposal(t, discovery.ProposalPending)
-	proposals := &approvalProposalRepository{proposals: []discovery.Proposal{proposal}}
+	proposal := approvalTestProposal(t, ProposalPending)
+	proposals := &approvalProposalRepository{proposals: []Proposal{proposal}}
 	verifier := &approvalCandidateVerifier{candidate: VerifiedCandidate{
 		DefinitionVersion: proposal.DefinitionVersion,
 		Configuration:     map[string]any{"endpoint": "127.0.0.1:6379"},
@@ -42,8 +40,8 @@ func TestApprovalServiceRevalidatesAndBuildsDiscoveryBoundInstance(t *testing.T)
 }
 
 func TestApprovalServiceRejectsStaleCandidateWithoutPersistence(t *testing.T) {
-	proposal := approvalTestProposal(t, discovery.ProposalPending)
-	proposals := &approvalProposalRepository{proposals: []discovery.Proposal{proposal}}
+	proposal := approvalTestProposal(t, ProposalPending)
+	proposals := &approvalProposalRepository{proposals: []Proposal{proposal}}
 	verifier := &approvalCandidateVerifier{candidate: VerifiedCandidate{
 		DefinitionVersion: proposal.DefinitionVersion, Configuration: map[string]any{"endpoint": "127.0.0.1:6379"},
 		CandidateDigest: "sha256:" + approvalRepeatedHex('c'),
@@ -57,14 +55,14 @@ func TestApprovalServiceRejectsStaleCandidateWithoutPersistence(t *testing.T) {
 }
 
 func TestApprovalServiceRejectsDefinitionVersionChangeWithoutCandidateDigest(t *testing.T) {
-	proposal := approvalTestProposal(t, discovery.ProposalNeedsInput)
+	proposal := approvalTestProposal(t, ProposalNeedsInput)
 	proposal.CandidateDigest = ""
 	proposal.CandidateConfiguration = nil
-	proposal.RequiredInputs = []discovery.ProposalInput{{Name: "username", Reason: "database username is required"}}
-	if err := discovery.ValidateProposal(proposal); err != nil {
+	proposal.RequiredInputs = []ProposalInput{{Name: "username", Reason: "database username is required"}}
+	if err := ValidateProposal(proposal); err != nil {
 		t.Fatal(err)
 	}
-	proposals := &approvalProposalRepository{proposals: []discovery.Proposal{proposal}}
+	proposals := &approvalProposalRepository{proposals: []Proposal{proposal}}
 	verifier := &approvalCandidateVerifier{candidate: VerifiedCandidate{
 		DefinitionVersion: "1.1.0", Configuration: map[string]any{"username": "operator"},
 		CandidateDigest: "sha256:" + approvalRepeatedHex('c'), InventoryWriteRevision: 7,
@@ -80,21 +78,21 @@ func TestApprovalServiceRejectsDefinitionVersionChangeWithoutCandidateDigest(t *
 	}
 }
 
-func approvalTestProposal(t *testing.T, status discovery.ProposalStatus) discovery.Proposal {
+func approvalTestProposal(t *testing.T, status ProposalStatus) Proposal {
 	t.Helper()
-	identity := discovery.ProposalIdentity{Provider: "docker", ProviderInstance: "local", ResourceID: "container-a", IntegrationID: "redis"}
-	id, err := discovery.StableProposalID(identity)
+	identity := ProposalIdentity{Provider: "docker", ProviderInstance: "local", ResourceID: "container-a", IntegrationID: "redis"}
+	id, err := StableProposalID(identity)
 	if err != nil {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
-	proposal := discovery.Proposal{
+	proposal := Proposal{
 		ID: id, Identity: identity, Revision: 2, Status: status, DefinitionVersion: "1.0.0",
 		ResourceFingerprint: "sha256:" + approvalRepeatedHex('a'), CandidateDigest: "sha256:" + approvalRepeatedHex('b'),
 		CandidateConfiguration: json.RawMessage(`{"endpoint":"127.0.0.1:6379"}`),
 		CapabilityEvidence:     json.RawMessage(`{"status":"supported"}`), CreatedAt: now, UpdatedAt: now,
 	}
-	if err := discovery.ValidateProposal(proposal); err != nil {
+	if err := ValidateProposal(proposal); err != nil {
 		t.Fatal(err)
 	}
 	return proposal
@@ -108,13 +106,13 @@ func approvalRepeatedHex(value byte) string {
 	return string(bytes)
 }
 
-type approvalProposalRepository struct{ proposals []discovery.Proposal }
+type approvalProposalRepository struct{ proposals []Proposal }
 
-func (r *approvalProposalRepository) ProposalSnapshot() ([]discovery.Proposal, error) {
-	return append([]discovery.Proposal(nil), r.proposals...), nil
+func (r *approvalProposalRepository) ProposalSnapshot() ([]Proposal, error) {
+	return append([]Proposal(nil), r.proposals...), nil
 }
 
-func (*approvalProposalRepository) PutProposal(discovery.Proposal, uint64) error    { return nil }
+func (*approvalProposalRepository) PutProposal(Proposal, uint64) error              { return nil }
 func (*approvalProposalRepository) DismissProposal(string, uint64, time.Time) error { return nil }
 
 type approvalCandidateVerifier struct {
@@ -122,7 +120,7 @@ type approvalCandidateVerifier struct {
 	inputs    map[string]any
 }
 
-func (v *approvalCandidateVerifier) Verify(_ context.Context, _ discovery.Proposal, inputs map[string]any) (VerifiedCandidate, error) {
+func (v *approvalCandidateVerifier) Verify(_ context.Context, _ Proposal, inputs map[string]any) (VerifiedCandidate, error) {
 	v.inputs = inputs
 	return v.candidate, nil
 }

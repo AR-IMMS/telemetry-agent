@@ -8,7 +8,8 @@ import (
 	"testing"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/reconciliation"
+	"github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation"
+	reconciliationcontracts "github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation/contracts"
 )
 
 func TestIntegrationStatusDoesNotInferHealthOrDelivery(t *testing.T) {
@@ -23,8 +24,8 @@ func TestIntegrationStatusDoesNotInferHealthOrDelivery(t *testing.T) {
 }
 
 func TestIntegrationStatusDoesNotAcknowledgeStaleBaselineAsApplied(t *testing.T) {
-	evidence := agentstate.ReconciliationEvidence{
-		Target: agentstate.ReconciliationTarget{
+	evidence := reconciliationcontracts.TargetEvidence{
+		Target: reconciliationcontracts.Target{
 			DesiredRevision:     12,
 			DesiredGeneration:   4,
 			BaselineFingerprint: "old-baseline",

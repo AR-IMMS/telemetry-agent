@@ -7,35 +7,14 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/ar-imms/telemetry-agent/internal/collectorruntime/contracts"
 	"github.com/ar-imms/telemetry-agent/internal/config"
-	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	"gopkg.in/yaml.v3"
 )
 
-// Candidate is an immutable complete Collector configuration and the digest of its exact bytes.
-type Candidate struct {
-	content   []byte
-	digest    string
-	collector string
-	manifest  string
-	platform  identity.PlatformInfo
-}
-
-// Bytes returns a copy of the candidate configuration.
-func (c Candidate) Bytes() []byte { return append([]byte(nil), c.content...) }
-
-// Digest returns the SHA-256 digest of the exact candidate bytes.
-func (c Candidate) Digest() string { return c.digest }
-
-// CollectorVersion returns the pinned Collector version used by the catalog.
-func (c Candidate) CollectorVersion() string { return c.collector }
-
-// ManifestVersion returns the capability manifest version used to compile the candidate.
-func (c Candidate) ManifestVersion() string { return c.manifest }
-
-// Platform returns the target platform associated with the candidate.
-func (c Candidate) Platform() identity.PlatformInfo { return c.platform }
+// Candidate is Runtime's public name for its immutable compiled configuration contract.
+type Candidate = contracts.Candidate
 
 // Compiler combines existing rendered layers with resolved Integration contributions.
 type Compiler struct{ catalog Catalog }
@@ -92,8 +71,7 @@ func (c Compiler) Compile(input config.RenderInput, resolved []integration.Resol
 	if err != nil {
 		return Candidate{}, fmt.Errorf("%w: render final candidate: %v", ErrCompilation, err)
 	}
-	digest := sha256.Sum256(encoded)
-	return Candidate{content: append([]byte(nil), encoded...), digest: hex.EncodeToString(digest[:]), collector: c.catalog.version, manifest: c.catalog.manifestVersion, platform: input.Platform}, nil
+	return contracts.NewCandidate(encoded, c.catalog.version, c.catalog.manifestVersion, input.Platform), nil
 }
 
 type compiledComponent struct {

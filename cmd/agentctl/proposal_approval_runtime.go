@@ -12,7 +12,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
+	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
@@ -21,7 +21,7 @@ import (
 type runtimeProposalRefresher struct {
 	inventory inventoryctx.InventoryRepository
 	templates configuration.TemplateRepository
-	manager   discovery.ProposalManager
+	manager   proposals.ProposalManager
 	matcher   integration.Matcher
 }
 
@@ -37,7 +37,7 @@ func newRuntimeProposalRefresher(statePath string) (runtimeProposalRefresher, er
 		assessor = catalogCapabilityAssessor{catalog: catalog, platform: platform.OS + "/" + platform.Architecture}
 	}
 	return runtimeProposalRefresher{
-		inventory: store.InventoryRepository(), templates: store.TemplateRepository(), manager: discovery.NewProposalManager(store.ProposalRepository()),
+		inventory: store.InventoryRepository(), templates: store.TemplateRepository(), manager: proposals.NewProposalManager(store.ProposalRepository()),
 		matcher: integration.NewMatcher(registry, assessor),
 	}, nil
 }
@@ -64,7 +64,7 @@ func (r runtimeProposalRefresher) Refresh(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("match inventory for proposal refresh: %w", err)
 	}
-	observations := make([]discovery.ProposalObservation, 0, len(report.Results))
+	observations := make([]proposals.ProposalObservation, 0, len(report.Results))
 	for _, result := range report.Results {
 		if _, autoManaged := managed[templatePairKey(result.Resource, result.DefinitionID)]; autoManaged {
 			continue
@@ -95,16 +95,16 @@ func templatePairKey(resource integration.ResourceIdentity, definitionID string)
 	return resource.Provider + "\x00" + resource.ProviderInstance + "\x00" + resource.ResourceID + "\x00" + definitionID
 }
 
-func proposalObservationFromMatch(result integration.MatchResult, inventoryRevision uint64) (discovery.ProposalObservation, error) {
-	observation := discovery.ProposalObservation{
-		Identity: discovery.ProposalIdentity{
+func proposalObservationFromMatch(result integration.MatchResult, inventoryRevision uint64) (proposals.ProposalObservation, error) {
+	observation := proposals.ProposalObservation{
+		Identity: proposals.ProposalIdentity{
 			Provider: result.Resource.Provider, ProviderInstance: result.Resource.ProviderInstance,
 			ResourceID: result.Resource.ResourceID, IntegrationID: result.DefinitionID,
 		},
 		DefinitionVersion: result.DefinitionVersion, MatchStatus: string(result.MatchStatus),
 		ResolutionStatus: string(result.ResolutionStatus), CapabilityStatus: string(result.CapabilityStatus),
-		ResourceFingerprint: result.ResourceFingerprint, Evidence: make([]discovery.ProposalEvidence, 0, len(result.Evidence)),
-		RequiredInputs: make([]discovery.ProposalInput, 0, len(result.RequiredInputs)), InventoryRevision: inventoryRevision,
+		ResourceFingerprint: result.ResourceFingerprint, Evidence: make([]proposals.ProposalEvidence, 0, len(result.Evidence)),
+		RequiredInputs: make([]proposals.ProposalInput, 0, len(result.RequiredInputs)), InventoryRevision: inventoryRevision,
 	}
 	if result.Candidate != nil {
 		observation.CandidateConfiguration = result.Candidate.Configuration()
@@ -112,14 +112,14 @@ func proposalObservationFromMatch(result integration.MatchResult, inventoryRevis
 	}
 	capabilityEvidence, err := json.Marshal(result.Capability)
 	if err != nil {
-		return discovery.ProposalObservation{}, fmt.Errorf("encode capability evidence: %w", err)
+		return proposals.ProposalObservation{}, fmt.Errorf("encode capability evidence: %w", err)
 	}
 	observation.CapabilityEvidence = capabilityEvidence
 	for _, evidence := range result.Evidence {
-		observation.Evidence = append(observation.Evidence, discovery.ProposalEvidence{Code: evidence.Code, Source: evidence.Source, Value: evidence.Value})
+		observation.Evidence = append(observation.Evidence, proposals.ProposalEvidence{Code: evidence.Code, Source: evidence.Source, Value: evidence.Value})
 	}
 	for _, input := range result.RequiredInputs {
-		observation.RequiredInputs = append(observation.RequiredInputs, discovery.ProposalInput{Name: input.Name, Reason: input.Reason})
+		observation.RequiredInputs = append(observation.RequiredInputs, proposals.ProposalInput{Name: input.Name, Reason: input.Reason})
 	}
 	for _, diagnostic := range result.Diagnostics {
 		observation.Diagnostics = append(observation.Diagnostics, diagnostic.Code)
@@ -133,11 +133,11 @@ type runtimeApprovalVerifier struct {
 	resolver  integration.Resolver
 }
 
-func newRuntimeApprovalService(statePath string) (configuration.ApprovalService, error) {
+func newRuntimeApprovalService(statePath string) (proposals.ApprovalService, error) {
 	store := agentstate.NewSQLiteStore(statePath)
 	registry, err := productionIntegrationRegistry()
 	if err != nil {
-		return configuration.ApprovalService{}, err
+		return proposals.ApprovalService{}, err
 	}
 	platform := identity.PlatformInfo{OS: runtime.GOOS, Architecture: runtime.GOARCH}
 	var assessor integration.CapabilityAssessor
@@ -148,20 +148,20 @@ func newRuntimeApprovalService(statePath string) (configuration.ApprovalService,
 	verifier := runtimeApprovalVerifier{
 		inventory: store.InventoryRepository(), matcher: matcher, resolver: integration.NewResolver(registry),
 	}
-	return configuration.NewApprovalService(store.ProposalRepository(), verifier, store.ApprovalRepository()), nil
+	return proposals.NewApprovalService(store.ProposalRepository(), verifier, store.ApprovalRepository()), nil
 }
 
-func (v runtimeApprovalVerifier) Verify(ctx context.Context, proposal discovery.Proposal, inputs map[string]any) (configuration.VerifiedCandidate, error) {
+func (v runtimeApprovalVerifier) Verify(ctx context.Context, proposal proposals.Proposal, inputs map[string]any) (proposals.VerifiedCandidate, error) {
 	if err := ctx.Err(); err != nil {
-		return configuration.VerifiedCandidate{}, err
+		return proposals.VerifiedCandidate{}, err
 	}
 	snapshot, err := v.inventory.Snapshot()
 	if err != nil {
-		return configuration.VerifiedCandidate{}, err
+		return proposals.VerifiedCandidate{}, err
 	}
 	report, err := v.matcher.Match(projectInventory(snapshot, time.Now().UTC()))
 	if err != nil {
-		return configuration.VerifiedCandidate{}, err
+		return proposals.VerifiedCandidate{}, err
 	}
 	var match *integration.MatchResult
 	for i := range report.Results {
@@ -175,12 +175,12 @@ func (v runtimeApprovalVerifier) Verify(ctx context.Context, proposal discovery.
 	}
 	if match == nil || match.MatchStatus != integration.MatchMatched || match.ResourceFingerprint != proposal.ResourceFingerprint ||
 		(match.CapabilityStatus != integration.CapabilitySupported && match.CapabilityStatus != integration.CapabilityNotAssessed) {
-		return configuration.VerifiedCandidate{}, configuration.ErrApprovalStale
+		return proposals.VerifiedCandidate{}, proposals.ErrApprovalStale
 	}
 	settings := map[string]any{}
 	if match.Candidate != nil {
 		if err := json.Unmarshal(match.Candidate.Configuration(), &settings); err != nil {
-			return configuration.VerifiedCandidate{}, err
+			return proposals.VerifiedCandidate{}, err
 		}
 	}
 	allowedInputs := make(map[string]struct{}, len(proposal.RequiredInputs))
@@ -189,12 +189,12 @@ func (v runtimeApprovalVerifier) Verify(ctx context.Context, proposal discovery.
 	}
 	for name, value := range inputs {
 		if _, ok := allowedInputs[name]; !ok {
-			return configuration.VerifiedCandidate{}, configuration.ErrApprovalStale
+			return proposals.VerifiedCandidate{}, proposals.ErrApprovalStale
 		}
 		settings[name] = value
 	}
 	if match.ResolutionStatus == integration.ResolutionNeedsInput && len(inputs) == 0 {
-		return configuration.VerifiedCandidate{}, configuration.ErrApprovalStale
+		return proposals.VerifiedCandidate{}, proposals.ErrApprovalStale
 	}
 	resolved, err := v.resolver.Resolve(integration.IntegrationInstance{
 		ID: "approval-validation", DefinitionID: match.DefinitionID, DefinitionVersion: match.DefinitionVersion,
@@ -202,18 +202,18 @@ func (v runtimeApprovalVerifier) Verify(ctx context.Context, proposal discovery.
 		Binding: &integration.ResourceBinding{Provider: proposal.Identity.Provider, ProviderInstance: proposal.Identity.ProviderInstance, ResourceID: proposal.Identity.ResourceID},
 	})
 	if err != nil {
-		return configuration.VerifiedCandidate{}, err
+		return proposals.VerifiedCandidate{}, err
 	}
 	encoded, err := json.Marshal(resolved.Instance.Configuration)
 	if err != nil {
-		return configuration.VerifiedCandidate{}, err
+		return proposals.VerifiedCandidate{}, err
 	}
 	capabilities := append([]string(nil), match.Capability.Required...)
 	if match.Candidate != nil && len(inputs) == 0 {
 		if match.Candidate.Digest() != proposal.CandidateDigest {
-			return configuration.VerifiedCandidate{}, configuration.ErrApprovalStale
+			return proposals.VerifiedCandidate{}, proposals.ErrApprovalStale
 		}
-		return configuration.VerifiedCandidate{
+		return proposals.VerifiedCandidate{
 			DefinitionVersion: resolved.Instance.DefinitionVersion, Configuration: resolved.Instance.Configuration,
 			CandidateDigest: match.Candidate.Digest(), InventoryWriteRevision: snapshot.WriteRevision,
 		}, nil
@@ -229,17 +229,17 @@ func (v runtimeApprovalVerifier) Verify(ctx context.Context, proposal discovery.
 		DefinitionID: match.DefinitionID, Version: match.DefinitionVersion, Capabilities: capabilities, Settings: encoded,
 	})
 	if err != nil {
-		return configuration.VerifiedCandidate{}, err
+		return proposals.VerifiedCandidate{}, err
 	}
 	digest := sha256.Sum256(candidatePayload)
 	candidateDigest := "sha256:" + hex.EncodeToString(digest[:])
 	if proposal.CandidateDigest != "" && candidateDigest != proposal.CandidateDigest {
-		return configuration.VerifiedCandidate{}, configuration.ErrApprovalStale
+		return proposals.VerifiedCandidate{}, proposals.ErrApprovalStale
 	}
-	return configuration.VerifiedCandidate{
+	return proposals.VerifiedCandidate{
 		DefinitionVersion: resolved.Instance.DefinitionVersion, Configuration: resolved.Instance.Configuration,
 		CandidateDigest: candidateDigest, InventoryWriteRevision: snapshot.WriteRevision,
 	}, nil
 }
 
-var _ configuration.CandidateVerifier = runtimeApprovalVerifier{}
+var _ proposals.CandidateVerifier = runtimeApprovalVerifier{}

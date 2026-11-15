@@ -1,4 +1,4 @@
-package configuration
+package proposals
 
 import (
 	"context"
@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 )
 
@@ -44,7 +42,7 @@ type VerifiedCandidate struct {
 // CandidateVerifier re-matches a proposal against fresh inventory before approval.
 type CandidateVerifier interface {
 	// Verify re-evaluates the proposal using current inventory and non-secret inputs.
-	Verify(context.Context, discovery.Proposal, map[string]any) (VerifiedCandidate, error)
+	Verify(context.Context, Proposal, map[string]any) (VerifiedCandidate, error)
 }
 
 // ApprovalCommit is the validated state transition persisted atomically by the repository.
@@ -66,13 +64,13 @@ type ApprovalRepository interface {
 
 // ApprovalService verifies a fresh candidate before requesting an atomic desired-state mutation.
 type ApprovalService struct {
-	proposals  discovery.ProposalRepository
+	proposals  ProposalRepository
 	verifier   CandidateVerifier
 	repository ApprovalRepository
 }
 
 // NewApprovalService wires proposal reads, current-evidence verification and atomic persistence.
-func NewApprovalService(proposals discovery.ProposalRepository, verifier CandidateVerifier, repository ApprovalRepository) ApprovalService {
+func NewApprovalService(proposals ProposalRepository, verifier CandidateVerifier, repository ApprovalRepository) ApprovalService {
 	return ApprovalService{proposals: proposals, verifier: verifier, repository: repository}
 }
 
@@ -81,24 +79,24 @@ func (s ApprovalService) Approve(ctx context.Context, request ApprovalRequest) (
 	if ctx == nil || s.proposals == nil || s.repository == nil || request.ProposalID == "" || request.ProposalRevision == 0 {
 		return integration.IntegrationInstance{}, 0, fmt.Errorf("%w: repository, proposal ID and revision are required", ErrApprovalNotEligible)
 	}
-	proposals, err := s.proposals.ProposalSnapshot()
+	proposalList, err := s.proposals.ProposalSnapshot()
 	if err != nil {
 		return integration.IntegrationInstance{}, 0, fmt.Errorf("read proposal before approval: %w", err)
 	}
-	var proposal discovery.Proposal
-	for _, candidate := range proposals {
+	var proposal Proposal
+	for _, candidate := range proposalList {
 		if candidate.ID == request.ProposalID {
 			proposal = candidate
 			break
 		}
 	}
 	if proposal.ID == "" {
-		return integration.IntegrationInstance{}, 0, discovery.ErrUnknownProposal
+		return integration.IntegrationInstance{}, 0, ErrUnknownProposal
 	}
 	if proposal.Revision != request.ProposalRevision {
 		return integration.IntegrationInstance{}, 0, ErrApprovalConflict
 	}
-	if proposal.Status == discovery.ProposalApproved {
+	if proposal.Status == ProposalApproved {
 		instance := integration.IntegrationInstance{ID: proposal.ApprovedInstanceID}
 		return s.repository.CommitApproval(ApprovalCommit{
 			ProposalID: proposal.ID, ProposalRevision: proposal.Revision,
@@ -106,7 +104,7 @@ func (s ApprovalService) Approve(ctx context.Context, request ApprovalRequest) (
 			VerifiedCandidateDigest: proposal.ApprovedCandidateDigest, Instance: instance,
 		})
 	}
-	if proposal.Status != discovery.ProposalPending && proposal.Status != discovery.ProposalNeedsInput || s.verifier == nil {
+	if proposal.Status != ProposalPending && proposal.Status != ProposalNeedsInput || s.verifier == nil {
 		return integration.IntegrationInstance{}, 0, ErrApprovalNotEligible
 	}
 	inputs, err := cloneSettings(request.Inputs)

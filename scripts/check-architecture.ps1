@@ -48,12 +48,34 @@ try {
         "$modulePath/internal/supervisor"
     )
 
+    # Configuration consumes Runtime-owned immutable candidate/application
+    # contracts during reconciliation. Concrete Collector Runtime packages remain
+    # forbidden to Configuration.
+    $contextContractImportAllowlist = @{
+        "$modulePath/internal/configuration/reconciliation|$modulePath/internal/collectorruntime/contracts" = 'OD-05: Configuration owns reconciliation decisions and depends on Runtime only through the candidate/application contract.'
+    }
     # One observed transition: identity currently reads the Windows registry
     # directly. Keep the exception specific and reasoned until an adapter exists.
     $transitionalImportAllowlist = @{
         "$modulePath/internal/identity/host|golang.org/x/sys/windows/registry" = 'Host identity package still contains the platform-specific registry adapter.'
     }
     $platformAdapterRoots = @('golang.org/x/sys/windows/registry')
+
+    # Inventory reports provider evidence and must not depend on profile policy.
+    # Configuration owns proposal lifecycle and must not depend on the legacy
+    # Discovery package. Keep these context edges explicit while packages move.
+    $forbiddenContextEdges = @(
+        @{
+            SourceRoot = "$modulePath/internal/inventory"
+            TargetRoot = "$modulePath/internal/monitoringprofile"
+            Reason = 'Inventory emits normalized observations; Monitoring owns profile interpretation.'
+        },
+        @{
+            SourceRoot = "$modulePath/internal/configuration"
+            TargetRoot = "$modulePath/internal/discovery"
+            Reason = 'Configuration owns proposal lifecycle and persistence; Discovery is not a target context.'
+        }
+    )
 
     # Reconciliation owns the consumer-side runtime ports. It may depend on
     # runtime contract values, but not on the concrete lifecycle package.
@@ -89,6 +111,18 @@ try {
         $imports = @()
         if (-not [string]::IsNullOrWhiteSpace($parts[1])) {
             $imports = @($parts[1] -split ',' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        }
+
+        foreach ($rule in $forbiddenContextEdges) {
+            $isSourceContext = $package -eq $rule.SourceRoot -or
+                $package.StartsWith("$($rule.SourceRoot)/", [StringComparison]::Ordinal)
+            if (-not $isSourceContext) { continue }
+            foreach ($imported in $imports) {
+                if ($imported -eq $rule.TargetRoot -or
+                    $imported.StartsWith("$($rule.TargetRoot)/", [StringComparison]::Ordinal)) {
+                    $violations.Add("forbidden context dependency: $package -> $imported ($($rule.Reason))")
+                }
+            }
         }
 
         $isPlatformPackage = $package -eq $platformPackageRoot -or
@@ -146,6 +180,10 @@ try {
             }
             foreach ($adapter in $adapterRoots) {
                 if ($imported -eq $adapter -or $imported.StartsWith("$adapter/", [StringComparison]::Ordinal)) {
+                    if ($contextContractImportAllowlist.ContainsKey($edge) -and
+                        $imported -eq "$modulePath/internal/collectorruntime/contracts") {
+                        break
+                    }
                     $violations.Add("domain package imports adapter: $package -> $imported")
                     break
                 }

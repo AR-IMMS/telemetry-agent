@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
-	"github.com/ar-imms/telemetry-agent/internal/reconciliation"
 )
 
 type runtimeReconciler struct {

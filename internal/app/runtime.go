@@ -11,9 +11,9 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentlifecycle"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
+	"github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
-	"github.com/ar-imms/telemetry-agent/internal/reconciliation"
 )
 
 const (
@@ -189,7 +189,7 @@ func DiscoveryCycleSucceeded(result inventoryctx.CycleResult) bool {
 }
 
 func isExpectedReconciliationOutcome(err error) bool {
-	return errors.Is(err, agentstate.ErrReconciliationBlocked) || errors.Is(err, agentstate.ErrReconciliationExhausted) ||
-		errors.Is(err, agentstate.ErrReconciliationBackoff) || errors.Is(err, agentstate.ErrReconciliationApplied) ||
-		errors.Is(err, agentstate.ErrReconciliationAwaitingLifecycle)
+	return errors.Is(err, reconciliation.ErrAttemptBlocked) || errors.Is(err, reconciliation.ErrAttemptBudgetExhausted) ||
+		errors.Is(err, reconciliation.ErrAttemptBackoff) || errors.Is(err, reconciliation.ErrTargetAlreadyApplied) ||
+		errors.Is(err, reconciliation.ErrAwaitingLifecycle)
 }

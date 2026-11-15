@@ -8,7 +8,7 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
-	"github.com/ar-imms/telemetry-agent/internal/reconciliation/contracts"
+	"github.com/ar-imms/telemetry-agent/internal/collectorruntime/contracts"
 )
 
 type candidateLifecycleRepository interface {

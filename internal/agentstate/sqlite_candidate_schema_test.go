@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
 	identityenrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
 	identityinstallationsqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
 )
@@ -28,12 +29,16 @@ func TestCandidateJournalMigrationPreservesVersionSixLifecycleState(t *testing.T
 			t.Fatal(err)
 		}
 	}
+	configurationMigrations := configurationsqlite.Migrations()
+	if len(configurationMigrations) == 0 || configurationMigrations[0].Version != 6 {
+		t.Fatalf("Configuration migration registry does not start at version 6: %+v", configurationMigrations)
+	}
 	for _, migrate := range []func(*sql.DB) error{
 		identityinstallationsqlite.Migrations()[0].Apply,
 		migrateCoreGatewaySnapshot,
 		migrateCoreGatewayRuntime,
 		identityenrollmentsqlite.Migrations()[0].Apply,
-		migrateIntegrationDesiredState,
+		configurationMigrations[0].Apply,
 	} {
 		if err := migrate(db); err != nil {
 			t.Fatalf("build version 6 fixture: %v", err)

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
@@ -10,14 +11,15 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/app"
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
+	runtimecontracts "github.com/ar-imms/telemetry-agent/internal/collectorruntime/contracts"
 	"github.com/ar-imms/telemetry-agent/internal/config"
+	"github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation"
 	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
 	"github.com/ar-imms/telemetry-agent/internal/dependency"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
-	"github.com/ar-imms/telemetry-agent/internal/reconciliation"
 )
 
 type runtimeBaseline struct {
@@ -103,8 +105,41 @@ type runtimeCandidateApplier struct {
 	options agentlifecycle.CollectorConfigurationOptions
 }
 
+type runtimeCandidateCompiler struct{ compiler collectorruntime.Compiler }
+
+func (c runtimeCandidateCompiler) Compile(input config.RenderInput, resolved []integration.ResolvedInstance) (runtimecontracts.Candidate, error) {
+	candidate, err := c.compiler.Compile(input, resolved)
+	return candidate, classifyRuntimeCandidateError(err)
+}
+
+type runtimeCandidateValidator struct {
+	runner bootstrap.CommandRunner
+	binary string
+	env    []string
+}
+
+func (v runtimeCandidateValidator) Validate(ctx context.Context, candidate runtimecontracts.Candidate) error {
+	return classifyRuntimeCandidateError(collectorruntime.ValidateCandidate(ctx, v.runner, v.binary, candidate, v.env))
+}
+
+func classifyRuntimeCandidateError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, collectorruntime.ErrUnsupportedCapability) || errors.Is(err, collectorruntime.ErrInvalidIntent) ||
+		errors.Is(err, collectorruntime.ErrComponentIDConflict) || errors.Is(err, collectorruntime.ErrInvalidCatalog) ||
+		errors.Is(err, collectorruntime.ErrCompilation) || errors.Is(err, collectorruntime.ErrNativeValidation) {
+		return errors.Join(runtimecontracts.ErrInvalidCandidate, err)
+	}
+	return err
+}
+
 func (a runtimeCandidateApplier) ApplyCandidate(ctx context.Context, request reconciliation.CandidateApplyRequest) (reconciliation.CandidateActivationOutcome, error) {
-	return agentlifecycle.ApplyCollectorCandidate(ctx, a.store, request, a.options)
+	outcome, err := agentlifecycle.ApplyCollectorCandidate(ctx, a.store, request, a.options)
+	if errors.Is(err, agentstate.ErrStaleCandidate) {
+		return outcome, runtimecontracts.ErrStaleCandidate
+	}
+	return outcome, err
 }
 
 func newRuntimeReconciliationController(statePath string, runner bootstrap.CommandRunner) (*reconciliation.Controller, func(agentstate.State) error, error) {
@@ -137,10 +172,10 @@ func newRuntimeReconciliationController(statePath string, runner bootstrap.Comma
 	}
 	resolver := nativeOwnershipResolver{delegate: integration.NewResolver(registry), inventory: sqliteStore.InventoryRepository(), profiles: profiles, enabled: len(nativeLayers) > 0}
 	options := agentlifecycle.CollectorConfigurationOptions{Platform: baseline.platform, Catalog: baseline.dependencies, Layers: baseline.layers, AdditionalBaselineInputs: additionalBaselineInputs, BinaryPath: state.Collector.BinaryPath, ConfigPath: state.Collector.ConfigPath, ValidationEnvironment: []string{"OTEL_GATEWAY_ENDPOINT=" + state.Collector.GatewayEndpoint}, Runner: runner, GatewayRepository: baseline.gateways}
-	attempts := reconciliation.NewSQLiteAttemptsFromStore(sqliteStore)
-	controller := &reconciliation.Controller{Desired: sqliteStore.IntegrationRepository(), Baseline: baseline, Resolver: resolver, Compiler: collectorruntime.NewCompiler(collectorCatalog), Validator: func(ctx context.Context, candidate collectorruntime.Candidate) error {
-		return collectorruntime.ValidateCandidate(ctx, runner, state.Collector.BinaryPath, candidate, options.ValidationEnvironment)
-	}, Applier: runtimeCandidateApplier{store: store, options: options}, Attempts: attempts, Outcomes: reconciliation.CandidateOutcomes{Store: sqliteStore}}
+	attempts := agentstate.NewSQLiteAttemptsFromStore(sqliteStore)
+	controller := &reconciliation.Controller{Desired: sqliteStore.IntegrationRepository(), Baseline: baseline, Resolver: resolver, Compiler: runtimeCandidateCompiler{compiler: collectorruntime.NewCompiler(collectorCatalog)}, Validator: func(ctx context.Context, candidate runtimecontracts.Candidate) error {
+		return (runtimeCandidateValidator{runner: runner, binary: state.Collector.BinaryPath, env: options.ValidationEnvironment}).Validate(ctx, candidate)
+	}, Applier: runtimeCandidateApplier{store: store, options: options}, Attempts: attempts, Outcomes: attempts}
 	return controller, attempts.RecordRecoveryFailure, nil
 }
 

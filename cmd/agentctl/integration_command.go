@@ -15,8 +15,9 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
+	"github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation"
+	reconciliationcontracts "github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation/contracts"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
-	"github.com/ar-imms/telemetry-agent/internal/reconciliation"
 )
 
 func writeIntegrationHelp(w io.Writer) {
@@ -73,6 +74,7 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 		return integrationCommandError(stderr, command, fmt.Errorf("SQLite state store is required"))
 	}
 	repository := store.IntegrationRepository()
+	diagnostics := store.ReconciliationRepository()
 	switch command {
 	case "configure", "update":
 		if *id == "" || *definition == "" || *version == "" {
@@ -190,7 +192,7 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 		if err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
-		evidence, err := store.ReconciliationEvidence()
+		evidence, err := diagnostics.Evidence()
 		status := "Desired"
 		if err == nil {
 			currentBaseline, baselineErr := newRuntimeBaseline(*statePath)
@@ -205,21 +207,21 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 		}
 		fmt.Fprintf(stdout, "Desired revision: %d\nConvergence: %s\n", desired.Revision, status)
 		if err == nil {
-			fmt.Fprintf(stdout, "stage=%s code=%s attempts=%d/5 generation=%d candidate=%s\n", evidence.Stage, evidence.Code, evidence.Attempts, evidence.LifecycleGeneration, evidence.CandidateDigest)
+			fmt.Fprintf(stdout, "stage=%s code=%s attempts=%d/5 generation=%d candidate=%s\n", evidence.Stage, evidence.Code, evidence.Attempts, evidence.Generation, evidence.CandidateDigest)
 		} else if !errors.Is(err, sql.ErrNoRows) && !errors.Is(err, os.ErrNotExist) {
 			return integrationCommandError(stderr, command, err)
 		}
 		fmt.Fprintln(stdout, "Integration health and telemetry delivery are not inferred from configuration application.")
 	case "history":
-		rows, err := store.ReconciliationHistory(*limit)
+		rows, err := diagnostics.History(*limit)
 		if err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
 		for _, row := range rows {
-			fmt.Fprintf(stdout, "attempt=%d epoch=%d status=%s stage=%s code=%s generation=%d candidate=%s at=%s detail=%s\n", row.Number, row.Epoch, row.Status, row.Stage, row.Code, row.LifecycleGeneration, row.CandidateDigest, row.UpdatedAt, row.SafeDetail)
+			fmt.Fprintf(stdout, "attempt=%d epoch=%d status=%s stage=%s code=%s generation=%d candidate=%s at=%s detail=%s\n", row.Number, row.Epoch, row.Status, row.Stage, row.Code, row.Generation, row.CandidateDigest, row.UpdatedAt, row.SafeDetail)
 		}
 	case "retry":
-		evidence, err := store.ReconciliationEvidence()
+		evidence, err := diagnostics.Evidence()
 		if err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
@@ -238,7 +240,7 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 		if !integrationTargetMatches(evidence, desired.Revision, baseline) {
 			return integrationCommandError(stderr, command, fmt.Errorf("latest desired or baseline target changed; the new target has its own retry budget"))
 		}
-		if err := store.RetryReconciliationTarget(evidence.Target.Key, time.Now().UTC()); err != nil {
+		if err := diagnostics.RetryTarget(evidence.TargetKey, time.Now().UTC()); err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
 		fmt.Fprintf(stdout, "Explicit retry recorded for desired revision %d; Agent Service polling will resume convergence\n", evidence.Target.DesiredRevision)
@@ -275,14 +277,14 @@ func flagProvided(args []string, name string) bool {
 	return false
 }
 
-func integrationConvergenceStatus(evidence agentstate.ReconciliationEvidence, desiredRevision uint64, baseline reconciliation.BaselineSnapshot) string {
+func integrationConvergenceStatus(evidence reconciliationcontracts.TargetEvidence, desiredRevision uint64, baseline reconciliation.BaselineSnapshot) string {
 	if !integrationTargetMatches(evidence, desiredRevision, baseline) {
 		return string(reconciliation.StatusPending)
 	}
-	return evidence.Status
+	return string(evidence.Status)
 }
 
-func integrationTargetMatches(evidence agentstate.ReconciliationEvidence, desiredRevision uint64, baseline reconciliation.BaselineSnapshot) bool {
+func integrationTargetMatches(evidence reconciliationcontracts.TargetEvidence, desiredRevision uint64, baseline reconciliation.BaselineSnapshot) bool {
 	return evidence.Target.DesiredRevision == desiredRevision &&
 		evidence.Target.DesiredGeneration == baseline.DesiredGeneration &&
 		evidence.Target.BaselineFingerprint == baseline.Fingerprint

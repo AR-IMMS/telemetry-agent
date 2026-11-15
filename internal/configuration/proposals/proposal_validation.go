@@ -1,4 +1,4 @@
-package discovery
+package proposals
 
 import (
 	"encoding/hex"

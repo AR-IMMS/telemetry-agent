@@ -4,6 +4,8 @@ import (
 	"database/sql"
 
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
+	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals"
+	reconciliationcontracts "github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation/contracts"
 	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 )
@@ -31,8 +33,13 @@ func (s SQLiteStore) MaterializationRepositoryWithEvents(publisher interface {
 }
 
 // ApprovalRepository returns the Configuration-owned atomic approval adapter.
-func (s SQLiteStore) ApprovalRepository() configuration.ApprovalRepository {
+func (s SQLiteStore) ApprovalRepository() proposals.ApprovalRepository {
 	return configurationsqlite.NewApprovalRepository(s.OpenDatabase, &sqliteUpdateMutex)
+}
+
+// ReconciliationRepository returns Configuration-owned reconciliation persistence.
+func (s SQLiteStore) ReconciliationRepository() reconciliationcontracts.Repository {
+	return configurationsqlite.NewReconciliationRepository(s.OpenDatabase, &sqliteUpdateMutex, s)
 }
 
 func desiredIntegrationRevision(queryer interface {
