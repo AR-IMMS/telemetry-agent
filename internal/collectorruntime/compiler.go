@@ -8,7 +8,7 @@ import (
 	"sort"
 
 	"github.com/ar-imms/telemetry-agent/internal/config"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	"gopkg.in/yaml.v3"
 )

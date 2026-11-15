@@ -13,8 +13,9 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/discovery"
-	discoverydocker "github.com/ar-imms/telemetry-agent/internal/discovery/docker"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
+	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
 )
 
 // TestLiveDockerInventoryWhenExplicitlyEnabled runs only in the documented local E2E.
@@ -28,7 +29,7 @@ func TestLiveDockerInventoryWhenExplicitlyEnabled(t *testing.T) {
 	expectedPresence := os.Getenv("AR_IMMS_S4_E2E_EXPECT_PRESENCE")
 	expectedLifecycle := os.Getenv("AR_IMMS_S4_E2E_EXPECT_LIFECYCLE")
 	if expectedPresence == "" {
-		expectedPresence = string(discovery.PresencePresent)
+		expectedPresence = string(inventoryctx.PresencePresent)
 	}
 	if statePath == "" || fixtureID == "" || endpoint == "" {
 		t.Fatal("E2E state path, fixture ID, and explicit Docker endpoint are required")
@@ -55,15 +56,15 @@ func TestLiveDockerInventoryWhenExplicitlyEnabled(t *testing.T) {
 		t.Fatal(err)
 	}
 	repository := store.InventoryRepository()
-	coordinator, err := discovery.NewCoordinator(repository, []discovery.DiscoveryProvider{provider}, discovery.DefaultPolicy(), 5*time.Second)
+	coordinator, err := inventoryctx.NewCoordinator(repository, []inventoryctx.DiscoveryProvider{provider}, inventoryctx.DefaultPolicy(), 5*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
 	cycles := 1
-	if expectedPresence == string(discovery.PresenceMissing) {
+	if expectedPresence == string(inventoryctx.PresenceMissing) {
 		cycles = 2
 	}
-	var result discovery.CycleResult
+	var result inventoryctx.CycleResult
 	for cycle := 0; cycle < cycles; cycle++ {
 		result, err = coordinator.DiscoverOnce(context.Background())
 		if err != nil {
@@ -105,7 +106,7 @@ func TestLiveDockerInventoryWhenExplicitlyEnabled(t *testing.T) {
 		t.Fatalf("provider status=%s", status.String())
 	}
 
-	if expectedPresence == string(discovery.PresencePresent) {
+	if expectedPresence == string(inventoryctx.PresencePresent) {
 		stable := false
 		revision := result.InventoryRevision
 		for attempt := 0; attempt < 6; attempt++ {
@@ -157,7 +158,7 @@ func TestLiveDockerUnavailableRetainsInventory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	coordinator, err := discovery.NewCoordinator(repository, []discovery.DiscoveryProvider{provider}, discovery.DefaultPolicy(), time.Second)
+	coordinator, err := inventoryctx.NewCoordinator(repository, []inventoryctx.DiscoveryProvider{provider}, inventoryctx.DefaultPolicy(), time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -307,7 +308,7 @@ func TestLiveDatabaseFixturesMatchIntoNeedsInputProposals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	coordinator, err := discovery.NewCoordinator(store.InventoryRepository(), []discovery.DiscoveryProvider{provider}, discovery.DefaultPolicy(), 5*time.Second)
+	coordinator, err := inventoryctx.NewCoordinator(store.InventoryRepository(), []inventoryctx.DiscoveryProvider{provider}, inventoryctx.DefaultPolicy(), 5*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -406,7 +407,7 @@ func (fixtureCapabilityAssessor) Assess(required []string) (integration.Capabili
 	return integration.CapabilityAssessment{Status: integration.CapabilitySupported, Platform: "test-fixture", ArtifactVersion: "test-only", ManifestVersion: "test-only", Required: append([]string(nil), required...)}, nil
 }
 
-func mustInventory(t *testing.T, repository discovery.InventoryRepository) discovery.InventorySnapshot {
+func mustInventory(t *testing.T, repository inventoryctx.InventoryRepository) inventoryctx.InventorySnapshot {
 	t.Helper()
 	snapshot, err := repository.Snapshot()
 	if err != nil {

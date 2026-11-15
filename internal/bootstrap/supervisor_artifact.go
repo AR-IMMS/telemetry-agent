@@ -14,7 +14,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 )
 
 const supervisorVersion = "0.160.0"

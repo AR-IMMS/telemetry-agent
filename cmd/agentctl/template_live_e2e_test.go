@@ -13,10 +13,10 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/app"
 	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
-	discoverydocker "github.com/ar-imms/telemetry-agent/internal/discovery/docker"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
+	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
 )
 
 // TestLiveDockerTemplateAutoMaterializesDesiredInstance verifies the live Docker
@@ -53,7 +53,7 @@ func TestLiveDockerTemplateAutoMaterializesDesiredInstance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	coordinator, err := discovery.NewCoordinator(store.InventoryRepository(), []discovery.DiscoveryProvider{provider}, discovery.DefaultPolicy(), 5*time.Second)
+	coordinator, err := inventoryctx.NewCoordinator(store.InventoryRepository(), []inventoryctx.DiscoveryProvider{provider}, inventoryctx.DefaultPolicy(), 5*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestLiveDockerTemplateAutoMaterializesDesiredInstance(t *testing.T) {
 	for _, resource := range inventory.Resources {
 		if resource.Key.ProviderResourceID == fixtureID {
 			fixtureFound = true
-			if resource.Kind != discovery.ResourceContainer || resource.Presence != discovery.PresencePresent || resource.Attributes["container.image.repository"] != "docker.io/library/redis" {
+			if resource.Kind != inventoryctx.ResourceContainer || resource.Presence != inventoryctx.PresencePresent || resource.Attributes["container.image.repository"] != "docker.io/library/redis" {
 				t.Fatalf("fixture is not a present Redis container: %+v", resource)
 			}
 		}

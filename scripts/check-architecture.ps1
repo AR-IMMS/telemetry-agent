@@ -43,7 +43,7 @@ try {
     # One observed transition: identity currently reads the Windows registry
     # directly. Keep the exception specific and reasoned until an adapter exists.
     $transitionalImportAllowlist = @{
-        "$modulePath/internal/identity|golang.org/x/sys/windows/registry" = 'Platform identity adapter is still co-located.'
+        "$modulePath/internal/identity/host|golang.org/x/sys/windows/registry" = 'Host identity package still contains the platform-specific registry adapter.'
     }
     $platformAdapterRoots = @('golang.org/x/sys/windows/registry')
 
@@ -57,7 +57,7 @@ try {
     # foundation checkpoint; it may not grow and should be reduced in a
     # behavior-preserving context migration.
     $transitionalSizeAllowlist = @{
-        'internal/enrollment/service.go' = @{ MaxLines = 454; Reason = 'Pre-existing enrollment service; split only with a meaningful ownership boundary.' }
+        'internal/identity/enrollment/service.go' = @{ MaxLines = 454; Reason = 'Pre-existing enrollment service; split only with a meaningful ownership boundary.' }
     }
 
     $packageLines = & go list -f '{{.ImportPath}}|{{range .Imports}}{{.}},{{end}}' ./internal/... ./cmd/agentctl

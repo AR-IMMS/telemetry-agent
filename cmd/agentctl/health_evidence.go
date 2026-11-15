@@ -7,20 +7,20 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/dependency"
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
+	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 )
 
 const dependencyEvidenceTimeout = 5 * time.Second
 
 type inventoryRepositoryProvider interface {
-	InventoryRepository() discovery.InventoryRepository
+	InventoryRepository() inventoryctx.InventoryRepository
 }
 
 func newAgentHealthEvidenceSources(statePath string) []agenthealth.EvidenceSource {
 	store, ok := agentstate.NewStore(statePath).(inventoryRepositoryProvider)
-	var inventory discovery.ProviderStatusReader
+	var inventory inventoryctx.ProviderStatusReader
 	if ok {
-		inventory, _ = store.InventoryRepository().(discovery.ProviderStatusReader)
+		inventory, _ = store.InventoryRepository().(inventoryctx.ProviderStatusReader)
 	}
 
 	return []agenthealth.EvidenceSource{
@@ -28,9 +28,9 @@ func newAgentHealthEvidenceSources(statePath string) []agenthealth.EvidenceSourc
 			if inventory == nil {
 				return agenthealth.EvaluateInventoryEvidence(now, nil, false, false)
 			}
-			statuses, truncated, err := inventory.ReadProviderStatuses(ctx, discovery.MaxProviderStatusReadLimit)
+			statuses, truncated, err := inventory.ReadProviderStatuses(ctx, inventoryctx.MaxProviderStatusReadLimit)
 			observations := make([]agenthealth.InventoryProviderObservation, 0, len(statuses))
-			staleAfter := discovery.DefaultPolicy().StaleAfter
+			staleAfter := inventoryctx.DefaultPolicy().StaleAfter
 			for _, status := range statuses {
 				validUntil := time.Time{}
 				if !status.LastSuccessAt.IsZero() {

@@ -13,9 +13,10 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/config"
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
+	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
 )
 
@@ -168,7 +169,7 @@ func TestNativeMonitoringInputsAcceptPinnedPostgreSQLProfileCapability(t *testin
 	t.Setenv("AR_IMMS_PG_USER", "metrics_reader")
 	t.Setenv("AR_IMMS_PG_PASSWORD", "test-only-secret")
 	statePath := filepath.Join(t.TempDir(), "state.db")
-	installationID, err := identity.EnsureInstallationIdentity(agentstate.NewIdentityStore(statePath), rand.Reader)
+	installationID, err := installationid.EnsureInstallationIdentity(agentstate.NewIdentityStore(statePath), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +186,7 @@ func TestNativeMonitoringInputsAcceptPinnedPostgreSQLProfileCapability(t *testin
 	postgres := monitoringprofile.Profile{
 		ID: "postgres", Provider: "docker", MatchLabels: map[string]string{monitoringprofile.LabelMonitoringEnabled: "true", monitoringprofile.LabelMonitoringProfile: "postgres"},
 		RequiredCapabilities: []string{monitoringprofile.PostgresqlCapability}, ReceiverType: "postgresql", CollectionInterval: "10s",
-		EndpointStrategies: []monitoringprofile.EndpointStrategy{{ID: "alternate_port", OS: platform.OS, When: "alternate_port > 0 and port == 5432", Endpoint: "127.0.0.1:`alternate_port`", Scope: discovery.EndpointHost, Provenance: "published_port", TargetPort: 5432, Priority: 100}},
+		EndpointStrategies: []monitoringprofile.EndpointStrategy{{ID: "alternate_port", OS: platform.OS, When: "alternate_port > 0 and port == 5432", Endpoint: "127.0.0.1:`alternate_port`", Scope: inventoryctx.EndpointHost, Provenance: "published_port", TargetPort: 5432, Priority: 100}},
 		Settings:           monitoringprofile.ReceiverSettings{UsernameEnv: "AR_IMMS_PG_USER", PasswordEnv: "AR_IMMS_PG_PASSWORD"},
 	}
 	registry, err := monitoringprofile.NewRegistry(postgres)
@@ -198,11 +199,11 @@ func TestNativeMonitoringInputsAcceptPinnedPostgreSQLProfileCapability(t *testin
 }
 
 type nativeOwnershipInventory struct {
-	snapshot discovery.InventorySnapshot
+	snapshot inventoryctx.InventorySnapshot
 	err      error
 }
 
-func (i nativeOwnershipInventory) Snapshot() (discovery.InventorySnapshot, error) {
+func (i nativeOwnershipInventory) Snapshot() (inventoryctx.InventorySnapshot, error) {
 	return i.snapshot, i.err
 }
 
@@ -222,14 +223,14 @@ func TestNativeOwnershipResolverDelegatesExactlyOneReceiverOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	delegate := &nativeOwnershipDelegate{contribution: integration.NewContribution([]integration.ComponentIntent{intent})}
-	resource := discovery.Resource{
-		Key: discovery.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-a"},
+	resource := inventoryctx.Resource{
+		Key: inventoryctx.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-a"},
 		Attributes: map[string]string{
 			"label.ar-imms.monitoring.enabled": "true", "label.ar-imms.monitoring.profile": "redis",
 		},
 	}
 	resolver := nativeOwnershipResolver{
-		delegate: delegate, inventory: nativeOwnershipInventory{snapshot: discovery.InventorySnapshot{Resources: []discovery.Resource{resource}}},
+		delegate: delegate, inventory: nativeOwnershipInventory{snapshot: inventoryctx.InventorySnapshot{Resources: []inventoryctx.Resource{resource}}},
 		profiles: monitoringprofile.DefaultRegistry(), enabled: true,
 	}
 	resolved, err := resolver.Resolve(nativeBoundRedisInstance("container-a"))
@@ -246,14 +247,14 @@ func TestNativeOwnershipResolverKeepsLegacyAndUnmatchedTargetsAgentOwned(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, resource := range map[string]discovery.Resource{
-		"unlabelled":       {Key: discovery.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-a"}},
-		"different target": {Key: discovery.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-b"}, Attributes: map[string]string{"label.ar-imms.monitoring.enabled": "true", "label.ar-imms.monitoring.profile": "redis"}},
+	for name, resource := range map[string]inventoryctx.Resource{
+		"unlabelled":       {Key: inventoryctx.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-a"}},
+		"different target": {Key: inventoryctx.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-b"}, Attributes: map[string]string{"label.ar-imms.monitoring.enabled": "true", "label.ar-imms.monitoring.profile": "redis"}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			delegate := &nativeOwnershipDelegate{contribution: integration.NewContribution([]integration.ComponentIntent{intent})}
 			resolver := nativeOwnershipResolver{
-				delegate: delegate, inventory: nativeOwnershipInventory{snapshot: discovery.InventorySnapshot{Resources: []discovery.Resource{resource}}},
+				delegate: delegate, inventory: nativeOwnershipInventory{snapshot: inventoryctx.InventorySnapshot{Resources: []inventoryctx.Resource{resource}}},
 				profiles: monitoringprofile.DefaultRegistry(), enabled: true,
 			}
 			resolved, err := resolver.Resolve(nativeBoundRedisInstance("container-a"))

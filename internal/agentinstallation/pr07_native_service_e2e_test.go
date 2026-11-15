@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 )
 
 func TestPR07NativeServiceUpgradeMigrationRollbackUninstall(t *testing.T) {

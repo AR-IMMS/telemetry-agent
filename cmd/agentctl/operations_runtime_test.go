@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/enrollment"
+	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
 	operationsnats "github.com/ar-imms/telemetry-agent/internal/operations/nats"
 )
 

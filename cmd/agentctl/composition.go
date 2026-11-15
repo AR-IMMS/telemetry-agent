@@ -11,7 +11,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/dependency"
 	librehardwaremonitor "github.com/ar-imms/telemetry-agent/internal/dependency/libre_hardware_monitor"
 	nodeexporter "github.com/ar-imms/telemetry-agent/internal/dependency/node_exporter"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/supervisor"
 	"io"
 	"net"

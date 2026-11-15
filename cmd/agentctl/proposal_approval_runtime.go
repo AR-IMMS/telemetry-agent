@@ -13,12 +13,13 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/discovery"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
+	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 )
 
 type runtimeProposalRefresher struct {
-	inventory discovery.InventoryRepository
+	inventory inventoryctx.InventoryRepository
 	templates configuration.TemplateRepository
 	manager   discovery.ProposalManager
 	matcher   integration.Matcher
@@ -127,7 +128,7 @@ func proposalObservationFromMatch(result integration.MatchResult, inventoryRevis
 }
 
 type runtimeApprovalVerifier struct {
-	inventory discovery.InventoryRepository
+	inventory inventoryctx.InventoryRepository
 	matcher   integration.Matcher
 	resolver  integration.Resolver
 }

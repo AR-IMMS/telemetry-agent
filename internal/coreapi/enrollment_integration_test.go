@@ -21,9 +21,9 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/credentialstore"
-	"github.com/ar-imms/telemetry-agent/internal/enrollment"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	credentialstore "github.com/ar-imms/telemetry-agent/internal/identity/credentials"
+	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 )
 
 // TestCoreEnrollmentLifecycle exercises the Agent against an isolated HTTPS
@@ -47,7 +47,7 @@ func TestCoreEnrollmentLifecycle(t *testing.T) {
 		t.Fatal("Core origin host must be localhost, loopback, or use the reserved .test domain")
 	}
 	nodeID := strings.TrimSpace(os.Getenv("AR_IMMS_CORE_ENROLLMENT_TEST_NODE_ID"))
-	if _, err := identity.ParseInstallationID(nodeID); err != nil {
+	if _, err := installationid.ParseInstallationID(nodeID); err != nil {
 		t.Fatalf("test Node ID must be a UUID: %v", err)
 	}
 	adminToken := strings.TrimSpace(os.Getenv("AR_IMMS_CORE_ENROLLMENT_TEST_ADMIN_TOKEN"))
@@ -58,7 +58,7 @@ func TestCoreEnrollmentLifecycle(t *testing.T) {
 	adminHTTP := &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	temp := t.TempDir()
 	statePath := filepath.Join(temp, "state.db")
-	installationID, err := identity.NewInstallationID(rand.Reader)
+	installationID, err := installationid.NewInstallationID(rand.Reader)
 	if err != nil {
 		t.Fatal("generate test installation ID")
 	}

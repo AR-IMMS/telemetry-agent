@@ -5,9 +5,9 @@ import (
 	"strings"
 
 	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
-	"github.com/ar-imms/telemetry-agent/internal/enrollment"
-	enrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/enrollment/sqlite"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
+	enrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
 )
 
@@ -29,7 +29,7 @@ func NewStore(path string) Repository {
 
 // NewIdentityStore returns the SQLite adapter for installation identity at
 // the same operational database path used by NewStore.
-func NewIdentityStore(path string) identity.InstallationIdentityRepository {
+func NewIdentityStore(path string) installationid.InstallationIdentityRepository {
 	store := newSQLiteStoreForPath(path)
 	return identitysqlite.New(store.OpenDatabase)
 }

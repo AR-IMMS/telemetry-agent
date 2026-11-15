@@ -10,10 +10,10 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
 	"github.com/ar-imms/telemetry-agent/internal/config"
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
-	"github.com/ar-imms/telemetry-agent/internal/enrollment"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
+	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
 )
 
@@ -86,7 +86,7 @@ func nativeDockerMonitoringInputsWithProfiles(statePath, osName string, profiles
 type nativeOwnershipResolver struct {
 	delegate  resolver
 	inventory interface {
-		Snapshot() (discovery.InventorySnapshot, error)
+		Snapshot() (inventoryctx.InventorySnapshot, error)
 	}
 	profiles monitoringprofile.Registry
 	enabled  bool

@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 )
 
 const manifestVersion = "otelcol-contrib-0.160.0-artifacts-v4"

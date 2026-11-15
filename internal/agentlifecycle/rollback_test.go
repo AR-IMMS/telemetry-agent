@@ -9,7 +9,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 )
 
 func TestRollbackUnappliedConfigurationRestoresCommittedArtifact(t *testing.T) {
@@ -77,7 +77,7 @@ func TestRollbackRestoresCollectorConfigAndGatewayEndpointPair(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	id, err := identity.ParseInstallationID("11111111-2222-4333-8444-555555555555")
+	id, err := installationid.ParseInstallationID("11111111-2222-4333-8444-555555555555")
 	if err != nil {
 		t.Fatal(err)
 	}

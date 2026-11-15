@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/coreapi"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 	"github.com/google/uuid"
 	"github.com/open-telemetry/opamp-go/protobufs"
 	"github.com/open-telemetry/opamp-go/server"
@@ -248,7 +248,7 @@ func (s *Server) handleMessage(ctx context.Context, client coreapi.AgentManageme
 		return &protobufs.ServerToAgent{InstanceUid: uidBytes}
 	}
 	uid := parsedUID.String()
-	if _, err := identity.ParseInstallationID(uid); err != nil {
+	if _, err := installationid.ParseInstallationID(uid); err != nil {
 		return &protobufs.ServerToAgent{InstanceUid: uidBytes}
 	}
 	response := &protobufs.ServerToAgent{

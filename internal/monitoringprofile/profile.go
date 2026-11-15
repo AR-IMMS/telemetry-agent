@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
+	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 )
 
 const (
@@ -38,7 +38,7 @@ type EndpointStrategy struct {
 	OS         string
 	When       string
 	Endpoint   string
-	Scope      discovery.EndpointScope
+	Scope      inventoryctx.EndpointScope
 	Provenance string
 	TargetPort uint16
 	// TargetPortLabel optionally supplies a validated private TCP port override.
@@ -85,9 +85,9 @@ func RedisProfile() Profile {
 		ReceiverType:         "redis",
 		CollectionInterval:   "10s",
 		EndpointStrategies: []EndpointStrategy{
-			{ID: "alternate_port", OS: "windows", When: "alternate_port > 0", Endpoint: "127.0.0.1:`alternate_port`", Scope: discovery.EndpointHost, Provenance: "published_port", TargetPort: 6379, TargetPortLabel: LabelMonitoringPort, PrivatePortVariable: "port", Priority: 100},
-			{ID: "alternate_port", OS: "linux", When: "alternate_port > 0", Endpoint: "`host`:`port`", Scope: discovery.EndpointHost, Provenance: "published_port", TargetPort: 6379, TargetPortLabel: LabelMonitoringPort, PrivatePortVariable: "alternate_port", Priority: 100},
-			{ID: "container_endpoint", OS: "linux", When: "alternate_port == 0 and host != \"\"", Endpoint: "`host`:`port`", Scope: discovery.EndpointContainer, Provenance: "container_network", TargetPort: 6379, TargetPortLabel: LabelMonitoringPort, PrivatePortVariable: "port", Priority: 50},
+			{ID: "alternate_port", OS: "windows", When: "alternate_port > 0", Endpoint: "127.0.0.1:`alternate_port`", Scope: inventoryctx.EndpointHost, Provenance: "published_port", TargetPort: 6379, TargetPortLabel: LabelMonitoringPort, PrivatePortVariable: "port", Priority: 100},
+			{ID: "alternate_port", OS: "linux", When: "alternate_port > 0", Endpoint: "`host`:`port`", Scope: inventoryctx.EndpointHost, Provenance: "published_port", TargetPort: 6379, TargetPortLabel: LabelMonitoringPort, PrivatePortVariable: "alternate_port", Priority: 100},
+			{ID: "container_endpoint", OS: "linux", When: "alternate_port == 0 and host != \"\"", Endpoint: "`host`:`port`", Scope: inventoryctx.EndpointContainer, Provenance: "container_network", TargetPort: 6379, TargetPortLabel: LabelMonitoringPort, PrivatePortVariable: "port", Priority: 50},
 		},
 	}
 }
@@ -195,7 +195,7 @@ func validateProfile(profile Profile) error {
 	}
 	seen := make(map[string]struct{}, len(profile.EndpointStrategies))
 	for _, strategy := range profile.EndpointStrategies {
-		if strategy.ID == "" || (strategy.OS != "linux" && strategy.OS != "windows") || strategy.When == "" || strategy.Endpoint == "" || strategy.Priority <= 0 || strategy.Provenance == "" || (strategy.Scope != discovery.EndpointContainer && strategy.Scope != discovery.EndpointHost) || (strategy.PrivatePortVariable != "" && strategy.PrivatePortVariable != "port" && strategy.PrivatePortVariable != "alternate_port") || (strategy.TargetPortLabel != "" && (strategy.TargetPort == 0 || !targetPortLabelPattern.MatchString(strategy.TargetPortLabel))) {
+		if strategy.ID == "" || (strategy.OS != "linux" && strategy.OS != "windows") || strategy.When == "" || strategy.Endpoint == "" || strategy.Priority <= 0 || strategy.Provenance == "" || (strategy.Scope != inventoryctx.EndpointContainer && strategy.Scope != inventoryctx.EndpointHost) || (strategy.PrivatePortVariable != "" && strategy.PrivatePortVariable != "port" && strategy.PrivatePortVariable != "alternate_port") || (strategy.TargetPortLabel != "" && (strategy.TargetPort == 0 || !targetPortLabelPattern.MatchString(strategy.TargetPortLabel))) {
 			return fmt.Errorf("monitoring profile %q has an invalid endpoint strategy", profile.ID)
 		}
 		key := strategy.OS + "/" + strategy.ID

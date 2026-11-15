@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/enrollment"
+	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
 )
 
 func TestEnrollmentClientPostsContractAndAcceptsRecoveredResult(t *testing.T) {

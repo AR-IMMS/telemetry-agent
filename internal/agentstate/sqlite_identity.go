@@ -1,11 +1,11 @@
 package agentstate
 
 import (
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
 )
 
 // EnsureInstallationID preserves the concrete SQLite store compatibility API.
-func (s SQLiteStore) EnsureInstallationID(candidate identity.InstallationID) (identity.InstallationID, error) {
+func (s SQLiteStore) EnsureInstallationID(candidate installationid.InstallationID) (installationid.InstallationID, error) {
 	return identitysqlite.New(s.OpenDatabase).EnsureInstallationID(candidate)
 }

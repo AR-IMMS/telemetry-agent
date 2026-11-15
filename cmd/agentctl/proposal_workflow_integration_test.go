@@ -8,6 +8,7 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/discovery"
+	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 )
 
 func TestPersistedInventoryToProposalAndExplicitApproval(t *testing.T) {
@@ -18,7 +19,7 @@ func TestPersistedInventoryToProposalAndExplicitApproval(t *testing.T) {
 		t.Fatal(err)
 	}
 	provider := staticRedisInventoryProvider{}
-	coordinator, err := discovery.NewCoordinator(store.InventoryRepository(), []discovery.DiscoveryProvider{provider}, discovery.DefaultPolicy(), time.Second)
+	coordinator, err := inventoryctx.NewCoordinator(store.InventoryRepository(), []inventoryctx.DiscoveryProvider{provider}, inventoryctx.DefaultPolicy(), time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,16 +64,16 @@ func TestPersistedInventoryToProposalAndExplicitApproval(t *testing.T) {
 
 type staticRedisInventoryProvider struct{}
 
-func (staticRedisInventoryProvider) ID() discovery.ProviderID                 { return "docker" }
-func (staticRedisInventoryProvider) InstanceID() discovery.ProviderInstanceID { return "local" }
-func (staticRedisInventoryProvider) Discover(context.Context) (discovery.ProviderSnapshot, error) {
+func (staticRedisInventoryProvider) ID() inventoryctx.ProviderID                 { return "docker" }
+func (staticRedisInventoryProvider) InstanceID() inventoryctx.ProviderInstanceID { return "local" }
+func (staticRedisInventoryProvider) Discover(context.Context) (inventoryctx.ProviderSnapshot, error) {
 	at := time.Now().UTC()
-	return discovery.ProviderSnapshot{
+	return inventoryctx.ProviderSnapshot{
 		ProviderID: "docker", ProviderInstanceID: "local", Complete: true, ObservedAt: at,
-		Resources: []discovery.ResourceObservation{{
-			ProviderResourceID: "redis-container", Kind: discovery.ResourceContainer, DisplayName: "redis-fixture", LifecycleState: "running",
+		Resources: []inventoryctx.ResourceObservation{{
+			ProviderResourceID: "redis-container", Kind: inventoryctx.ResourceContainer, DisplayName: "redis-fixture", LifecycleState: "running",
 			Attributes: map[string]string{"container.image.repository": "docker.io/library/redis"},
-			Endpoints:  []discovery.Endpoint{{Address: "127.0.0.1", Port: 6379, Protocol: "tcp", Scope: discovery.EndpointHost, Provenance: "published_port"}},
+			Endpoints:  []inventoryctx.Endpoint{{Address: "127.0.0.1", Port: 6379, Protocol: "tcp", Scope: inventoryctx.EndpointHost, Provenance: "published_port"}},
 		}},
 	}, nil
 }

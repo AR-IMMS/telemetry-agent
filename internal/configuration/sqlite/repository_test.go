@@ -14,6 +14,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/discovery"
 	discoverysqlite "github.com/ar-imms/telemetry-agent/internal/discovery/sqlite"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
+	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 )
 
@@ -66,15 +67,15 @@ func TestMaterializationRepositoryCommitsProjectionBeforePublishingWakeup(t *tes
 	locker := &sync.Mutex{}
 	inventory := store.InventoryRepository()
 	at := time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)
-	providerSnapshot := discovery.ProviderSnapshot{
+	providerSnapshot := inventoryctx.ProviderSnapshot{
 		ProviderID: "docker", ProviderInstanceID: "local", Complete: true, ObservedAt: at,
-		Resources: []discovery.ResourceObservation{{ProviderResourceID: "container-a", Kind: discovery.ResourceContainer}},
+		Resources: []inventoryctx.ResourceObservation{{ProviderResourceID: "container-a", Kind: inventoryctx.ResourceContainer}},
 	}
-	resource := discovery.Resource{
-		Key:  discovery.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-a"},
-		Kind: discovery.ResourceContainer, Presence: discovery.PresencePresent, FirstSeenAt: at, LastSeenAt: at,
+	resource := inventoryctx.Resource{
+		Key:  inventoryctx.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-a"},
+		Kind: inventoryctx.ResourceContainer, Presence: inventoryctx.PresencePresent, FirstSeenAt: at, LastSeenAt: at,
 	}
-	if err := inventory.CommitProviderSnapshot(0, providerSnapshot, []discovery.Resource{resource}, true); err != nil {
+	if err := inventory.CommitProviderSnapshot(0, providerSnapshot, []inventoryctx.Resource{resource}, true); err != nil {
 		t.Fatalf("commit inventory: %v", err)
 	}
 	template, _, err := configurationsqlite.NewTemplateRepository(store.OpenDatabase, locker).Put(localTemplate("redis-main", integration.TemplateEnabled), 0)
@@ -119,15 +120,15 @@ func TestApprovalRepositoryCommitsProposalAndDesiredStateTogether(t *testing.T) 
 	store := agentstate.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	locker := &sync.Mutex{}
 	at := time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)
-	providerSnapshot := discovery.ProviderSnapshot{
+	providerSnapshot := inventoryctx.ProviderSnapshot{
 		ProviderID: "docker", ProviderInstanceID: "local", Complete: true, ObservedAt: at,
-		Resources: []discovery.ResourceObservation{{ProviderResourceID: "container-a", Kind: discovery.ResourceContainer}},
+		Resources: []inventoryctx.ResourceObservation{{ProviderResourceID: "container-a", Kind: inventoryctx.ResourceContainer}},
 	}
-	resource := discovery.Resource{
-		Key:  discovery.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-a"},
-		Kind: discovery.ResourceContainer, Presence: discovery.PresencePresent, FirstSeenAt: at, LastSeenAt: at,
+	resource := inventoryctx.Resource{
+		Key:  inventoryctx.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-a"},
+		Kind: inventoryctx.ResourceContainer, Presence: inventoryctx.PresencePresent, FirstSeenAt: at, LastSeenAt: at,
 	}
-	if err := store.InventoryRepository().CommitProviderSnapshot(0, providerSnapshot, []discovery.Resource{resource}, true); err != nil {
+	if err := store.InventoryRepository().CommitProviderSnapshot(0, providerSnapshot, []inventoryctx.Resource{resource}, true); err != nil {
 		t.Fatalf("commit inventory: %v", err)
 	}
 	proposal := pendingProposal(t, at)

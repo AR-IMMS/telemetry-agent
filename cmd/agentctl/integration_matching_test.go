@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
+	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 )
 
 func TestIntegrationMatchReadsPersistedInventoryWithoutDesiredStateMutation(t *testing.T) {
@@ -16,22 +16,22 @@ func TestIntegrationMatchReadsPersistedInventoryWithoutDesiredStateMutation(t *t
 	store := agentstate.NewSQLiteStore(statePath)
 	repository := store.InventoryRepository()
 	now := time.Now().UTC()
-	snapshot := discovery.ProviderSnapshot{
+	snapshot := inventoryctx.ProviderSnapshot{
 		ProviderID: "docker", ProviderInstanceID: "local-engine", Complete: true, ObservedAt: now,
-		Resources: []discovery.ResourceObservation{{
-			ProviderResourceID: "container-id", Kind: discovery.ResourceContainer, LifecycleState: "running",
+		Resources: []inventoryctx.ResourceObservation{{
+			ProviderResourceID: "container-id", Kind: inventoryctx.ResourceContainer, LifecycleState: "running",
 			Attributes: map[string]string{"container.image.repository": "docker.io/library/redis"},
-			Endpoints: []discovery.Endpoint{{Address: "127.0.0.1", Port: 6380, Protocol: "tcp", Scope: discovery.EndpointHost, Provenance: "published_port"}},
+			Endpoints:  []inventoryctx.Endpoint{{Address: "127.0.0.1", Port: 6380, Protocol: "tcp", Scope: inventoryctx.EndpointHost, Provenance: "published_port"}},
 		}},
 	}
-	resource := discovery.Resource{
-		Key: discovery.ResourceKey{Provider: "docker", ProviderInstance: "local-engine", ProviderResourceID: "container-id"},
-		Kind: discovery.ResourceContainer, LifecycleState: "running", Presence: discovery.PresencePresent,
-		Attributes: map[string]string{"container.image.repository": "docker.io/library/redis"},
-		Endpoints: []discovery.Endpoint{{Address: "127.0.0.1", Port: 6380, Protocol: "tcp", Scope: discovery.EndpointHost, Provenance: "published_port"}},
+	resource := inventoryctx.Resource{
+		Key:  inventoryctx.ResourceKey{Provider: "docker", ProviderInstance: "local-engine", ProviderResourceID: "container-id"},
+		Kind: inventoryctx.ResourceContainer, LifecycleState: "running", Presence: inventoryctx.PresencePresent,
+		Attributes:  map[string]string{"container.image.repository": "docker.io/library/redis"},
+		Endpoints:   []inventoryctx.Endpoint{{Address: "127.0.0.1", Port: 6380, Protocol: "tcp", Scope: inventoryctx.EndpointHost, Provenance: "published_port"}},
 		FirstSeenAt: now, LastSeenAt: now,
 	}
-	if err := repository.CommitProviderSnapshot(0, snapshot, []discovery.Resource{resource}, true); err != nil {
+	if err := repository.CommitProviderSnapshot(0, snapshot, []inventoryctx.Resource{resource}, true); err != nil {
 		t.Fatal(err)
 	}
 	desired := store.IntegrationRepository()

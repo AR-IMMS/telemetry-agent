@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 )
 
 const agentManagementPath = "/api/v1/agent-management"
@@ -86,7 +86,7 @@ func (c *AgentManagementClient) RecordPublication(ctx context.Context, publicati
 	if strings.TrimSpace(envelope.Meta.RequestID) == "" || envelope.Data.PublicationRequest != publication || envelope.Data.PublishedAt.IsZero() {
 		return ConfigurationPublication{}, fmt.Errorf("Core publication response does not match the requested policy and hash")
 	}
-	if _, err := identity.ParseInstallationID(envelope.Data.InstallationID); err != nil {
+	if _, err := installationid.ParseInstallationID(envelope.Data.InstallationID); err != nil {
 		return ConfigurationPublication{}, fmt.Errorf("Core publication response has an invalid installation identity")
 	}
 	return envelope.Data, nil
@@ -94,7 +94,7 @@ func (c *AgentManagementClient) RecordPublication(ctx context.Context, publicati
 
 // ResolvePublication resolves a previously published exact hash for the bound Supervisor instance.
 func (c *AgentManagementClient) ResolvePublication(ctx context.Context, instanceUID, configHash string) (ConfigurationPublication, error) {
-	if _, err := identity.ParseInstallationID(instanceUID); err != nil || !validConfigHash(configHash) {
+	if _, err := installationid.ParseInstallationID(instanceUID); err != nil || !validConfigHash(configHash) {
 		return ConfigurationPublication{}, fmt.Errorf("publication identity or hash is invalid")
 	}
 	var envelope struct {
@@ -109,7 +109,7 @@ func (c *AgentManagementClient) ResolvePublication(ctx context.Context, instance
 	if strings.TrimSpace(envelope.Meta.RequestID) == "" || envelope.Data.InstanceUID != instanceUID || envelope.Data.ConfigHash != configHash || envelope.Data.PolicySchemaVersion != "ar-imms/gateway-policy/v1" || envelope.Data.PublishedAt.IsZero() || envelope.Data.PolicyRevision < 1 {
 		return ConfigurationPublication{}, fmt.Errorf("Core publication response does not match the requested instance and hash")
 	}
-	if _, err := identity.ParseInstallationID(envelope.Data.InstallationID); err != nil {
+	if _, err := installationid.ParseInstallationID(envelope.Data.InstallationID); err != nil {
 		return ConfigurationPublication{}, fmt.Errorf("Core publication response has an invalid installation identity")
 	}
 	return envelope.Data, nil
@@ -176,7 +176,7 @@ func (c *AgentManagementClient) GetSession(ctx context.Context) (AgentManagement
 // BindOpAMPInstance sets or confirms the Supervisor UID on the authenticated
 // installation. A conflicting existing UID is returned as a contract error.
 func (c *AgentManagementClient) BindOpAMPInstance(ctx context.Context, uid string) (string, error) {
-	if _, err := identity.ParseInstallationID(uid); err != nil {
+	if _, err := installationid.ParseInstallationID(uid); err != nil {
 		return "", fmt.Errorf("OpAMP instance UID is invalid")
 	}
 	var envelope struct {
@@ -198,7 +198,7 @@ func (c *AgentManagementClient) BindOpAMPInstance(ctx context.Context, uid strin
 
 // ReportStatus sends an idempotent, sanitized protocol status observation.
 func (c *AgentManagementClient) ReportStatus(ctx context.Context, report SupervisorStatusReport) error {
-	if _, err := identity.ParseInstallationID(report.InstanceUID); err != nil || report.DesiredRevision < 1 || report.PublicationRevision < 1 || report.PublicationRevision > report.DesiredRevision || report.AppliedRevision < 0 || report.AppliedRevision > report.DesiredRevision || !validRemoteConfigStatus(report.Status) || !validConfigHash(report.ConfigHash) || (report.Status == "APPLIED" && report.AppliedRevision != report.PublicationRevision) || (report.Status != "APPLIED" && report.AppliedRevision != 0) {
+	if _, err := installationid.ParseInstallationID(report.InstanceUID); err != nil || report.DesiredRevision < 1 || report.PublicationRevision < 1 || report.PublicationRevision > report.DesiredRevision || report.AppliedRevision < 0 || report.AppliedRevision > report.DesiredRevision || !validRemoteConfigStatus(report.Status) || !validConfigHash(report.ConfigHash) || (report.Status == "APPLIED" && report.AppliedRevision != report.PublicationRevision) || (report.Status != "APPLIED" && report.AppliedRevision != 0) {
 		return fmt.Errorf("Supervisor status report is invalid")
 	}
 	if len(report.Message) > 512 || strings.ContainsAny(report.Message, "\r\n\x00") {
@@ -208,7 +208,7 @@ func (c *AgentManagementClient) ReportStatus(ctx context.Context, report Supervi
 }
 
 func validatePublicationRequest(publication PublicationRequest) error {
-	if _, err := identity.ParseInstallationID(publication.InstanceUID); err != nil || publication.PolicySchemaVersion != "ar-imms/gateway-policy/v1" || publication.PolicyRevision < 1 || !validConfigHash(publication.ConfigHash) {
+	if _, err := installationid.ParseInstallationID(publication.InstanceUID); err != nil || publication.PolicySchemaVersion != "ar-imms/gateway-policy/v1" || publication.PolicyRevision < 1 || !validConfigHash(publication.ConfigHash) {
 		return fmt.Errorf("configuration publication is invalid")
 	}
 	return nil
@@ -278,14 +278,14 @@ func controlAPIError(status int, body []byte) error {
 }
 
 func validateAgentManagementSession(value AgentManagementSession) error {
-	if _, err := identity.ParseInstallationID(value.InstallationID); err != nil {
+	if _, err := installationid.ParseInstallationID(value.InstallationID); err != nil {
 		return fmt.Errorf("Core agent management response has an invalid installation ID")
 	}
-	if _, err := identity.ParseInstallationID(value.NodeID); err != nil {
+	if _, err := installationid.ParseInstallationID(value.NodeID); err != nil {
 		return fmt.Errorf("Core agent management response has an invalid Node ID")
 	}
 	if value.OpAMPInstanceUID != "" {
-		if _, err := identity.ParseInstallationID(value.OpAMPInstanceUID); err != nil {
+		if _, err := installationid.ParseInstallationID(value.OpAMPInstanceUID); err != nil {
 			return fmt.Errorf("Core agent management response has an invalid OpAMP instance UID")
 		}
 	}

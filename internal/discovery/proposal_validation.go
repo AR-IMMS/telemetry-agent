@@ -10,6 +10,7 @@ import (
 
 var proposalVersionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
 var proposalIdentityPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
+var safeProposalDiagnostic = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
 
 // ValidateProposal checks proposal identity, bounds, status and safe payloads.
 func ValidateProposal(proposal Proposal) error {
@@ -54,7 +55,7 @@ func ValidateProposal(proposal Proposal) error {
 		}
 	}
 	for _, diagnostic := range proposal.Diagnostics {
-		if !safeIdentifier.MatchString(diagnostic) || len(diagnostic) > 128 {
+		if !safeProposalDiagnostic.MatchString(diagnostic) || len(diagnostic) > 128 {
 			return fmt.Errorf("%w: invalid diagnostic code", ErrInvalidProposal)
 		}
 	}

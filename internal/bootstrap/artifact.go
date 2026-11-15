@@ -5,7 +5,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 )
 
 // SelectArtifact returns the committed Collector artifact supported by platform.

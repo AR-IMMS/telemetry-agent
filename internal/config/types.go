@@ -1,6 +1,6 @@
 package config
 
-import "github.com/ar-imms/telemetry-agent/internal/identity"
+import "github.com/ar-imms/telemetry-agent/internal/identity/host"
 
 // Layer identifies one ordered YAML configuration fragment.
 type Layer struct {

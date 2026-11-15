@@ -20,9 +20,9 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
-	"github.com/ar-imms/telemetry-agent/internal/enrollment"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
+	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
 )
 
@@ -74,7 +74,7 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	installationID, err := identity.EnsureInstallationIdentity(agentstate.NewIdentityStore(statePath), rand.Reader)
+	installationID, err := installationid.EnsureInstallationIdentity(agentstate.NewIdentityStore(statePath), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +191,7 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 	for _, resourceID := range []string{firstID, secondID, fourthID} {
 		found := false
 		for _, resource := range inventory.Resources {
-			if resource.Key.ProviderResourceID == resourceID && resource.Presence == discovery.PresencePresent && resource.Attributes["label.ar-imms.monitoring.enabled"] == "true" {
+			if resource.Key.ProviderResourceID == resourceID && resource.Presence == inventoryctx.PresencePresent && resource.Attributes["label.ar-imms.monitoring.enabled"] == "true" {
 				found = true
 				break
 			}
@@ -200,9 +200,9 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 			t.Fatalf("Agent inventory did not retain discovered opted-in Docker resource %q", resourceID)
 		}
 	}
-	var unpublished discovery.Resource
+	var unpublished inventoryctx.Resource
 	for _, resource := range inventory.Resources {
-		if resource.Key.ProviderResourceID == thirdID && resource.Presence == discovery.PresencePresent {
+		if resource.Key.ProviderResourceID == thirdID && resource.Presence == inventoryctx.PresencePresent {
 			unpublished = resource
 			break
 		}
@@ -293,9 +293,9 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 	}
 }
 
-func inventoryHasResource(snapshot discovery.InventorySnapshot, resourceID string) bool {
+func inventoryHasResource(snapshot inventoryctx.InventorySnapshot, resourceID string) bool {
 	for _, resource := range snapshot.Resources {
-		if resource.Key.ProviderResourceID == resourceID && resource.Presence == discovery.PresencePresent {
+		if resource.Key.ProviderResourceID == resourceID && resource.Presence == inventoryctx.PresencePresent {
 			return true
 		}
 	}
@@ -386,7 +386,7 @@ func restoreNativeDockerSocketAccess(ctx context.Context, manager string) error 
 }
 
 func waitForNativeProviderOutage(t *testing.T, ctx context.Context, repository interface {
-	Snapshot() (discovery.InventorySnapshot, error)
+	Snapshot() (inventoryctx.InventorySnapshot, error)
 }) time.Time {
 	t.Helper()
 	deadline := time.NewTimer(70 * time.Second)
@@ -414,7 +414,7 @@ func waitForNativeProviderOutage(t *testing.T, ctx context.Context, repository i
 }
 
 func waitForNativeProviderRecovery(t *testing.T, ctx context.Context, repository interface {
-	Snapshot() (discovery.InventorySnapshot, error)
+	Snapshot() (inventoryctx.InventorySnapshot, error)
 }, outageAt time.Time) {
 	t.Helper()
 	deadline := time.NewTimer(70 * time.Second)
@@ -519,7 +519,7 @@ func nativeInventoryMissingResources(store agentstate.SQLiteStore, resourceIDs .
 	if err != nil {
 		return []string{"inventory_snapshot_error=" + err.Error()}
 	}
-	presence := make(map[string]discovery.Presence, len(resourceIDs))
+	presence := make(map[string]inventoryctx.Presence, len(resourceIDs))
 	for _, resourceID := range resourceIDs {
 		presence[resourceID] = "absent"
 	}
@@ -530,7 +530,7 @@ func nativeInventoryMissingResources(store agentstate.SQLiteStore, resourceIDs .
 	}
 	var missing []string
 	for resourceID, state := range presence {
-		if state != discovery.PresencePresent {
+		if state != inventoryctx.PresencePresent {
 			missing = append(missing, fmt.Sprintf("%s=%s", resourceID, state))
 		}
 	}
@@ -651,10 +651,10 @@ func nativeRedisPublishedPort(t *testing.T, ctx context.Context, name string, pr
 	return port
 }
 
-func expectedNativeNetworkEndpoint(endpoints []discovery.Endpoint) discovery.Endpoint {
-	candidates := make([]discovery.Endpoint, 0)
+func expectedNativeNetworkEndpoint(endpoints []inventoryctx.Endpoint) inventoryctx.Endpoint {
+	candidates := make([]inventoryctx.Endpoint, 0)
 	for _, endpoint := range endpoints {
-		if endpoint.Scope == discovery.EndpointContainer && endpoint.Provenance == "container_network" && endpoint.ContainerPort == 6379 {
+		if endpoint.Scope == inventoryctx.EndpointContainer && endpoint.Provenance == "container_network" && endpoint.ContainerPort == 6379 {
 			candidates = append(candidates, endpoint)
 		}
 	}
@@ -665,7 +665,7 @@ func expectedNativeNetworkEndpoint(endpoints []discovery.Endpoint) discovery.End
 		return candidates[i].NetworkName < candidates[j].NetworkName
 	})
 	if len(candidates) == 0 {
-		return discovery.Endpoint{}
+		return inventoryctx.Endpoint{}
 	}
 	return candidates[0]
 }
