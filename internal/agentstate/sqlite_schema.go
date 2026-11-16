@@ -13,6 +13,7 @@ import (
 	identityinstallationsqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
 	inventorysqlite "github.com/ar-imms/telemetry-agent/internal/inventory/sqlite"
 	sqlitemigrate "github.com/ar-imms/telemetry-agent/internal/platform/sqlite/migrate"
+	activationsqlite "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/sqlite"
 )
 
 // ensureSQLiteSchema registers the existing schema versions with the technical
@@ -46,10 +47,7 @@ func ensureSQLiteSchema(db *sql.DB) error {
 	)
 	migrations = append(migrations, identityenrollmentsqlite.Migrations()...)
 	migrations = append(migrations, migration6)
-	migrations = append(migrations,
-		sqlitemigrate.Migration{Version: 7, Name: "Candidate activation mapping", Apply: migrateCandidateActivationMapping},
-		sqlitemigrate.Migration{Version: 8, Name: "Candidate attempt history", Apply: migrateCandidateAttemptHistory},
-	)
+	migrations = append(migrations, activationsqlite.Migrations()...)
 	migrations = append(migrations, migration9)
 	migrations = append(migrations, inventorysqlite.Migrations()...)
 	migrations = append(migrations, migration12, migration13)
