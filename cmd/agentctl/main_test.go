@@ -350,6 +350,16 @@ func TestMonitoringHierarchyAliasesPreserveLegacyUseCaseOutput(t *testing.T) {
 			alias:  []string{"monitoring", "instance", "list", "--state-path", statePath},
 		},
 		{
+			name:   "profile list",
+			legacy: []string{"integration", "catalog", "list", "--output", "json"},
+			alias:  []string{"monitoring", "profile", "list", "--output", "json"},
+		},
+		{
+			name:   "profile inspect",
+			legacy: []string{"integration", "catalog", "inspect", "--id", "redis", "--version", "1.0.0", "--output", "json"},
+			alias:  []string{"monitoring", "profile", "inspect", "--id", "redis", "--version", "1.0.0", "--output", "json"},
+		},
+		{
 			name:   "template list",
 			legacy: []string{"integration", "template", "list", "--state-path", statePath},
 			alias:  []string{"monitoring", "template", "list", "--state-path", statePath},

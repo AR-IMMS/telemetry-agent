@@ -119,6 +119,13 @@ func newMonitoringCommand(
 			_ = command.Help()
 		},
 	}
+	profiles := &cobra.Command{
+		Use:   "profile",
+		Short: "Inspect built-in monitoring profiles",
+		Run: func(command *cobra.Command, _ []string) {
+			_ = command.Help()
+		},
+	}
 
 	for _, operation := range []string{
 		"configure", "update", "enable", "disable", "delete", "list", "inspect",
@@ -138,8 +145,13 @@ func newMonitoringCommand(
 			return runLegacy(ctx, append([]string{"discovery", "proposals", operation}, args...), stdout, stderr, deps)
 		}))
 	}
+	for _, operation := range []string{"list", "inspect"} {
+		profiles.AddCommand(newAliasCommand(operation, exitCode, func(args []string) int {
+			return runLegacy(ctx, append([]string{"integration", "catalog", operation}, args...), stdout, stderr, deps)
+		}))
+	}
 
-	monitoring.AddCommand(instances, templates, proposals)
+	monitoring.AddCommand(instances, profiles, templates, proposals)
 	return monitoring
 }
 
