@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentinstallation"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/service"
 	"golang.org/x/sys/windows/svc"
 )
 
