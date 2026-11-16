@@ -150,7 +150,6 @@ func defaultDependencies() dependencies {
 	agentUninstaller := newManagedAgentUninstaller(
 		identity.CollectPlatformInfo,
 		os.Executable,
-		runner,
 	)
 
 	return dependencies{
