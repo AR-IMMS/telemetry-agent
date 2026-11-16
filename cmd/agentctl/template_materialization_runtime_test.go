@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/app"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
@@ -291,7 +290,7 @@ func TestRuntimeTemplateMaterializerPreservesFailureAndTracksResourceLifecycle(t
 		if err != nil {
 			t.Fatal(err)
 		}
-		if app.DiscoveryCycleSucceeded(cycle) {
+		if cycle.Succeeded() {
 			if err := materializer.Refresh(context.Background()); err != nil {
 				t.Fatal(err)
 			}
