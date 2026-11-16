@@ -383,6 +383,33 @@ func TestMonitoringHierarchyAliasesPreserveLegacyUseCaseOutput(t *testing.T) {
 		})
 	}
 }
+func TestMonitoringAliasValidListOutputMatchesLegacy(t *testing.T) {
+	deps := testDependencies(identity.PlatformInfo{OS: "linux", Architecture: "amd64"})
+	tests := []struct {
+		name   string
+		legacy []string
+		alias  []string
+	}{
+		{name: "instance list", legacy: []string{"integration", "list"}, alias: []string{"monitoring", "instance", "list"}},
+		{name: "profile list", legacy: []string{"integration", "catalog", "list", "--output", "json"}, alias: []string{"monitoring", "profile", "list", "--output", "json"}},
+		{name: "profile inspect", legacy: []string{"integration", "catalog", "inspect", "--id", "redis", "--version", "1.0.0", "--output", "json"}, alias: []string{"monitoring", "profile", "inspect", "--id", "redis", "--version", "1.0.0", "--output", "json"}},
+		{name: "template list", legacy: []string{"integration", "template", "list"}, alias: []string{"monitoring", "template", "list"}},
+		{name: "proposal list", legacy: []string{"discovery", "proposals", "list"}, alias: []string{"monitoring", "proposal", "list"}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			statePath := filepath.Join(t.TempDir(), "state.db")
+			legacyArgs := append(append([]string{}, test.legacy...), "--state-path", statePath)
+			aliasArgs := append(append([]string{}, test.alias...), "--state-path", statePath)
+			legacyCode, legacyOut, legacyErr := runForTest(t, legacyArgs, deps)
+			aliasCode, aliasOut, aliasErr := runForTest(t, aliasArgs, deps)
+			if aliasCode != legacyCode || aliasOut != legacyOut || aliasErr != legacyErr {
+				t.Fatalf("alias result (%d, %q, %q) differs from legacy result (%d, %q, %q)", aliasCode, aliasOut, aliasErr, legacyCode, legacyOut, legacyErr)
+			}
+		})
+	}
+}
 func TestRunRejectsMissingGatewayEndpoint(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
