@@ -24,8 +24,8 @@ try {
         "$modulePath/internal/configuration",
         "$modulePath/internal/identity",
         "$modulePath/internal/integration",
+        "$modulePath/internal/monitoring/profiles",
         "$modulePath/internal/inventory",
-        "$modulePath/internal/monitoringprofile",
         "$modulePath/internal/health",
         "$modulePath/internal/operations/command",
         "$modulePath/internal/operations/handlers"
@@ -47,6 +47,7 @@ try {
         "$modulePath/internal/identity/sqlite",
         "$modulePath/internal/inventory/docker",
         "$modulePath/internal/inventory/sqlite",
+        "$modulePath/internal/monitoring/profiles/yaml",
         "$modulePath/internal/runtime/collector/supervisor",
         "$modulePath/internal/operations/dockeradapter",
         "$modulePath/internal/operations/nats",
@@ -72,7 +73,7 @@ try {
     $forbiddenContextEdges = @(
         @{
             SourceRoot = "$modulePath/internal/inventory"
-            TargetRoot = "$modulePath/internal/monitoringprofile"
+            TargetRoot = "$modulePath/internal/monitoring/profiles"
             Reason = 'Inventory emits normalized observations; Monitoring owns profile interpretation.'
         },
         @{
@@ -101,6 +102,13 @@ try {
     }
 
     $violations = [System.Collections.Generic.List[string]]::new()
+    $legacyMonitoringProfileRoot = Join-Path $repoRoot 'internal/monitoringprofile'
+    if (Test-Path -LiteralPath $legacyMonitoringProfileRoot) {
+        $legacyMonitoringProfileFiles = Get-ChildItem -LiteralPath $legacyMonitoringProfileRoot -Recurse -File -Filter '*.go'
+        if ($legacyMonitoringProfileFiles.Count -gt 0) {
+            $violations.Add('monitoring profile capability must live under internal/monitoring/profiles; legacy internal/monitoringprofile still contains Go source')
+        }
+    }
     $packageDirectories = Get-ChildItem -Path (Join-Path $repoRoot 'cmd'), (Join-Path $repoRoot 'internal') -Recurse -File -Filter '*.go' |
         Group-Object DirectoryName
     foreach ($packageDirectory in $packageDirectories) {

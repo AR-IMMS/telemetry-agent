@@ -1,10 +1,16 @@
-package monitoringprofile
+package yamlprofiles_test
 
 import (
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	monitoringprofile "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles"
+	profilesapplication "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/application"
+	yamlprofiles "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/yaml"
+	collectorruntime "github.com/ar-imms/telemetry-agent/internal/runtime/collector"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 )
 
 func TestLoadDirectoryAddsValidatedPrometheusProfiles(t *testing.T) {
@@ -25,17 +31,17 @@ profiles:
     metrics_path: /metrics
 `)
 
-	registry, err := LoadDirectory(root)
+	registry, err := profilesapplication.LoadDirectory(root, yamlprofiles.DirectorySource{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := registry.Match("docker", map[string]string{
-		"label." + LabelMonitoringEnabled: "true",
-		"label." + LabelMonitoringProfile: "cooling-exporter",
+		"label." + monitoringprofile.LabelMonitoringEnabled: "true",
+		"label." + monitoringprofile.LabelMonitoringProfile: "cooling-exporter",
 	}); !ok {
 		t.Fatal("loaded profile did not match opt-in labels")
 	}
-	layer, _, err := registry.DockerCollectorLayer("linux", dockerEndpoint("linux"), "core-node")
+	layer, _, err := collectorruntime.DockerMonitoringLayer(runtimeProfileInputs(registry.Profiles()), "linux", dockerEndpoint("linux"), "core-node")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +90,7 @@ profiles:
 		t.Run(name, func(t *testing.T) {
 			root := t.TempDir()
 			writeProfileFile(t, root, "profile.yaml", content)
-			if _, err := LoadDirectory(root); err == nil {
+			if _, err := profilesapplication.LoadDirectory(root, yamlprofiles.DirectorySource{}); err == nil {
 				t.Fatal("LoadDirectory accepted invalid profile")
 			}
 		})
@@ -109,11 +115,11 @@ profiles:
     username_env: AR_IMMS_PG_USER
     password_env: AR_IMMS_PG_PASSWORD
 `)
-	registry, err := LoadDirectory(root)
+	registry, err := profilesapplication.LoadDirectory(root, yamlprofiles.DirectorySource{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	layer, _, err := registry.DockerCollectorLayer("linux", dockerEndpoint("linux"), "core-node")
+	layer, _, err := collectorruntime.DockerMonitoringLayer(runtimeProfileInputs(registry.Profiles()), "linux", dockerEndpoint("linux"), "core-node")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,18 +150,18 @@ profiles:
     username_env: AR_IMMS_PG_USER
     password_env: AR_IMMS_PG_PASSWORD
 `)
-	registry, err := LoadDirectory(root)
+	registry, err := profilesapplication.LoadDirectory(root, yamlprofiles.DirectorySource{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	profile, matched := registry.Match("docker", map[string]string{
-		"label." + LabelMonitoringEnabled: "true",
-		"label." + LabelMonitoringProfile: "postgres",
+		"label." + monitoringprofile.LabelMonitoringEnabled: "true",
+		"label." + monitoringprofile.LabelMonitoringProfile: "postgres",
 	})
-	if !matched || CredentialsConfigured(profile) {
+	if !matched || collectorruntime.ProfileCredentialsConfigured(profile.ReceiverType, profile.Settings.UsernameEnv, profile.Settings.PasswordEnv) {
 		t.Fatal("PostgreSQL profile should match while reporting unavailable credentials")
 	}
-	layer, _, err := registry.DockerCollectorLayer("linux", dockerEndpoint("linux"), "core-node")
+	layer, _, err := collectorruntime.DockerMonitoringLayer(runtimeProfileInputs(registry.Profiles()), "linux", dockerEndpoint("linux"), "core-node")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,9 +184,37 @@ profiles:
     collection_interval: 30s
     target_port: 5432
 `)
-	if _, err := LoadDirectory(root); err == nil {
+	if _, err := profilesapplication.LoadDirectory(root, yamlprofiles.DirectorySource{}); err == nil {
 		t.Fatal("LoadDirectory accepted PostgreSQL profile without credential references")
 	}
+}
+
+func dockerEndpoint(os string) string {
+	if os == "windows" {
+		return "npipe:////./pipe/docker_engine"
+	}
+	return "unix:///var/run/docker.sock"
+}
+
+func runtimeProfileInputs(profiles []monitoringprofile.Profile) []contracts.DockerMonitoringProfile {
+	result := make([]contracts.DockerMonitoringProfile, 0, len(profiles))
+	for _, profile := range profiles {
+		converted := contracts.DockerMonitoringProfile{
+			ID: profile.ID, Provider: profile.Provider, MatchLabels: profile.MatchLabels,
+			RequiredCapabilities: profile.RequiredCapabilities, ReceiverType: profile.ReceiverType,
+			CollectionInterval: profile.CollectionInterval,
+			Settings:           contracts.DockerReceiverSettings{MetricsPath: profile.Settings.MetricsPath, UsernameEnv: profile.Settings.UsernameEnv, PasswordEnv: profile.Settings.PasswordEnv, TLSCAFile: profile.Settings.TLSCAFile},
+		}
+		for _, strategy := range profile.EndpointStrategies {
+			converted.EndpointStrategies = append(converted.EndpointStrategies, contracts.DockerEndpointStrategy{
+				ID: strategy.ID, OS: strategy.OS, When: strategy.When, Endpoint: strategy.Endpoint,
+				Scope: string(strategy.Scope), Provenance: strategy.Provenance, TargetPort: strategy.TargetPort,
+				TargetPortLabel: strategy.TargetPortLabel, PrivatePortVariable: strategy.PrivatePortVariable, Priority: strategy.Priority,
+			})
+		}
+		result = append(result, converted)
+	}
+	return result
 }
 
 func writeProfileFile(t *testing.T, root, name, content string) {

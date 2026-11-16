@@ -10,7 +10,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
-	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
+	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles"
 )
 
 type supportedTemplateCapability struct{}

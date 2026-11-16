@@ -1,4 +1,4 @@
-package monitoringprofile
+package collectorruntime
 
 import (
 	"fmt"
@@ -7,12 +7,13 @@ import (
 	"strings"
 
 	"github.com/ar-imms/telemetry-agent/internal/config"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 )
 
-// DockerCollectorLayer projects registered Docker profiles into one
+// DockerMonitoringLayer projects registered Docker profiles into one
 // docker_observer extension and a receiver_creator rule set. The returned
 // receiver names must be added to the metrics pipeline by the composition root.
-func (r Registry) DockerCollectorLayer(osName, endpoint, nodeID string) (config.InlineLayer, []string, error) {
+func DockerMonitoringLayer(profileInputs []contracts.DockerMonitoringProfile, osName, endpoint, nodeID string) (config.InlineLayer, []string, error) {
 	if osName != "linux" && osName != "windows" {
 		return config.InlineLayer{}, nil, fmt.Errorf("Docker monitoring is unsupported on this platform")
 	}
@@ -22,12 +23,12 @@ func (r Registry) DockerCollectorLayer(osName, endpoint, nodeID string) (config.
 	if strings.TrimSpace(nodeID) == "" || len(nodeID) > 128 || strings.ContainsAny(nodeID, "\x00\r\n") {
 		return config.InlineLayer{}, nil, fmt.Errorf("Core node identity is required for Docker monitoring")
 	}
-	profiles := make([]any, 0, len(r.profiles))
-	for _, profile := range r.profiles {
+	profiles := make([]any, 0)
+	for _, profile := range profileInputs {
 		if profile.Provider != "docker" {
 			continue
 		}
-		if !CredentialsConfigured(profile) {
+		if !ProfileCredentialsConfigured(profile.ReceiverType, profile.Settings.UsernameEnv, profile.Settings.PasswordEnv) {
 			continue
 		}
 		receivers := make(map[string]any)
@@ -90,7 +91,7 @@ func (r Registry) DockerCollectorLayer(osName, endpoint, nodeID string) (config.
 	return layer, []string{"receiver_creator"}, nil
 }
 
-func receiverConfiguration(profile Profile, strategy EndpointStrategy) map[string]any {
+func receiverConfiguration(profile contracts.DockerMonitoringProfile, strategy contracts.DockerEndpointStrategy) map[string]any {
 	switch profile.ReceiverType {
 	case "redis":
 		return map[string]any{"endpoint": strategy.Endpoint, "collection_interval": profile.CollectionInterval}
@@ -121,7 +122,7 @@ func receiverConfiguration(profile Profile, strategy EndpointStrategy) map[strin
 	}
 }
 
-func targetPortRule(strategy EndpointStrategy) string {
+func targetPortRule(strategy contracts.DockerEndpointStrategy) string {
 	privatePort := strategy.PrivatePortVariable
 	if privatePort == "" {
 		privatePort = "port"
@@ -136,7 +137,7 @@ func targetPortRule(strategy EndpointStrategy) string {
 	return fmt.Sprintf("(%s == \"\" and %s == %d) or (%s != \"\" and %s == int(%s))", label, privatePort, strategy.TargetPort, label, privatePort, label)
 }
 
-func dockerProfileRule(profile Profile) string {
+func dockerProfileRule(profile contracts.DockerMonitoringProfile) string {
 	keys := make([]string, 0, len(profile.MatchLabels))
 	for key := range profile.MatchLabels {
 		keys = append(keys, key)

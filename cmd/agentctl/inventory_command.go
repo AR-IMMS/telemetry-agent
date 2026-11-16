@@ -14,7 +14,8 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
-	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
+	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles"
+	collectorruntime "github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 )
 
 // writeInventoryHelp prints the read-only inventory command surface.
@@ -77,7 +78,7 @@ func runInventory(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	}
 	profileRegistry := monitoringprofile.DefaultRegistry()
 	if state, stateErr := agentstate.NewStore(*statePath).Load(); stateErr == nil {
-		profileRegistry, err = monitoringprofile.LoadDirectory(state.Collector.ConfigRoot)
+		profileRegistry, err = loadMonitoringProfiles(state.Collector.ConfigRoot)
 		if err != nil {
 			fmt.Fprintf(stderr, "load local monitoring profiles: %v\n", err)
 			return 1
@@ -113,7 +114,7 @@ func runInventory(ctx context.Context, args []string, stdout, stderr io.Writer) 
 					fmt.Fprintf(stdout, "  scope=%s address=%s port=%d protocol=%s provenance=%s\n", endpoint.Scope, endpoint.Address, endpoint.Port, endpoint.Protocol, endpoint.Provenance)
 				}
 				if profile, matched := profileRegistry.Match(string(resource.Key.Provider), resource.Attributes); matched {
-					if !monitoringprofile.CredentialsConfigured(profile) {
+					if !collectorruntime.ProfileCredentialsConfigured(profile.ReceiverType, profile.Settings.UsernameEnv, profile.Settings.PasswordEnv) {
 						fmt.Fprintln(stdout, "Monitoring configuration: requires_configuration (PostgreSQL credential values are unavailable to the Agent service)")
 					}
 					diagnostic := monitoringprofile.DiagnoseEndpointWithAttributes(profile, runtime.GOOS, resource.Endpoints, fetchCollectorScrapeEvidence(ctx), resource.Attributes)

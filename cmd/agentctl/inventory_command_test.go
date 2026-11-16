@@ -12,7 +12,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
-	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
+	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles"
 )
 
 func TestInventoryCommandsReadPersistedSnapshot(t *testing.T) {

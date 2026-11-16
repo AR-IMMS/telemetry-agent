@@ -14,7 +14,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
-	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
+	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles"
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 )
@@ -37,7 +37,7 @@ func newRuntimeTemplateMaterializer(statePath string, publisher ...events.Publis
 	if err != nil {
 		return runtimeTemplateMaterializer{}, fmt.Errorf("load Agent config root for template materialization: %w", err)
 	}
-	profiles, err := monitoringprofile.LoadDirectory(state.Collector.ConfigRoot)
+	profiles, err := loadMonitoringProfiles(state.Collector.ConfigRoot)
 	if err != nil {
 		return runtimeTemplateMaterializer{}, fmt.Errorf("load local monitoring profiles: %w", err)
 	}

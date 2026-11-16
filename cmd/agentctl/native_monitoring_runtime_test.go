@@ -11,13 +11,14 @@ import (
 	"testing"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/config"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
-	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
+	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	collectorruntime "github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 )
 
 func TestPinnedCollectorValidatesNativeDockerRedisProfile(t *testing.T) {
@@ -42,7 +43,7 @@ func TestPinnedCollectorValidatesNativeDockerRedisProfile(t *testing.T) {
 	if platform.OS == "windows" {
 		dockerEndpoint = "npipe:////./pipe/docker_engine"
 	}
-	profileLayer, receiverNames, err := monitoringprofile.DefaultRegistry().DockerCollectorLayer(platform.OS, dockerEndpoint, "11111111-2222-4333-8444-555555555555")
+	profileLayer, receiverNames, err := collectorruntime.DockerMonitoringLayer(collectorMonitoringProfiles(monitoringprofile.DefaultRegistry().Profiles()), platform.OS, dockerEndpoint, "11111111-2222-4333-8444-555555555555")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +120,7 @@ profiles:
 	if err := os.WriteFile(filepath.Join(profilesDir, "test.yaml"), []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	registry, err := monitoringprofile.LoadDirectory(root)
+	registry, err := loadMonitoringProfiles(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +136,7 @@ profiles:
 	if platform.OS == "windows" {
 		dockerEndpoint = "npipe:////./pipe/docker_engine"
 	}
-	profileLayer, receiverNames, err := registry.DockerCollectorLayer(platform.OS, dockerEndpoint, "11111111-2222-4333-8444-555555555555")
+	profileLayer, receiverNames, err := collectorruntime.DockerMonitoringLayer(collectorMonitoringProfiles(registry.Profiles()), platform.OS, dockerEndpoint, "11111111-2222-4333-8444-555555555555")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,7 +2,6 @@ package monitoringprofile
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -31,6 +30,7 @@ const (
 
 var profileIDPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
 var targetPortLabelPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.\/-]{0,127}$`)
+var environmentNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // EndpointStrategy describes one platform-specific endpoint selection rule.
 type EndpointStrategy struct {
@@ -216,15 +216,4 @@ func cloneProfile(profile Profile) Profile {
 	clone.RequiredCapabilities = append([]string(nil), profile.RequiredCapabilities...)
 	clone.EndpointStrategies = append([]EndpointStrategy(nil), profile.EndpointStrategies...)
 	return clone
-}
-
-// CredentialsConfigured reports whether all local credential references needed
-// by a profile resolve to non-empty values. It never returns or logs a value.
-func CredentialsConfigured(profile Profile) bool {
-	if profile.ReceiverType != "postgresql" {
-		return true
-	}
-	username, usernameOK := os.LookupEnv(profile.Settings.UsernameEnv)
-	password, passwordOK := os.LookupEnv(profile.Settings.PasswordEnv)
-	return usernameOK && strings.TrimSpace(username) != "" && passwordOK && strings.TrimSpace(password) != ""
 }

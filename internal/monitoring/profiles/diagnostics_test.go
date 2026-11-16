@@ -120,34 +120,3 @@ func TestParseCollectorReceiverCreatorFailureUsesDynamicReceiverName(t *testing.
 		t.Fatalf("evidence=%+v", evidence)
 	}
 }
-
-func TestRegistryExtendsDockerProfilesWithoutChangingDiscoveryProvider(t *testing.T) {
-	t.Setenv("AR_IMMS_PG_USER", "metrics_reader")
-	t.Setenv("AR_IMMS_PG_PASSWORD", "test-only-secret")
-	redis := RedisProfile()
-	postgres := Profile{
-		ID: "postgres", Provider: "docker", MatchLabels: map[string]string{LabelMonitoringEnabled: "true", LabelMonitoringProfile: "postgres"},
-		RequiredCapabilities: []string{"otel.receiver.postgresql.metrics"}, ReceiverType: "postgresql", CollectionInterval: "10s",
-		EndpointStrategies: []EndpointStrategy{{ID: "alternate_port", OS: "windows", When: "alternate_port > 0", Endpoint: "127.0.0.1:`alternate_port`", Scope: inventoryctx.EndpointHost, Provenance: "published_port", Priority: 100}},
-		Settings:           ReceiverSettings{UsernameEnv: "AR_IMMS_PG_USER", PasswordEnv: "AR_IMMS_PG_PASSWORD"},
-	}
-	registry, err := NewRegistry(redis, postgres)
-	if err != nil {
-		t.Fatal(err)
-	}
-	registeredProfiles := registry.Profiles()
-	if len(registeredProfiles) != 2 || registeredProfiles[0].ID != "postgres" || registeredProfiles[1].ID != "redis" {
-		t.Fatalf("registry profile snapshot=%+v", registeredProfiles)
-	}
-	layer, receivers, err := registry.DockerCollectorLayer("windows", dockerEndpoint("windows"), "core-node-123")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(receivers) != 1 || receivers[0] != "receiver_creator" {
-		t.Fatalf("receiver pipeline entries=%v", receivers)
-	}
-	configured := layer.Document["receivers"].(map[string]any)["receiver_creator"].(map[string]any)["receivers"].(map[string]any)
-	if configured["redis/alternate_port"] == nil || configured["postgresql/alternate_port"] == nil {
-		t.Fatalf("registry profiles were not both projected: %#v", configured)
-	}
-}

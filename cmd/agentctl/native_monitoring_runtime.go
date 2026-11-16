@@ -8,13 +8,13 @@ import (
 	"strings"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 	"github.com/ar-imms/telemetry-agent/internal/config"
 	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
-	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
+	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 )
 
 // nativeDockerMonitoringInputs opts into OTel-native profile discovery only
@@ -27,7 +27,7 @@ func nativeDockerMonitoringInputs(statePath, osName string) ([]config.InlineLaye
 	if err != nil {
 		return nil, nil, fmt.Errorf("load Collector config root for native Docker monitoring: %w", err)
 	}
-	profiles, err := monitoringprofile.LoadDirectory(state.Collector.ConfigRoot)
+	profiles, err := loadMonitoringProfiles(state.Collector.ConfigRoot)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -38,7 +38,7 @@ func nativeDockerMonitoringInputsWithConfigRoot(statePath, osName, configRoot st
 	if strings.TrimSpace(os.Getenv(dockerDiscoveryEndpointEnv)) == "" {
 		return nil, nil, nil
 	}
-	profiles, err := monitoringprofile.LoadDirectory(configRoot)
+	profiles, err := loadMonitoringProfiles(configRoot)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -76,7 +76,7 @@ func nativeDockerMonitoringInputsWithProfiles(statePath, osName string, profiles
 			}
 		}
 	}
-	layer, receivers, err := profiles.DockerCollectorLayer(strings.ToLower(osName), endpoint, nodeID)
+	layer, receivers, err := collectorruntime.DockerMonitoringLayer(collectorMonitoringProfiles(profiles.Profiles()), strings.ToLower(osName), endpoint, nodeID)
 	if err != nil {
 		return nil, nil, err
 	}

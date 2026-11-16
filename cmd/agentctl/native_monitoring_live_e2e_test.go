@@ -21,7 +21,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
-	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
+	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 )
