@@ -330,6 +330,27 @@ func TestRuntimeLaunchAddsGenerationReadinessToLegacyConfigSnapshot(t *testing.T
 	}
 }
 
+func TestVerifyPendingGatewayRevisionReturnsGracefullyWhenCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	repository := &cancelAwareGatewayRuntime{
+		fakeGatewayRuntimeRepository: fakeGatewayRuntimeRepository{
+			resolved: coreconfig.RuntimeGateway{
+				Endpoint: "core.example:4317", Revision: 11, Generation: 1, NeedsReadiness: true,
+			},
+		},
+	}
+	watcher := runtimeWatcher{gatewayRuntime: repository}
+	err := watcher.verifyPendingGatewayRevision(ctx, 1, supervisor.Options{
+		GatewayEndpoint: "core.example:4317",
+	}, make(chan struct{}))
+	if err != nil {
+		t.Fatalf("canceled readiness check returned error: %v", err)
+	}
+	if repository.applied {
+		t.Fatal("canceled readiness check marked the Gateway revision applied")
+	}
+}
 func TestRuntimeWatcherConfirmsUnchangedGatewayRevisionWithoutRestart(t *testing.T) {
 	root := t.TempDir()
 	configPath := filepath.Join(root, "otel.yaml")
@@ -469,6 +490,26 @@ func (r *pendingGatewayRuntime) setPendingRevision(revision uint64) {
 	defer r.mu.Unlock()
 	r.gateway.Revision = revision
 	r.gateway.NeedsReadiness = true
+}
+
+type cancelAwareGatewayRuntime struct {
+	fakeGatewayRuntimeRepository
+	applied bool
+}
+
+func (r *cancelAwareGatewayRuntime) GatewayForGeneration(ctx context.Context, generation uint64) (coreconfig.RuntimeGateway, error) {
+	if err := ctx.Err(); err != nil {
+		return coreconfig.RuntimeGateway{}, err
+	}
+	return r.fakeGatewayRuntimeRepository.GatewayForGeneration(ctx, generation)
+}
+
+func (r *cancelAwareGatewayRuntime) MarkGatewayApplied(ctx context.Context, _ uint64, _ string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	r.applied = true
+	return nil
 }
 
 type fakeGatewayRuntimeRepository struct {
