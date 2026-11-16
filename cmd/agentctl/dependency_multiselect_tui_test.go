@@ -6,7 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/ar-imms/telemetry-agent/internal/dependency"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 )
 
 func TestDependencyMultiSelectTUITogglesAndConfirmsSelection(

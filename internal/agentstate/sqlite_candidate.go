@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
+	activationsqlite "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/sqlite"
 )
 
 // CandidateAdmission binds one compiled candidate to the current durable
@@ -264,7 +265,7 @@ func saveCandidateState(tx *sql.Tx, state State) error {
 }
 
 func writeCandidateJournal(tx *sql.Tx, generation uint64, mapping CandidateMapping) error {
-	history, err := candidateJournalHistory(tx, generation, mapping)
+	history, err := activationsqlite.CandidateJournalHistory(tx, generation, mapping.Outcome, mapping.Stage, mapping.RecoveryResult)
 	if err != nil {
 		return err
 	}

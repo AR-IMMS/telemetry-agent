@@ -4,15 +4,16 @@ import (
 	"context"
 	"fmt"
 	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
-	"github.com/ar-imms/telemetry-agent/internal/agentinstallation"
-	"github.com/ar-imms/telemetry-agent/internal/agentlifecycle"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/service"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
-	"github.com/ar-imms/telemetry-agent/internal/dependency"
-	librehardwaremonitor "github.com/ar-imms/telemetry-agent/internal/dependency/libre_hardware_monitor"
-	nodeexporter "github.com/ar-imms/telemetry-agent/internal/dependency/node_exporter"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
-	"github.com/ar-imms/telemetry-agent/internal/supervisor"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	librehardwaremonitor "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/libre_hardware_monitor"
+	nodeexporter "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/node_exporter"
+	windowsexporter "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/windows_exporter"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
 	"io"
 	"net"
 	"net/http"
@@ -278,7 +279,7 @@ func defaultListDependencies(
 // defaultDependencyCatalog creates the built-in integrations bundled with this
 // agentctl release.
 func defaultDependencyCatalog() (dependency.Catalog, error) {
-	windowsExporterOptions := dependency.DefaultWindowsExporterOptions()
+	windowsExporterOptions := windowsexporter.DefaultWindowsExporterOptions()
 	nodeExporterOptions := nodeexporter.DefaultOptions()
 	lhmOptions := librehardwaremonitor.DefaultOptions()
 
@@ -294,18 +295,18 @@ func defaultDependencyCatalog() (dependency.Catalog, error) {
 				SupportedOS: []string{"windows"},
 			},
 			CollectorReceiver: "prometheus/windows_exporter",
-			Install: dependency.NewWindowsExporterInstaller(
+			Install: windowsexporter.NewWindowsExporterInstaller(
 				windowsExporterOptions,
 				bootstrap.HTTPDownloader{},
 			),
-			Inspect: dependency.NewWindowsExporterInspector(
+			Inspect: windowsexporter.NewWindowsExporterInspector(
 				windowsExporterOptions,
 			),
-			Teardown: dependency.NewWindowsExporterTeardown(
+			Teardown: windowsexporter.NewWindowsExporterTeardown(
 				windowsExporterOptions,
 			),
-			Enable: dependency.NewWindowsExporterEnabler(
-				dependency.DefaultWindowsExporterOptions(),
+			Enable: windowsexporter.NewWindowsExporterEnabler(
+				windowsexporter.DefaultWindowsExporterOptions(),
 			),
 		},
 		{

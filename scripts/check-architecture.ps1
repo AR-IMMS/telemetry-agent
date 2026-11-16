@@ -22,37 +22,36 @@ try {
     # Collector execution, or transport adapters directly.
     $domainRoots = @(
         "$modulePath/internal/configuration",
-        "$modulePath/internal/discovery",
         "$modulePath/internal/identity",
         "$modulePath/internal/integration",
         "$modulePath/internal/inventory",
         "$modulePath/internal/monitoringprofile"
     )
     $adapterRoots = @(
-        "$modulePath/internal/agentinstallation",
-        "$modulePath/internal/agentlifecycle",
+        "$modulePath/internal/runtime/service",
+        "$modulePath/internal/runtime/collector/activation",
         "$modulePath/internal/agentstate",
-        "$modulePath/internal/bootstrap",
-        "$modulePath/internal/collectorruntime",
+        "$modulePath/internal/runtime/bootstrap",
+        "$modulePath/internal/runtime/collector",
         "$modulePath/internal/coreapi",
         "$modulePath/internal/coreconfig",
-        "$modulePath/internal/dependency",
-        "$modulePath/internal/discovery/sqlite",
+        "$modulePath/internal/runtime/dependencies",
+        "$modulePath/internal/runtime/opamp",
+        "$modulePath/internal/runtime/process",
         "$modulePath/internal/configuration/sqlite",
         "$modulePath/internal/identity/credentials",
         "$modulePath/internal/identity/enrollment/sqlite",
         "$modulePath/internal/identity/sqlite",
         "$modulePath/internal/inventory/docker",
         "$modulePath/internal/inventory/sqlite",
-        "$modulePath/internal/reconciliation",
-        "$modulePath/internal/supervisor"
+        "$modulePath/internal/runtime/collector/supervisor"
     )
 
     # Configuration consumes Runtime-owned immutable candidate/application
     # contracts during reconciliation. Concrete Collector Runtime packages remain
     # forbidden to Configuration.
     $contextContractImportAllowlist = @{
-        "$modulePath/internal/configuration/reconciliation|$modulePath/internal/collectorruntime/contracts" = 'OD-05: Configuration owns reconciliation decisions and depends on Runtime only through the candidate/application contract.'
+        "$modulePath/internal/configuration/reconciliation|$modulePath/internal/runtime/collector/contracts" = 'OD-05: Configuration owns reconciliation decisions and depends on Runtime only through the candidate/application contract.'
     }
     # One observed transition: identity currently reads the Windows registry
     # directly. Keep the exception specific and reasoned until an adapter exists.
@@ -61,9 +60,8 @@ try {
     }
     $platformAdapterRoots = @('golang.org/x/sys/windows/registry')
 
-    # Inventory reports provider evidence and must not depend on profile policy.
-    # Configuration owns proposal lifecycle and must not depend on the legacy
-    # Discovery package. Keep these context edges explicit while packages move.
+    # Inventory reports provider evidence and must not depend on Monitoring profile policy.
+    # The legacy Discovery package has been retired; do not retain a dead-path guard.
     $forbiddenContextEdges = @(
         @{
             SourceRoot = "$modulePath/internal/inventory"
@@ -71,16 +69,16 @@ try {
             Reason = 'Inventory emits normalized observations; Monitoring owns profile interpretation.'
         },
         @{
-            SourceRoot = "$modulePath/internal/configuration"
-            TargetRoot = "$modulePath/internal/discovery"
-            Reason = 'Configuration owns proposal lifecycle and persistence; Discovery is not a target context.'
+            SourceRoot = "$modulePath/internal/inventory"
+            TargetRoot = "$modulePath/internal/integration"
+            Reason = 'Inventory supplies observations; Monitoring owns profile matching and recommendations.'
         }
     )
 
     # Reconciliation owns the consumer-side runtime ports. It may depend on
     # runtime contract values, but not on the concrete lifecycle package.
-    $reconciliationContextRoot = "$modulePath/internal/reconciliation"
-    $agentLifecyclePackage = "$modulePath/internal/agentlifecycle"
+    $reconciliationContextRoot = "$modulePath/internal/configuration/reconciliation"
+    $agentLifecyclePackage = "$modulePath/internal/runtime/collector/activation"
     $platformPackageRoot = "$modulePath/internal/platform"
 
     # This pre-existing file is 454 lines. Avoid a mechanical split in the
@@ -181,7 +179,7 @@ try {
             foreach ($adapter in $adapterRoots) {
                 if ($imported -eq $adapter -or $imported.StartsWith("$adapter/", [StringComparison]::Ordinal)) {
                     if ($contextContractImportAllowlist.ContainsKey($edge) -and
-                        $imported -eq "$modulePath/internal/collectorruntime/contracts") {
+                        $imported -eq "$modulePath/internal/runtime/collector/contracts") {
                         break
                     }
                     $violations.Add("domain package imports adapter: $package -> $imported")

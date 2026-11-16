@@ -6,12 +6,12 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentlifecycle"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/config"
-	"github.com/ar-imms/telemetry-agent/internal/dependency"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 )
 
 func saveTestState(t *testing.T, store agentstate.Repository, state agentstate.State) {

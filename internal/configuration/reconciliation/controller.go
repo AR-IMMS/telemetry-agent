@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/collectorruntime/contracts"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 	"github.com/ar-imms/telemetry-agent/internal/config"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/integration"

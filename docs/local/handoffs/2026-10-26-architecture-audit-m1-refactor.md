@@ -32,7 +32,7 @@ These local paths may not exist on another computer. The decisions above and imp
 
 ## Implementation and review history
 
-The refactor plan is [docs/superpowers/plans/2026-10-26-m1-refactor-plan.md](../superpowers/plans/2026-10-26-m1-refactor-plan.md). PR #11 extracts agentctl composition/lifecycle workflows; adds a repository seam, SQLite WAL state/migration, revision-bound plans, activation journal and restart recovery; and updates architecture/runbook documentation.
+The refactor plan is [docs/superpowers/plans/2026-10-26-m1-refactor-plan.md](../../superpowers/plans/2026-10-26-m1-refactor-plan.md). PR #11 extracts agentctl composition/lifecycle workflows; adds a repository seam, SQLite WAL state/migration, revision-bound plans, activation journal and restart recovery; and updates architecture/runbook documentation.
 
 A final code review identified four lifecycle hazards: promotion could precede a failed state commit without startup recovery; readiness could copy newer bytes into last-known-good; process-local activation serialization could permit stale rollback across processes; and teardown could race a dependency re-enable. The implementation addresses these with:
 

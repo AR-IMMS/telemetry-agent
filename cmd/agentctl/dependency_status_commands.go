@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/dependency"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 	"io"
 	"os"
 	"sort"

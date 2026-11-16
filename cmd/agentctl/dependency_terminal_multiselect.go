@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/ar-imms/telemetry-agent/internal/dependency"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 	tea "github.com/charmbracelet/bubbletea"
 )
 

@@ -6,8 +6,8 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/dependency"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 )
 
 const dependencyEvidenceTimeout = 5 * time.Second
