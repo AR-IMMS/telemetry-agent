@@ -1,6 +1,7 @@
 package main
 
 import (
+	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	profilesapplication "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/application"
 	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	yamlprofiles "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/yaml"
@@ -11,6 +12,21 @@ import (
 // and validated local definitions at the executable boundary.
 func loadMonitoringProfiles(configRoot string) (monitoringdomain.Registry, error) {
 	return profilesapplication.LoadDirectory(configRoot, yamlprofiles.DirectorySource{})
+}
+
+// monitoringEndpointEvidence projects persisted Inventory endpoints into the
+// narrow evidence contract consumed by Monitoring profile diagnostics.
+func monitoringEndpointEvidence(endpoints []inventoryctx.Endpoint) []profilesapplication.EndpointObservation {
+	result := make([]profilesapplication.EndpointObservation, 0, len(endpoints))
+	for _, endpoint := range endpoints {
+		result = append(result, profilesapplication.EndpointObservation{
+			Address: endpoint.Address, NetworkName: endpoint.NetworkName,
+			NetworkPriority: endpoint.NetworkPriority, Port: endpoint.Port,
+			ContainerPort: endpoint.ContainerPort, Protocol: endpoint.Protocol,
+			Scope: monitoringdomain.EndpointScope(endpoint.Scope), Provenance: endpoint.Provenance,
+		})
+	}
+	return result
 }
 
 // collectorMonitoringProfiles translates Monitoring-owned intent into the

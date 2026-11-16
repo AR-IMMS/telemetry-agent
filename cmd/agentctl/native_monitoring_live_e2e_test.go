@@ -212,7 +212,7 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 	if unpublished.Key.ProviderResourceID == "" {
 		t.Fatalf("unpublished Redis container %q was not retained in inventory", thirdID)
 	}
-	diagnostic := profilesapplication.DiagnoseEndpoint(monitoringdomain.RedisProfile(), runtime.GOOS, unpublished.Endpoints, nil)
+	diagnostic := profilesapplication.DiagnoseEndpoint(monitoringdomain.RedisProfile(), runtime.GOOS, monitoringEndpointEvidence(unpublished.Endpoints), nil)
 	if runtime.GOOS == "windows" && diagnostic.State != profilesapplication.EndpointMissing {
 		t.Fatalf("unpublished Windows endpoint diagnosis=%+v, want missing without host mapping", diagnostic)
 	}
@@ -279,7 +279,7 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 			if resource.Key.ProviderResourceID != secondID {
 				continue
 			}
-			diagnostic := profilesapplication.DiagnoseEndpointWithAttributes(monitoringdomain.RedisProfile(), runtime.GOOS, resource.Endpoints, collectorScrapeEvidenceFromSnapshot(collectorLogs.health.Snapshot()), resource.Attributes)
+			diagnostic := profilesapplication.DiagnoseEndpointWithAttributes(monitoringdomain.RedisProfile(), runtime.GOOS, monitoringEndpointEvidence(resource.Endpoints), collectorScrapeEvidenceFromSnapshot(collectorLogs.health.Snapshot()), resource.Attributes)
 			if diagnostic.State != profilesapplication.EndpointUnreachable || diagnostic.EvidenceTime.IsZero() {
 				t.Fatalf("live endpoint failure diagnosis=%+v, want unreachable with timestamped OTel evidence", diagnostic)
 			}

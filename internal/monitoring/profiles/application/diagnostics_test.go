@@ -1,10 +1,8 @@
 package application
 
 import (
-	"testing"
-
-	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
+	"testing"
 )
 
 func TestDiagnoseEndpointDistinguishesMissingAmbiguousAndResolved(t *testing.T) {
@@ -12,15 +10,15 @@ func TestDiagnoseEndpointDistinguishesMissingAmbiguousAndResolved(t *testing.T) 
 	tests := []struct {
 		name      string
 		osName    string
-		endpoints []inventoryctx.Endpoint
+		endpoints []EndpointObservation
 		want      EndpointState
 		count     int
 	}{
-		{name: "no host mapping on Windows", osName: "windows", endpoints: []inventoryctx.Endpoint{{Address: "172.19.0.3", Port: 6379, Protocol: "tcp", Scope: inventoryctx.EndpointContainer, Provenance: "container_network", ContainerPort: 6379}}, want: EndpointMissing},
-		{name: "one published target", osName: "windows", endpoints: []inventoryctx.Endpoint{{Address: "127.0.0.1", Port: 16379, Protocol: "tcp", Scope: inventoryctx.EndpointHost, Provenance: "published_port", ContainerPort: 6379}}, want: EndpointResolved, count: 1},
-		{name: "two published targets", osName: "windows", endpoints: []inventoryctx.Endpoint{{Address: "127.0.0.1", Port: 16379, Protocol: "tcp", Scope: inventoryctx.EndpointHost, Provenance: "published_port", ContainerPort: 6379}, {Address: "127.0.0.1", Port: 16380, Protocol: "tcp", Scope: inventoryctx.EndpointHost, Provenance: "published_port", ContainerPort: 6379}}, want: EndpointAmbiguous, count: 2},
-		{name: "host mapping wins over multiple network addresses", osName: "linux", endpoints: []inventoryctx.Endpoint{{Address: "172.19.0.3", Port: 6379, Protocol: "tcp", Scope: inventoryctx.EndpointContainer, Provenance: "container_network", ContainerPort: 6379}, {Address: "172.20.0.3", Port: 6379, Protocol: "tcp", Scope: inventoryctx.EndpointContainer, Provenance: "container_network", ContainerPort: 6379}, {Address: "127.0.0.1", Port: 16379, Protocol: "tcp", Scope: inventoryctx.EndpointHost, Provenance: "published_port", ContainerPort: 6379}}, want: EndpointResolved, count: 1},
-		{name: "multiple unbound networks are ambiguous", osName: "linux", endpoints: []inventoryctx.Endpoint{{Address: "172.19.0.3", Port: 6379, Protocol: "tcp", Scope: inventoryctx.EndpointContainer, Provenance: "container_network", ContainerPort: 6379}, {Address: "172.20.0.3", Port: 6379, Protocol: "tcp", Scope: inventoryctx.EndpointContainer, Provenance: "container_network", ContainerPort: 6379}}, want: EndpointAmbiguous, count: 2},
+		{name: "no host mapping on Windows", osName: "windows", endpoints: []EndpointObservation{{Address: "172.19.0.3", Port: 6379, Protocol: "tcp", Scope: domain.EndpointContainer, Provenance: "container_network", ContainerPort: 6379}}, want: EndpointMissing},
+		{name: "one published target", osName: "windows", endpoints: []EndpointObservation{{Address: "127.0.0.1", Port: 16379, Protocol: "tcp", Scope: domain.EndpointHost, Provenance: "published_port", ContainerPort: 6379}}, want: EndpointResolved, count: 1},
+		{name: "two published targets", osName: "windows", endpoints: []EndpointObservation{{Address: "127.0.0.1", Port: 16379, Protocol: "tcp", Scope: domain.EndpointHost, Provenance: "published_port", ContainerPort: 6379}, {Address: "127.0.0.1", Port: 16380, Protocol: "tcp", Scope: domain.EndpointHost, Provenance: "published_port", ContainerPort: 6379}}, want: EndpointAmbiguous, count: 2},
+		{name: "host mapping wins over multiple network addresses", osName: "linux", endpoints: []EndpointObservation{{Address: "172.19.0.3", Port: 6379, Protocol: "tcp", Scope: domain.EndpointContainer, Provenance: "container_network", ContainerPort: 6379}, {Address: "172.20.0.3", Port: 6379, Protocol: "tcp", Scope: domain.EndpointContainer, Provenance: "container_network", ContainerPort: 6379}, {Address: "127.0.0.1", Port: 16379, Protocol: "tcp", Scope: domain.EndpointHost, Provenance: "published_port", ContainerPort: 6379}}, want: EndpointResolved, count: 1},
+		{name: "multiple unbound networks are ambiguous", osName: "linux", endpoints: []EndpointObservation{{Address: "172.19.0.3", Port: 6379, Protocol: "tcp", Scope: domain.EndpointContainer, Provenance: "container_network", ContainerPort: 6379}, {Address: "172.20.0.3", Port: 6379, Protocol: "tcp", Scope: domain.EndpointContainer, Provenance: "container_network", ContainerPort: 6379}}, want: EndpointAmbiguous, count: 2},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -35,9 +33,9 @@ func TestDiagnoseEndpointDistinguishesMissingAmbiguousAndResolved(t *testing.T) 
 func TestDiagnoseEndpointUsesValidatedPortOverrideAndDeterministicNetwork(t *testing.T) {
 	profile := domain.RedisProfile()
 	attributes := map[string]string{"label." + domain.LabelMonitoringPort: "6380"}
-	endpoints := []inventoryctx.Endpoint{
-		{Address: "172.20.0.4", NetworkName: "zeta", NetworkPriority: 2, Port: 6380, ContainerPort: 6380, Protocol: "tcp", Scope: inventoryctx.EndpointContainer, Provenance: "container_network"},
-		{Address: "172.19.0.4", NetworkName: "alpha", NetworkPriority: 1, Port: 6380, ContainerPort: 6380, Protocol: "tcp", Scope: inventoryctx.EndpointContainer, Provenance: "container_network"},
+	endpoints := []EndpointObservation{
+		{Address: "172.20.0.4", NetworkName: "zeta", NetworkPriority: 2, Port: 6380, ContainerPort: 6380, Protocol: "tcp", Scope: domain.EndpointContainer, Provenance: "container_network"},
+		{Address: "172.19.0.4", NetworkName: "alpha", NetworkPriority: 1, Port: 6380, ContainerPort: 6380, Protocol: "tcp", Scope: domain.EndpointContainer, Provenance: "container_network"},
 	}
 	got := DiagnoseEndpointWithAttributes(profile, "linux", endpoints, nil, attributes)
 	if got.State != EndpointResolved || got.CandidateCount != 2 || got.Endpoint.NetworkName != "zeta" || got.Endpoint.Address != "172.20.0.4" {
@@ -61,9 +59,9 @@ func TestDiagnoseEndpointRejectsInvalidPortOverride(t *testing.T) {
 
 func TestDiagnoseEndpointUsesNetworkNameForPriorityTie(t *testing.T) {
 	profile := domain.RedisProfile()
-	endpoints := []inventoryctx.Endpoint{
-		{Address: "172.20.0.4", NetworkName: "zeta", Port: 6379, ContainerPort: 6379, Protocol: "tcp", Scope: inventoryctx.EndpointContainer, Provenance: "container_network"},
-		{Address: "172.19.0.4", NetworkName: "alpha", Port: 6379, ContainerPort: 6379, Protocol: "tcp", Scope: inventoryctx.EndpointContainer, Provenance: "container_network"},
+	endpoints := []EndpointObservation{
+		{Address: "172.20.0.4", NetworkName: "zeta", Port: 6379, ContainerPort: 6379, Protocol: "tcp", Scope: domain.EndpointContainer, Provenance: "container_network"},
+		{Address: "172.19.0.4", NetworkName: "alpha", Port: 6379, ContainerPort: 6379, Protocol: "tcp", Scope: domain.EndpointContainer, Provenance: "container_network"},
 	}
 	got := DiagnoseEndpoint(profile, "linux", endpoints, nil)
 	if got.State != EndpointResolved || got.Endpoint.NetworkName != "alpha" {
@@ -73,9 +71,9 @@ func TestDiagnoseEndpointUsesNetworkNameForPriorityTie(t *testing.T) {
 
 func TestDiagnoseEndpointFailsClosedWithoutNetworkIdentity(t *testing.T) {
 	profile := domain.RedisProfile()
-	endpoints := []inventoryctx.Endpoint{
-		{Address: "172.20.0.4", Port: 6379, ContainerPort: 6379, Protocol: "tcp", Scope: inventoryctx.EndpointContainer, Provenance: "container_network"},
-		{Address: "172.19.0.4", Port: 6379, ContainerPort: 6379, Protocol: "tcp", Scope: inventoryctx.EndpointContainer, Provenance: "container_network"},
+	endpoints := []EndpointObservation{
+		{Address: "172.20.0.4", Port: 6379, ContainerPort: 6379, Protocol: "tcp", Scope: domain.EndpointContainer, Provenance: "container_network"},
+		{Address: "172.19.0.4", Port: 6379, ContainerPort: 6379, Protocol: "tcp", Scope: domain.EndpointContainer, Provenance: "container_network"},
 	}
 	got := DiagnoseEndpoint(profile, "linux", endpoints, nil)
 	if got.State != EndpointAmbiguous || got.CandidateCount != 2 {
@@ -85,13 +83,13 @@ func TestDiagnoseEndpointFailsClosedWithoutNetworkIdentity(t *testing.T) {
 
 func TestDiagnoseEndpointRequiresMatchingOTelScrapeFailureForUnreachable(t *testing.T) {
 	profile := domain.RedisProfile()
-	endpoint := inventoryctx.Endpoint{Address: "127.0.0.1", Port: 16379, Protocol: "tcp", Scope: inventoryctx.EndpointHost, Provenance: "published_port", ContainerPort: 6379}
-	withoutEvidence := DiagnoseEndpoint(profile, "windows", []inventoryctx.Endpoint{endpoint}, nil)
+	endpoint := EndpointObservation{Address: "127.0.0.1", Port: 16379, Protocol: "tcp", Scope: domain.EndpointHost, Provenance: "published_port", ContainerPort: 6379}
+	withoutEvidence := DiagnoseEndpoint(profile, "windows", []EndpointObservation{endpoint}, nil)
 	if withoutEvidence.State != EndpointResolved {
 		t.Fatalf("discovered endpoint state=%q, want resolved but unverified", withoutEvidence.State)
 	}
 	evidence := []CollectorScrapeEvidence{{ReceiverID: "redis/alternate_port", Endpoint: "127.0.0.1:16379", FailureCode: "connection_failed"}}
-	got := DiagnoseEndpoint(profile, "windows", []inventoryctx.Endpoint{endpoint}, evidence)
+	got := DiagnoseEndpoint(profile, "windows", []EndpointObservation{endpoint}, evidence)
 	if got.State != EndpointUnreachable || got.EvidenceSource != EvidenceCollectorScrapeError {
 		t.Fatalf("diagnosis=%+v, want OTel-evidenced unreachable endpoint", got)
 	}

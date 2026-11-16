@@ -151,7 +151,7 @@ func TestInventoryEvidenceClassifiesMatchingCollectorEndpointAsUnreachable(t *te
 		Receiver: "redis/alternate_port", Endpoint: "127.0.0.1:16379", Code: "connection_failed", ObservedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	}}}
 	evidence := collectorScrapeEvidenceFromSnapshot(snapshot)
-	endpoint := profilesapplication.DiagnoseEndpoint(monitoringdomain.RedisProfile(), "windows", []inventoryctx.Endpoint{{Address: "127.0.0.1", Port: 16379, ContainerPort: 6379, Protocol: "tcp", Scope: inventoryctx.EndpointHost, Provenance: "published_port"}}, evidence)
+	endpoint := profilesapplication.DiagnoseEndpoint(monitoringdomain.RedisProfile(), "windows", monitoringEndpointEvidence([]inventoryctx.Endpoint{{Address: "127.0.0.1", Port: 16379, ContainerPort: 6379, Protocol: "tcp", Scope: inventoryctx.EndpointHost, Provenance: "published_port"}}), evidence)
 	if endpoint.State != profilesapplication.EndpointUnreachable || endpoint.EvidenceCode != "connection_failed" {
 		t.Fatalf("diagnostic with matching OTel scrape failure=%+v, want unreachable with connection_failed evidence", endpoint)
 	}

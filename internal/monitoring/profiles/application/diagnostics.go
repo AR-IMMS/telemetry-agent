@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 )
 
@@ -46,20 +45,34 @@ type EndpointDiagnostic struct {
 	ProfileID      string
 	State          EndpointState
 	CandidateCount int
-	Endpoint       inventoryctx.Endpoint
+	Endpoint       EndpointObservation
 	EvidenceSource string
 	EvidenceCode   string
 	EvidenceTime   time.Time
 }
 
+// EndpointObservation is the minimal endpoint evidence required by Monitoring
+// profile diagnostics. The Inventory application boundary maps its stored
+// observation into this type before calling Monitoring.
+type EndpointObservation struct {
+	Address         string
+	NetworkName     string
+	NetworkPriority int
+	Port            uint16
+	ContainerPort   uint16
+	Protocol        string
+	Scope           domain.EndpointScope
+	Provenance      string
+}
+
 // DiagnoseEndpoint resolves one endpoint using the profile's ordered strategies.
 // A resolved candidate is not considered reachable without matching OTel error evidence.
-func DiagnoseEndpoint(profile domain.Profile, osName string, endpoints []inventoryctx.Endpoint, otelEvidence []CollectorScrapeEvidence) EndpointDiagnostic {
+func DiagnoseEndpoint(profile domain.Profile, osName string, endpoints []EndpointObservation, otelEvidence []CollectorScrapeEvidence) EndpointDiagnostic {
 	return DiagnoseEndpointWithAttributes(profile, osName, endpoints, otelEvidence, nil)
 }
 
 // DiagnoseEndpointWithAttributes resolves one profile endpoint using provider metadata such as port overrides.
-func DiagnoseEndpointWithAttributes(profile domain.Profile, osName string, endpoints []inventoryctx.Endpoint, otelEvidence []CollectorScrapeEvidence, attributes map[string]string) EndpointDiagnostic {
+func DiagnoseEndpointWithAttributes(profile domain.Profile, osName string, endpoints []EndpointObservation, otelEvidence []CollectorScrapeEvidence, attributes map[string]string) EndpointDiagnostic {
 	result := EndpointDiagnostic{ProfileID: profile.ID, State: EndpointMissing, EvidenceSource: EvidenceAgentInventory}
 	strategies := make([]domain.EndpointStrategy, 0, len(profile.EndpointStrategies))
 	for _, strategy := range profile.EndpointStrategies {
@@ -83,14 +96,14 @@ func DiagnoseEndpointWithAttributes(profile domain.Profile, osName string, endpo
 			result.EvidenceCode = "invalid_target_port"
 			return result
 		}
-		candidates := make([]inventoryctx.Endpoint, 0, len(endpoints))
+		candidates := make([]EndpointObservation, 0, len(endpoints))
 		for _, endpoint := range endpoints {
-			if domain.EndpointScope(endpoint.Scope) != strategy.Scope || endpoint.Provenance != strategy.Provenance || !strings.EqualFold(endpoint.Protocol, "tcp") || strings.TrimSpace(endpoint.Address) == "" {
+			if endpoint.Scope != strategy.Scope || endpoint.Provenance != strategy.Provenance || !strings.EqualFold(endpoint.Protocol, "tcp") || strings.TrimSpace(endpoint.Address) == "" {
 				continue
 			}
 			if targetPort != 0 {
 				containerPort := endpoint.ContainerPort
-				if containerPort == 0 && endpoint.Scope == inventoryctx.EndpointContainer {
+				if containerPort == 0 && endpoint.Scope == domain.EndpointContainer {
 					containerPort = endpoint.Port
 				}
 				if containerPort != targetPort {
@@ -164,7 +177,7 @@ func strategyTargetPort(strategy domain.EndpointStrategy, attributes map[string]
 	return uint16(port), nil
 }
 
-func evidenceMatchesEndpoint(target string, candidate inventoryctx.Endpoint) bool {
+func evidenceMatchesEndpoint(target string, candidate EndpointObservation) bool {
 	host, portText, err := net.SplitHostPort(target)
 	if err != nil {
 		return false
@@ -173,7 +186,7 @@ func evidenceMatchesEndpoint(target string, candidate inventoryctx.Endpoint) boo
 	if err != nil || uint16(port) != candidate.Port {
 		return false
 	}
-	if candidate.Scope == inventoryctx.EndpointHost {
+	if candidate.Scope == domain.EndpointHost {
 		// Docker Desktop rules intentionally dial loopback regardless of the host bind address.
 		return host == "127.0.0.1" || host == "localhost" || host == candidate.Address
 	}

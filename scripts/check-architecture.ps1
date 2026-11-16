@@ -147,6 +147,13 @@ try {
                 }
             }
         }
+        if ($package -eq "$monitoringProfilesRoot/application") {
+            foreach ($imported in $imports) {
+                if ($imported.StartsWith("$modulePath/internal/inventory", [StringComparison]::Ordinal)) {
+                    $violations.Add("Monitoring Profiles application must consume its endpoint evidence projection, not Inventory packages: $package -> $imported")
+                }
+            }
+        }
         if ($package -eq $monitoringApplication) {
             foreach ($imported in $imports) {
                 if ($imported.StartsWith("$monitoringProfilesRoot/yaml", [StringComparison]::Ordinal)) {

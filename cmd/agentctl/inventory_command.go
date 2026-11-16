@@ -118,7 +118,7 @@ func runInventory(ctx context.Context, args []string, stdout, stderr io.Writer) 
 					if !collectorruntime.ProfileCredentialsConfigured(profile.ReceiverType, profile.Settings.UsernameEnv, profile.Settings.PasswordEnv) {
 						fmt.Fprintln(stdout, "Monitoring configuration: requires_configuration (PostgreSQL credential values are unavailable to the Agent service)")
 					}
-					diagnostic := profilesapplication.DiagnoseEndpointWithAttributes(profile, runtime.GOOS, resource.Endpoints, fetchCollectorScrapeEvidence(ctx), resource.Attributes)
+					diagnostic := profilesapplication.DiagnoseEndpointWithAttributes(profile, runtime.GOOS, monitoringEndpointEvidence(resource.Endpoints), fetchCollectorScrapeEvidence(ctx), resource.Attributes)
 					fmt.Fprintf(stdout, "Monitoring profile: %s\nProfile endpoint: %s (candidates=%d, evidence=%s)\n",
 						profile.ID, diagnostic.State, diagnostic.CandidateCount, diagnostic.EvidenceSource)
 					if diagnostic.State == profilesapplication.EndpointResolved {
