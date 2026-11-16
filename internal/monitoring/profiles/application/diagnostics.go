@@ -85,7 +85,7 @@ func DiagnoseEndpointWithAttributes(profile domain.Profile, osName string, endpo
 		}
 		candidates := make([]inventoryctx.Endpoint, 0, len(endpoints))
 		for _, endpoint := range endpoints {
-			if endpoint.Scope != strategy.Scope || endpoint.Provenance != strategy.Provenance || !strings.EqualFold(endpoint.Protocol, "tcp") || strings.TrimSpace(endpoint.Address) == "" {
+			if domain.EndpointScope(endpoint.Scope) != strategy.Scope || endpoint.Provenance != strategy.Provenance || !strings.EqualFold(endpoint.Protocol, "tcp") || strings.TrimSpace(endpoint.Address) == "" {
 				continue
 			}
 			if targetPort != 0 {
@@ -104,7 +104,7 @@ func DiagnoseEndpointWithAttributes(profile domain.Profile, osName string, endpo
 		}
 		result.CandidateCount = len(candidates)
 		if len(candidates) > 1 {
-			if strategy.Scope != inventoryctx.EndpointContainer || strategy.Provenance != "container_network" {
+			if strategy.Scope != domain.EndpointContainer || strategy.Provenance != "container_network" {
 				result.State = EndpointAmbiguous
 				return result
 			}

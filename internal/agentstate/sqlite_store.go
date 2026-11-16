@@ -23,17 +23,25 @@ var sqliteUpdateMutex sync.Mutex
 // Each operation owns and closes its database handle; transactions remain
 // short and callbacks must contain state changes only.
 type SQLiteStore struct {
-	path             string
-	legacyPath       string
-	initializeSchema func(*sql.DB) error
+	path               string
+	legacyPath         string
+	initializeSchema   func(*sql.DB) error
+	markGatewayApplied func(*sql.Tx, uint64, string) error
 }
 
 // NewSQLiteStore creates a SQLite WAL store at the supplied database path.
 // Application composition supplies its ordered schema initializer explicitly.
 func NewSQLiteStore(path string, initializeSchema func(*sql.DB) error) SQLiteStore {
+	return NewSQLiteStoreWithGatewayApplied(path, initializeSchema, nil)
+}
+
+// NewSQLiteStoreWithGatewayApplied creates a SQLite store whose candidate
+// completion can enlist Configuration's Gateway attribution in the same SQL
+// transaction. Application composition supplies the owner callback.
+func NewSQLiteStoreWithGatewayApplied(path string, initializeSchema func(*sql.DB) error, markGatewayApplied func(*sql.Tx, uint64, string) error) SQLiteStore {
 	path = strings.TrimSpace(path)
 	legacy := filepath.Join(filepath.Dir(path), "state.json")
-	return SQLiteStore{path: path, legacyPath: legacy, initializeSchema: initializeSchema}
+	return SQLiteStore{path: path, legacyPath: legacy, initializeSchema: initializeSchema, markGatewayApplied: markGatewayApplied}
 }
 
 // OpenDatabase opens the operational database after initializing its shared schema.

@@ -13,11 +13,11 @@ import (
 )
 
 func newTestSQLiteStore(path string) SQLiteStore {
-	return NewSQLiteStore(path, initializeTestSQLiteSchema)
+	return NewSQLiteStoreWithGatewayApplied(path, initializeTestSQLiteSchema, remoteconfigsqlite.MarkGatewayAppliedInTransaction)
 }
 
 func newTestStore(path string) Repository {
-	return NewStore(path, initializeTestSQLiteSchema)
+	return NewStoreWithGatewayApplied(path, initializeTestSQLiteSchema, remoteconfigsqlite.MarkGatewayAppliedInTransaction)
 }
 
 func newTestIdentityStore(path string) installationid.InstallationIdentityRepository {

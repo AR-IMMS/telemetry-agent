@@ -1,16 +1,14 @@
 package agentstate
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
-	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
-	remoteconfigsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig/sqlite"
 	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
 	enrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
@@ -30,7 +28,16 @@ type Repository interface {
 // NewStore creates SQLite operational storage. An explicit legacy .json path is
 // imported into a sibling .db file and preserved as migration backup.
 func NewStore(path string, initializeSchema func(*sql.DB) error) Repository {
-	return newSQLiteStoreForPath(path, initializeSchema)
+	return NewStoreWithGatewayApplied(path, initializeSchema, nil)
+}
+
+// NewStoreWithGatewayApplied creates Agent state storage and binds the
+// Configuration-owned Gateway transaction participant at Application
+// composition. The callback runs only inside the candidate applied transaction.
+func NewStoreWithGatewayApplied(path string, initializeSchema func(*sql.DB) error, markGatewayApplied func(*sql.Tx, uint64, string) error) Repository {
+	store := newSQLiteStoreForPath(path, initializeSchema)
+	store.markGatewayApplied = markGatewayApplied
+	return store
 }
 
 // NewIdentityStore returns the SQLite adapter for installation identity at
@@ -40,82 +47,50 @@ func NewIdentityStore(path string, initializeSchema func(*sql.DB) error) install
 	return identitysqlite.New(store.OpenDatabase)
 }
 
-// NewCoreGatewayStore returns the SQLite adapter for Core Gateway snapshot
-// acceptance at the same operational database path used by NewStore.
-func NewCoreGatewayStore(path string, initializeSchema func(*sql.DB) error) coreconfig.GatewayRuntimeRepository {
-	store := newSQLiteStoreForPath(path, initializeSchema)
-	return newCoreGatewayRepository(store)
+// SQLiteUpdateLocker returns the shared process-local write lock used by
+// repositories participating in transactions over the Agent database.
+func SQLiteUpdateLocker() sync.Locker { return &sqliteUpdateMutex }
+
+// SetDesiredGenerationInTransaction updates Agent-owned desired-generation
+// state inside the caller's shared-database transaction.
+func SetDesiredGenerationInTransaction(tx *sql.Tx, generation uint64) error {
+	state, err := loadSQLiteState(tx)
+	if err != nil {
+		return err
+	}
+	state.DesiredGeneration = generation
+	return persistGatewayGeneration(tx, state)
 }
 
-func newCoreGatewayRepository(store SQLiteStore) coreconfig.GatewayRuntimeRepository {
-	return remoteconfigsqlite.New(func(ctx context.Context) (*sql.DB, error) { return store.OpenDatabaseContext(ctx) }, &sqliteUpdateMutex, remoteconfigsqlite.StateAccess{
-		BeginSnapshotAcceptance: func() (func(), error) {
-			state, err := store.Load()
-			if err != nil {
-				return nil, fmt.Errorf("load Agent state before Core Gateway acceptance: %w", err)
-			}
-			if state.Collector.ConfigPath == "" {
-				return nil, nil
-			}
-			lifecycleLock, err := AcquireLifecycleLock(state.Collector.ConfigPath + ".lifecycle")
-			if err != nil {
-				return nil, fmt.Errorf("acquire lifecycle lock for Core Gateway acceptance: %w", err)
-			}
-			return func() { _ = lifecycleLock.Close() }, nil
-		},
-		ReadInstallationID: func(tx *sql.Tx) (string, bool, error) {
-			id, initialized, err := identitysqlite.ReadInstallationID(tx)
-			return id.String(), initialized, err
-		},
-		Read: func(tx *sql.Tx) (remoteconfigsqlite.AgentState, error) {
-			state, err := loadSQLiteState(tx)
-			if err != nil {
-				return remoteconfigsqlite.AgentState{}, err
-			}
-			return remoteconfigsqlite.AgentState{
-				BootstrapEndpoint:   state.Collector.GatewayEndpoint,
-				DesiredGeneration:   state.DesiredGeneration,
-				ActivatedGeneration: state.ActivatedGeneration,
-				AppliedGeneration:   state.AppliedGeneration,
-			}, nil
-		},
-		SetDesiredGeneration: func(tx *sql.Tx, generation uint64) error {
-			state, err := loadSQLiteState(tx)
-			if err != nil {
-				return err
-			}
-			state.DesiredGeneration = generation
-			return persistGatewayGeneration(tx, state)
-		},
-		MarkGenerationApplied: func(tx *sql.Tx, generation uint64) error {
-			state, err := loadSQLiteState(tx)
-			if err != nil {
-				return err
-			}
-			var candidate *CandidateMapping
-			if state.PendingActivation != nil && state.PendingActivation.Generation == generation {
-				candidate = state.PendingActivation.Candidate
-			}
-			if err := state.MarkGenerationApplied(generation); err != nil {
-				return err
-			}
-			content, err := json.Marshal(state)
-			if err != nil {
-				return fmt.Errorf("encode Gateway applied state: %w", err)
-			}
-			if _, err := tx.Exec(`UPDATE agent_state SET payload = ?, updated_at = ? WHERE id = 1`, content, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
-				return fmt.Errorf("persist Gateway applied generation: %w", err)
-			}
-			if candidate != nil {
-				mapping := *candidate
-				mapping.Outcome, mapping.Stage, mapping.RecoveryResult = "applied", "readiness", "not_needed"
-				if err := writeCandidateJournal(tx, generation, mapping); err != nil {
-					return err
-				}
-			}
-			return nil
-		},
-	})
+// MarkGenerationAppliedInTransaction updates Agent-owned activation state and
+// its durable candidate journal inside the caller's shared transaction.
+func MarkGenerationAppliedInTransaction(tx *sql.Tx, generation uint64) error {
+	state, err := loadSQLiteState(tx)
+	if err != nil {
+		return err
+	}
+	var candidate *CandidateMapping
+	if state.PendingActivation != nil && state.PendingActivation.Generation == generation {
+		candidate = state.PendingActivation.Candidate
+	}
+	if err := state.MarkGenerationApplied(generation); err != nil {
+		return err
+	}
+	content, err := json.Marshal(state)
+	if err != nil {
+		return fmt.Errorf("encode Gateway applied state: %w", err)
+	}
+	if _, err := tx.Exec(`UPDATE agent_state SET payload = ?, updated_at = ? WHERE id = 1`, content, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		return fmt.Errorf("persist Gateway applied generation: %w", err)
+	}
+	if candidate != nil {
+		mapping := *candidate
+		mapping.Outcome, mapping.Stage, mapping.RecoveryResult = "applied", "readiness", "not_needed"
+		if err := writeCandidateJournal(tx, generation, mapping); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func persistGatewayGeneration(tx *sql.Tx, state State) error {

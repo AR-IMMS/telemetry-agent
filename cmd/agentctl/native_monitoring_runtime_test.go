@@ -188,7 +188,7 @@ func TestNativeMonitoringInputsAcceptPinnedPostgreSQLProfileCapability(t *testin
 	postgres := monitoringdomain.Profile{
 		ID: "postgres", Provider: "docker", MatchLabels: map[string]string{monitoringdomain.LabelMonitoringEnabled: "true", monitoringdomain.LabelMonitoringProfile: "postgres"},
 		RequiredCapabilities: []string{monitoringdomain.PostgresqlCapability}, ReceiverType: "postgresql", CollectionInterval: "10s",
-		EndpointStrategies: []monitoringdomain.EndpointStrategy{{ID: "alternate_port", OS: platform.OS, When: "alternate_port > 0 and port == 5432", Endpoint: "127.0.0.1:`alternate_port`", Scope: inventoryctx.EndpointHost, Provenance: "published_port", TargetPort: 5432, Priority: 100}},
+		EndpointStrategies: []monitoringdomain.EndpointStrategy{{ID: "alternate_port", OS: platform.OS, When: "alternate_port > 0 and port == 5432", Endpoint: "127.0.0.1:`alternate_port`", Scope: monitoringdomain.EndpointHost, Provenance: "published_port", TargetPort: 5432, Priority: 100}},
 		Settings:           monitoringdomain.ReceiverSettings{UsernameEnv: "AR_IMMS_PG_USER", PasswordEnv: "AR_IMMS_PG_PASSWORD"},
 	}
 	registry, err := monitoringdomain.NewRegistry(postgres)

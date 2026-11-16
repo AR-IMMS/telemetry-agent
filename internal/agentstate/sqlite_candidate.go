@@ -7,25 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
-	remoteconfigsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig/sqlite"
 	activationsqlite "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/sqlite"
 )
-
-type coreGatewayRow struct {
-	revision   uint64
-	endpoint   string
-	proof      string
-	generation uint64
-}
-
-func loadCoreGatewayRow(tx *sql.Tx) (coreGatewayRow, bool, error) {
-	row, exists, err := remoteconfigsqlite.ReadSnapshot(tx)
-	if err != nil || !exists {
-		return coreGatewayRow{}, exists, err
-	}
-	return coreGatewayRow{revision: row.Revision, endpoint: row.Endpoint, proof: row.Fingerprint, generation: row.Generation}, true, nil
-}
 
 // CandidateAdmission binds one compiled candidate to the current durable
 // Integration and M2 revisions before the lifecycle begins activation.
@@ -36,36 +19,6 @@ type CandidateAdmission struct {
 	VerifiedFingerprint string
 	Mapping             CandidateMapping
 	RecoveryPath        string
-}
-
-func markGatewayAppliedInTransaction(tx *sql.Tx, generation uint64, endpoint string) error {
-	if err := coreconfig.ValidateGatewayEndpoint(endpoint); err != nil {
-		return err
-	}
-	row, exists, err := loadCoreGatewayRow(tx)
-	if err != nil {
-		return err
-	}
-	if !exists {
-		return nil
-	}
-	var lastGood string
-	if err := tx.QueryRow(`SELECT last_good_endpoint FROM core_gateway_runtime WHERE id=1`).Scan(&lastGood); err != nil {
-		return fmt.Errorf("load last-good Gateway endpoint: %w", err)
-	}
-	if row.generation <= generation && row.endpoint == endpoint {
-		if _, err := tx.Exec(`UPDATE core_gateway_runtime SET last_good_endpoint=?,applied_revision=?,applied_generation=? WHERE id=1`, endpoint, row.revision, generation); err != nil {
-			return fmt.Errorf("persist applied Core Gateway revision: %w", err)
-		}
-		return nil
-	}
-	if lastGood == endpoint {
-		if _, err := tx.Exec(`UPDATE core_gateway_runtime SET applied_generation=? WHERE id=1`, generation); err != nil {
-			return fmt.Errorf("persist applied local Gateway generation: %w", err)
-		}
-		return nil
-	}
-	return fmt.Errorf("Gateway endpoint changed while generation %d was starting", generation)
 }
 
 // CandidateAdmissionResult identifies the reserved generation or an existing
@@ -200,7 +153,10 @@ func (s SQLiteStore) MarkCandidateGenerationApplied(generation uint64, gatewayEn
 		return err
 	}
 	if gatewayEndpoint != "" {
-		if err := markGatewayAppliedInTransaction(tx, generation, gatewayEndpoint); err != nil {
+		if s.markGatewayApplied == nil {
+			return fmt.Errorf("Configuration Gateway transaction participant is required")
+		}
+		if err := s.markGatewayApplied(tx, generation, gatewayEndpoint); err != nil {
 			return err
 		}
 	}

@@ -138,6 +138,9 @@ try {
         }
         if ($package -eq $monitoringDomain) {
             foreach ($imported in $imports) {
+                if ($imported.StartsWith("$modulePath/internal/inventory", [StringComparison]::Ordinal)) {
+                    $violations.Add("Monitoring Profiles domain must translate Inventory evidence at the application boundary: $package -> $imported")
+                }
                 if ($imported.StartsWith("$monitoringProfilesRoot/application", [StringComparison]::Ordinal) -or
                     $imported.StartsWith("$monitoringProfilesRoot/yaml", [StringComparison]::Ordinal)) {
                     $violations.Add("Monitoring Profiles domain imports an outer layer: $package -> $imported")
@@ -148,6 +151,13 @@ try {
             foreach ($imported in $imports) {
                 if ($imported.StartsWith("$monitoringProfilesRoot/yaml", [StringComparison]::Ordinal)) {
                     $violations.Add("Monitoring Profiles application imports an input adapter: $package -> $imported")
+                }
+            }
+        }
+        if ($package.StartsWith("$modulePath/internal/agentstate", [StringComparison]::Ordinal)) {
+            foreach ($imported in $imports) {
+                if ($imported.StartsWith("$modulePath/internal/configuration/remoteconfig/sqlite", [StringComparison]::Ordinal)) {
+                    $violations.Add("Agent state must not import Configuration remote-config SQLite: $package -> $imported")
                 }
             }
         }
