@@ -337,51 +337,52 @@ func TestRunPassesExplicitStatePathToRuntime(t *testing.T) {
 }
 
 func TestMonitoringHierarchyAliasesPreserveLegacyUseCaseOutput(t *testing.T) {
-	statePath := filepath.Join(t.TempDir(), "state.db")
 	deps := testDependencies(identity.PlatformInfo{OS: "linux", Architecture: "amd64"})
 	tests := []struct {
-		name   string
-		legacy []string
-		alias  []string
+		name    string
+		legacy  []string
+		newPath []string
 	}{
-		{
-			name:   "instance list",
-			legacy: []string{"integration", "list", "--state-path", statePath},
-			alias:  []string{"monitoring", "instance", "list", "--state-path", statePath},
-		},
-		{
-			name:   "profile list",
-			legacy: []string{"integration", "catalog", "list", "--output", "json"},
-			alias:  []string{"monitoring", "profile", "list", "--output", "json"},
-		},
-		{
-			name:   "profile inspect",
-			legacy: []string{"integration", "catalog", "inspect", "--id", "redis", "--version", "1.0.0", "--output", "json"},
-			alias:  []string{"monitoring", "profile", "inspect", "--id", "redis", "--version", "1.0.0", "--output", "json"},
-		},
-		{
-			name:   "template list",
-			legacy: []string{"integration", "template", "list", "--state-path", statePath},
-			alias:  []string{"monitoring", "template", "list", "--state-path", statePath},
-		},
-		{
-			name:   "proposal list",
-			legacy: []string{"discovery", "proposals", "list", "--state-path", statePath},
-			alias:  []string{"monitoring", "proposal", "list", "--state-path", statePath},
-		},
+		{name: "instance configure", legacy: []string{"integration", "configure"}, newPath: []string{"monitoring", "instance", "configure"}},
+		{name: "instance update", legacy: []string{"integration", "update"}, newPath: []string{"monitoring", "instance", "update"}},
+		{name: "instance enable", legacy: []string{"integration", "enable"}, newPath: []string{"monitoring", "instance", "enable"}},
+		{name: "instance disable", legacy: []string{"integration", "disable"}, newPath: []string{"monitoring", "instance", "disable"}},
+		{name: "instance delete", legacy: []string{"integration", "delete"}, newPath: []string{"monitoring", "instance", "delete"}},
+		{name: "instance list", legacy: []string{"integration", "list"}, newPath: []string{"monitoring", "instance", "list"}},
+		{name: "instance inspect", legacy: []string{"integration", "inspect"}, newPath: []string{"monitoring", "instance", "inspect"}},
+		{name: "instance status", legacy: []string{"integration", "status"}, newPath: []string{"monitoring", "instance", "status"}},
+		{name: "instance history", legacy: []string{"integration", "history"}, newPath: []string{"monitoring", "instance", "history"}},
+		{name: "instance retry", legacy: []string{"integration", "retry"}, newPath: []string{"monitoring", "instance", "retry"}},
+		{name: "profile list", legacy: []string{"integration", "catalog", "list"}, newPath: []string{"monitoring", "profile", "list"}},
+		{name: "profile inspect", legacy: []string{"integration", "catalog", "inspect"}, newPath: []string{"monitoring", "profile", "inspect"}},
+		{name: "template create", legacy: []string{"integration", "template", "create"}, newPath: []string{"monitoring", "template", "create"}},
+		{name: "template update", legacy: []string{"integration", "template", "update"}, newPath: []string{"monitoring", "template", "update"}},
+		{name: "template list", legacy: []string{"integration", "template", "list"}, newPath: []string{"monitoring", "template", "list"}},
+		{name: "template inspect", legacy: []string{"integration", "template", "inspect"}, newPath: []string{"monitoring", "template", "inspect"}},
+		{name: "template enable", legacy: []string{"integration", "template", "enable"}, newPath: []string{"monitoring", "template", "enable"}},
+		{name: "template disable", legacy: []string{"integration", "template", "disable"}, newPath: []string{"monitoring", "template", "disable"}},
+		{name: "template delete", legacy: []string{"integration", "template", "delete"}, newPath: []string{"monitoring", "template", "delete"}},
+		{name: "proposal list", legacy: []string{"discovery", "proposals", "list"}, newPath: []string{"monitoring", "proposal", "list"}},
+		{name: "proposal inspect", legacy: []string{"discovery", "proposals", "inspect"}, newPath: []string{"monitoring", "proposal", "inspect"}},
+		{name: "proposal dismiss", legacy: []string{"discovery", "proposals", "dismiss"}, newPath: []string{"monitoring", "proposal", "dismiss"}},
+		{name: "proposal approve", legacy: []string{"discovery", "proposals", "approve"}, newPath: []string{"monitoring", "proposal", "approve"}},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			legacyCode, legacyOut, legacyErr := runForTest(t, test.legacy, deps)
-			aliasCode, aliasOut, aliasErr := runForTest(t, test.alias, deps)
+			statePath := filepath.Join(t.TempDir(), "state.db")
+			probe := []string{"--state-path", statePath, "--compatibility-probe"}
+			legacyCode, legacyOut, legacyErr := runForTest(t, append(append([]string{}, test.legacy...), probe...), deps)
+			aliasCode, aliasOut, aliasErr := runForTest(t, append(append([]string{}, test.newPath...), probe...), deps)
 			if aliasCode != legacyCode || aliasOut != legacyOut || aliasErr != legacyErr {
 				t.Fatalf("alias result (%d, %q, %q) differs from legacy result (%d, %q, %q)", aliasCode, aliasOut, aliasErr, legacyCode, legacyOut, legacyErr)
+			}
+			if aliasCode == 0 || aliasErr == "" {
+				t.Fatalf("compatibility probe unexpectedly succeeded: exit=%d stdout=%q stderr=%q", aliasCode, aliasOut, aliasErr)
 			}
 		})
 	}
 }
-
 func TestRunRejectsMissingGatewayEndpoint(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
