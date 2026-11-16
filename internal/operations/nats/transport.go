@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/operations"
+	operations "github.com/ar-imms/telemetry-agent/internal/operations/command"
 	natsgo "github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 )

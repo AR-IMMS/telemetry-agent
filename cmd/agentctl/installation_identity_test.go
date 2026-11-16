@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation"
 )
 
 func TestPrepareAgentInstallationIdentityReusesPersistentID(t *testing.T) {

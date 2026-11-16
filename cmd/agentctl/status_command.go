@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
+	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 )
 
 func runStatus(

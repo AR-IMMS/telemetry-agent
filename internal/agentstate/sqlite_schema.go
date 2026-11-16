@@ -12,6 +12,7 @@ import (
 	identityenrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
 	identityinstallationsqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
 	inventorysqlite "github.com/ar-imms/telemetry-agent/internal/inventory/sqlite"
+	operationssqlite "github.com/ar-imms/telemetry-agent/internal/operations/sqlite"
 	sqlitemigrate "github.com/ar-imms/telemetry-agent/internal/platform/sqlite/migrate"
 	activationsqlite "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/sqlite"
 )
@@ -51,9 +52,7 @@ func ensureSQLiteSchema(db *sql.DB) error {
 	migrations = append(migrations, migration9)
 	migrations = append(migrations, inventorysqlite.Migrations()...)
 	migrations = append(migrations, migration12, migration13)
-	migrations = append(migrations,
-		sqlitemigrate.Migration{Version: 14, Name: "Operations execution and outbox", Apply: migrateOperationsExecution},
-	)
+	migrations = append(migrations, operationssqlite.Migrations()...)
 	return sqlitemigrate.Apply(db, migrations)
 }
 

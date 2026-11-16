@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
 )
 

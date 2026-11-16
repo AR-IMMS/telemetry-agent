@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/operations"
+	operations "github.com/ar-imms/telemetry-agent/internal/operations/command"
 )
 
 const (

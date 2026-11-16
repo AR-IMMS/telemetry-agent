@@ -1,4 +1,4 @@
-package agenthealth
+package health
 
 import "testing"
 
