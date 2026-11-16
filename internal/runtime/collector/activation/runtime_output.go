@@ -2,7 +2,7 @@ package agentlifecycle
 
 import (
 	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
-	"github.com/ar-imms/telemetry-agent/internal/supervisor"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
 )
 
 func (w runtimeWatcher) launchOptions() supervisor.Options {

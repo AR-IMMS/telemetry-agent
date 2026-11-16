@@ -10,7 +10,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/config"
 	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
-	"github.com/ar-imms/telemetry-agent/internal/supervisor"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
 )
 
 // collectorRunner supervises one Collector process until it exits or its

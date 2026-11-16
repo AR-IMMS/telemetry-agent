@@ -13,7 +13,7 @@ import (
 	librehardwaremonitor "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/libre_hardware_monitor"
 	nodeexporter "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/node_exporter"
 	windowsexporter "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/windows_exporter"
-	"github.com/ar-imms/telemetry-agent/internal/supervisor"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
 	"io"
 	"net"
 	"net/http"

@@ -19,7 +19,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
-	"github.com/ar-imms/telemetry-agent/internal/supervisor"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
 )
 
 func TestApplyCollectorCandidateUsesExistingLifecycleAndWaitsForReadiness(t *testing.T) {

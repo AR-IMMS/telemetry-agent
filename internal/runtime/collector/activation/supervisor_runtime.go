@@ -14,7 +14,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/opamp"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/process"
-	"github.com/ar-imms/telemetry-agent/internal/supervisor"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
 )
 
 const managedSupervisorStartupTimeout = 30 * time.Second

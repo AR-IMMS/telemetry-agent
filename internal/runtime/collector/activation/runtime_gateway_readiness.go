@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/supervisor"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
 )
 
 // verifyPendingGatewayRevision advances an unchanged Core revision only after
