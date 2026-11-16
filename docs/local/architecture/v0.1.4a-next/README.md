@@ -1,9 +1,9 @@
 # Architecture index — v0.1.4a-next
 
-**Status:** proposed implementation baseline for review; not a declaration of
-shipped functionality. This version is the proposed next target after review.
-It does not erase historical design or implementation records. The supplied
-proposal package is dated 2026-11-12.
+**Status:** canonical documentation for release target `v0.1.4a-next`. PR-01
+through PR-09.5f are merged; PR-09.5g final verification is in progress. This
+index distinguishes implemented checkpoints from target behavior and remaining
+release gates while preserving the historical design record.
 
 **PR-09.5 consolidation set:** the merged integration source snapshot is
 `b2599b8db31bfedfd75e360423d5aa98cfbcb5dc`. Use the
@@ -21,6 +21,13 @@ the source audit, approved OD-01–OD-06 ownership decisions, target architectur
 and source structure. Its physical tree is flexible implementation guidance.
 It supersedes
 earlier source-to-target package guesses without deleting their history.
+
+The integration head after PR-09.5f is
+`5a06d7d6fe8ac6c2ba09043ad1fd6f3a769e1ce8` (PR #38; integration CI
+[43834547036](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43834547036)
+passed). PR-09.5g source verification is at
+`3c87b8e1882f1beffa4a07a1eb610822cfbe5200`; final native Linux CI and merge
+are pending. PR-10 has not started.
 
 ## Read order
 
@@ -43,6 +50,18 @@ earlier source-to-target package guesses without deleting their history.
 8. [Testbed specification](../../requirements/v0.1.4a-next/testbed-spec.md) and
    [test matrix](../../verification/v0.1.4a-next/test-matrix.md).
 9. [Runbook readiness](../../runbooks/v0.1.4a-next/README.md).
+
+## Diagrams and source direction
+
+- [Component diagram](diagrams/component.mmd) shows process boundaries and
+  mutually exclusive Collector ownership. New installs require the managed
+  Supervisor endpoint; existing installations preserve their stored owner
+  until explicit migration, with legacy ownership available for rollback.
+- [Context collaboration diagram](diagrams/context-dependencies.mmd) shows
+  business and data collaboration. Its arrows are not Go imports.
+- [Go import dependency view](consolidation/03-target-architecture.md#code-dependency-go-imports)
+  defines the separate allowed import direction. Collaboration arrows do not
+  imply package dependencies.
 
 ## Browse by context
 
@@ -79,9 +98,12 @@ component/platform follow-ups remain tracked. See [integration status](integrati
 4. `state-and-event-model.md`: SQLite persistence/CAS, typed dispatcher, recovery.
 5. `otel-integration-strategy.md`: OTel-first receivers/observer/receiver_creator and host/app/facility plans.
 6. `opamp-integration.md`: revised OpAMP/Supervisor target, ownership transfer gates, contracts, and open authority/security.
-7. `diagrams/`: one component diagram and six Mermaid flows; diagrams are proposed behavior, not executed traces.
+7. `diagrams/`: current component ownership, context collaboration, and six
+   protocol/operational flows. Go imports are shown separately in the
+   consolidation target architecture.
 
 Do not copy these into `docs/shared` until both Core and Agent owners review
-contract changes. OpAMP Supervisor adoption and the Go Mock Core are proposals;
-exact artifact compatibility, contract authority, and production NestJS Core
-interoperability remain unverified.
+contract changes. PR-07 is PASS for Agent/Mock Core acceptance; production
+NestJS Core interoperability remains separately unverified. Earlier OpAMP and
+Supervisor notes remain design history; current acceptance status and known
+limits are recorded in the PR-07 and PR-09.5 reports.

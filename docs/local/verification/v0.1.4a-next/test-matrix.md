@@ -33,3 +33,18 @@
 Docker Desktop VM vs native Linux network reachability; port unpublished/bridge/IPv6; mismatched image labels; unsupported capabilities; invalid credentials; profile collision; Docker daemon outage; event loss; write race; Collector process crash; OS reboot; protected sensors unavailable; TLS/certificate failures; multi Agent IDs; different Core target scoping.
 
 Evidence rows added per execution: command/steps, OS, Agent and Supervisor commit/version, exact artifact URL/SHA/provenance, Collector version+hash, fixture digest, timestamp, status, failure details, logs and captured OTLP metric/resource attributes. Label Mock Core evidence separately from production Core E2E. Failed real E2E prevents declaring release DONE.
+
+## PR-09.5 source-ownership behavior comparison
+
+This is a scoped before/after comparison for the consolidation changes; it does not change the release-level E01–E18 statuses above. Baseline is merged PR #38 at `5a06d7d6fe8ac6c2ba09043ad1fd6f3a769e1ce8`; PR-09.5g source is `3c87b8e1882f1beffa4a07a1eb610822cfbe5200`.
+
+| Behavior / boundary | Before | After | Evidence / invariant |
+|---|---|---|---|
+| Integration enable/update/retry decisions | CLI coordinated writes and retry freshness checks | Configuration owns these decisions; CLI composes the use case | PR-09.5f source tests and final-head CI [43833504369](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43833504369); flags, CAS, no-op revision and omitted-enabled preservation retained |
+| Discovery-cycle completion | Application Host inferred completion semantics | Inventory returns cycle result; Application Host coordinates worker lifecycle | PR-09.5f source tests and final-head CI [43833504369](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43833504369); provider errors do not count as successful complete observations |
+| Collector capabilities | Monitoring composition could reach concrete runtime catalog | Monitoring queries Runtime's pinned catalog through a narrow contract | PR-09.5f source tests/CI; one catalog owner and no duplicated capability list |
+| Identity SQLite entrypoints | `agentstate` forwarding facades exposed Identity writes | Identity repositories are used directly, including in test fixtures | 9.5g commit `62ab91f`; no production facade caller, schema or data change |
+| Dependency uninstall coordination | CLI rebuilt Collector activation inputs only to pass an ignored parameter | Runtime request is made without dead activation composition | 9.5g commit `3c87b8e`; persisted-context validation, durable teardown intent, service teardown and lifecycle owner retained |
+| Persisted schema, Collector/LKG, Supervisor ownership, Operations journal/outbox | Existing context-owned behavior | Unchanged in 9.5g | Full Go suite and focused race tests at `3c87b8e`; no migration or persisted-format edits |
+
+The above is a focused source disposition check, not a claim that every historical release acceptance scenario was rerun on both native platforms. Current-head CI results and platform-specific skips are recorded in the [PR-09.5 verification report](pr-verification/pr-09.5-report.md).
