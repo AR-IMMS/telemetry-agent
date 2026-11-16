@@ -25,9 +25,12 @@ earlier source-to-target package guesses without deleting their history.
 The integration head after PR-09.5f is
 `5a06d7d6fe8ac6c2ba09043ad1fd6f3a769e1ce8` (PR #38; integration CI
 [43834547036](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43834547036)
-passed). PR-09.5g source verification is at
-`3c87b8e1882f1beffa4a07a1eb610822cfbe5200`; final native Linux CI and merge
-are pending. PR-10 has not started.
+passed). PR-09.5g executable source is at
+`3c87b8e1882f1beffa4a07a1eb610822cfbe5200`; PR #39 implementation/workflow head
+`0a90b9252d99981fd837a85f03e48f29d1eff227` passed Windows/Ubuntu CI
+[43839603999](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43839603999).
+PR #39 targets `chore/v0.1.4a-next`; checkpoint merge is pending. PR-10 has not
+started.
 
 ## Read order
 
