@@ -116,6 +116,22 @@ try {
             }
         }
     }
+    # Proposal approval belongs to Configuration and consumes its canonical
+    # desired-state model directly; the CLI is a delivery adapter over the same
+    # model. Keep these paths off the temporary Integration compatibility facade.
+    foreach ($file in @(
+        'internal/configuration/proposals/approval.go',
+        'internal/configuration/sqlite/approval.go',
+        'cmd/agentctl/discovery_proposals_command.go'
+    )) {
+        $sourcePath = Join-Path $repoRoot $file
+        if (Test-Path -LiteralPath $sourcePath -PathType Leaf) {
+            $source = Get-Content -LiteralPath $sourcePath -Raw
+            if ($source -match '"github.com/ar-imms/telemetry-agent/internal/integration"') {
+                $violations.Add("$file must use Configuration desired-state contracts instead of internal/integration")
+            }
+        }
+    }
     # Ordered schema composition belongs to the Application boundary. The
     # Agent-state persistence context owns its base schema but does not select
     # or register other contexts' migrations.

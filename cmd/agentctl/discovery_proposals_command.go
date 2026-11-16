@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
 )
 
 func runDiscovery(ctx context.Context, args []string, stdout, stderr io.Writer) int {
@@ -141,9 +141,9 @@ func parseProposalInputs(raw string) (map[string]any, error) {
 		}
 		values[name] = strings.TrimSpace(value)
 	}
-	if err := integration.ValidateInstance(integration.IntegrationInstance{
+	if err := (domain.Instance{
 		ID: "proposal-input", DefinitionID: "redis", DefinitionVersion: "1.0.0", Configuration: values,
-	}); err != nil {
+	}).Validate(); err != nil {
 		return nil, fmt.Errorf("--input must contain only non-secret settings")
 	}
 	return values, nil

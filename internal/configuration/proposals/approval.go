@@ -7,7 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
+
+	"github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 )
 
 var (
@@ -53,13 +54,13 @@ type ApprovalCommit struct {
 	ExpectedCandidateDigest string
 	VerifiedCandidateDigest string
 	InventoryWriteRevision  uint64
-	Instance                integration.IntegrationInstance
+	Instance                domain.Instance
 }
 
 // ApprovalRepository commits proposal approval and desired Integration state in one transaction.
 type ApprovalRepository interface {
 	// CommitApproval atomically records the proposal outcome and desired instance.
-	CommitApproval(ApprovalCommit) (integration.IntegrationInstance, uint64, error)
+	CommitApproval(ApprovalCommit) (domain.Instance, uint64, error)
 }
 
 // ApprovalService verifies a fresh candidate before requesting an atomic desired-state mutation.
@@ -75,13 +76,13 @@ func NewApprovalService(proposals ProposalRepository, verifier CandidateVerifier
 }
 
 // Approve revalidates the selected proposal and commits its discovery-bound Integration instance.
-func (s ApprovalService) Approve(ctx context.Context, request ApprovalRequest) (integration.IntegrationInstance, uint64, error) {
+func (s ApprovalService) Approve(ctx context.Context, request ApprovalRequest) (domain.Instance, uint64, error) {
 	if ctx == nil || s.proposals == nil || s.repository == nil || request.ProposalID == "" || request.ProposalRevision == 0 {
-		return integration.IntegrationInstance{}, 0, fmt.Errorf("%w: repository, proposal ID and revision are required", ErrApprovalNotEligible)
+		return domain.Instance{}, 0, fmt.Errorf("%w: repository, proposal ID and revision are required", ErrApprovalNotEligible)
 	}
 	proposalList, err := s.proposals.ProposalSnapshot()
 	if err != nil {
-		return integration.IntegrationInstance{}, 0, fmt.Errorf("read proposal before approval: %w", err)
+		return domain.Instance{}, 0, fmt.Errorf("read proposal before approval: %w", err)
 	}
 	var proposal Proposal
 	for _, candidate := range proposalList {
@@ -91,13 +92,13 @@ func (s ApprovalService) Approve(ctx context.Context, request ApprovalRequest) (
 		}
 	}
 	if proposal.ID == "" {
-		return integration.IntegrationInstance{}, 0, ErrUnknownProposal
+		return domain.Instance{}, 0, ErrUnknownProposal
 	}
 	if proposal.Revision != request.ProposalRevision {
-		return integration.IntegrationInstance{}, 0, ErrApprovalConflict
+		return domain.Instance{}, 0, ErrApprovalConflict
 	}
 	if proposal.Status == ProposalApproved {
-		instance := integration.IntegrationInstance{ID: proposal.ApprovedInstanceID}
+		instance := domain.Instance{ID: proposal.ApprovedInstanceID}
 		return s.repository.CommitApproval(ApprovalCommit{
 			ProposalID: proposal.ID, ProposalRevision: proposal.Revision,
 			ExpectedDesiredRevision: request.ExpectedDesiredRevision, ExpectedCandidateDigest: proposal.CandidateDigest,
@@ -105,40 +106,40 @@ func (s ApprovalService) Approve(ctx context.Context, request ApprovalRequest) (
 		})
 	}
 	if proposal.Status != ProposalPending && proposal.Status != ProposalNeedsInput || s.verifier == nil {
-		return integration.IntegrationInstance{}, 0, ErrApprovalNotEligible
+		return domain.Instance{}, 0, ErrApprovalNotEligible
 	}
 	inputs, err := cloneSettings(request.Inputs)
 	if err != nil {
-		return integration.IntegrationInstance{}, 0, fmt.Errorf("copy approval inputs: %w", err)
+		return domain.Instance{}, 0, fmt.Errorf("copy approval inputs: %w", err)
 	}
 	verified, err := s.verifier.Verify(ctx, proposal, inputs)
 	if err != nil {
-		return integration.IntegrationInstance{}, 0, fmt.Errorf("revalidate monitoring proposal: %w", err)
+		return domain.Instance{}, 0, fmt.Errorf("revalidate monitoring proposal: %w", err)
 	}
 	if verified.DefinitionVersion == "" || verified.CandidateDigest == "" || verified.Configuration == nil {
-		return integration.IntegrationInstance{}, 0, fmt.Errorf("%w: verifier returned incomplete candidate", ErrApprovalStale)
+		return domain.Instance{}, 0, fmt.Errorf("%w: verifier returned incomplete candidate", ErrApprovalStale)
 	}
 	if verified.DefinitionVersion != proposal.DefinitionVersion {
-		return integration.IntegrationInstance{}, 0, ErrApprovalStale
+		return domain.Instance{}, 0, ErrApprovalStale
 	}
 	if proposal.CandidateDigest != "" && verified.CandidateDigest != proposal.CandidateDigest {
-		return integration.IntegrationInstance{}, 0, ErrApprovalStale
+		return domain.Instance{}, 0, ErrApprovalStale
 	}
 	settings, err := cloneSettings(verified.Configuration)
 	if err != nil {
-		return integration.IntegrationInstance{}, 0, fmt.Errorf("copy verified Integration settings: %w", err)
+		return domain.Instance{}, 0, fmt.Errorf("copy verified Integration settings: %w", err)
 	}
-	instance := integration.IntegrationInstance{
+	instance := domain.Instance{
 		ID: discoveredInstanceID(proposal.ID), DefinitionID: proposal.Identity.IntegrationID,
 		DefinitionVersion: verified.DefinitionVersion, Configuration: settings,
-		Source: integration.SourceDiscovery,
-		Binding: &integration.ResourceBinding{
+		Source: domain.SourceDiscovery,
+		Binding: &domain.ResourceBinding{
 			Provider: proposal.Identity.Provider, ProviderInstance: proposal.Identity.ProviderInstance, ResourceID: proposal.Identity.ResourceID,
 		},
 		Enabled: true,
 	}
-	if err := integration.ValidateInstance(instance); err != nil {
-		return integration.IntegrationInstance{}, 0, fmt.Errorf("validate approved Integration: %w", err)
+	if err := instance.Validate(); err != nil {
+		return domain.Instance{}, 0, fmt.Errorf("validate approved Integration: %w", err)
 	}
 	return s.repository.CommitApproval(ApprovalCommit{
 		ProposalID: proposal.ID, ProposalRevision: proposal.Revision,
