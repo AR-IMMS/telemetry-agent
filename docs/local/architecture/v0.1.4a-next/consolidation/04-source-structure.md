@@ -37,7 +37,11 @@ internal/
 │   └── sqlite/                                 inventory-owned rows and snapshot transactions
 ├── monitoring/
 │   ├── profiles/                               profile definitions, registry and resolution
-│   ├── matching/                               selectors, recommendation and required capabilities
+│   │   ├── definitions/                        implemented definition registry/resolver
+│   │   │   └── redis/                            Redis profile definition and candidate builder
+│   ├── matching/                               resource matching capability
+│   │   ├── domain/                               match evidence and recommendation models
+│   │   └── application/                          matcher and narrow query contracts
 │   ├── endpoints/                              strategy/diagnostics only if provider variation justifies it
 │   └── templates/                              match evaluation only; definitions remain in Configuration
 ├── configuration/
@@ -202,6 +206,7 @@ These source types are currently shared or located outside their target owner. T
 
 Template matching is a Monitoring computation over Configuration-owned template definitions. `integration/template.go` currently mixes template policy/binding models with integration types; split owner-specific models and translate through the reviewed contract, rather than moving the whole file or sharing an unowned `integration` model.
 
+**Implemented Monitoring source slice at 9b6ec2fd80f02dbdbe674d27d82f702a021476e0:** Definition registration, Redis profile construction, settings validation, and profile resolution now live under internal/monitoring/profiles/definitions, with Redis-specific code under definitions/redis. Match-domain types and matching use cases live under internal/monitoring/matching/domain and internal/monitoring/matching/application. Configuration template setup and CLI profile-resolution/matching routes consume those Monitoring-owned APIs. The internal/integration facade delegates the moved definition, registry, resolver, and matcher APIs while desired-state, template, and other active consumers are migrated. Endpoint diagnostics, template evaluation ownership, and facade removal criteria remain open; see the PR-09.5 report. The target tree and matrix remain flexible destination guidance.
 #### Configuration
 
 | Capability and responsibility | Current source → intended package | Dependencies / transaction invariants to preserve |
