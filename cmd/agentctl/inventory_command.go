@@ -40,7 +40,7 @@ func runInventory(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	flags.SetOutput(stderr)
 	statePath := flags.String("state-path", agentstate.DefaultPath(), "persistent Agent state path")
 	activeOnly := flags.Bool("active-only", false, "list only resources currently present in a complete provider snapshot")
-	if err := flags.Parse(args[1:]); err != nil {
+	if err := parseCompatibilityFlags(flags, args[1:]); err != nil {
 		return 2
 	}
 	if strings.TrimSpace(*statePath) == "" {

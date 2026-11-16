@@ -98,7 +98,7 @@ func runIntegrationCatalog(ctx context.Context, args []string, stdout, stderr io
 	id := flags.String("id", "", "exact Integration Definition ID")
 	version := flags.String("version", "", "exact Integration Definition version")
 	output := flags.String("output", "text", "output format: text or json")
-	if err := flags.Parse(args[1:]); err != nil {
+	if err := parseCompatibilityFlags(flags, args[1:]); err != nil {
 		return 2
 	}
 	if flags.NArg() != 0 || (*output != "text" && *output != "json") {

@@ -64,7 +64,7 @@ func runIntegrationMatch(ctx context.Context, args []string, stdout, stderr io.W
 	flags := flag.NewFlagSet("integration match", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	statePath := flags.String("state-path", agentstate.DefaultPath(), "persistent Agent state path")
-	if err := flags.Parse(args); err != nil {
+	if err := parseCompatibilityFlags(flags, args); err != nil {
 		return 2
 	}
 	if flags.NArg() != 0 || *statePath == "" {

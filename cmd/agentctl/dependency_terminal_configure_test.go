@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/huh"
+
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 )
 
@@ -98,12 +100,39 @@ func TestTerminalDependencyConfigurerReturnsCancellation(
 	}
 }
 
+func TestTerminalDependencyConfigurerNeverRunsOutsideTTY(t *testing.T) {
+	runCalled := false
+	configurer := newTerminalDependencyConfigurer(
+		func() bool { return false },
+		func(model dependencyConfigureTUI, _ io.Writer) (dependencyConfigureTUI, error) {
+			runCalled = true
+			return model, nil
+		},
+	)
+	_, err := configurer(
+		context.Background(),
+		[]dependencyConfigureOption{{Definition: dependency.Definition{Name: "redis"}}},
+		io.Discard,
+	)
+	if err == nil || !strings.Contains(err.Error(), "requires a terminal") {
+		t.Fatalf("non-TTY error = %v, want terminal requirement", err)
+	}
+	if runCalled {
+		t.Fatal("interactive form ran without a terminal")
+	}
+}
+
 func TestRunDependencyConfigureProgramConfirmsDesiredStates(
 	t *testing.T,
 ) {
 	var output bytes.Buffer
 
-	run := runDependencyConfigureProgram(strings.NewReader(" \r"))
+	run := runDependencyConfigureProgramWithFormRunner(
+		strings.NewReader("1\n0\n"),
+		func(form *huh.Form) error {
+			return form.WithAccessible(true).Run()
+		},
+	)
 
 	model, err := run(
 		newDependencyConfigureTUI(

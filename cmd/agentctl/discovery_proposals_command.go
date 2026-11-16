@@ -45,7 +45,7 @@ func runDiscoveryProposals(ctx context.Context, args []string, stdout, stderr io
 	revision := flags.Uint64("revision", 0, "expected proposal revision")
 	desiredRevision := flags.Uint64("expected-desired-revision", 0, "expected desired Integration set revision")
 	inputs := flags.String("input", "", "non-secret proposal inputs as comma-separated name=value pairs")
-	if err := flags.Parse(args[1:]); err != nil {
+	if err := parseCompatibilityFlags(flags, args[1:]); err != nil {
 		return 2
 	}
 	if flags.NArg() != 0 || strings.TrimSpace(*statePath) == "" {

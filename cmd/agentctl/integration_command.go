@@ -54,7 +54,7 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 	enabled := flags.Bool("enabled", true, "enable created or updated instance")
 	expected := flags.Uint64("expected-revision", 0, "expected instance revision")
 	limit := flags.Int("limit", 20, "history limit (1-100)")
-	if err := flags.Parse(args[1:]); err != nil {
+	if err := parseCompatibilityFlags(flags, args[1:]); err != nil {
 		return 2
 	}
 	if strings.TrimSpace(*statePath) == "" {

@@ -32,7 +32,7 @@ func runEnrollment(ctx context.Context, args []string, stdout, stderr io.Writer,
 		fmt.Fprintln(stderr, "       agentctl enroll --re-enroll --core-origin https://core.example [--state-path state.db]")
 		flags.PrintDefaults()
 	}
-	if err := flags.Parse(args); err != nil {
+	if err := parseCompatibilityFlags(flags, args); err != nil {
 		return 2
 	}
 	if flags.NArg() != 0 || strings.TrimSpace(*statePath) == "" {

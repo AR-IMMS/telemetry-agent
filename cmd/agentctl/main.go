@@ -33,6 +33,7 @@ Commands:
   bootstrap   Bootstrap the OpenTelemetry Collector.
   dependency  Manage telemetry dependencies.
   integration Manage desired Integration instances and local convergence diagnostics.
+  monitoring  Manage monitoring instances, templates, and proposals.
   run         Run the OpenTelemetry Collector under supervision.
   inventory   Read persisted resource discovery inventory.
   discovery   Review and approve durable monitoring proposals.
@@ -46,6 +47,16 @@ Commands:
 }
 
 func run(
+	ctx context.Context,
+	args []string,
+	stdout io.Writer,
+	stderr io.Writer,
+	deps dependencies,
+) int {
+	return executeAgentctl(ctx, args, stdout, stderr, deps)
+}
+
+func runLegacy(
 	ctx context.Context,
 	args []string,
 	stdout io.Writer,

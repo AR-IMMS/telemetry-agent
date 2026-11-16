@@ -6,9 +6,9 @@ import (
 	"flag"
 	"fmt"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
-	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"io"
 	"os"
 )
@@ -45,7 +45,7 @@ func runBootstrap(
 	)
 	validationTimeout := flags.Duration("timeout", defaultValidationTimeout, "Collector validation timeout")
 
-	if err := flags.Parse(args); err != nil {
+	if err := parseCompatibilityFlags(flags, args); err != nil {
 		flags.Usage()
 		return 2
 	}

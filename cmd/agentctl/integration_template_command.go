@@ -38,7 +38,7 @@ func runIntegrationTemplate(ctx context.Context, args []string, stdout, stderr i
 	templateJSON := flags.String("template-json", "", "secret-free Integration Template JSON")
 	templateFile := flags.String("file", "", "path to a secret-free Integration Template JSON file")
 	outputFormat := flags.String("output", "summary", "inspect output format: summary or json")
-	if err := flags.Parse(args[1:]); err != nil {
+	if err := parseCompatibilityFlags(flags, args[1:]); err != nil {
 		return 2
 	}
 	if flags.NArg() != 0 || strings.TrimSpace(*statePath) == "" {
