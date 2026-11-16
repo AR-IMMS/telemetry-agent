@@ -1,5 +1,7 @@
 # PR-08 — Health & Reporting Implementation Plan
 
+> **Source-location update:** PR-08 implemented Health under `internal/agenthealth`. PR-09.5e later moved that cohesive package to `internal/health` in source commit `f98be6eaeddc83988bc1a61af8689c0cf473a22a`; this plan records the original implementation scope and remains historical.
+
 > **For agentic workers:** Use `superpowers:executing-plans` to implement this plan task by task. Each task is a separately reviewable checkpoint; do not begin PR-08 before PR-07 passes and merges.
 
 **Goal:** Provide truthful, evidence-based Agent health, local diagnostics, and supported status reporting without taking ownership of recovery or telemetry execution.
