@@ -10,11 +10,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/config"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	redisintegration "github.com/ar-imms/telemetry-agent/internal/integration/redis"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"gopkg.in/yaml.v3"
 )
 
@@ -297,7 +297,7 @@ func TestRedisCandidateNativeValidationWhenPinnedBinaryProvided(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	configRoot, err := filepath.Abs(filepath.Join("..", "..", "configs"))
+	configRoot, err := filepath.Abs(filepath.Join("..", "..", "..", "configs"))
 	if err != nil {
 		t.Fatal(err)
 	}
