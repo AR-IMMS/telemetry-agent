@@ -105,6 +105,17 @@ try {
     }
 
     $violations = [System.Collections.Generic.List[string]]::new()
+    # Profile matching and catalog CLI routes consume Monitoring directly after
+    # their compatibility migration; keep them off the broad Integration facade.
+    foreach ($file in @('cmd/agentctl/integration_matching.go', 'cmd/agentctl/integration_catalog_command.go')) {
+        $sourcePath = Join-Path $repoRoot $file
+        if (Test-Path -LiteralPath $sourcePath -PathType Leaf) {
+            $source = Get-Content -LiteralPath $sourcePath -Raw
+            if ($source -match '"github.com/ar-imms/telemetry-agent/internal/integration"') {
+                $violations.Add("$file must use Monitoring-owned profile/matching packages instead of internal/integration")
+            }
+        }
+    }
     # Ordered schema composition belongs to the Application boundary. The
     # Agent-state persistence context owns its base schema but does not select
     # or register other contexts' migrations.

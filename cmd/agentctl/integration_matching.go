@@ -12,9 +12,9 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	matchingapp "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/application"
+	matchingdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 )
 
@@ -31,19 +31,19 @@ type integrationMatchResultView struct {
 	ResourceID          string                       `json:"resource_id"`
 	DefinitionID        string                       `json:"definition_id,omitempty"`
 	DefinitionVersion   string                       `json:"definition_version,omitempty"`
-	MatchStatus         integration.MatchStatus      `json:"match_status"`
-	ResolutionStatus    integration.ResolutionStatus `json:"resolution_status"`
-	CapabilityStatus    integration.CapabilityStatus `json:"capability_status"`
+	MatchStatus         matchingapp.MatchStatus      `json:"match_status"`
+	ResolutionStatus    matchingapp.ResolutionStatus `json:"resolution_status"`
+	CapabilityStatus    matchingapp.CapabilityStatus `json:"capability_status"`
 	ResourceFingerprint string                       `json:"resource_fingerprint"`
-	Evidence            []integration.MatchEvidence  `json:"evidence,omitempty"`
-	RequiredInputs      []integration.RequiredInput  `json:"required_inputs,omitempty"`
+	Evidence            []matchingapp.MatchEvidence  `json:"evidence,omitempty"`
+	RequiredInputs      []matchingapp.RequiredInput  `json:"required_inputs,omitempty"`
 	Capability          capabilityView               `json:"capability"`
 	Candidate           *candidateView               `json:"candidate,omitempty"`
 	Diagnostics         []matchDiagnosticView        `json:"diagnostics,omitempty"`
 }
 
 type capabilityView struct {
-	Status          integration.CapabilityStatus `json:"status"`
+	Status          matchingapp.CapabilityStatus `json:"status"`
 	Platform        string                       `json:"platform,omitempty"`
 	ArtifactVersion string                       `json:"artifact_version,omitempty"`
 	ManifestVersion string                       `json:"manifest_version,omitempty"`
@@ -84,10 +84,10 @@ func runIntegrationMatch(ctx context.Context, args []string, stdout, stderr io.W
 	if err != nil {
 		return integrationCommandError(stderr, "match", err)
 	}
-	var assessor integration.CapabilityAssessor
+	var assessor matchingapp.CapabilityAssessor
 	platform := identity.PlatformInfo{OS: runtime.GOOS, Architecture: runtime.GOARCH}
 	if catalog, catalogErr := collectorruntime.StaticCatalog(platform); catalogErr == nil {
-		assessor = integration.NewCatalogCapabilityAssessor(catalog, platform.OS, platform.OS+"/"+platform.Architecture)
+		assessor = matchingdomain.NewCatalogCapabilityAssessor(catalog, platform.OS, platform.OS+"/"+platform.Architecture)
 	}
 	report, err := matchingapp.NewMatcher(registry, assessor).Match(projectInventory(snapshot, time.Now().UTC()))
 	if err != nil {
@@ -102,21 +102,21 @@ func runIntegrationMatch(ctx context.Context, args []string, stdout, stderr io.W
 	return 0
 }
 
-func projectInventory(snapshot inventoryctx.InventorySnapshot, asOf time.Time) integration.MatchSnapshot {
-	resources := make([]integration.MatchResource, 0, len(snapshot.Resources))
+func projectInventory(snapshot inventoryctx.InventorySnapshot, asOf time.Time) matchingapp.MatchSnapshot {
+	resources := make([]matchingapp.MatchResource, 0, len(snapshot.Resources))
 	for _, resource := range snapshot.Resources {
 		attributes := make(map[string]string, len(resource.Attributes))
 		for key, value := range resource.Attributes {
 			attributes[key] = value
 		}
-		endpoints := make([]integration.MatchEndpoint, 0, len(resource.Endpoints))
+		endpoints := make([]matchingapp.MatchEndpoint, 0, len(resource.Endpoints))
 		for _, endpoint := range resource.Endpoints {
-			endpoints = append(endpoints, integration.MatchEndpoint{
+			endpoints = append(endpoints, matchingapp.MatchEndpoint{
 				Address: endpoint.Address, Port: endpoint.Port, Protocol: endpoint.Protocol,
 				Scope: string(endpoint.Scope), Provenance: endpoint.Provenance,
 			})
 		}
-		resources = append(resources, integration.MatchResource{
+		resources = append(resources, matchingapp.MatchResource{
 			Provider: string(resource.Key.Provider), ProviderInstance: string(resource.Key.ProviderInstance),
 			ResourceID: resource.Key.ProviderResourceID, Kind: string(resource.Kind),
 			LifecycleState: resource.LifecycleState, Presence: string(resource.Presence),
@@ -132,13 +132,13 @@ func projectInventory(snapshot inventoryctx.InventorySnapshot, asOf time.Time) i
 		}
 		return resources[i].ResourceID < resources[j].ResourceID
 	})
-	return integration.MatchSnapshot{
+	return matchingapp.MatchSnapshot{
 		InventoryRevision: snapshot.Revision, AsOf: asOf,
 		StaleAfter: inventoryctx.DefaultPolicy().StaleAfter, Resources: resources,
 	}
 }
 
-func matchReportView(report integration.MatchReport) integrationMatchOutput {
+func matchReportView(report matchingapp.MatchReport) integrationMatchOutput {
 	output := integrationMatchOutput{
 		InventoryRevision: report.InventoryRevision, EvaluatedAt: report.EvaluatedAt,
 		Results:     make([]integrationMatchResultView, 0, len(report.Results)),
@@ -151,8 +151,8 @@ func matchReportView(report integration.MatchReport) integrationMatchOutput {
 			DefinitionVersion: result.DefinitionVersion, MatchStatus: result.MatchStatus,
 			ResolutionStatus: result.ResolutionStatus, CapabilityStatus: result.CapabilityStatus,
 			ResourceFingerprint: result.ResourceFingerprint,
-			Evidence:            append([]integration.MatchEvidence(nil), result.Evidence...),
-			RequiredInputs:      append([]integration.RequiredInput(nil), result.RequiredInputs...),
+			Evidence:            append([]matchingapp.MatchEvidence(nil), result.Evidence...),
+			RequiredInputs:      append([]matchingapp.RequiredInput(nil), result.RequiredInputs...),
 			Capability: capabilityView{
 				Status: result.Capability.Status, Platform: result.Capability.Platform,
 				ArtifactVersion: result.Capability.ArtifactVersion, ManifestVersion: result.Capability.ManifestVersion,
@@ -168,7 +168,7 @@ func matchReportView(report integration.MatchReport) integrationMatchOutput {
 	return output
 }
 
-func matchDiagnosticsView(diagnostics []integration.MatchDiagnostic) []matchDiagnosticView {
+func matchDiagnosticsView(diagnostics []matchingapp.MatchDiagnostic) []matchDiagnosticView {
 	result := make([]matchDiagnosticView, 0, len(diagnostics))
 	for _, diagnostic := range diagnostics {
 		result = append(result, matchDiagnosticView{Code: diagnostic.Code, DefinitionID: diagnostic.DefinitionID})
