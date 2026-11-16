@@ -18,9 +18,10 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
 func TestManagedSupervisorRuntimeDeliversOTLP(t *testing.T) {
@@ -116,7 +117,9 @@ service:
 	}
 	runContext, stopRuntime := context.WithCancel(ctx)
 	runtimeDone := make(chan error, 1)
-	go func() { runtimeDone <- runManagedSupervisor(runContext, statePath, managed, options) }()
+	go func() {
+		runtimeDone <- runManagedSupervisor(runContext, statePath, managed, options, sqlitefixture.NewEnrollmentStore(statePath))
+	}()
 	waitForSupervisorRuntimeReadiness(t, ctx, runtimeDone, healthEndpoint)
 	waitForSupervisorSinkTelemetry(t, ctx, runtimeDone, sink)
 	stopRuntime()

@@ -30,7 +30,7 @@ func TestPreMovePopulatedDatabaseSurvivesOpenAndReopen(t *testing.T) {
 	}
 
 	for open := 1; open <= 2; open++ {
-		store := NewSQLiteStore(path)
+		store := newTestSQLiteStore(path)
 		loaded, err := store.Load()
 		if err != nil {
 			t.Fatalf("open %d load Agent state: %v", open, err)
@@ -38,11 +38,11 @@ func TestPreMovePopulatedDatabaseSurvivesOpenAndReopen(t *testing.T) {
 		if loaded.DesiredGeneration != 8 || loaded.ActivatedGeneration != 7 || loaded.AppliedGeneration != 7 || !loaded.Dependencies["host"].Enabled {
 			t.Fatalf("open %d Agent state changed: %+v", open, loaded)
 		}
-		installationID, err := NewIdentityStore(path).EnsureInstallationID(mustInstallationID(t, "123e4567-e89b-12d3-a456-426614174000"))
+		installationID, err := newTestIdentityStore(path).EnsureInstallationID(mustInstallationID(t, "123e4567-e89b-12d3-a456-426614174000"))
 		if err != nil || installationID.String() != "123e4567-e89b-12d3-a456-426614174000" {
 			t.Fatalf("open %d installation identity=%s err=%v", open, installationID, err)
 		}
-		attempt, err := NewEnrollmentStore(path).LoadAttempt()
+		attempt, err := newTestEnrollmentStore(path).LoadAttempt()
 		if err != nil {
 			t.Fatalf("open %d load enrollment attempt: %v", open, err)
 		}

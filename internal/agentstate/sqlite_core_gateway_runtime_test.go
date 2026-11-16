@@ -183,7 +183,7 @@ func TestCoreGatewayRuntimeMigrationSeedsExistingAcceptedSnapshot(t *testing.T) 
 	}
 	db.Close()
 	path := filepath.Clean(store.path)
-	if _, err := NewSQLiteStore(path).Load(); err != nil {
+	if _, err := newTestSQLiteStore(path).Load(); err != nil {
 		t.Fatal(err)
 	}
 	got, err := store.GatewayForGeneration(5)

@@ -3,6 +3,7 @@ package agentlifecycle
 import (
 	"context"
 	"errors"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"net"
 	"os"
 	"path/filepath"
@@ -12,11 +13,11 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	monitoringprofile "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
@@ -412,7 +413,7 @@ service:
 		t.Fatal(err)
 	}
 	statePath := filepath.Join(t.TempDir(), "state.db")
-	store := agentstate.NewSQLiteStore(statePath)
+	store := sqlitefixture.NewSQLiteStore(statePath)
 	if _, err := store.Update(func(*agentstate.State) error { return nil }); err != nil {
 		t.Fatal(err)
 	}

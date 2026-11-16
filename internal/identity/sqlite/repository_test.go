@@ -1,16 +1,15 @@
 package sqlite_test
 
 import (
-	"testing"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
+	"testing"
 )
 
 func TestRepositoryUsesSharedStateDatabaseAndKeepsFirstInstallationID(t *testing.T) {
 	path := t.TempDir() + "/agent.db"
-	store := agentstate.NewSQLiteStore(path)
+	store := sqlitefixture.NewSQLiteStore(path)
 	repository := identitysqlite.New(store.OpenDatabase)
 
 	first, err := installationid.ParseInstallationID("11111111-2222-4333-8444-555555555555")
@@ -38,7 +37,7 @@ func TestRepositoryUsesSharedStateDatabaseAndKeepsFirstInstallationID(t *testing
 		t.Fatalf("repeated initialization replaced ID with %s, want %s", committed, first)
 	}
 
-	compatibilityRepository := agentstate.NewIdentityStore(path)
+	compatibilityRepository := sqlitefixture.NewIdentityStore(path)
 	committed, err = compatibilityRepository.EnsureInstallationID(second)
 	if err != nil {
 		t.Fatalf("read ID through compatibility facade: %v", err)

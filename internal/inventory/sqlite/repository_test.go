@@ -4,18 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ar-imms/telemetry-agent/internal/inventory"
+	inventorysqlite "github.com/ar-imms/telemetry-agent/internal/inventory/sqlite"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"path/filepath"
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/inventory"
-	inventorysqlite "github.com/ar-imms/telemetry-agent/internal/inventory/sqlite"
 )
 
 func TestInventoryRepositoryKeepsFailureEvidenceAndWriteCAS(t *testing.T) {
-	store := agentstate.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := sqlitefixture.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	repository := inventorysqlite.NewInventoryRepository(store.OpenDatabase, &sync.Mutex{})
 	at := time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)
 	snapshot := inventory.ProviderSnapshot{
@@ -56,7 +55,7 @@ func TestInventoryRepositoryKeepsFailureEvidenceAndWriteCAS(t *testing.T) {
 }
 
 func TestInventoryRepositoryReadsBoundedProviderStatusesWithoutResources(t *testing.T) {
-	store := agentstate.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := sqlitefixture.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	repository := inventorysqlite.NewInventoryRepository(store.OpenDatabase, &sync.Mutex{})
 	at := time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)
 	for index := 0; index < 3; index++ {
@@ -101,7 +100,7 @@ func TestInventoryRepositoryReadsBoundedProviderStatusesWithoutResources(t *test
 }
 
 func TestInventoryRepositoryProviderStatusReadHonorsCancellation(t *testing.T) {
-	store := agentstate.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := sqlitefixture.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	repository := inventorysqlite.NewInventoryRepository(store.OpenDatabase, &sync.Mutex{})
 	reader := repository.(inventory.ProviderStatusReader)
 	ctx, cancel := context.WithCancel(context.Background())

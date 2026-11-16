@@ -94,7 +94,7 @@ func (u managedAgentUninstaller) Uninstall(
 		return fmt.Errorf("resolve current Agent executable path: %w", err)
 	}
 
-	store := agentstate.NewStore(statePath)
+	store := newAgentStateStore(statePath)
 	state, err := store.Load()
 	if err != nil {
 		return fmt.Errorf("load Agent state: %w", err)
@@ -190,7 +190,7 @@ func (r managedAgentUninstallRequester) Request(
 		return fmt.Errorf("Agent lifecycle state path is required")
 	}
 
-	store := agentstate.NewStore(statePath)
+	store := newAgentStateStore(statePath)
 	state, err := store.Load()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -244,7 +244,7 @@ func newManagedAgentUninstaller(
 		) (agentstate.State, error) {
 			return agentlifecycle.WaitForDependenciesRemoved(
 				ctx,
-				agentstate.NewStore(statePath),
+				newAgentStateStore(statePath),
 				dependencyTeardownPollInterval,
 			)
 		},

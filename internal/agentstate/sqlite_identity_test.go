@@ -14,7 +14,7 @@ import (
 
 func TestSQLiteIdentityRepositoryInitializesAndReusesCommittedID(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	store := NewSQLiteStore(path)
+	store := newTestSQLiteStore(path)
 	wantState := State{
 		Collector: CollectorContext{
 			BinaryPath:      "otelcol",
@@ -41,7 +41,7 @@ func TestSQLiteIdentityRepositoryInitializesAndReusesCommittedID(t *testing.T) {
 
 	first := mustInstallationID(t, "11111111-2222-4333-8444-555555555555")
 	second := mustInstallationID(t, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee")
-	repository := NewIdentityStore(path)
+	repository := newTestIdentityStore(path)
 	got, err := repository.EnsureInstallationID(first)
 	if err != nil {
 		t.Fatalf("EnsureInstallationID(first) error = %v", err)
@@ -68,7 +68,7 @@ func TestSQLiteIdentityRepositoryInitializesAndReusesCommittedID(t *testing.T) {
 
 func TestSQLiteIdentityMigrationSeparatesSchemaAndInitialization(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	store := NewSQLiteStore(path)
+	store := newTestSQLiteStore(path)
 	if _, err := store.Load(); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("Load() error = %v, want missing state", err)
 	}
@@ -128,8 +128,8 @@ func TestSQLiteIdentityMigrationSeparatesSchemaAndInitialization(t *testing.T) {
 
 func TestSQLiteIdentityConcurrentInitializationReturnsCommittedID(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	first := NewIdentityStore(path)
-	second := NewIdentityStore(path)
+	first := newTestIdentityStore(path)
+	second := newTestIdentityStore(path)
 	candidates := []installationid.InstallationID{
 		mustInstallationID(t, "11111111-2222-4333-8444-555555555555"),
 		mustInstallationID(t, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"),
@@ -172,12 +172,12 @@ func TestSQLiteIdentityConcurrentInitializationReturnsCommittedID(t *testing.T) 
 
 func TestSQLiteIdentityDoesNotRecreateMissingInitializedRow(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	repository := NewIdentityStore(path)
+	repository := newTestIdentityStore(path)
 	first := mustInstallationID(t, "11111111-2222-4333-8444-555555555555")
 	if _, err := repository.EnsureInstallationID(first); err != nil {
 		t.Fatalf("initialize identity: %v", err)
 	}
-	db, err := NewSQLiteStore(path).open()
+	db, err := newTestSQLiteStore(path).open()
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestSQLiteIdentityDoesNotRecreateMissingInitializedRow(t *testing.T) {
 	if _, err := repository.EnsureInstallationID(second); err == nil {
 		t.Fatal("EnsureInstallationID() error = nil, want missing initialized row error")
 	}
-	verifyDB, err := NewSQLiteStore(path).open()
+	verifyDB, err := newTestSQLiteStore(path).open()
 	if err != nil {
 		t.Fatalf("reopen database: %v", err)
 	}
@@ -209,12 +209,12 @@ func TestSQLiteIdentityDoesNotRecreateMissingInitializedRow(t *testing.T) {
 
 func TestSQLiteIdentityRejectsMalformedInitializedID(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	repository := NewIdentityStore(path)
+	repository := newTestIdentityStore(path)
 	first := mustInstallationID(t, "11111111-2222-4333-8444-555555555555")
 	if _, err := repository.EnsureInstallationID(first); err != nil {
 		t.Fatalf("initialize identity: %v", err)
 	}
-	db, err := NewSQLiteStore(path).open()
+	db, err := newTestSQLiteStore(path).open()
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
@@ -241,13 +241,13 @@ func TestSQLiteIdentityStoreResolvesLegacyJSONPath(t *testing.T) {
 	if err := NewFileStore(legacyPath).Save(wantState); err != nil {
 		t.Fatalf("save legacy state: %v", err)
 	}
-	repository := NewIdentityStore(legacyPath)
+	repository := newTestIdentityStore(legacyPath)
 	if _, err := repository.EnsureInstallationID(
 		mustInstallationID(t, "11111111-2222-4333-8444-555555555555"),
 	); err != nil {
 		t.Fatalf("initialize identity from legacy state path: %v", err)
 	}
-	state, err := NewStore(legacyPath).Load()
+	state, err := newTestStore(legacyPath).Load()
 	if err != nil {
 		t.Fatalf("load imported state: %v", err)
 	}

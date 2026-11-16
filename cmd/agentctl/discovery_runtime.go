@@ -1,14 +1,12 @@
 package main
 
 import (
+	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
 	"log"
 	"os"
 	"strings"
 	"time"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
-	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
 )
 
 const (
@@ -22,7 +20,7 @@ func newDockerDiscoveryCoordinator(statePath string) *inventoryctx.Coordinator {
 	if endpoint == "" {
 		return nil
 	}
-	repository := agentstate.NewSQLiteStore(statePath).InventoryRepository()
+	repository := newAgentSQLiteStore(statePath).InventoryRepository()
 	provider, err := discoverydocker.NewProvider(endpoint)
 	if err != nil {
 		status := inventoryctx.ProviderStatus{

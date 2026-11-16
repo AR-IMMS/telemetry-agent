@@ -123,7 +123,7 @@ func runInstall(
 		return 1
 	}
 
-	stateStore := agentstate.NewStore(layout.StatePath)
+	stateStore := newAgentStateStore(layout.StatePath)
 	state, err := stateStore.Load()
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
@@ -183,6 +183,7 @@ func runInstall(
 		installAgent = agentinstallation.NewInstaller(
 			deps.downloader,
 			deps.runner,
+			newAgentStateStore,
 		).Install
 	}
 

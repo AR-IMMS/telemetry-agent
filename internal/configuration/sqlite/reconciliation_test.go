@@ -2,6 +2,7 @@ package sqlite_test
 
 import (
 	"errors"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -214,7 +215,7 @@ func TestReconciliationRepositoryPersistsLKGRecoveryFailure(t *testing.T) {
 
 func TestReconciliationDiagnosticsMigrationPreservesRuntimeAndCandidateHistory(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	store := agentstate.NewSQLiteStore(path)
+	store := sqlitefixture.NewSQLiteStore(path)
 	want := agentstate.State{DesiredGeneration: 37, ActivatedGeneration: 36, AppliedGeneration: 35, Dependencies: map[string]agentstate.DependencyState{"node-exporter": {Enabled: true}}}
 	if err := store.Save(want); err != nil {
 		t.Fatal(err)
@@ -272,7 +273,7 @@ func TestReconciliationDiagnosticsMigrationPreservesRuntimeAndCandidateHistory(t
 
 func newReconciliationRepository(t *testing.T, now *time.Time) (agentstate.SQLiteStore, contracts.Repository) {
 	t.Helper()
-	store := agentstate.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := sqlitefixture.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	db, err := store.OpenDatabase()
 	if err != nil {
 		t.Fatal(err)

@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
+	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
 )
@@ -19,18 +21,24 @@ const (
 	defaultRuntimeShutdownTimeout = 10 * time.Second
 )
 
+// RuntimeStoreFactory supplies context-owned persistence ports assembled by
+// application composition for one Agent state database.
+type RuntimeStoreFactory func(string) (agentstate.Repository, coreconfig.GatewayRuntimeRepository, enrollment.AttemptRepository)
+
 // RunCollectorRuntime loads the bootstrapped Collector context and supervises
 // the Collector until the caller cancels ctx.
 func RunCollectorRuntime(
 	ctx context.Context,
 	statePath string,
 	teardown DependencyTeardownFunc,
+	stores RuntimeStoreFactory,
 ) error {
 	return RunCollectorRuntimeWithHealth(
 		ctx,
 		statePath,
 		teardown,
 		nil,
+		stores,
 	)
 }
 
@@ -41,8 +49,9 @@ func RunCollectorRuntimeWithHealth(
 	statePath string,
 	teardown DependencyTeardownFunc,
 	healthReporter agenthealth.ObservationReporter,
+	stores RuntimeStoreFactory,
 ) error {
-	return runCollectorRuntimeWithReconciliation(ctx, statePath, teardown, healthReporter, nil, nil)
+	return runCollectorRuntimeWithReconciliation(ctx, statePath, teardown, healthReporter, nil, nil, stores)
 }
 
 // RunCollectorRuntimeWithReconciliation starts the sole runtime-owned convergence loop after M2 recovery.
@@ -53,8 +62,9 @@ func RunCollectorRuntimeWithReconciliation(
 	healthReporter agenthealth.ObservationReporter,
 	reconcile func(context.Context) error,
 	onRecoveryFailure func(agentstate.State, error) error,
+	stores RuntimeStoreFactory,
 ) error {
-	return runCollectorRuntimeWithReconciliation(ctx, statePath, teardown, healthReporter, reconcile, onRecoveryFailure)
+	return runCollectorRuntimeWithReconciliation(ctx, statePath, teardown, healthReporter, reconcile, onRecoveryFailure, stores)
 }
 
 func runCollectorRuntimeWithReconciliation(
@@ -64,6 +74,7 @@ func runCollectorRuntimeWithReconciliation(
 	healthReporter agenthealth.ObservationReporter,
 	reconcile func(context.Context) error,
 	onRecoveryFailure func(agentstate.State, error) error,
+	storeFactory RuntimeStoreFactory,
 ) error {
 	statePath = strings.TrimSpace(statePath)
 	if statePath == "" {
@@ -76,7 +87,13 @@ func runCollectorRuntimeWithReconciliation(
 		)
 	}
 
-	store := agentstate.NewStore(statePath)
+	if storeFactory == nil {
+		return fmt.Errorf("Collector runtime store factory is required")
+	}
+	store, gatewayStore, enrollmentStore := storeFactory(statePath)
+	if store == nil || gatewayStore == nil || enrollmentStore == nil {
+		return fmt.Errorf("Collector runtime state stores are required")
+	}
 
 	state, err := store.Load()
 	if err != nil {
@@ -129,13 +146,13 @@ func runCollectorRuntimeWithReconciliation(
 	runtimeRunner := collectorRunner(supervisor.Run)
 	if state.Supervisor.Enabled {
 		runtimeRunner = func(ctx context.Context, options supervisor.Options) error {
-			return runManagedSupervisor(ctx, statePath, state.Supervisor, options)
+			return runManagedSupervisor(ctx, statePath, state.Supervisor, options, enrollmentStore)
 		}
 	}
 
 	runtimeErr := runtimeWatcher{
 		store:          store,
-		gatewayRuntime: agentstate.NewCoreGatewayStore(statePath),
+		gatewayRuntime: gatewayStore,
 		run:            runtimeRunner,
 		options: supervisor.Options{
 			BinaryPath:      collector.BinaryPath,

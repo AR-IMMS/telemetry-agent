@@ -3,11 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"os"
-	"runtime"
-	"strings"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
@@ -15,6 +10,9 @@ import (
 	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
+	"os"
+	"runtime"
+	"strings"
 )
 
 // nativeDockerMonitoringInputs opts into OTel-native profile discovery only
@@ -23,7 +21,7 @@ func nativeDockerMonitoringInputs(statePath, osName string) ([]config.InlineLaye
 	if strings.TrimSpace(os.Getenv(dockerDiscoveryEndpointEnv)) == "" {
 		return nil, nil, nil
 	}
-	state, err := agentstate.NewStore(statePath).Load()
+	state, err := newAgentStateStore(statePath).Load()
 	if err != nil {
 		return nil, nil, fmt.Errorf("load Collector config root for native Docker monitoring: %w", err)
 	}
@@ -50,7 +48,7 @@ func nativeDockerMonitoringInputsWithProfiles(statePath, osName string, profiles
 	if endpoint == "" {
 		return nil, nil, nil
 	}
-	attempt, err := agentstate.NewEnrollmentStore(statePath).LoadAttempt()
+	attempt, err := newAgentEnrollmentStore(statePath).LoadAttempt()
 	if errors.Is(err, enrollment.ErrNoAttempt) || err == nil && (attempt.Status != enrollment.AttemptRegistered || attempt.Result == nil) {
 		return nil, nil, nil
 	}

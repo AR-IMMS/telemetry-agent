@@ -64,7 +64,7 @@ func TestCandidateJournalMigrationPreservesVersionSixLifecycleState(t *testing.T
 		t.Fatal(err)
 	}
 
-	store := NewSQLiteStore(path)
+	store := newTestSQLiteStore(path)
 	if _, err := store.Load(); err != nil {
 		t.Fatalf("open version 6 database through version 8 migration: %v", err)
 	}

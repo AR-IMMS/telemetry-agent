@@ -8,7 +8,7 @@ import (
 )
 
 func TestCandidateAdmissionAndAppliedMappingAreAtomic(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	if _, err := store.Update(func(state *State) error {
 		state.DesiredGeneration = 4
 		return nil
@@ -60,7 +60,7 @@ func TestCandidateAdmissionAndAppliedMappingAreAtomic(t *testing.T) {
 }
 
 func TestCandidateAdmissionRejectsStaleDesiredAndM2Revisions(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	if _, err := store.Update(func(state *State) error { state.DesiredGeneration = 9; return nil }); err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestCandidateAdmissionRejectsStaleDesiredAndM2Revisions(t *testing.T) {
 }
 
 func TestCandidateFailureReusesReservedGenerationOnRetry(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	if _, err := store.Update(func(state *State) error { state.DesiredGeneration = 2; return nil }); err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func TestCandidateGenerationCanCommitAfterNewerDesiredGenerationArrives(t *testi
 }
 
 func TestCandidateAppliedMappingRollsBackWithStateOnJournalFailure(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	if _, err := store.Update(func(state *State) error { state.DesiredGeneration = 2; return nil }); err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +189,7 @@ func TestCandidateAppliedMappingRollsBackWithStateOnJournalFailure(t *testing.T)
 }
 
 func TestCandidateGatewayReadinessCommitsMappingWithAppliedGeneration(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	if _, err := store.Update(func(state *State) error { state.DesiredGeneration = 5; return nil }); err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +226,7 @@ func TestCandidateGatewayReadinessCommitsMappingWithAppliedGeneration(t *testing
 }
 
 func TestCandidateAppliedGenerationRequiresAtomicTerminalMapping(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	if _, err := store.Update(func(state *State) error { state.DesiredGeneration = 1; return nil }); err != nil {
 		t.Fatal(err)
 	}

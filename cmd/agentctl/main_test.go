@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"net"
 	"os"
 	"path/filepath"
@@ -779,7 +780,7 @@ func TestRunBootstrapPersistsCollectorContextAndManagedReceiverLayer(
 		)
 	}
 
-	state, err := agentstate.NewStore(statePath).Load()
+	state, err := sqlitefixture.NewStore(statePath).Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
@@ -844,7 +845,7 @@ func TestRunBootstrapDoesNotPersistCollectorContextWhenBootstrapFails(
 		)
 	}
 
-	_, err := agentstate.NewStore(statePath).Load()
+	_, err := sqlitefixture.NewStore(statePath).Load()
 	if !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("state Load() error = %v, want not-exist error", err)
 	}

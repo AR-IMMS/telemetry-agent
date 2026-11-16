@@ -9,6 +9,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	credentialstore "github.com/ar-imms/telemetry-agent/internal/identity/credentials"
+	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"io"
 	"net"
 	"net/http"
@@ -19,11 +23,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	credentialstore "github.com/ar-imms/telemetry-agent/internal/identity/credentials"
-	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
-	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 )
 
 // TestCoreEnrollmentLifecycle exercises the Agent against an isolated HTTPS
@@ -62,10 +61,10 @@ func TestCoreEnrollmentLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal("generate test installation ID")
 	}
-	if _, err := agentstate.NewIdentityStore(statePath).EnsureInstallationID(installationID); err != nil {
+	if _, err := sqlitefixture.NewIdentityStore(statePath).EnsureInstallationID(installationID); err != nil {
 		t.Fatalf("persist test installation identity: %v", err)
 	}
-	repository := agentstate.NewEnrollmentStore(statePath)
+	repository := sqlitefixture.NewEnrollmentStore(statePath)
 	credentials := credentialstore.New(statePath)
 
 	var lastBinding string

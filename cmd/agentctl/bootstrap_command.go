@@ -98,7 +98,7 @@ func runBootstrap(
 		return 1
 	}
 
-	stateStore := agentstate.NewStore(*statePath)
+	stateStore := newAgentStateStore(*statePath)
 
 	state, err := stateStore.Load()
 	if err != nil {

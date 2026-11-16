@@ -14,7 +14,7 @@ import (
 )
 
 func TestSQLiteApprovalCommitsProposalAndDesiredStateAtomically(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	proposal := sqliteProposalFixture(t)
 	if err := store.ProposalRepository().PutProposal(proposal, 0); err != nil {
 		t.Fatal(err)
@@ -39,7 +39,7 @@ func TestSQLiteApprovalCommitsProposalAndDesiredStateAtomically(t *testing.T) {
 }
 
 func TestSQLiteApprovalRollsBackEveryWriteWhenTerminalProposalUpdateFails(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	proposal := sqliteProposalFixture(t)
 	if err := store.ProposalRepository().PutProposal(proposal, 0); err != nil {
 		t.Fatal(err)
@@ -76,7 +76,7 @@ func TestSQLiteApprovalRejectsStaleDesiredAndInventorySnapshots(t *testing.T) {
 		{name: "inventory write revision", mutate: func(commit *proposals.ApprovalCommit) { commit.InventoryWriteRevision = 1 }, want: proposals.ErrApprovalStale},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+			store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 			proposal := sqliteProposalFixture(t)
 			if err := store.ProposalRepository().PutProposal(proposal, 0); err != nil {
 				t.Fatal(err)
@@ -91,7 +91,7 @@ func TestSQLiteApprovalRejectsStaleDesiredAndInventorySnapshots(t *testing.T) {
 }
 
 func TestSQLiteApprovalRejectsDuplicateResourceBinding(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	first := sqliteProposalFixture(t)
 	if err := store.ProposalRepository().PutProposal(first, 0); err != nil {
 		t.Fatal(err)
@@ -116,7 +116,7 @@ func TestSQLiteApprovalRejectsDuplicateResourceBinding(t *testing.T) {
 }
 
 func TestSQLiteApprovalRejectsEquivalentManualIntegration(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	proposal := sqliteProposalFixture(t)
 	if err := store.ProposalRepository().PutProposal(proposal, 0); err != nil {
 		t.Fatal(err)
@@ -131,7 +131,7 @@ func TestSQLiteApprovalRejectsEquivalentManualIntegration(t *testing.T) {
 }
 
 func TestSQLiteApprovalConcurrentRepeatAdvancesDesiredSetOnce(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	proposal := sqliteProposalFixture(t)
 	if err := store.ProposalRepository().PutProposal(proposal, 0); err != nil {
 		t.Fatal(err)
@@ -157,7 +157,7 @@ func TestSQLiteApprovalConcurrentRepeatAdvancesDesiredSetOnce(t *testing.T) {
 			t.Fatalf("concurrent idempotent approval error=%v", err)
 		}
 	}
-	snapshot, err := NewSQLiteStore(store.path).IntegrationRepository().Snapshot()
+	snapshot, err := newTestSQLiteStore(store.path).IntegrationRepository().Snapshot()
 	if err != nil || snapshot.Revision != 1 || len(snapshot.Instances) != 1 || snapshot.Instances[0].Revision != 1 {
 		t.Fatalf("concurrent approval desired snapshot=%+v err=%v", snapshot, err)
 	}

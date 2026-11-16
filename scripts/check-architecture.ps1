@@ -102,6 +102,20 @@ try {
     }
 
     $violations = [System.Collections.Generic.List[string]]::new()
+    # Ordered schema composition belongs to the Application boundary. The
+    # Agent-state persistence context owns its base schema but does not select
+    # or register other contexts' migrations.
+    $migrationComposition = Join-Path $repoRoot 'internal/app/migrations/registry.go'
+    if (-not (Test-Path -LiteralPath $migrationComposition -PathType Leaf)) {
+        $violations.Add('Application-owned SQLite migration registry is missing at internal/app/migrations/registry.go')
+    }
+    $agentStateSchema = Join-Path $repoRoot 'internal/agentstate/sqlite_schema.go'
+    if (Test-Path -LiteralPath $agentStateSchema -PathType Leaf) {
+        $agentStateSchemaSource = Get-Content -LiteralPath $agentStateSchema -Raw
+        if ($agentStateSchemaSource -match 'ensureSQLiteSchema|migrationForVersion|internal/(configuration|identity|inventory|operations|runtime)/.+/sqlite') {
+            $violations.Add('Agentstate must not compose or import context-owned SQLite migrations; register them through internal/app/migrations')
+        }
+    }
     # Monitoring Profiles has completed its move under an explicit
     # Context -> Capability -> Layer structure. Keep the domain and application
     # packages real; the YAML directory is an input adapter.

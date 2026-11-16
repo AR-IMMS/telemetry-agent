@@ -29,21 +29,21 @@ type Repository interface {
 
 // NewStore creates SQLite operational storage. An explicit legacy .json path is
 // imported into a sibling .db file and preserved as migration backup.
-func NewStore(path string) Repository {
-	return newSQLiteStoreForPath(path)
+func NewStore(path string, initializeSchema func(*sql.DB) error) Repository {
+	return newSQLiteStoreForPath(path, initializeSchema)
 }
 
 // NewIdentityStore returns the SQLite adapter for installation identity at
 // the same operational database path used by NewStore.
-func NewIdentityStore(path string) installationid.InstallationIdentityRepository {
-	store := newSQLiteStoreForPath(path)
+func NewIdentityStore(path string, initializeSchema func(*sql.DB) error) installationid.InstallationIdentityRepository {
+	store := newSQLiteStoreForPath(path, initializeSchema)
 	return identitysqlite.New(store.OpenDatabase)
 }
 
 // NewCoreGatewayStore returns the SQLite adapter for Core Gateway snapshot
 // acceptance at the same operational database path used by NewStore.
-func NewCoreGatewayStore(path string) coreconfig.GatewayRuntimeRepository {
-	store := newSQLiteStoreForPath(path)
+func NewCoreGatewayStore(path string, initializeSchema func(*sql.DB) error) coreconfig.GatewayRuntimeRepository {
+	store := newSQLiteStoreForPath(path, initializeSchema)
 	return newCoreGatewayRepository(store)
 }
 
@@ -139,18 +139,17 @@ func persistGatewayGeneration(tx *sql.Tx, state State) error {
 
 // NewEnrollmentStore returns the SQLite adapter for durable enrollment attempts
 // at the same operational database path used by other Agent state repositories.
-func NewEnrollmentStore(path string) enrollment.AttemptRepository {
-	store := newSQLiteStoreForPath(path)
+func NewEnrollmentStore(path string, initializeSchema func(*sql.DB) error) enrollment.AttemptRepository {
+	store := newSQLiteStoreForPath(path, initializeSchema)
 	return enrollmentsqlite.New(store.OpenDatabase, &sqliteUpdateMutex)
 }
 
-func newSQLiteStoreForPath(path string) SQLiteStore {
+func newSQLiteStoreForPath(path string, initializeSchema func(*sql.DB) error) SQLiteStore {
 	path = strings.TrimSpace(path)
 	if strings.EqualFold(filepath.Ext(path), ".json") {
-		return SQLiteStore{
-			path:       strings.TrimSuffix(path, filepath.Ext(path)) + ".db",
-			legacyPath: path,
-		}
+		store := NewSQLiteStore(strings.TrimSuffix(path, filepath.Ext(path))+".db", initializeSchema)
+		store.legacyPath = path
+		return store
 	}
-	return NewSQLiteStore(path)
+	return NewSQLiteStore(path, initializeSchema)
 }

@@ -2,6 +2,7 @@ package agentlifecycle
 
 import (
 	"context"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"os"
 	"path/filepath"
 	"testing"
@@ -23,7 +24,7 @@ func TestCandidateRollbackUsesExistingLKGAndRecordsFailure(t *testing.T) {
 	if err := os.WriteFile(configPath, []byte("failed-candidate"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	store := agentstate.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := sqlitefixture.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	if _, err := store.Update(func(state *agentstate.State) error {
 		state.DesiredGeneration, state.ActivatedGeneration, state.AppliedGeneration = 5, 5, 4
 		state.PendingActivation = &agentstate.PendingActivation{Generation: 5, RecoveryPath: recoveryPath, Candidate: &agentstate.CandidateMapping{
@@ -70,7 +71,7 @@ func TestCandidateCrashRecoveryPreservesAppliedGeneration(t *testing.T) {
 			if err := os.WriteFile(configPath+".last-known-good", oldConfig, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			store := agentstate.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+			store := sqlitefixture.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 			if _, err := store.Update(func(state *agentstate.State) error {
 				state.DesiredGeneration, state.ActivatedGeneration, state.AppliedGeneration = 5, activated, 4
 				state.PendingActivation = &agentstate.PendingActivation{Generation: 5, RecoveryPath: recoveryPath, Candidate: &agentstate.CandidateMapping{

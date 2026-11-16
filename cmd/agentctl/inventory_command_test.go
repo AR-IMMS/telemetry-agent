@@ -3,22 +3,21 @@ package main
 import (
 	"bytes"
 	"context"
+	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
+	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	profilesapplication "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/application"
+	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
-	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
-	profilesapplication "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/application"
-	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 )
 
 func TestInventoryCommandsReadPersistedSnapshot(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "state.db")
-	repository := agentstate.NewSQLiteStore(statePath).InventoryRepository()
+	repository := sqlitefixture.NewSQLiteStore(statePath).InventoryRepository()
 	at := time.Now().UTC()
 	snapshot := inventoryctx.ProviderSnapshot{
 		ProviderID: "docker", ProviderInstanceID: "local", Complete: true, ObservedAt: at,
@@ -68,7 +67,7 @@ func TestInventoryCommandsReadPersistedSnapshot(t *testing.T) {
 
 func TestInventoryListActiveOnlyExcludesMissingHistory(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "state.db")
-	repository := agentstate.NewSQLiteStore(statePath).InventoryRepository()
+	repository := sqlitefixture.NewSQLiteStore(statePath).InventoryRepository()
 	at := time.Now().UTC()
 	first := inventoryctx.ProviderSnapshot{
 		ProviderID: "docker", ProviderInstanceID: "local", Complete: true, ObservedAt: at,

@@ -13,7 +13,7 @@ import (
 
 func TestSQLiteProposalRepositoryCASDismissAndRestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	store := NewSQLiteStore(path)
+	store := newTestSQLiteStore(path)
 	repository := store.ProposalRepository()
 	proposal := sqliteProposalFixture(t)
 	if err := repository.PutProposal(proposal, 0); err != nil {
@@ -28,7 +28,7 @@ func TestSQLiteProposalRepositoryCASDismissAndRestart(t *testing.T) {
 	if err := repository.PutProposal(stale, 2); !errors.Is(err, proposals.ErrProposalConflict) {
 		t.Fatalf("stale insert error = %v", err)
 	}
-	proposalList, err := NewSQLiteStore(path).ProposalRepository().ProposalSnapshot()
+	proposalList, err := newTestSQLiteStore(path).ProposalRepository().ProposalSnapshot()
 	if err != nil || len(proposalList) != 1 || proposalList[0].Revision != 1 || proposalList[0].CandidateDigest != proposal.CandidateDigest {
 		t.Fatalf("recovered proposals=%+v err=%v", proposalList, err)
 	}
@@ -48,7 +48,7 @@ func TestSQLiteProposalRepositoryCASDismissAndRestart(t *testing.T) {
 }
 
 func TestSQLiteProposalRepositoryConcurrentCreateHasSingleWinner(t *testing.T) {
-	repository := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db")).ProposalRepository()
+	repository := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db")).ProposalRepository()
 	proposal := sqliteProposalFixture(t)
 	start := make(chan struct{})
 	results := make(chan error, 2)
@@ -81,7 +81,7 @@ func TestSQLiteProposalRepositoryConcurrentCreateHasSingleWinner(t *testing.T) {
 }
 
 func TestSQLiteNeedsInputProposalPersistsWithoutCandidateConfiguration(t *testing.T) {
-	repository := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db")).ProposalRepository()
+	repository := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db")).ProposalRepository()
 	proposal := sqliteProposalFixture(t)
 	proposal.Status = proposals.ProposalNeedsInput
 	proposal.CandidateDigest = ""
@@ -104,7 +104,7 @@ func TestSQLiteNeedsInputProposalPersistsWithoutCandidateConfiguration(t *testin
 
 func TestMonitoringProposalMigrationFromV11PreservesExistingState(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	store := NewSQLiteStore(path)
+	store := newTestSQLiteStore(path)
 	want := State{DesiredGeneration: 8, ActivatedGeneration: 7, AppliedGeneration: 7, Dependencies: map[string]DependencyState{"host": {Enabled: true}}}
 	if err := store.Save(want); err != nil {
 		t.Fatal(err)
@@ -125,7 +125,7 @@ func TestMonitoringProposalMigrationFromV11PreservesExistingState(t *testing.T) 
 		t.Fatal(err)
 	}
 	db.Close()
-	restarted := NewSQLiteStore(path)
+	restarted := newTestSQLiteStore(path)
 	if _, err := restarted.ProposalRepository().ProposalSnapshot(); err != nil {
 		t.Fatal(err)
 	}

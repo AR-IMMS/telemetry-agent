@@ -8,7 +8,7 @@ import (
 )
 
 func TestSQLiteStorePersistsStateAndUsesWAL(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	if _, err := store.Update(func(state *State) error {
 		state.DesiredGeneration = 3
 		return nil
@@ -54,7 +54,7 @@ func TestSQLiteStoreImportsLegacyJSONState(t *testing.T) {
 	if err := legacy.Save(want); err != nil {
 		t.Fatalf("save legacy state: %v", err)
 	}
-	store := NewSQLiteStore(filepath.Join(directory, "state.db"))
+	store := newTestSQLiteStore(filepath.Join(directory, "state.db"))
 	got, err := store.Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -70,8 +70,8 @@ func TestSQLiteStoreImportsLegacyJSONState(t *testing.T) {
 
 func TestSQLiteStoreSerializesConcurrentUpdatesAcrossInstances(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	first := NewSQLiteStore(path)
-	second := NewSQLiteStore(path)
+	first := newTestSQLiteStore(path)
+	second := newTestSQLiteStore(path)
 	const updates = 20
 	var wait sync.WaitGroup
 	errors := make(chan error, updates)
@@ -107,7 +107,7 @@ func TestSQLiteStoreSerializesConcurrentUpdatesAcrossInstances(t *testing.T) {
 }
 
 func TestSQLiteStoreJournalsActivationAndRollback(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	if _, err := store.Update(func(state *State) error {
 		state.DesiredGeneration = 2
 		return state.MarkGenerationActivated(2)
@@ -141,7 +141,7 @@ func TestNewStoreMigratesExplicitLegacyJSONPathToSQLite(t *testing.T) {
 	if err := NewFileStore(legacyPath).Save(State{DesiredGeneration: 7}); err != nil {
 		t.Fatalf("write legacy state: %v", err)
 	}
-	store := NewStore(legacyPath)
+	store := newTestStore(legacyPath)
 	got, err := store.Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)

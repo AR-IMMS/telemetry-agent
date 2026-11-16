@@ -10,6 +10,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation"
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
+	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
@@ -38,7 +39,7 @@ var (
 )
 
 func newRuntimeBaseline(statePath string) (runtimeBaseline, error) {
-	store := agentstate.NewStore(statePath)
+	store := newAgentStateStore(statePath)
 	state, err := store.Load()
 	if err != nil {
 		return runtimeBaseline{}, err
@@ -64,7 +65,7 @@ func newRuntimeBaseline(statePath string) (runtimeBaseline, error) {
 		platform:     platform,
 		dependencies: dependencies,
 		layers:       layers,
-		gateways:     agentstate.NewCoreGatewayStore(statePath),
+		gateways:     newAgentCoreGatewayStore(statePath),
 		profiles:     profiles,
 		baselineInputs: func() ([]config.InlineLayer, []string, error) {
 			return nativeDockerMonitoringInputsWithProfiles(statePath, platform.OS, profiles)
@@ -185,6 +186,9 @@ func runRuntimeWithReconciliation(ctx context.Context, statePath string, teardow
 		Teardown:  teardown,
 		Reporter:  reporter,
 		Runner:    runner,
+		StoreFactory: func(path string) (agentstate.Repository, coreconfig.GatewayRuntimeRepository, enrollment.AttemptRepository) {
+			return newAgentStateStore(path), newAgentCoreGatewayStore(path), newAgentEnrollmentStore(path)
+		},
 		Build: func(publisher events.Publisher, commandRunner bootstrap.CommandRunner) (app.RuntimeComponents, error) {
 			controller, recordRecoveryFailure, err := newRuntimeReconciliationController(statePath, commandRunner)
 			if err != nil {

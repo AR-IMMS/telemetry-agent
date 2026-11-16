@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"math/big"
 	"net"
 	"os"
@@ -97,7 +98,7 @@ func TestLiveDockerApplicationProfilesDeliverOTLP(t *testing.T) {
 
 	statePath := filepath.Join(root, "state.db")
 	configPath := filepath.Join(root, "agent", "otel.yaml")
-	store := agentstate.NewSQLiteStore(statePath)
+	store := sqlitefixture.NewSQLiteStore(statePath)
 	testState := agentstate.State{
 		Collector:         agentstate.CollectorContext{ConfigRoot: configRoot, BinaryPath: binary, ConfigPath: configPath, GatewayEndpoint: sinkEndpoint, HealthEndpoint: defaultHealthEndpoint},
 		DesiredGeneration: 1, ActivatedGeneration: 1, AppliedGeneration: 1, Dependencies: map[string]agentstate.DependencyState{},
@@ -119,7 +120,7 @@ func TestLiveDockerApplicationProfilesDeliverOTLP(t *testing.T) {
 	if err := store.Save(testState); err != nil {
 		t.Fatal(err)
 	}
-	installationID, err := installationid.EnsureInstallationIdentity(agentstate.NewIdentityStore(statePath), rand.Reader)
+	installationID, err := installationid.EnsureInstallationIdentity(sqlitefixture.NewIdentityStore(statePath), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}

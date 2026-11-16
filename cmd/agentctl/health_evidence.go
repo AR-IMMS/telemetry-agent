@@ -2,12 +2,10 @@ package main
 
 import (
 	"context"
-	"time"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	"time"
 )
 
 const dependencyEvidenceTimeout = 5 * time.Second
@@ -17,7 +15,7 @@ type inventoryRepositoryProvider interface {
 }
 
 func newAgentHealthEvidenceSources(statePath string) []agenthealth.EvidenceSource {
-	store, ok := agentstate.NewStore(statePath).(inventoryRepositoryProvider)
+	store, ok := newAgentStateStore(statePath).(inventoryRepositoryProvider)
 	var inventory inventoryctx.ProviderStatusReader
 	if ok {
 		inventory, _ = store.InventoryRepository().(inventoryctx.ProviderStatusReader)

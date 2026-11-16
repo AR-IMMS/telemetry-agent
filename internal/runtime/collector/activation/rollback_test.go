@@ -2,6 +2,7 @@ package agentlifecycle
 
 import (
 	"context"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"os"
 	"path/filepath"
 	"testing"
@@ -63,7 +64,7 @@ func TestRollbackRestoresCollectorConfigAndGatewayEndpointPair(t *testing.T) {
 	if err := os.WriteFile(recoveryPath, []byte("candidate: bootstrap\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	sqliteStore := agentstate.NewSQLiteStore(statePath)
+	sqliteStore := sqlitefixture.NewSQLiteStore(statePath)
 	var store agentstate.Repository = sqliteStore
 	if err := sqliteStore.Save(agentstate.State{
 		Collector: agentstate.CollectorContext{
@@ -81,10 +82,10 @@ func TestRollbackRestoresCollectorConfigAndGatewayEndpointPair(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := agentstate.NewIdentityStore(statePath).EnsureInstallationID(id); err != nil {
+	if _, err := sqlitefixture.NewIdentityStore(statePath).EnsureInstallationID(id); err != nil {
 		t.Fatal(err)
 	}
-	gateway := agentstate.NewCoreGatewayStore(statePath)
+	gateway := sqlitefixture.NewCoreGatewayStore(statePath)
 	accepted, err := gateway.AcceptGatewaySnapshot(context.Background(), coreconfig.GatewaySnapshot{
 		InstallationID: id.String(),
 		Revision:       9,

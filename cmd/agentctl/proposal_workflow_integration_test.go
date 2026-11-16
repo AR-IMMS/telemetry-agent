@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"strings"
 	"testing"
 	"time"
@@ -13,7 +14,7 @@ import (
 
 func TestPersistedInventoryToProposalAndExplicitApproval(t *testing.T) {
 	statePath := t.TempDir() + "/state.db"
-	store := agentstate.NewSQLiteStore(statePath)
+	store := sqlitefixture.NewSQLiteStore(statePath)
 	before := agentstate.State{DesiredGeneration: 4, ActivatedGeneration: 3, AppliedGeneration: 3, Dependencies: map[string]agentstate.DependencyState{"host": {Enabled: true}}}
 	if err := store.Save(before); err != nil {
 		t.Fatal(err)

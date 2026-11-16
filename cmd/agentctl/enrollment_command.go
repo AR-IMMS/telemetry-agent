@@ -104,7 +104,7 @@ func runAgentEnrollment(
 	reEnroll bool,
 ) (enrollment.EnrollmentResult, error) {
 	service := enrollment.Service{
-		Repository:  agentstate.NewEnrollmentStore(statePath),
+		Repository:  newAgentEnrollmentStore(statePath),
 		Credentials: credentialstore.New(statePath),
 		Client:      coreapi.NewEnrollmentClient(),
 	}
@@ -116,7 +116,7 @@ func runAgentEnrollment(
 		return enrollment.EnrollmentResult{}, err
 	}
 	installationID, err := installationid.EnsureInstallationIdentity(
-		agentstate.NewIdentityStore(statePath),
+		newAgentIdentityStore(statePath),
 		rand.Reader,
 	)
 	if err != nil {

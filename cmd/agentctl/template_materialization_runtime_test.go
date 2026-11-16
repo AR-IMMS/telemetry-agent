@@ -2,15 +2,14 @@ package main
 
 import (
 	"context"
-	"path/filepath"
-	"testing"
-	"time"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
+	"path/filepath"
+	"testing"
+	"time"
 )
 
 type supportedTemplateCapability struct{}
@@ -31,7 +30,7 @@ func (p *mutableTemplateProvider) Discover(context.Context) (inventoryctx.Provid
 }
 
 func TestRuntimeTemplateMaterializerProjectsStableInstancesAndNoOps(t *testing.T) {
-	store := agentstate.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := sqlitefixture.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	registry, err := productionIntegrationRegistry()
 	if err != nil {
 		t.Fatal(err)
@@ -126,7 +125,7 @@ func TestRuntimeTemplateMaterializerProjectsStableInstancesAndNoOps(t *testing.T
 }
 
 func TestNativeRedisProfileDoesNotCreateAgentInstancesDuringContainerChurn(t *testing.T) {
-	store := agentstate.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := sqlitefixture.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	registry, err := productionIntegrationRegistry()
 	if err != nil {
 		t.Fatal(err)
@@ -183,7 +182,7 @@ func nativeRedisProviderSnapshot(ids ...string) inventoryctx.ProviderSnapshot {
 }
 
 func TestRuntimeTemplateUpdateChangesGeneratedInstancesButPreservesManualState(t *testing.T) {
-	store := agentstate.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := sqlitefixture.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	registry, err := productionIntegrationRegistry()
 	if err != nil {
 		t.Fatal(err)
@@ -263,7 +262,7 @@ func TestRuntimeTemplateUpdateChangesGeneratedInstancesButPreservesManualState(t
 }
 
 func TestRuntimeTemplateMaterializerPreservesFailureAndTracksResourceLifecycle(t *testing.T) {
-	store := agentstate.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := sqlitefixture.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	registry, err := productionIntegrationRegistry()
 	if err != nil {
 		t.Fatal(err)

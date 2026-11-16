@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"net"
 	"os"
 	"os/exec"
@@ -53,7 +54,7 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	configPath := filepath.Join(tempDir, "agent", "otel.yaml")
-	store := agentstate.NewSQLiteStore(statePath)
+	store := sqlitefixture.NewSQLiteStore(statePath)
 	initial := agentstate.State{
 		Collector: agentstate.CollectorContext{
 			ConfigRoot: configRoot, BinaryPath: binary, ConfigPath: configPath,
@@ -600,7 +601,7 @@ service:
 
 func newRuntimeTemplateServiceForTest(t *testing.T, statePath string, registry integration.Registry) configuration.TemplateService {
 	t.Helper()
-	return configuration.NewTemplateService(registry, agentstate.NewSQLiteStore(statePath).TemplateRepository())
+	return configuration.NewTemplateService(registry, sqlitefixture.NewSQLiteStore(statePath).TemplateRepository())
 }
 
 func writeRuntimeTemplateFile(t *testing.T, path string, template integration.IntegrationTemplate) {

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"io"
 	"path/filepath"
 	"reflect"
@@ -162,7 +163,7 @@ func TestRunDependencyPendingListsScheduledTeardowns(
 	t *testing.T,
 ) {
 	statePath := filepath.Join(t.TempDir(), "state.json")
-	store := agentstate.NewStore(statePath)
+	store := sqlitefixture.NewStore(statePath)
 
 	_, err := store.Update(func(state *agentstate.State) error {
 		state.AppliedGeneration = 6
@@ -275,7 +276,7 @@ func TestRunDependencyConfigureAppliesOnlyChangedManagedDependencies(
 	t *testing.T,
 ) {
 	statePath := filepath.Join(t.TempDir(), "state.json")
-	store := agentstate.NewStore(statePath)
+	store := sqlitefixture.NewStore(statePath)
 
 	_, err := store.Update(func(state *agentstate.State) error {
 		state.Dependencies = map[string]agentstate.DependencyState{
@@ -396,7 +397,7 @@ func TestRunDependencyConfigureCancellationDoesNotManageDependencies(
 	t *testing.T,
 ) {
 	statePath := filepath.Join(t.TempDir(), "state.json")
-	store := agentstate.NewStore(statePath)
+	store := sqlitefixture.NewStore(statePath)
 
 	_, err := store.Update(func(state *agentstate.State) error {
 		state.Dependencies = map[string]agentstate.DependencyState{
@@ -466,7 +467,7 @@ func TestRunDependencyConfigureSkipsUnchangedManagedDependencies(
 	t *testing.T,
 ) {
 	statePath := filepath.Join(t.TempDir(), "state.json")
-	store := agentstate.NewStore(statePath)
+	store := sqlitefixture.NewStore(statePath)
 
 	_, err := store.Update(func(state *agentstate.State) error {
 		state.Dependencies = map[string]agentstate.DependencyState{

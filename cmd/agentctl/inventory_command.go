@@ -72,13 +72,13 @@ func runInventory(ctx context.Context, args []string, stdout, stderr io.Writer) 
 		fmt.Fprintf(stderr, "inventory %s: %v\n", command, err)
 		return 1
 	}
-	snapshot, err := agentstate.NewSQLiteStore(*statePath).InventoryRepository().Snapshot()
+	snapshot, err := newAgentSQLiteStore(*statePath).InventoryRepository().Snapshot()
 	if err != nil {
 		fmt.Fprintf(stderr, "inventory %s: %v\n", command, err)
 		return 1
 	}
 	profileRegistry := monitoringdomain.DefaultRegistry()
-	if state, stateErr := agentstate.NewStore(*statePath).Load(); stateErr == nil {
+	if state, stateErr := newAgentStateStore(*statePath).Load(); stateErr == nil {
 		profileRegistry, err = loadMonitoringProfiles(state.Collector.ConfigRoot)
 		if err != nil {
 			fmt.Fprintf(stderr, "load local monitoring profiles: %v\n", err)

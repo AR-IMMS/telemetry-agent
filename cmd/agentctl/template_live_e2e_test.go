@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -38,7 +39,7 @@ func TestLiveDockerTemplateAutoMaterializesDesiredInstance(t *testing.T) {
 		t.Fatal("E2E state database must be inside the temporary directory")
 	}
 
-	store := agentstate.NewSQLiteStore(statePath)
+	store := sqlitefixture.NewSQLiteStore(statePath)
 	registry, err := productionIntegrationRegistry()
 	if err != nil {
 		t.Fatal(err)

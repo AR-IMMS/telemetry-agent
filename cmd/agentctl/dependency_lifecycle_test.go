@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -10,8 +11,8 @@ import (
 	"testing"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 )
 
@@ -129,7 +130,7 @@ service:
 
 	statePath := filepath.Join(t.TempDir(), "state.json")
 
-	store := agentstate.NewStore(statePath)
+	store := sqlitefixture.NewStore(statePath)
 
 	_, err := store.Update(func(state *agentstate.State) error {
 		state.Collector = agentstate.CollectorContext{
@@ -396,7 +397,7 @@ service:
 `)
 
 	statePath := filepath.Join(t.TempDir(), "state.json")
-	store := agentstate.NewStore(statePath)
+	store := sqlitefixture.NewStore(statePath)
 
 	_, err := store.Update(func(state *agentstate.State) error {
 		state.Collector = agentstate.CollectorContext{
@@ -523,7 +524,7 @@ service:
 `)
 
 	statePath := filepath.Join(t.TempDir(), "state.json")
-	store := agentstate.NewStore(statePath)
+	store := sqlitefixture.NewStore(statePath)
 
 	ownership := []agentstate.OwnedResource{
 		{
@@ -650,7 +651,7 @@ func TestManagedDependencyLifecycleRejectsEnableWithoutOwnership(
 	t *testing.T,
 ) {
 	statePath := filepath.Join(t.TempDir(), "state.json")
-	store := agentstate.NewStore(statePath)
+	store := sqlitefixture.NewStore(statePath)
 
 	_, err := store.Update(func(state *agentstate.State) error {
 		state.Collector = agentstate.CollectorContext{

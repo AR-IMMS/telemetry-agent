@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,7 +39,7 @@ func TestLiveDockerInventoryWhenExplicitlyEnabled(t *testing.T) {
 		t.Fatal("E2E must not use the production Agent state path")
 	}
 
-	store := agentstate.NewSQLiteStore(statePath)
+	store := sqlitefixture.NewSQLiteStore(statePath)
 	if err := store.Save(agentstate.State{DesiredGeneration: 3, ActivatedGeneration: 2, AppliedGeneration: 2, Dependencies: map[string]agentstate.DependencyState{"host": {Enabled: true}}}); err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +149,7 @@ func TestLiveDockerUnavailableRetainsInventory(t *testing.T) {
 	if statePath == "" || endpoint == "" {
 		t.Fatal("E2E state path and unreachable local Docker endpoint are required")
 	}
-	store := agentstate.NewSQLiteStore(statePath)
+	store := sqlitefixture.NewSQLiteStore(statePath)
 	repository := store.InventoryRepository()
 	before, err := repository.Snapshot()
 	if err != nil {
@@ -203,7 +204,7 @@ func TestLiveDockerProposalAndExplicitApproval(t *testing.T) {
 	if statePath == "" || fixtureID == "" || filepath.Clean(statePath) == filepath.Clean(agentstate.DefaultPath()) {
 		t.Fatal("isolated E2E state path and disposable fixture ID are required")
 	}
-	store := agentstate.NewSQLiteStore(statePath)
+	store := sqlitefixture.NewSQLiteStore(statePath)
 	before, err := store.Load()
 	if err != nil {
 		t.Fatal(err)
@@ -303,7 +304,7 @@ func TestLiveDatabaseFixturesMatchIntoNeedsInputProposals(t *testing.T) {
 	if statePath == "" || postgresID == "" || mongoID == "" || endpoint == "" || filepath.Clean(statePath) == filepath.Clean(agentstate.DefaultPath()) {
 		t.Fatal("isolated E2E state path, Docker endpoint, and PostgreSQL/MongoDB fixture IDs are required")
 	}
-	store := agentstate.NewSQLiteStore(statePath)
+	store := sqlitefixture.NewSQLiteStore(statePath)
 	provider, err := discoverydocker.NewProvider(endpoint)
 	if err != nil {
 		t.Fatal(err)

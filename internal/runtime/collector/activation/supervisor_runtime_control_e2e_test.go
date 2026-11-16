@@ -12,6 +12,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"math/big"
 	"net"
 	"net/http"
@@ -27,7 +28,6 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/coreapi"
 	credentialstore "github.com/ar-imms/telemetry-agent/internal/identity/credentials"
 	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
@@ -35,6 +35,7 @@ import (
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 	"github.com/ar-imms/telemetry-agent/internal/mockcore"
 	"github.com/ar-imms/telemetry-agent/internal/opampserver"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 )
 
 // TestManagedSupervisorEnrollmentAndRemoteGatewayE2E is the managed-runtime
@@ -95,7 +96,7 @@ func TestManagedSupervisorEnrollmentAndRemoteGatewayE2E(t *testing.T) {
 	)
 	const nodeID = "33333333-4444-4555-8666-777777777777"
 	statePath := filepath.Join(root, "agent-state.db")
-	installationID, err := installationid.EnsureInstallationIdentity(agentstate.NewIdentityStore(statePath), rand.Reader)
+	installationID, err := installationid.EnsureInstallationIdentity(sqlitefixture.NewIdentityStore(statePath), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +175,7 @@ func TestManagedSupervisorEnrollmentAndRemoteGatewayE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	service := enrollment.Service{
-		Repository:  agentstate.NewEnrollmentStore(statePath),
+		Repository:  sqlitefixture.NewEnrollmentStore(statePath),
 		Credentials: credentialstore.New(statePath), Client: coreapi.NewEnrollmentClient(),
 	}
 	result, err := service.Start(ctx, origin, enrollment.EnrollmentPayload{
@@ -188,7 +189,7 @@ func TestManagedSupervisorEnrollmentAndRemoteGatewayE2E(t *testing.T) {
 	if result.InstallationID != installationID.String() || result.Binding.NodeID != nodeID {
 		t.Fatalf("enrollment identity result = %+v", result)
 	}
-	attempt, err := agentstate.NewEnrollmentStore(statePath).LoadAttempt()
+	attempt, err := sqlitefixture.NewEnrollmentStore(statePath).LoadAttempt()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +254,7 @@ service:
 		StateDirectory:    filepath.Join(root, "credentials", "opamp-supervisor-state"),
 		OpAMPServerURL:    endpoint, ServerCAFile: serverCAFile, Enabled: true,
 	}
-	if _, err := agentstate.NewStore(statePath).Update(func(state *agentstate.State) error {
+	if _, err := sqlitefixture.NewStore(statePath).Update(func(state *agentstate.State) error {
 		state.Collector = agentstate.CollectorContext{
 			BinaryPath: collectorPath, ConfigPath: collectorConfig,
 			GatewayEndpoint: initialEndpoint, HealthEndpoint: healthEndpoint,
@@ -282,7 +283,7 @@ service:
 	})
 	noOpTeardown := func(context.Context, string, agentstate.TeardownAction, []agentstate.OwnedResource) error { return nil }
 	go func() {
-		runtimeDone <- RunCollectorRuntimeWithReconciliation(runContext, statePath, noOpTeardown, nil, nil, nil)
+		runtimeDone <- RunCollectorRuntimeWithReconciliation(runContext, statePath, noOpTeardown, nil, nil, nil, testRuntimeStoreFactory)
 	}()
 	waitForSupervisorRuntimeReadiness(t, ctx, runtimeDone, healthEndpoint)
 	waitForSupervisorSinkTelemetry(t, ctx, runtimeDone, initialSink)
@@ -298,7 +299,7 @@ service:
 		t.Fatal("local configuration fixture did not change the hostmetrics interval")
 	}
 	localCandidate, localOptions := managedRuntimeCandidate(t, statePath, collectorPath, collectorConfig, managedCandidateBaselinePath(root), []byte(localBaseline))
-	managedState := agentstate.NewSQLiteStore(statePath)
+	managedState := sqlitefixture.NewSQLiteStore(statePath)
 	localPriorPIDs := waitForManagedProcessCount(t, ctx, runtimeDone, collectorPath, root, 1)
 	localSinkBytes := len(initialSink.String())
 	localOutcome, err := ApplyCollectorCandidate(ctx, managedState, localCandidate, localOptions)
@@ -377,7 +378,7 @@ service:
 	runtimeDone = make(chan error, 1)
 	runtimeStopped = false
 	go func() {
-		runtimeDone <- RunCollectorRuntimeWithReconciliation(runContext, statePath, noOpTeardown, nil, nil, nil)
+		runtimeDone <- RunCollectorRuntimeWithReconciliation(runContext, statePath, noOpTeardown, nil, nil, nil, testRuntimeStoreFactory)
 	}()
 	waitForSupervisorRuntimeReadiness(t, ctx, runtimeDone, healthEndpoint)
 	recoverySinkBytes := len(initialSink.String())
@@ -398,7 +399,7 @@ service:
 	}, replacementBootstrap); err != nil {
 		t.Fatalf("replace Agent credential through actual re-enrollment: %v", err)
 	}
-	replacementAttempt, err := agentstate.NewEnrollmentStore(statePath).LoadAttempt()
+	replacementAttempt, err := sqlitefixture.NewEnrollmentStore(statePath).LoadAttempt()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -502,7 +503,7 @@ service:
 		t.Fatalf("restart OpAMP server: %v", err)
 	}
 	managed.OpAMPServerURL = "wss://" + opamp.Addr().String() + "/v1/opamp"
-	if _, err := agentstate.NewStore(statePath).Update(func(state *agentstate.State) error {
+	if _, err := sqlitefixture.NewStore(statePath).Update(func(state *agentstate.State) error {
 		state.Supervisor = managed
 		return nil
 	}); err != nil {
@@ -512,7 +513,7 @@ service:
 	runtimeDone = make(chan error, 1)
 	runtimeStopped = false
 	go func() {
-		runtimeDone <- RunCollectorRuntimeWithReconciliation(runContext, statePath, noOpTeardown, nil, nil, nil)
+		runtimeDone <- RunCollectorRuntimeWithReconciliation(runContext, statePath, noOpTeardown, nil, nil, nil, testRuntimeStoreFactory)
 	}()
 	waitForSupervisorRuntimeReadiness(t, ctx, runtimeDone, healthEndpoint)
 	waitForSupervisorCorePolicy(t, ctx, runtimeDone, core, 4)
@@ -604,7 +605,7 @@ service:
 	runtimeDone = make(chan error, 1)
 	runtimeStopped = false
 	go func() {
-		runtimeDone <- RunCollectorRuntimeWithReconciliation(runContext, statePath, noOpTeardown, nil, nil, nil)
+		runtimeDone <- RunCollectorRuntimeWithReconciliation(runContext, statePath, noOpTeardown, nil, nil, nil, testRuntimeStoreFactory)
 	}()
 	waitForSupervisorRuntimeReadiness(t, ctx, runtimeDone, healthEndpoint)
 	lkgSinkBytes := len(rotatedSink.String())

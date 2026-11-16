@@ -3,17 +3,16 @@ package main
 import (
 	"bytes"
 	"context"
-	"runtime"
-	"strings"
-	"testing"
-	"time"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
+	"runtime"
+	"strings"
+	"testing"
+	"time"
 )
 
 func TestCatalogCapabilityAssessorUsesPinnedRuntimeCatalog(t *testing.T) {
@@ -45,7 +44,7 @@ func TestCatalogCapabilityAssessorUsesPinnedRuntimeCatalog(t *testing.T) {
 
 func TestIntegrationMatchReadsPersistedInventoryWithoutDesiredStateMutation(t *testing.T) {
 	statePath := t.TempDir() + "/agent.db"
-	store := agentstate.NewSQLiteStore(statePath)
+	store := sqlitefixture.NewSQLiteStore(statePath)
 	repository := store.InventoryRepository()
 	now := time.Now().UTC()
 	snapshot := inventoryctx.ProviderSnapshot{

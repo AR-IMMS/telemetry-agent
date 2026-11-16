@@ -160,7 +160,7 @@ func TestCoreGatewayOwnershipAndBootstrapRerun(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("bootstrap rerun: %v", err)
 	}
-	effective, err := NewSQLiteStore(store.path).EffectiveGateway()
+	effective, err := newTestSQLiteStore(store.path).EffectiveGateway()
 	if err != nil || effective.Owner != coreconfig.CoreOwner || effective.Endpoint != "core:4317" || effective.Revision != 1 {
 		t.Fatalf("effective Core gateway after restart = %+v, %v", effective, err)
 	}
@@ -168,7 +168,7 @@ func TestCoreGatewayOwnershipAndBootstrapRerun(t *testing.T) {
 
 func TestCoreGatewayConcurrentLocalUpdatePreservesM1State(t *testing.T) {
 	store, id := seededGatewayStore(t)
-	other := NewSQLiteStore(store.path)
+	other := newTestSQLiteStore(store.path)
 	var wait sync.WaitGroup
 	results := make(chan error, 2)
 	wait.Add(2)
@@ -204,7 +204,7 @@ func TestCoreGatewayConcurrentLocalUpdatePreservesM1State(t *testing.T) {
 
 func TestCoreGatewayConcurrentConflictingSnapshotsAcceptOnlyOne(t *testing.T) {
 	store, id := seededGatewayStore(t)
-	other := NewSQLiteStore(store.path)
+	other := newTestSQLiteStore(store.path)
 	var wait sync.WaitGroup
 	type outcome struct {
 		accepted coreconfig.Acceptance
@@ -273,7 +273,7 @@ func TestCoreGatewaySnapshotWriteFailureKeepsBootstrapOwnership(t *testing.T) {
 
 func TestCoreGatewayRequiresMatchingInitializedInstallation(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	store := NewSQLiteStore(path)
+	store := newTestSQLiteStore(path)
 	if err := store.Save(State{Collector: CollectorContext{GatewayEndpoint: "bootstrap:4317"}}); err != nil {
 		t.Fatalf("seed state: %v", err)
 	}
@@ -281,7 +281,7 @@ func TestCoreGatewayRequiresMatchingInitializedInstallation(t *testing.T) {
 	if _, err := store.AcceptGatewaySnapshot(snapshot); err == nil {
 		t.Fatal("uninitialized installation accepted Core snapshot")
 	}
-	if _, err := NewIdentityStore(path).EnsureInstallationID(mustInstallationID(t, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee")); err != nil {
+	if _, err := newTestIdentityStore(path).EnsureInstallationID(mustInstallationID(t, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee")); err != nil {
 		t.Fatalf("initialize installation: %v", err)
 	}
 	if _, err := store.AcceptGatewaySnapshot(snapshot); err == nil {
@@ -300,20 +300,20 @@ func TestCoreGatewayLegacyImportAndRestart(t *testing.T) {
 	if err := NewFileStore(legacyPath).Save(want); err != nil {
 		t.Fatalf("write legacy state: %v", err)
 	}
-	repository := NewCoreGatewayStore(legacyPath)
-	if _, err := NewIdentityStore(legacyPath).EnsureInstallationID(mustInstallationID(t, "11111111-2222-4333-8444-555555555555")); err != nil {
+	repository := newTestCoreGatewayStore(legacyPath)
+	if _, err := newTestIdentityStore(legacyPath).EnsureInstallationID(mustInstallationID(t, "11111111-2222-4333-8444-555555555555")); err != nil {
 		t.Fatalf("initialize imported installation: %v", err)
 	}
 	accepted, err := repository.AcceptGatewaySnapshot(context.Background(), coreconfig.GatewaySnapshot{InstallationID: "11111111-2222-4333-8444-555555555555", Revision: 3, Endpoint: "core:4317"})
 	if err != nil || accepted.Generation != 3 {
 		t.Fatalf("accept after import = %+v, %v", accepted, err)
 	}
-	restarted := NewCoreGatewayStore(legacyPath)
+	restarted := newTestCoreGatewayStore(legacyPath)
 	got, err := restarted.EffectiveGateway(context.Background())
 	if err != nil || got.Owner != coreconfig.CoreOwner || got.Endpoint != "core:4317" || got.Generation != 3 {
 		t.Fatalf("restart effective Gateway = %+v, %v", got, err)
 	}
-	state, err := NewStore(legacyPath).Load()
+	state, err := newTestStore(legacyPath).Load()
 	if err != nil || !state.Dependencies["redis"].Enabled || state.DesiredGeneration != 3 {
 		t.Fatalf("imported M1 state = %+v, %v", state, err)
 	}
@@ -324,13 +324,13 @@ func TestCoreGatewayLegacyImportAndRestart(t *testing.T) {
 
 func seededGatewayStore(t *testing.T) (SQLiteStore, string) {
 	t.Helper()
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	want := State{Collector: CollectorContext{GatewayEndpoint: "bootstrap:4317"}, DesiredGeneration: 4, ActivatedGeneration: 4, AppliedGeneration: 3, Dependencies: map[string]DependencyState{"redis": {Enabled: true, Ownership: &OwnershipRecord{Resources: []OwnedResource{{Kind: "service", Identifier: "redis-service"}}}}}}
 	if err := store.Save(want); err != nil {
 		t.Fatalf("seed M1 state: %v", err)
 	}
 	id := "11111111-2222-4333-8444-555555555555"
-	committed, err := NewIdentityStore(store.path).EnsureInstallationID(mustInstallationID(t, id))
+	committed, err := newTestIdentityStore(store.path).EnsureInstallationID(mustInstallationID(t, id))
 	if err != nil || committed.String() != id {
 		t.Fatalf("seed installation ID = %q, %v", committed, err)
 	}

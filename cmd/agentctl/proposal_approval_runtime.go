@@ -6,16 +6,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"runtime"
-	"time"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
+	"runtime"
+	"time"
 )
 
 type runtimeProposalRefresher struct {
@@ -26,7 +24,7 @@ type runtimeProposalRefresher struct {
 }
 
 func newRuntimeProposalRefresher(statePath string) (runtimeProposalRefresher, error) {
-	store := agentstate.NewSQLiteStore(statePath)
+	store := newAgentSQLiteStore(statePath)
 	registry, err := productionIntegrationRegistry()
 	if err != nil {
 		return runtimeProposalRefresher{}, err
@@ -134,7 +132,7 @@ type runtimeApprovalVerifier struct {
 }
 
 func newRuntimeApprovalService(statePath string) (proposals.ApprovalService, error) {
-	store := agentstate.NewSQLiteStore(statePath)
+	store := newAgentSQLiteStore(statePath)
 	registry, err := productionIntegrationRegistry()
 	if err != nil {
 		return proposals.ApprovalService{}, err

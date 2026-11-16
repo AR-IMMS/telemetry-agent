@@ -6,7 +6,7 @@ import (
 )
 
 func TestOperationsMigrationAddsExecutionJournalAndOutbox(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	db, err := store.OpenDatabase()
 	if err != nil {
 		t.Fatal(err)

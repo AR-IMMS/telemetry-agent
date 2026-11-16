@@ -54,7 +54,7 @@ func runDiscoveryProposals(ctx context.Context, args []string, stdout, stderr io
 	if err := ctx.Err(); err != nil {
 		return integrationCommandError(stderr, "discovery proposals "+command, err)
 	}
-	store := agentstate.NewSQLiteStore(*statePath)
+	store := newAgentSQLiteStore(*statePath)
 	proposalRepo := store.ProposalRepository()
 	switch command {
 	case "list":

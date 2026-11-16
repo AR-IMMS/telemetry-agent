@@ -12,9 +12,9 @@ import (
 
 func TestIntegrationMigrationV5PreservesExistingAgentData(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	store := NewSQLiteStore(path)
+	store := newTestSQLiteStore(path)
 	id := mustInstallationID(t, "11111111-2222-4333-8444-555555555555")
-	if _, err := NewIdentityStore(path).EnsureInstallationID(id); err != nil {
+	if _, err := newTestIdentityStore(path).EnsureInstallationID(id); err != nil {
 		t.Fatal(err)
 	}
 	want := State{DesiredGeneration: 7, ActivatedGeneration: 6, AppliedGeneration: 5, Dependencies: map[string]DependencyState{"node-exporter": {Enabled: true}}}
@@ -40,7 +40,7 @@ func TestIntegrationMigrationV5PreservesExistingAgentData(t *testing.T) {
 	}
 	db.Close()
 
-	db, err = NewSQLiteStore(path).open()
+	db, err = newTestSQLiteStore(path).open()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestIntegrationMigrationV5PreservesExistingAgentData(t *testing.T) {
 }
 
 func TestIntegrationSnapshotsStayConsistentDuringConcurrentCreates(t *testing.T) {
-	repo := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db")).IntegrationRepository()
+	repo := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db")).IntegrationRepository()
 	const count = 20
 	start := make(chan struct{})
 	done := make(chan error, 1)
@@ -105,7 +105,7 @@ func integrationInstance(id, endpoint string) integration.IntegrationInstance {
 
 func TestSQLiteIntegrationMutationsCASNoOpDeleteRestartAndMigration(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	store := NewSQLiteStore(path)
+	store := newTestSQLiteStore(path)
 	repo := store.IntegrationRepository()
 	created, setRev, err := repo.Put(integrationInstance("cache", "localhost:6379"), 0)
 	if err != nil || created.Revision != 1 || setRev != 1 {
@@ -122,7 +122,7 @@ func TestSQLiteIntegrationMutationsCASNoOpDeleteRestartAndMigration(t *testing.T
 	if err != nil || updated.Revision != 2 || setRev != 2 {
 		t.Fatalf("update = rev %d set %d err %v", updated.Revision, setRev, err)
 	}
-	restarted := NewSQLiteStore(path).IntegrationRepository()
+	restarted := newTestSQLiteStore(path).IntegrationRepository()
 	snapshot, err := restarted.Snapshot()
 	if err != nil || snapshot.Revision != 2 || len(snapshot.Instances) != 1 || snapshot.Instances[0].Revision != 2 {
 		t.Fatalf("snapshot = %+v err %v", snapshot, err)
@@ -142,7 +142,7 @@ func TestSQLiteIntegrationMutationsCASNoOpDeleteRestartAndMigration(t *testing.T
 }
 
 func TestSQLiteIntegrationLegacySourceNormalizesWithoutAdvancingRevision(t *testing.T) {
-	repository := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db")).IntegrationRepository()
+	repository := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db")).IntegrationRepository()
 	legacy := integrationInstance("legacy-cache", "localhost:6379")
 	created, setRevision, err := repository.Put(legacy, 0)
 	if err != nil || setRevision != 1 || created.Revision != 1 {
@@ -161,7 +161,7 @@ func TestSQLiteIntegrationLegacySourceNormalizesWithoutAdvancingRevision(t *test
 }
 
 func TestSQLiteIntegrationMutationRollsBackInstanceWhenMarkerUpdateFails(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	repo := store.IntegrationRepository()
 	db, err := store.open()
 	if err != nil {
@@ -184,7 +184,7 @@ func TestSQLiteIntegrationMutationRollsBackInstanceWhenMarkerUpdateFails(t *test
 }
 
 func TestSQLiteIntegrationConcurrentCreatesAdvanceMarkerWithoutLostWrites(t *testing.T) {
-	repo := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db")).IntegrationRepository()
+	repo := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db")).IntegrationRepository()
 	var wg sync.WaitGroup
 	errs := make(chan error, 12)
 	for i := 0; i < 12; i++ {

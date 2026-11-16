@@ -67,7 +67,7 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 	if err := ctx.Err(); err != nil {
 		return integrationCommandError(stderr, command, err)
 	}
-	stateStore := agentstate.NewStore(*statePath)
+	stateStore := newAgentStateStore(*statePath)
 	store, ok := stateStore.(agentstate.SQLiteStore)
 	if !ok {
 		return integrationCommandError(stderr, command, fmt.Errorf("SQLite state store is required"))

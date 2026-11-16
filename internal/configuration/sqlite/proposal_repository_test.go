@@ -3,19 +3,18 @@ package sqlite_test
 import (
 	"encoding/json"
 	"errors"
+	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals"
+	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"path/filepath"
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals"
-	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
 )
 
 func TestProposalRepositoryPersistsCASDismissalAcrossRestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	store := agentstate.NewSQLiteStore(path)
+	store := sqlitefixture.NewSQLiteStore(path)
 	locker := &sync.Mutex{}
 	repository := configurationsqlite.NewProposalRepository(store.OpenDatabase, locker)
 	proposal := proposalFixture(t)

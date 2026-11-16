@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"path/filepath"
 	"testing"
 
@@ -20,7 +21,7 @@ func saveTestState(t *testing.T, store agentstate.Repository, state agentstate.S
 
 func TestManagedAgentUninstallRequesterUsesPersistedStateWithoutRuntimeRebuild(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "state.json")
-	store := agentstate.NewStore(statePath)
+	store := sqlitefixture.NewStore(statePath)
 	saveTestState(t, store, agentstate.State{
 		Collector: agentstate.CollectorContext{
 			ConfigRoot:      "/srv/ar-imms/config",

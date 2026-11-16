@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -170,7 +171,7 @@ func TestNativeMonitoringInputsAcceptPinnedPostgreSQLProfileCapability(t *testin
 	t.Setenv("AR_IMMS_PG_USER", "metrics_reader")
 	t.Setenv("AR_IMMS_PG_PASSWORD", "test-only-secret")
 	statePath := filepath.Join(t.TempDir(), "state.db")
-	installationID, err := installationid.EnsureInstallationIdentity(agentstate.NewIdentityStore(statePath), rand.Reader)
+	installationID, err := installationid.EnsureInstallationIdentity(sqlitefixture.NewIdentityStore(statePath), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}

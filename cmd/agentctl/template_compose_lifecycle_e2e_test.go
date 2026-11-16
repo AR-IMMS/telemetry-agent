@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"net"
 	"os"
 	"os/exec"
@@ -71,7 +72,7 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 		t.Fatal(err)
 	}
 	configPath := filepath.Join(root, "agent", "otel.yaml")
-	store := agentstate.NewSQLiteStore(statePath)
+	store := sqlitefixture.NewSQLiteStore(statePath)
 	initial := agentstate.State{
 		Collector: agentstate.CollectorContext{
 			ConfigRoot: configRoot, BinaryPath: binary, ConfigPath: configPath,

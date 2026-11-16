@@ -145,6 +145,7 @@ func defaultDependencies() dependencies {
 	agentInstaller := agentinstallation.NewInstaller(
 		downloader,
 		runner,
+		newAgentStateStore,
 	)
 
 	agentUninstaller := newManagedAgentUninstaller(
@@ -188,7 +189,7 @@ func defaultDependencies() dependencies {
 			runDependencyMultiSelectProgram(os.Stdin),
 		),
 		listDependencyStatuses:      defaultListDependencyStatuses,
-		runCollectorRuntime:         agentlifecycle.RunCollectorRuntime,
+		runCollectorRuntime:         runAgentCollectorRuntime,
 		prepareInstallationIdentity: prepareAgentInstallationIdentity,
 		runEnrollment:               runAgentEnrollment,
 		readBootstrapToken:          readBootstrapToken,

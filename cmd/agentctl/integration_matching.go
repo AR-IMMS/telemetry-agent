@@ -75,7 +75,7 @@ func runIntegrationMatch(ctx context.Context, args []string, stdout, stderr io.W
 		return integrationCommandError(stderr, "match", err)
 	}
 
-	snapshot, err := agentstate.NewSQLiteStore(*statePath).InventoryRepository().Snapshot()
+	snapshot, err := newAgentSQLiteStore(*statePath).InventoryRepository().Snapshot()
 	if err != nil {
 		return integrationCommandError(stderr, "match", err)
 	}

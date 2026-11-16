@@ -4,15 +4,16 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/runtime/service"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/service"
 )
 
 func TestRunUninstallPassesStatePathAndTimeoutToAgentUninstaller(
@@ -94,7 +95,7 @@ func TestManagedAgentUninstallerRemovesAgentAfterDependenciesAreGone(
 		BinaryPath:  "/opt/ar-imms/telemetry-agent/agentctl",
 	}
 
-	store := agentstate.NewStore(statePath)
+	store := sqlitefixture.NewStore(statePath)
 	saveTestState(t, store, agentstate.State{
 		Installation: &installation,
 		Dependencies: map[string]agentstate.DependencyState{
@@ -234,7 +235,7 @@ func TestManagedAgentUninstallerRejectsInstalledBinaryBeforeRequestingTeardown(
 	statePath := filepath.Join(t.TempDir(), "state.json")
 	installedBinary := "/opt/ar-imms/telemetry-agent/agentctl"
 
-	store := agentstate.NewStore(statePath)
+	store := sqlitefixture.NewStore(statePath)
 	saveTestState(t, store, agentstate.State{
 		Installation: &agentstate.AgentInstallation{
 			Platform:   "linux",
@@ -305,7 +306,7 @@ func TestManagedAgentUninstallerDoesNotRemoveAgentWhenTeardownWaitFails(
 	statePath := filepath.Join(t.TempDir(), "state.json")
 	waitError := errors.New("Collector did not apply teardown generation")
 
-	store := agentstate.NewStore(statePath)
+	store := sqlitefixture.NewStore(statePath)
 	saveTestState(t, store, agentstate.State{
 		Installation: &agentstate.AgentInstallation{
 			Platform:   "linux",

@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 )
 
@@ -92,7 +92,7 @@ func (l managedDependencyLifecycle) Apply(
 		return fmt.Errorf("Agent lifecycle state path is required")
 	}
 
-	store := agentstate.NewStore(statePath)
+	store := newAgentStateStore(statePath)
 
 	state, err := store.Load()
 	if err != nil {
@@ -228,7 +228,7 @@ func (i managedDependencyInstaller) Install(
 		)
 	}
 
-	store := agentstate.NewStore(statePath)
+	store := newAgentStateStore(statePath)
 
 	state, err := store.Load()
 	if err != nil {

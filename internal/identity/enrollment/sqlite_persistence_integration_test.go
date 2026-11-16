@@ -4,14 +4,13 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
-	"testing"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	credentialstore "github.com/ar-imms/telemetry-agent/internal/identity/credentials"
 	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
+	"os"
+	"path/filepath"
+	"testing"
 )
 
 func TestSQLiteAndCredentialStoreKeepEnrollmentSecretsSeparated(t *testing.T) {
@@ -32,10 +31,10 @@ func TestSQLiteAndCredentialStoreKeepEnrollmentSecretsSeparated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := agentstate.NewIdentityStore(statePath).EnsureInstallationID(parsedInstallationID); err != nil {
+	if _, err := sqlitefixture.NewIdentityStore(statePath).EnsureInstallationID(parsedInstallationID); err != nil {
 		t.Fatalf("initialize installation identity: %v", err)
 	}
-	repository := agentstate.NewEnrollmentStore(statePath)
+	repository := sqlitefixture.NewEnrollmentStore(statePath)
 	credentials := credentialstore.New(statePath)
 	service := enrollment.Service{
 		Repository:  repository,

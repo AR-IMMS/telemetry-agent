@@ -3,6 +3,7 @@ package agentlifecycle
 import (
 	"context"
 	"fmt"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -35,12 +36,12 @@ func managedRuntimeCandidate(
 	if err != nil {
 		t.Fatalf("create empty managed dependency catalog: %v", err)
 	}
-	store := agentstate.NewSQLiteStore(statePath)
+	store := sqlitefixture.NewSQLiteStore(statePath)
 	state, err := store.Load()
 	if err != nil {
 		t.Fatalf("load Agent state for local candidate: %v", err)
 	}
-	gatewayRepository := agentstate.NewCoreGatewayStore(statePath)
+	gatewayRepository := sqlitefixture.NewCoreGatewayStore(statePath)
 	gateway, err := gatewayRepository.EffectiveGateway(context.Background())
 	if err != nil {
 		t.Fatalf("resolve current Gateway for local candidate: %v", err)

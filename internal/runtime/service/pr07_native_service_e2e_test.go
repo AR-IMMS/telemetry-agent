@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,9 +13,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 )
 
 func TestPR07NativeServiceUpgradeMigrationRollbackUninstall(t *testing.T) {
@@ -196,7 +195,7 @@ func waitForNativeServiceE2ERuntime(ctx context.Context, binary string, layout L
 	for {
 		active, serviceErr := nativeServiceE2EActive(layout.ServiceName)
 		statusOutput, statusErr := nativeServiceE2ERun(ctx, binary, "status")
-		state, stateErr := agentstate.NewStore(layout.StatePath).Load()
+		state, stateErr := sqlitefixture.NewStore(layout.StatePath).Load()
 		collectorCount, supervisorCount, processErr := nativeServiceE2EProcessCounts(layout)
 		if serviceErr == nil && active && statusErr == nil && strings.Contains(statusOutput, "Agent health: healthy") && strings.Contains(statusOutput, "Collector state: ready") && stateErr == nil && state.Supervisor.Enabled == supervisorEnabled && collectorCount == 1 && boolToCount(supervisorEnabled) == supervisorCount {
 			return nil
@@ -229,7 +228,7 @@ func waitForNativeServiceE2EProcesses(ctx context.Context, layout Layout, collec
 
 func assertNativeServiceE2EOwner(t *testing.T, layout Layout, enabled bool) {
 	t.Helper()
-	state, err := agentstate.NewStore(layout.StatePath).Load()
+	state, err := sqlitefixture.NewStore(layout.StatePath).Load()
 	if err != nil {
 		t.Fatalf("load persisted ownership state: %v", err)
 	}

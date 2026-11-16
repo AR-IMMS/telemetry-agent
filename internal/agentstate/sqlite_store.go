@@ -23,15 +23,17 @@ var sqliteUpdateMutex sync.Mutex
 // Each operation owns and closes its database handle; transactions remain
 // short and callbacks must contain state changes only.
 type SQLiteStore struct {
-	path       string
-	legacyPath string
+	path             string
+	legacyPath       string
+	initializeSchema func(*sql.DB) error
 }
 
 // NewSQLiteStore creates a SQLite WAL store at the supplied database path.
-func NewSQLiteStore(path string) SQLiteStore {
+// Application composition supplies its ordered schema initializer explicitly.
+func NewSQLiteStore(path string, initializeSchema func(*sql.DB) error) SQLiteStore {
 	path = strings.TrimSpace(path)
 	legacy := filepath.Join(filepath.Dir(path), "state.json")
-	return SQLiteStore{path: path, legacyPath: legacy}
+	return SQLiteStore{path: path, legacyPath: legacy, initializeSchema: initializeSchema}
 }
 
 // OpenDatabase opens the operational database after initializing its shared schema.
@@ -126,8 +128,11 @@ func (s SQLiteStore) openWithContext(ctx context.Context) (*sql.DB, error) {
 	if s.path == "" {
 		return nil, fmt.Errorf("Agent SQLite database path is required")
 	}
+	if s.initializeSchema == nil {
+		return nil, fmt.Errorf("Agent SQLite schema initializer is required")
+	}
 	return platformsqlite.Open(ctx, s.path, func(db *sql.DB) error {
-		if err := ensureSQLiteSchema(db); err != nil {
+		if err := s.initializeSchema(db); err != nil {
 			return err
 		}
 		return s.importLegacyState(db)

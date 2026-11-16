@@ -7,7 +7,6 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation"
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 	"io"
@@ -92,7 +91,7 @@ func runCollectorRuntime(
 	if runRuntimeWithHealth == nil {
 		runRuntime := deps.runCollectorRuntime
 		if runRuntime == nil {
-			runRuntime = agentlifecycle.RunCollectorRuntime
+			runRuntime = runAgentCollectorRuntime
 		}
 
 		runRuntimeWithHealth = func(

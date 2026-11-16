@@ -28,7 +28,7 @@ func inventoryFixture(at time.Time, ids ...string) (inventoryctx.ProviderSnapsho
 
 func TestSQLiteInventoryRevisionCASNoopFailureAndRestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	store := NewSQLiteStore(path)
+	store := newTestSQLiteStore(path)
 	repository := store.InventoryRepository()
 	at := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	snapshot, resources := inventoryFixture(at, "container-a")
@@ -68,7 +68,7 @@ func TestSQLiteInventoryRevisionCASNoopFailureAndRestart(t *testing.T) {
 	if loaded.Revision != 1 || loaded.WriteRevision != 3 || len(loaded.Resources) != 1 || loaded.Resources[0].Presence != inventoryctx.PresencePresent || loaded.Providers[0].LastErrorCode != "daemon_unavailable" || !loaded.Providers[0].LastSuccessAt.Equal(at.Add(time.Minute)) {
 		t.Fatalf("failure changed resource evidence or lost success: %+v", loaded)
 	}
-	restarted, err := NewSQLiteStore(path).InventoryRepository().Snapshot()
+	restarted, err := newTestSQLiteStore(path).InventoryRepository().Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestSQLiteInventoryRevisionCASNoopFailureAndRestart(t *testing.T) {
 }
 
 func TestSQLiteInventoryCASRejectsSnapshotMadeStaleByNonMaterialWrites(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	repo := store.InventoryRepository()
 	at := time.Now().UTC()
 	snapshot, resources := inventoryFixture(at, "container-a")
@@ -152,7 +152,7 @@ func TestMigrateInventoryWriteRevisionFromPopulatedV10PreservesInventory(t *test
 }
 
 func TestSQLiteInventoryDeleteEvidenceAndAtomicRollback(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	repo := store.InventoryRepository()
 	at := time.Now().UTC()
 	snapshot, resources := inventoryFixture(at, "keep")
@@ -195,7 +195,7 @@ func TestSQLiteInventoryDeleteEvidenceAndAtomicRollback(t *testing.T) {
 }
 
 func TestSQLiteInventoryConcurrentCASAndConsistentSnapshots(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	repo := store.InventoryRepository()
 	const count = 24
 	start := make(chan struct{})
@@ -291,7 +291,7 @@ func inventoryFixtureForInstance(at time.Time, instance string, ids ...string) (
 
 func TestSQLiteInventoryMigrationFromPopulatedV9PreservesExistingState(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	store := NewSQLiteStore(path)
+	store := newTestSQLiteStore(path)
 	state := State{DesiredGeneration: 8, ActivatedGeneration: 7, AppliedGeneration: 7, Dependencies: map[string]DependencyState{"host": {Enabled: true}}}
 	if err := store.Save(state); err != nil {
 		t.Fatal(err)
@@ -300,7 +300,7 @@ func TestSQLiteInventoryMigrationFromPopulatedV9PreservesExistingState(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewIdentityStore(path).EnsureInstallationID(installationID); err != nil {
+	if _, err := newTestIdentityStore(path).EnsureInstallationID(installationID); err != nil {
 		t.Fatal(err)
 	}
 	instance := integration.IntegrationInstance{ID: "redis-main", DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true, Configuration: map[string]any{"endpoint": "127.0.0.1:6379"}}
@@ -320,7 +320,7 @@ func TestSQLiteInventoryMigrationFromPopulatedV9PreservesExistingState(t *testin
 		t.Fatal(err)
 	}
 	db.Close()
-	restarted := NewSQLiteStore(path)
+	restarted := newTestSQLiteStore(path)
 	snapshot, err := restarted.InventoryRepository().Snapshot()
 	if err != nil {
 		t.Fatal(err)

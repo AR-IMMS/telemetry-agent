@@ -18,7 +18,7 @@ func (f desiredEventPublisherFunc) Publish(event events.DesiredConfigurationChan
 }
 
 func TestSQLiteMaterializationPublishesOnlyCommittedDesiredRevision(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	prepareMaterializationRevisions(t, store, 1, 0)
 	var published []uint64
 	publisher := desiredEventPublisherFunc(func(event events.DesiredConfigurationChanged) error {
@@ -56,7 +56,7 @@ func TestSQLiteMaterializationPublishesOnlyCommittedDesiredRevision(t *testing.T
 }
 
 func TestSQLiteMaterializationQueueFailureDoesNotUndoCommittedWrite(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	prepareMaterializationRevisions(t, store, 1, 0)
 	publisher := desiredEventPublisherFunc(func(events.DesiredConfigurationChanged) error { return events.ErrQueueFull })
 	repository := store.MaterializationRepositoryWithEvents(publisher)
@@ -75,7 +75,7 @@ func TestSQLiteMaterializationQueueFailureDoesNotUndoCommittedWrite(t *testing.T
 }
 
 func TestSQLiteMaterializationAppliesTemplateProjectionIdempotently(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	prepareMaterializationRevisions(t, store, 1, 0)
 	repository := store.MaterializationRepository()
 	instance := generatedTestInstance()
@@ -143,7 +143,7 @@ func TestSQLiteMaterializationRejectsStaleSnapshotTokens(t *testing.T) {
 		}, batch: configuration.MaterializationBatch{ExpectedInventoryWriteRevision: 1, ExpectedTemplateSetRevision: 1}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+			store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 			prepareMaterializationRevisions(t, store, 1, 0)
 			test.mutate(t, store)
 			test.batch.ExpectedDesiredSetRevision = 0
@@ -156,7 +156,7 @@ func TestSQLiteMaterializationRejectsStaleSnapshotTokens(t *testing.T) {
 }
 
 func TestSQLiteMaterializationRollsBackAllProjectionWrites(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	prepareMaterializationRevisions(t, store, 1, 0)
 	execMaterializationSQL(t, store, `CREATE TRIGGER reject_materialized_revision BEFORE UPDATE ON integration_desired_state BEGIN SELECT RAISE(ABORT,'injected failure'); END`)
 	_, err := store.MaterializationRepository().ApplyTemplateProjection(configuration.MaterializationBatch{
@@ -175,7 +175,7 @@ func TestSQLiteMaterializationRollsBackAllProjectionWrites(t *testing.T) {
 }
 
 func TestSQLiteMaterializationSerializesConcurrentSnapshotWriters(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	prepareMaterializationRevisions(t, store, 1, 0)
 	instances := []integration.IntegrationInstance{generatedTestInstance(), generatedTestInstanceForResource("container-b")}
 	start := make(chan struct{})

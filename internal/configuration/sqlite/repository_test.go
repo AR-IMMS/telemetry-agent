@@ -3,18 +3,17 @@ package sqlite_test
 import (
 	"encoding/json"
 	"errors"
-	"path/filepath"
-	"sync"
-	"testing"
-	"time"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals"
 	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
+	"path/filepath"
+	"sync"
+	"testing"
+	"time"
 )
 
 type desiredEventPublisherFunc func(events.DesiredConfigurationChanged) error
@@ -24,7 +23,7 @@ func (f desiredEventPublisherFunc) Publish(event events.DesiredConfigurationChan
 }
 
 func TestRepositoriesUseSharedStateDatabaseAndRetainCASContracts(t *testing.T) {
-	store := agentstate.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := sqlitefixture.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	locker := &sync.Mutex{}
 
 	desired := configurationsqlite.NewIntegrationRepository(store.OpenDatabase, locker)
@@ -62,7 +61,7 @@ func TestRepositoriesUseSharedStateDatabaseAndRetainCASContracts(t *testing.T) {
 }
 
 func TestMaterializationRepositoryCommitsProjectionBeforePublishingWakeup(t *testing.T) {
-	store := agentstate.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := sqlitefixture.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	locker := &sync.Mutex{}
 	inventory := store.InventoryRepository()
 	at := time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)
@@ -116,7 +115,7 @@ func TestMaterializationRepositoryCommitsProjectionBeforePublishingWakeup(t *tes
 }
 
 func TestApprovalRepositoryCommitsProposalAndDesiredStateTogether(t *testing.T) {
-	store := agentstate.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := sqlitefixture.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	locker := &sync.Mutex{}
 	at := time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)
 	providerSnapshot := inventoryctx.ProviderSnapshot{

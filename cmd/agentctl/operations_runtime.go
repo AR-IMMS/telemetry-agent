@@ -121,7 +121,7 @@ func newRuntimeOperationsRunner(statePath string, reporter agenthealth.Observati
 	if url == "" {
 		return nil
 	}
-	store := agentstate.NewSQLiteStore(statePath)
+	store := newAgentSQLiteStore(statePath)
 	db, err := store.OpenDatabase()
 	if err != nil {
 		log.Printf("Remote Operations disabled code=operations_identity_unavailable")

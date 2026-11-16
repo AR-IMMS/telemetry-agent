@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -67,7 +68,7 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 		t.Fatal(err)
 	}
 	configPath := filepath.Join(root, "agent", "otel.yaml")
-	store := agentstate.NewSQLiteStore(statePath)
+	store := sqlitefixture.NewSQLiteStore(statePath)
 	if err := store.Save(agentstate.State{
 		Collector:         agentstate.CollectorContext{ConfigRoot: configRoot, BinaryPath: binary, ConfigPath: configPath, GatewayEndpoint: sinkEndpoint, HealthEndpoint: defaultHealthEndpoint},
 		DesiredGeneration: 1, ActivatedGeneration: 1, AppliedGeneration: 1,
@@ -75,7 +76,7 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	installationID, err := installationid.EnsureInstallationIdentity(agentstate.NewIdentityStore(statePath), rand.Reader)
+	installationID, err := installationid.EnsureInstallationIdentity(sqlitefixture.NewIdentityStore(statePath), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +155,7 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 	if len(probeCycle.ProviderResults) != 1 || probeCycle.ProviderResults[0].ErrorCode != "" {
 		t.Fatalf("Agent Docker discovery preflight result=%+v", probeCycle.ProviderResults)
 	}
-	probeInventory, err := agentstate.NewSQLiteStore(probeStatePath).InventoryRepository().Snapshot()
+	probeInventory, err := sqlitefixture.NewSQLiteStore(probeStatePath).InventoryRepository().Snapshot()
 	if err != nil {
 		t.Fatalf("read Agent Docker discovery preflight inventory: %v", err)
 	}
@@ -733,7 +734,7 @@ func nativeDockerNetworkCount(t *testing.T, ctx context.Context, name string) in
 func seedRegisteredEnrollment(t *testing.T, statePath, installationID, nodeID string) {
 	t.Helper()
 	attemptID := "11111111-2222-4333-8444-555555555555"
-	repository := agentstate.NewEnrollmentStore(statePath)
+	repository := sqlitefixture.NewEnrollmentStore(statePath)
 	attempt := enrollment.Attempt{
 		Payload: enrollment.EnrollmentPayload{
 			AttemptID: attemptID, Installation: enrollment.Installation{ID: installationID},

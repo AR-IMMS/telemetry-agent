@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"net"
 	"path/filepath"
 	"testing"
@@ -15,7 +16,7 @@ import (
 
 func TestPrepareAgentInstallationIdentityReusesPersistentID(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "state.db")
-	store := agentstate.NewStore(statePath)
+	store := sqlitefixture.NewStore(statePath)
 	if _, err := store.Update(func(state *agentstate.State) error {
 		state.Collector = agentstate.CollectorContext{
 			BinaryPath:      "otelcol",
@@ -31,7 +32,7 @@ func TestPrepareAgentInstallationIdentityReusesPersistentID(t *testing.T) {
 	if err := prepareAgentInstallationIdentity(statePath); err != nil {
 		t.Fatalf("first identity preparation: %v", err)
 	}
-	first, err := agentstate.NewIdentityStore(statePath).EnsureInstallationID(
+	first, err := sqlitefixture.NewIdentityStore(statePath).EnsureInstallationID(
 		mustIdentityID(t, "11111111-2222-4333-8444-555555555555"),
 	)
 	if err != nil {
@@ -40,7 +41,7 @@ func TestPrepareAgentInstallationIdentityReusesPersistentID(t *testing.T) {
 	if err := prepareAgentInstallationIdentity(statePath); err != nil {
 		t.Fatalf("restart identity preparation: %v", err)
 	}
-	second, err := agentstate.NewIdentityStore(statePath).EnsureInstallationID(
+	second, err := sqlitefixture.NewIdentityStore(statePath).EnsureInstallationID(
 		mustIdentityID(t, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"),
 	)
 	if err != nil {

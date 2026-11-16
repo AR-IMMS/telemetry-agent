@@ -7,69 +7,12 @@ import (
 	"fmt"
 	"os"
 	"time"
-
-	remoteconfigsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig/sqlite"
-	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
-	identityenrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
-	identityinstallationsqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
-	inventorysqlite "github.com/ar-imms/telemetry-agent/internal/inventory/sqlite"
-	operationssqlite "github.com/ar-imms/telemetry-agent/internal/operations/sqlite"
-	sqlitemigrate "github.com/ar-imms/telemetry-agent/internal/platform/sqlite/migrate"
-	activationsqlite "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/sqlite"
 )
 
-// ensureSQLiteSchema registers the existing schema versions with the technical
-// coordinator before any state access. The migration functions retain their
-// SQL and transaction ownership while context adapters are extracted.
-func ensureSQLiteSchema(db *sql.DB) error {
-	configurationMigrations := configurationsqlite.Migrations()
-	migration6, err := migrationForVersion(configurationMigrations, 6)
-	if err != nil {
-		return err
-	}
-	migration9, err := migrationForVersion(configurationMigrations, 9)
-	if err != nil {
-		return err
-	}
-	migration12, err := migrationForVersion(configurationMigrations, 12)
-	if err != nil {
-		return err
-	}
-	migration13, err := migrationForVersion(configurationMigrations, 13)
-	if err != nil {
-		return err
-	}
-	migrations := []sqlitemigrate.Migration{
-		{Version: 1, Name: "Agent state and activation journal", Apply: initializeBaseSchema},
-	}
-	migrations = append(migrations, identityinstallationsqlite.Migrations()...)
-	migrations = append(migrations, remoteconfigsqlite.Migrations(func(tx *sql.Tx) (remoteconfigsqlite.AgentState, error) {
-		state, err := loadSQLiteState(tx)
-		if err != nil {
-			return remoteconfigsqlite.AgentState{}, err
-		}
-		return remoteconfigsqlite.AgentState{BootstrapEndpoint: state.Collector.GatewayEndpoint, DesiredGeneration: state.DesiredGeneration, ActivatedGeneration: state.ActivatedGeneration, AppliedGeneration: state.AppliedGeneration}, nil
-	})...)
-	migrations = append(migrations, identityenrollmentsqlite.Migrations()...)
-	migrations = append(migrations, migration6)
-	migrations = append(migrations, activationsqlite.Migrations()...)
-	migrations = append(migrations, migration9)
-	migrations = append(migrations, inventorysqlite.Migrations()...)
-	migrations = append(migrations, migration12, migration13)
-	migrations = append(migrations, operationssqlite.Migrations()...)
-	return sqlitemigrate.Apply(db, migrations)
-}
-
-func migrationForVersion(migrations []sqlitemigrate.Migration, version int) (sqlitemigrate.Migration, error) {
-	for _, migration := range migrations {
-		if migration.Version == version {
-			return migration, nil
-		}
-	}
-	return sqlitemigrate.Migration{}, fmt.Errorf("Configuration SQLite migration %d is not registered", version)
-}
-
-func initializeBaseSchema(db *sql.DB) error {
+// InitializeBaseSQLiteSchema creates the Agent-owned base tables and records
+// schema version 1. Application migration composition supplies this callback
+// as the first ordered migration.
+func InitializeBaseSQLiteSchema(db *sql.DB) error {
 	statements := []string{
 		`CREATE TABLE IF NOT EXISTS schema_migrations (
 			version INTEGER PRIMARY KEY,
@@ -93,6 +36,15 @@ func initializeBaseSchema(db *sql.DB) error {
 		}
 	}
 	return nil
+}
+
+// LoadStateForMigration reads Agent-owned state from the migration transaction
+// without committing or changing the transaction boundary.
+func LoadStateForMigration(tx *sql.Tx) (State, error) {
+	if tx == nil {
+		return State{}, fmt.Errorf("Agent migration transaction is required")
+	}
+	return loadSQLiteState(tx)
 }
 
 // importLegacyState imports JSON only when the database has no state row.

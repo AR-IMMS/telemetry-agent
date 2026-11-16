@@ -45,7 +45,7 @@ func runDependencyStatus(ctx context.Context, args []string, stdout io.Writer, s
 		Dependencies: make(map[string]agentstate.DependencyState),
 	}
 
-	loadedState, err := agentstate.NewStore(statePath).Load()
+	loadedState, err := newAgentStateStore(statePath).Load()
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
 			fmt.Fprintf(
@@ -152,7 +152,7 @@ func runDependencyPending(ctx context.Context, args []string, stdout io.Writer, 
 		return 2
 	}
 
-	store := agentstate.NewStore(statePath)
+	store := newAgentStateStore(statePath)
 
 	state, err := store.Load()
 	if err != nil {

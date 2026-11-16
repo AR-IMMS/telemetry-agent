@@ -5,14 +5,16 @@ package agentinstallation
 import (
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
 func TestNewInstallerResolvesSystemdServiceOnLinux(t *testing.T) {
 	installer := NewInstaller(
 		bootstrap.HTTPDownloader{},
 		bootstrap.OSCommandRunner{},
+		sqlitefixture.NewStore,
 	)
 
 	if installer.serviceFor == nil {

@@ -4,18 +4,17 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	operations "github.com/ar-imms/telemetry-agent/internal/operations/command"
+	operationssqlite "github.com/ar-imms/telemetry-agent/internal/operations/sqlite"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	operations "github.com/ar-imms/telemetry-agent/internal/operations/command"
-	operationssqlite "github.com/ar-imms/telemetry-agent/internal/operations/sqlite"
 )
 
 func TestExecutionRepositoryAtomicallyPersistsTerminalAuditAndOutbox(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	repository := operationssqlite.New(agentstate.NewSQLiteStore(path))
+	repository := operationssqlite.New(sqlitefixture.NewSQLiteStore(path))
 	request := operations.Request{SchemaVersion: operations.RequestSchemaV1, OperationID: "op-1", OperationType: operations.OperationAgentDiagnostics,
 		InstallationID: "install-1", BindingID: "binding-1", RequestedAt: "2026-11-14T09:59:00Z", ExpiresAt: "2026-11-14T10:01:00Z"}
 	started := time.Date(2026, 11, 14, 10, 0, 0, 0, time.UTC)
@@ -41,7 +40,7 @@ func TestExecutionRepositoryAtomicallyPersistsTerminalAuditAndOutbox(t *testing.
 	var status string
 	var audits int
 	var outbox int
-	db, err := agentstate.NewSQLiteStore(path).OpenDatabase()
+	db, err := sqlitefixture.NewSQLiteStore(path).OpenDatabase()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +61,7 @@ func TestExecutionRepositoryAtomicallyPersistsTerminalAuditAndOutbox(t *testing.
 
 func TestCompleteRollsBackExecutionAndAuditWhenOutboxInsertFails(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	store := agentstate.NewSQLiteStore(path)
+	store := sqlitefixture.NewSQLiteStore(path)
 	repository := operationssqlite.New(store)
 	request := operations.Request{SchemaVersion: operations.RequestSchemaV1, OperationID: "op-rollback", OperationType: operations.OperationAgentDiagnostics,
 		InstallationID: "install-1", BindingID: "binding-1", RequestedAt: "2026-11-14T09:59:00Z", ExpiresAt: "2026-11-14T10:01:00Z"}
@@ -113,7 +112,7 @@ func TestCompleteRollsBackExecutionAndAuditWhenOutboxInsertFails(t *testing.T) {
 
 func TestRecoverInterruptedPersistsFailureAuditAndOutboxBeforeReplay(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	repository := operationssqlite.New(agentstate.NewSQLiteStore(path))
+	repository := operationssqlite.New(sqlitefixture.NewSQLiteStore(path))
 	request := operations.Request{SchemaVersion: operations.RequestSchemaV1, OperationID: "op-interrupted", OperationType: operations.OperationAgentDiagnostics,
 		InstallationID: "install-1", BindingID: "binding-1", RequestedAt: time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano),
 		ExpiresAt: time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano)}
@@ -140,7 +139,7 @@ func TestRecoverInterruptedPersistsFailureAuditAndOutboxBeforeReplay(t *testing.
 	}
 	var status string
 	var audits int
-	db, err := agentstate.NewSQLiteStore(path).OpenDatabase()
+	db, err := sqlitefixture.NewSQLiteStore(path).OpenDatabase()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +157,7 @@ func TestRecoverInterruptedPersistsFailureAuditAndOutboxBeforeReplay(t *testing.
 
 func TestRecoverInterruptedRestartPersistsUnknownOutcomeWithoutReplay(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	repository := operationssqlite.New(agentstate.NewSQLiteStore(path))
+	repository := operationssqlite.New(sqlitefixture.NewSQLiteStore(path))
 	containerID := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	request := operations.Request{SchemaVersion: operations.RequestSchemaV1, OperationID: "op-restart-interrupted",
 		OperationType: operations.OperationContainerRestart, InstallationID: "install-1", BindingID: "binding-1",
@@ -177,7 +176,7 @@ func TestRecoverInterruptedRestartPersistsUnknownOutcomeWithoutReplay(t *testing
 		t.Fatalf("replayed restart=%+v claimed=%t err=%v", duplicate, claimed, err)
 	}
 	var status string
-	db, err := agentstate.NewSQLiteStore(path).OpenDatabase()
+	db, err := sqlitefixture.NewSQLiteStore(path).OpenDatabase()
 	if err != nil {
 		t.Fatal(err)
 	}

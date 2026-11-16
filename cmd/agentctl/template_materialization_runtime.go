@@ -4,12 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
-	"runtime"
-	"sort"
-	"time"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
@@ -17,6 +11,10 @@ import (
 	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
+	"log"
+	"runtime"
+	"sort"
+	"time"
 )
 
 const materializationCASAttempts = 3
@@ -32,8 +30,8 @@ type runtimeTemplateMaterializer struct {
 }
 
 func newRuntimeTemplateMaterializer(statePath string, publisher ...events.Publisher) (runtimeTemplateMaterializer, error) {
-	store := agentstate.NewSQLiteStore(statePath)
-	state, err := agentstate.NewStore(statePath).Load()
+	store := newAgentSQLiteStore(statePath)
+	state, err := newAgentStateStore(statePath).Load()
 	if err != nil {
 		return runtimeTemplateMaterializer{}, fmt.Errorf("load Agent config root for template materialization: %w", err)
 	}

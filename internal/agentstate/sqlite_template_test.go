@@ -14,7 +14,7 @@ import (
 
 func TestSQLiteTemplateRepositoryCASNoOpDeleteTombstoneAndRestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	repository := NewSQLiteStore(path).TemplateRepository()
+	repository := newTestSQLiteStore(path).TemplateRepository()
 	created, setRevision, err := repository.Put(sqliteTestTemplate("redis-main", integration.TemplateEnabled), 0)
 	if err != nil || created.Revision != 1 || setRevision != 1 {
 		t.Fatalf("create template=%+v set revision=%d err=%v", created, setRevision, err)
@@ -44,7 +44,7 @@ func TestSQLiteTemplateRepositoryCASNoOpDeleteTombstoneAndRestart(t *testing.T) 
 	if _, _, err := repository.Put(sqliteTestTemplate("redis-main", integration.TemplateEnabled), 3); !errors.Is(err, configuration.ErrTemplateDeleted) {
 		t.Fatalf("tombstone reuse error=%v", err)
 	}
-	restarted := NewSQLiteStore(path).TemplateRepository()
+	restarted := newTestSQLiteStore(path).TemplateRepository()
 	snapshot, err := restarted.Snapshot()
 	if err != nil || snapshot.Revision != 3 || len(snapshot.Templates) != 1 || snapshot.Templates[0].Status != integration.TemplateDeleted {
 		t.Fatalf("restart snapshot=%+v err=%v", snapshot, err)
@@ -53,8 +53,8 @@ func TestSQLiteTemplateRepositoryCASNoOpDeleteTombstoneAndRestart(t *testing.T) 
 
 func TestSQLiteTemplateMutationRollbackAndMigrationCompatibility(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	store := NewSQLiteStore(path)
-	if _, err := NewIdentityStore(path).EnsureInstallationID(mustInstallationID(t, "21111111-2222-4333-8444-555555555555")); err != nil {
+	store := newTestSQLiteStore(path)
+	if _, err := newTestIdentityStore(path).EnsureInstallationID(mustInstallationID(t, "21111111-2222-4333-8444-555555555555")); err != nil {
 		t.Fatal(err)
 	}
 	state := State{DesiredGeneration: 6, ActivatedGeneration: 5, AppliedGeneration: 4, Dependencies: map[string]DependencyState{"node-exporter": {Enabled: true}}}
@@ -92,9 +92,9 @@ func TestSQLiteTemplateMutationRollbackAndMigrationCompatibility(t *testing.T) {
 
 func TestSQLiteTemplateMigrationFromV12PreservesPopulatedOperationalTables(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	store := NewSQLiteStore(path)
+	store := newTestSQLiteStore(path)
 	installationID := mustInstallationID(t, "31111111-2222-4333-8444-555555555555")
-	if _, err := NewIdentityStore(path).EnsureInstallationID(installationID); err != nil {
+	if _, err := newTestIdentityStore(path).EnsureInstallationID(installationID); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := store.IntegrationRepository().Put(integrationInstance("legacy-cache", "localhost:6379"), 0); err != nil {
@@ -156,7 +156,7 @@ func TestSQLiteTemplateMigrationFromV12PreservesPopulatedOperationalTables(t *te
 }
 
 func TestSQLiteTemplateSnapshotsRemainConsistentDuringConcurrentCreates(t *testing.T) {
-	repository := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db")).TemplateRepository()
+	repository := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db")).TemplateRepository()
 	const count = 16
 	var wg sync.WaitGroup
 	start := make(chan struct{})
@@ -194,7 +194,7 @@ func TestSQLiteTemplateSnapshotsRemainConsistentDuringConcurrentCreates(t *testi
 }
 
 func TestSQLiteIntegrationRepositoryCannotMutateTemplateOwnedInstance(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	repository := store.IntegrationRepository()
 	instance := integration.IntegrationInstance{
 		ID: "template-0123456789abcdef01234567", DefinitionID: "redis", DefinitionVersion: "1.0.0",
@@ -238,7 +238,7 @@ func sqliteTestTemplate(id string, status integration.TemplateStatus) integratio
 
 func dbQueryVersion(t *testing.T, path string, version *int) error {
 	t.Helper()
-	db, err := NewSQLiteStore(path).open()
+	db, err := newTestSQLiteStore(path).open()
 	if err != nil {
 		return err
 	}

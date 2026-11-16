@@ -3,6 +3,7 @@ package reconciliation
 import (
 	"context"
 	"errors"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -140,8 +141,8 @@ func TestPermanentCapabilityFailureBlocksWithoutRetry(t *testing.T) {
 
 func TestPeriodicSQLitePollingDetectsCommittedCrossProcessDesiredChange(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	writer := agentstate.NewSQLiteStore(path)
-	reader := agentstate.NewSQLiteStore(path)
+	writer := sqlitefixture.NewSQLiteStore(path)
+	reader := sqlitefixture.NewSQLiteStore(path)
 	definition := integration.IntegrationDefinition{ID: "fixture", Version: "1.0.0", Validate: func(map[string]any) error { return nil }, Contribute: func(integration.IntegrationInstance) (integration.Contribution, error) {
 		return integration.NewContribution(nil), nil
 	}}
@@ -242,7 +243,7 @@ service:
 	}
 	layers := []runtimecontracts.Layer{{Name: "base", Path: layerPath}}
 	values := map[string]string{"OTEL_GATEWAY_ENDPOINT": "127.0.0.1:4317"}
-	store := agentstate.NewSQLiteStore(statePath)
+	store := sqlitefixture.NewSQLiteStore(statePath)
 	if _, err := store.Update(func(*agentstate.State) error { return nil }); err != nil {
 		t.Fatal(err)
 	}

@@ -56,7 +56,7 @@ func runIntegrationTemplate(ctx context.Context, args []string, stdout, stderr i
 	if err := ctx.Err(); err != nil {
 		return integrationCommandError(stderr, "template "+command, err)
 	}
-	store := agentstate.NewSQLiteStore(*statePath)
+	store := newAgentSQLiteStore(*statePath)
 	repository := store.TemplateRepository()
 	registry, err := productionIntegrationRegistry()
 	if err != nil {
