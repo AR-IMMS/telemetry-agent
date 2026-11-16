@@ -14,7 +14,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
 	"github.com/ar-imms/telemetry-agent/internal/collectorruntime/contracts"
 	"github.com/ar-imms/telemetry-agent/internal/config"
-	"github.com/ar-imms/telemetry-agent/internal/dependency"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 )
 

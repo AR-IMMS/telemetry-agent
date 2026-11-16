@@ -12,7 +12,6 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/dependency"
 	credentialstore "github.com/ar-imms/telemetry-agent/internal/identity/credentials"
 	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
@@ -23,6 +22,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/operations/handlers"
 	operationsnats "github.com/ar-imms/telemetry-agent/internal/operations/nats"
 	operationssqlite "github.com/ar-imms/telemetry-agent/internal/operations/sqlite"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 )
 
 const (

@@ -15,11 +15,11 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/config"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation"
 	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
-	"github.com/ar-imms/telemetry-agent/internal/dependency"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 )
 
 type runtimeBaseline struct {

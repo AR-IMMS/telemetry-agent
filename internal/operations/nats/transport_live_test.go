@@ -18,7 +18,7 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/dependency"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 	credentialstore "github.com/ar-imms/telemetry-agent/internal/identity/credentials"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
