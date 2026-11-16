@@ -271,7 +271,8 @@ func TestCoreGatewaySnapshotWriteFailureKeepsBootstrapOwnership(t *testing.T) {
 }
 
 func TestCoreGatewayRequiresMatchingInitializedInstallation(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	path := filepath.Join(t.TempDir(), "state.db")
+	store := NewSQLiteStore(path)
 	if err := store.Save(State{Collector: CollectorContext{GatewayEndpoint: "bootstrap:4317"}}); err != nil {
 		t.Fatalf("seed state: %v", err)
 	}
@@ -279,7 +280,7 @@ func TestCoreGatewayRequiresMatchingInitializedInstallation(t *testing.T) {
 	if _, err := store.AcceptGatewaySnapshot(snapshot); err == nil {
 		t.Fatal("uninitialized installation accepted Core snapshot")
 	}
-	if _, err := store.EnsureInstallationID(mustInstallationID(t, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee")); err != nil {
+	if _, err := NewIdentityStore(path).EnsureInstallationID(mustInstallationID(t, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee")); err != nil {
 		t.Fatalf("initialize installation: %v", err)
 	}
 	if _, err := store.AcceptGatewaySnapshot(snapshot); err == nil {
@@ -328,7 +329,7 @@ func seededGatewayStore(t *testing.T) (SQLiteStore, string) {
 		t.Fatalf("seed M1 state: %v", err)
 	}
 	id := "11111111-2222-4333-8444-555555555555"
-	committed, err := store.EnsureInstallationID(mustInstallationID(t, id))
+	committed, err := NewIdentityStore(store.path).EnsureInstallationID(mustInstallationID(t, id))
 	if err != nil || committed.String() != id {
 		t.Fatalf("seed installation ID = %q, %v", committed, err)
 	}

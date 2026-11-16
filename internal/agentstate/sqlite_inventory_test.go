@@ -300,7 +300,7 @@ func TestSQLiteInventoryMigrationFromPopulatedV9PreservesExistingState(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.EnsureInstallationID(installationID); err != nil {
+	if _, err := NewIdentityStore(path).EnsureInstallationID(installationID); err != nil {
 		t.Fatal(err)
 	}
 	instance := integration.IntegrationInstance{ID: "redis-main", DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true, Configuration: map[string]any{"endpoint": "127.0.0.1:6379"}}

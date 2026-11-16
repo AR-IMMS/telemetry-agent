@@ -38,7 +38,7 @@ func TestPreMovePopulatedDatabaseSurvivesOpenAndReopen(t *testing.T) {
 		if loaded.DesiredGeneration != 8 || loaded.ActivatedGeneration != 7 || loaded.AppliedGeneration != 7 || !loaded.Dependencies["host"].Enabled {
 			t.Fatalf("open %d Agent state changed: %+v", open, loaded)
 		}
-		installationID, err := store.EnsureInstallationID(mustInstallationID(t, "123e4567-e89b-12d3-a456-426614174000"))
+		installationID, err := NewIdentityStore(path).EnsureInstallationID(mustInstallationID(t, "123e4567-e89b-12d3-a456-426614174000"))
 		if err != nil || installationID.String() != "123e4567-e89b-12d3-a456-426614174000" {
 			t.Fatalf("open %d installation identity=%s err=%v", open, installationID, err)
 		}
