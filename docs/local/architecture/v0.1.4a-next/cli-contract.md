@@ -1,17 +1,17 @@
 # `agentctl` CLI Contract — v0.1.4a-next
 
-**Status:** PROPOSED / REVIEW REQUIRED<br>
+**Status:** Compatibility and CLI foundation decisions APPROVED (2026-11-17); remaining new command behavior and machine-readable contracts remain PROPOSED / REVIEW REQUIRED<br>
 **Target release:** `v0.1.4a-next`<br>
 **Scope:** Engineer-facing CLI UX, backward compatibility, command ownership, PR implementation mapping.<br>
-**Source of current commands:** repository command inventory supplied for review; exact flags and JSON output must be verified against source HEAD before implementation.
+**Source of current commands:** PR-01 baseline plus current `cmd/agentctl` handlers and `internal/cli` command tree; verify exact flags and output against the source revision being changed.
 
-> This document defines target CLI behavior, **not shipped functionality**. Do not change implementation PR plans solely to match this file. All commands below labeled **NEW** are proposals.
+> The compatibility-first command hierarchy and interactive/settings constraints recorded below are approved. Other commands labeled **NEW**, machine-readable schemas, and business behavior without an explicit approval remain proposals; this document does not make them shipped functionality.
 
 ## 1. UX principles
 
 1. Primary journey: **Install → Enroll → Monitor → Diagnose → Configure → Operate**.
 2. Default workflow hides Collector YAML, receiver matching internals, and SQLite tables. Advanced commands remain available.
-3. Keep existing commands/flags/output and `--state-path` semantics compatible during migration; use aliases/warnings before removal.
+3. Preserve existing commands, flags, output shapes, exit codes, `--state-path`, and revision/CAS semantics. Add only exact aliases to existing use cases; both routes must share the same handler path. Do not remove or deprecate commands or add business behavior without separate approval.
 4. Commands that mutate state report actual committed/applied results, never assume activation or OTLP delivery from request acceptance.
 5. Linux `systemd` and Windows SCM use the same public engineer-facing CLI where possible; OS-specific service internals are documented explicitly.
 6. Never expose enrollment secrets, OpAMP credentials, tokens, or unredacted diagnostic secrets in human or JSON output.
@@ -41,6 +41,14 @@ agentctl discovery proposals {list,inspect,dismiss,approve}
 ```
 
 **Existing concurrency contracts:** integration/template writes use revision safeguards (`--expected-revision` where applicable); proposal approval requires `--revision` and `--expected-desired-revision`. Preserve these while old commands remain operational. Verify precise option applicability against source.
+
+**Approved implementation decisions (2026-11-17):**
+
+- Build the new command hierarchy with Cobra and pflag. New hierarchy entries are exact aliases to existing application use cases; retain legacy routes and compare output and exit status in compatibility tests.
+- Use Viper behind the CLI settings boundary for existing flag-backed values only. Environment variables and preference files remain disabled until their names, precedence, and paths are approved. Command handlers must not depend on Viper so those sources can be added later without rewriting handlers.
+- Use Huh only in explicitly interactive TTY flows. Keep credential collection on its existing protected input path, and preserve noninteractive behavior for automation. Retain Bubble Tea for advanced TUI flows where justified instead of implementing the same interaction twice.
+- Keep CLI preferences separate from Agent desired state and protected credentials.
+- Defer removals, deprecations, new local mutations, Agent service controls, and config-sync behavior until separately approved.
 
 ## 3. Target CLI hierarchy
 
