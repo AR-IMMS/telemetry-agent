@@ -2,14 +2,16 @@ package agentinstallation
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/config"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 )
 
 func TestInstallerStagesAgentPersistsStateThenStartsService(
@@ -167,6 +169,42 @@ func TestInstallerStagesAgentPersistsStateThenStartsService(
 	}
 }
 
+func TestInstallerAcceptsWrappedMissingStateForNewInstallation(t *testing.T) {
+	platform := identity.PlatformInfo{OS: "linux", Architecture: "amd64"}
+	store := &recordingStateStore{loadErr: fmt.Errorf("load Agent state: %w", os.ErrNotExist)}
+	serviceStarted := false
+	installer := Installer{
+		layoutFor:       DefaultLayout,
+		copyAgentBinary: func(context.Context, string, string) error { return nil },
+		bootstrap: func(context.Context, bootstrap.Options) (bootstrap.Result, error) {
+			return bootstrap.Result{BinaryPath: "/collector", ConfigPath: "/collector.yaml"}, nil
+		},
+		installSupervisor: func(context.Context, string, identity.PlatformInfo) (string, error) {
+			return "", nil
+		},
+		newStateStore: func(string) stateStore { return store },
+		serviceFor: func(Layout) (serviceInstaller, error) {
+			return serviceInstallerFunc(func(context.Context, Layout) error {
+				serviceStarted = true
+				return nil
+			}), nil
+		},
+	}
+
+	_, err := installer.Install(context.Background(), Options{
+		Platform: platform, SourceBinaryPath: "/release/agentctl", ConfigRoot: "/release/config",
+		GatewayEndpoint: "127.0.0.1:4317", HealthEndpoint: "http://127.0.0.1:13133",
+		DisableSupervisor: true, ConfigInput: config.RenderInput{Platform: platform},
+		ValidationTimeout: time.Second,
+	})
+	if err != nil {
+		t.Fatalf("Install() error = %v, want a wrapped missing state to start a new installation", err)
+	}
+	if !serviceStarted {
+		t.Fatal("service was not started after initializing a new installation")
+	}
+}
+
 func TestInstallerExplicitLegacyRollbackDisablesManagedSupervisor(t *testing.T) {
 	platform := identity.PlatformInfo{OS: "linux", Architecture: "amd64"}
 	endpoint := "wss://opamp.example.test/v1/opamp"
@@ -247,10 +285,11 @@ func (s stoppingServiceInstaller) Install(ctx context.Context, layout Layout) er
 }
 
 type recordingStateStore struct {
-	state agentstate.State
+	state   agentstate.State
+	loadErr error
 }
 
-func (s *recordingStateStore) Load() (agentstate.State, error) { return s.state, nil }
+func (s *recordingStateStore) Load() (agentstate.State, error) { return s.state, s.loadErr }
 
 func (s *recordingStateStore) Update(
 	update agentstate.StateMutation,

@@ -2,6 +2,7 @@ package agentinstallation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -11,9 +12,9 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/config"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 )
 
 // Options contains the caller-provided inputs for one packaged Agent
@@ -160,7 +161,7 @@ func (i Installer) Install(
 	}
 	store := i.newStateStore(layout.StatePath)
 	previousState, previousErr := store.Load()
-	if previousErr != nil && !os.IsNotExist(previousErr) {
+	if previousErr != nil && !errors.Is(previousErr, os.ErrNotExist) {
 		return Layout{}, fmt.Errorf("load Agent state before installation update: %w", previousErr)
 	}
 	opampServerURL, enabled, err := supervisorActivationForInstall(
