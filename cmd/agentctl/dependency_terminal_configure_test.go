@@ -24,11 +24,11 @@ func TestTerminalDependencyConfigurerReturnsConfirmedDesiredStates(
 			return true
 		},
 		func(
-			model dependencyConfigureTUI,
+			model dependencyConfigureSelection,
 			output io.Writer,
-		) (dependencyConfigureTUI, error) {
+		) (dependencyConfigureSelection, error) {
 			runCalled = true
-			model.selection.ToggleCurrent()
+			model.desiredStates["windows-exporter"] = false
 			model.complete = true
 
 			return model, nil
@@ -70,9 +70,9 @@ func TestTerminalDependencyConfigurerReturnsCancellation(
 			return true
 		},
 		func(
-			model dependencyConfigureTUI,
+			model dependencyConfigureSelection,
 			output io.Writer,
-		) (dependencyConfigureTUI, error) {
+		) (dependencyConfigureSelection, error) {
 			model.cancelled = true
 
 			return model, nil
@@ -104,7 +104,7 @@ func TestTerminalDependencyConfigurerNeverRunsOutsideTTY(t *testing.T) {
 	runCalled := false
 	configurer := newTerminalDependencyConfigurer(
 		func() bool { return false },
-		func(model dependencyConfigureTUI, _ io.Writer) (dependencyConfigureTUI, error) {
+		func(model dependencyConfigureSelection, _ io.Writer) (dependencyConfigureSelection, error) {
 			runCalled = true
 			return model, nil
 		},
@@ -135,7 +135,7 @@ func TestRunDependencyConfigureProgramConfirmsDesiredStates(
 	)
 
 	model, err := run(
-		newDependencyConfigureTUI(
+		newDependencyConfigureSelection(
 			[]dependencyConfigureOption{
 				{
 					Definition: dependency.Definition{

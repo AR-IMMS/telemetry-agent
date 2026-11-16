@@ -22,9 +22,9 @@ type dependencyConfigureFunc func(
 
 // dependencyConfigureRunner runs the TUI and returns its final state.
 type dependencyConfigureRunner func(
-	dependencyConfigureTUI,
+	dependencyConfigureSelection,
 	io.Writer,
-) (dependencyConfigureTUI, error)
+) (dependencyConfigureSelection, error)
 
 type dependencyConfigureFormRunner func(*huh.Form) error
 
@@ -50,7 +50,7 @@ func newTerminalDependencyConfigurer(
 			)
 		}
 
-		model, err := run(newDependencyConfigureTUI(options), output)
+		model, err := run(newDependencyConfigureSelection(options), output)
 		if err != nil {
 			return nil, fmt.Errorf(
 				"run interactive dependency configuration: %w",
@@ -86,21 +86,21 @@ func runDependencyConfigureProgramWithFormRunner(
 	runForm dependencyConfigureFormRunner,
 ) dependencyConfigureRunner {
 	return func(
-		model dependencyConfigureTUI,
+		model dependencyConfigureSelection,
 		output io.Writer,
-	) (dependencyConfigureTUI, error) {
+	) (dependencyConfigureSelection, error) {
 		if input == nil {
-			return dependencyConfigureTUI{}, fmt.Errorf(
+			return dependencyConfigureSelection{}, fmt.Errorf(
 				"interactive dependency configuration input is required",
 			)
 		}
 		if output == nil {
-			return dependencyConfigureTUI{}, fmt.Errorf(
+			return dependencyConfigureSelection{}, fmt.Errorf(
 				"interactive dependency configuration output is required",
 			)
 		}
 		if runForm == nil {
-			return dependencyConfigureTUI{}, fmt.Errorf(
+			return dependencyConfigureSelection{}, fmt.Errorf(
 				"dependency configure form runner is required",
 			)
 		}
@@ -109,7 +109,7 @@ func runDependencyConfigureProgramWithFormRunner(
 		choices := make([]huh.Option[string], 0, len(model.options))
 		for _, option := range model.options {
 			name := option.Definition.Name
-			if option.Enabled {
+			if model.desiredStates[option.Definition.Name] {
 				selected = append(selected, name)
 			}
 			displayName := option.Definition.DisplayName
@@ -132,14 +132,14 @@ func runDependencyConfigureProgramWithFormRunner(
 			model.cancelled = true
 			return model, nil
 		} else if err != nil {
-			return dependencyConfigureTUI{}, fmt.Errorf(
+			return dependencyConfigureSelection{}, fmt.Errorf(
 				"run dependency configure form: %w",
 				err,
 			)
 		}
 
 		for index := range model.options {
-			model.selection.selected[index] = slices.Contains(selected, model.options[index].Definition.Name)
+			model.desiredStates[model.options[index].Definition.Name] = slices.Contains(selected, model.options[index].Definition.Name)
 		}
 		model.complete = true
 		return model, nil
