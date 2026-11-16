@@ -61,7 +61,7 @@ func TestResolverDeterministicDisabledAndTypedFailures(t *testing.T) {
 
 func TestResolverClassifiesContributorErrors(t *testing.T) {
 	definition := testDefinition()
-	definition.Contribute = func(IntegrationInstance) (Contribution, error) {
+	definition.Contribute = func(map[string]any) (Contribution, error) {
 		return Contribution{}, errors.New("invalid contribution")
 	}
 	registry, err := NewRegistry(definition)

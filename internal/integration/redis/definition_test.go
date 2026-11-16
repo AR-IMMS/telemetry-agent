@@ -2,10 +2,7 @@ package redis
 
 import (
 	"encoding/json"
-	"errors"
 	"testing"
-
-	"github.com/ar-imms/telemetry-agent/internal/integration"
 )
 
 func TestDefinitionValidatesEndpointAndRejectsUnsupportedSettings(t *testing.T) {
@@ -42,10 +39,7 @@ func TestDefinitionValidatesEndpointAndRejectsUnsupportedSettings(t *testing.T) 
 
 func TestDefinitionContributesConfiguredCollectionInterval(t *testing.T) {
 	definition := Definition()
-	contribution, err := definition.Contribute(integration.IntegrationInstance{
-		ID: "cache-a", DefinitionID: definition.ID, DefinitionVersion: definition.Version,
-		Enabled: true, Configuration: map[string]any{"endpoint": "127.0.0.1:6379", "collection_interval": "15s"},
-	})
+	contribution, err := definition.Contribute(map[string]any{"endpoint": "127.0.0.1:6379", "collection_interval": "15s"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,10 +57,7 @@ func TestDefinitionContributesConfiguredCollectionInterval(t *testing.T) {
 
 func TestDefinitionContributesDeterministicEndpointOnlyIntent(t *testing.T) {
 	definition := Definition()
-	instance := integration.IntegrationInstance{
-		ID: "cache-a", DefinitionID: definition.ID, DefinitionVersion: definition.Version,
-		Enabled: true, Configuration: map[string]any{"endpoint": "127.0.0.1:6379"},
-	}
+	instance := map[string]any{"endpoint": "127.0.0.1:6379"}
 	first, err := definition.Contribute(instance)
 	if err != nil {
 		t.Fatal(err)
@@ -110,11 +101,18 @@ func redisEndpointAttributesEnabled(settings map[string]any) bool {
 
 func TestDefinitionRejectsSecretBearingSettingsAtDomainBoundary(t *testing.T) {
 	definition := Definition()
-	_, err := definition.Contribute(integration.IntegrationInstance{
-		ID: "cache-a", DefinitionID: definition.ID, DefinitionVersion: definition.Version,
-		Enabled: true, Configuration: map[string]any{"endpoint": "127.0.0.1:6379", "password": "plaintext"},
-	})
-	if !errors.Is(err, integration.ErrInvalidInstance) {
-		t.Fatalf("secret-bearing instance error = %v", err)
+	_, err := definition.Contribute(map[string]any{"endpoint": "127.0.0.1:6379", "password": "plaintext"})
+	if err == nil {
+		t.Fatal("secret-bearing settings were accepted")
+	}
+}
+
+func TestDefinitionContributorAcceptsSettingsProjection(t *testing.T) {
+	contribution, err := Definition().Contribute(map[string]any{"endpoint": "cache.internal:6379"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(contribution.Intents()); got != 1 {
+		t.Fatalf("intent count = %d, want 1", got)
 	}
 }

@@ -125,14 +125,14 @@ func TestRegistryPreservesTemplateSettingRulesInDefinitionCopies(t *testing.T) {
 func TestRegistryDefinitionsAreStableAndDefensivelyCopyTemplateMetadata(t *testing.T) {
 	first := IntegrationDefinition{
 		ID: "zeta", Version: "1.0.0", Validate: func(map[string]any) error { return nil },
-		Contribute: func(IntegrationInstance) (Contribution, error) { return NewContribution(nil), nil },
+		Contribute: func(map[string]any) (Contribution, error) { return NewContribution(nil), nil },
 		TemplateSettingRules: map[string]TemplateSettingRule{
 			"interval": {Type: "string", Description: "Collection interval", Constraints: []string{"positive duration"}},
 		},
 	}
 	second := IntegrationDefinition{
 		ID: "alpha", Version: "2.0.0", Validate: func(map[string]any) error { return nil },
-		Contribute: func(IntegrationInstance) (Contribution, error) { return NewContribution(nil), nil },
+		Contribute: func(map[string]any) (Contribution, error) { return NewContribution(nil), nil },
 	}
 	registry, err := NewRegistry(first, second)
 	if err != nil {
@@ -206,7 +206,7 @@ func validTemplate() IntegrationTemplate {
 func templateDefinition() IntegrationDefinition {
 	return IntegrationDefinition{
 		ID: "redis", Version: "1.0.0", Validate: func(map[string]any) error { return nil },
-		Contribute: func(IntegrationInstance) (Contribution, error) { return Contribution{}, nil },
+		Contribute: func(map[string]any) (Contribution, error) { return Contribution{}, nil },
 		TemplateSettingRules: map[string]TemplateSettingRule{
 			"endpoint":            {Type: "string", Description: "Target endpoint", Required: true, AllowResourceBinding: true},
 			"collection_interval": {Type: "string", Description: "Collection frequency", Default: "10s", DefaultOverridable: true},

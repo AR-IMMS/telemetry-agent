@@ -91,7 +91,7 @@ const (
 type ResourceBinding = domain.ResourceBinding
 
 // Contributor deterministically converts a validated instance into component intents.
-type Contributor func(IntegrationInstance) (Contribution, error)
+type Contributor func(map[string]any) (Contribution, error)
 
 // IntegrationDefinition describes a shipped integration version.
 type IntegrationDefinition struct {

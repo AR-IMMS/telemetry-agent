@@ -46,15 +46,12 @@ func Definition() integration.IntegrationDefinition {
 			BuildCandidate:       buildDiscoveredCandidate,
 			RequiredCapabilities: []string{redisMetricsCapability},
 		},
-		Contribute: func(instance integration.IntegrationInstance) (integration.Contribution, error) {
-			if err := integration.ValidateInstance(instance); err != nil {
-				return integration.Contribution{}, err
-			}
-			if err := validateConfiguration(instance.Configuration); err != nil {
+		Contribute: func(settings map[string]any) (integration.Contribution, error) {
+			if err := validateConfiguration(settings); err != nil {
 				return integration.Contribution{}, fmt.Errorf("validate Redis settings: %w", err)
 			}
 			componentConfig := map[string]any{
-				"endpoint": instance.Configuration["endpoint"],
+				"endpoint": settings["endpoint"],
 				// The receiver disables these identifying resource attributes by
 				// default. Enable them so multiple instances remain distinguishable.
 				"resource_attributes": map[string]any{
@@ -62,7 +59,7 @@ func Definition() integration.IntegrationDefinition {
 					"server.port":    map[string]any{"enabled": true},
 				},
 			}
-			if interval, exists := instance.Configuration["collection_interval"]; exists {
+			if interval, exists := settings["collection_interval"]; exists {
 				componentConfig["collection_interval"] = interval
 			}
 			intent, err := integration.NewComponentIntent(redisMetricsCapability, componentConfig)

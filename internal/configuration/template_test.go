@@ -136,7 +136,7 @@ func templateTestDefinition() integration.IntegrationDefinition {
 	return integration.IntegrationDefinition{
 		ID: "redis", Version: "1.0.0",
 		Validate: func(map[string]any) error { return nil },
-		Contribute: func(integration.IntegrationInstance) (integration.Contribution, error) {
+		Contribute: func(map[string]any) (integration.Contribution, error) {
 			return integration.NewContribution(nil), nil
 		},
 		TemplateSettingRules: map[string]integration.TemplateSettingRule{

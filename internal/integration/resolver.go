@@ -43,7 +43,7 @@ func (r Resolver) Resolve(instance IntegrationInstance) (ResolvedInstance, error
 	if !instance.Enabled {
 		return ResolvedInstance{Instance: instance, Contribution: NewContribution(nil)}, nil
 	}
-	contribution, err := definition.Contribute(instance)
+	contribution, err := definition.Contribute(instance.Configuration)
 	if err != nil {
 		return ResolvedInstance{}, fmt.Errorf("%w: %v", ErrInvalidContribution, err)
 	}

@@ -90,7 +90,7 @@ func templateTestMatcher(t *testing.T, capability CapabilityStatus) Matcher {
 			}
 			return nil
 		},
-		Contribute: func(IntegrationInstance) (Contribution, error) { return NewContribution(nil), nil },
+		Contribute: func(map[string]any) (Contribution, error) { return NewContribution(nil), nil },
 		Matching: &MatchingDefinition{
 			Selector: &MatchSelector{ResourceKinds: []string{"container"}, LifecycleStates: []string{"running"}, ExactAttributes: map[string]string{"container.image.repository": "docker.io/library/redis"}},
 			BuildCandidate: func(resource MatchResource) (CandidateBuild, error) {

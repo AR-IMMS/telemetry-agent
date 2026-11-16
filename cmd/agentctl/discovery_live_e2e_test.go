@@ -381,7 +381,7 @@ func fixtureDatabaseDefinition(id, imageRepository string, inputs []integration.
 			}
 			return nil
 		},
-		Contribute: func(integration.IntegrationInstance) (integration.Contribution, error) {
+		Contribute: func(map[string]any) (integration.Contribution, error) {
 			return integration.NewContribution(nil), nil
 		},
 		Matching: &integration.MatchingDefinition{

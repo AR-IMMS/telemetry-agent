@@ -146,7 +146,7 @@ func TestPeriodicSQLitePollingDetectsCommittedCrossProcessDesiredChange(t *testi
 	if _, err := reader.IntegrationRepository().Snapshot(); err != nil {
 		t.Fatalf("initialize SQLite snapshot before starting polling worker: %v", err)
 	}
-	definition := integration.IntegrationDefinition{ID: "fixture", Version: "1.0.0", Validate: func(map[string]any) error { return nil }, Contribute: func(integration.IntegrationInstance) (integration.Contribution, error) {
+	definition := integration.IntegrationDefinition{ID: "fixture", Version: "1.0.0", Validate: func(map[string]any) error { return nil }, Contribute: func(map[string]any) (integration.Contribution, error) {
 		return integration.NewContribution(nil), nil
 	}}
 	registry, err := integration.NewRegistry(definition)
@@ -264,8 +264,8 @@ service:
 			}
 			return nil
 		},
-		Contribute: func(instance integration.IntegrationInstance) (integration.Contribution, error) {
-			intent, err := integration.NewComponentIntent("fixture-receiver-metrics", map[string]any{"endpoint": instance.Configuration["endpoint"]})
+		Contribute: func(settings map[string]any) (integration.Contribution, error) {
+			intent, err := integration.NewComponentIntent("fixture-receiver-metrics", map[string]any{"endpoint": settings["endpoint"]})
 			if err != nil {
 				return integration.Contribution{}, err
 			}

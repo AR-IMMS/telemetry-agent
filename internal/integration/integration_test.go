@@ -11,8 +11,8 @@ func testDefinition() IntegrationDefinition {
 			return errors.New("endpoint required")
 		}
 		return nil
-	}, Contribute: func(instance IntegrationInstance) (Contribution, error) {
-		intent, err := NewComponentIntent("redisreceiver", map[string]any{"endpoint": instance.Configuration["endpoint"]})
+	}, Contribute: func(settings map[string]any) (Contribution, error) {
+		intent, err := NewComponentIntent("redisreceiver", map[string]any{"endpoint": settings["endpoint"]})
 		if err != nil {
 			return Contribution{}, err
 		}

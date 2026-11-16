@@ -23,7 +23,7 @@ func TestIntegrationServiceValidatesAndContributesBeforePersistence(t *testing.T
 			return errors.New("endpoint required")
 		}
 		return nil
-	}, Contribute: func(integration.IntegrationInstance) (integration.Contribution, error) {
+	}, Contribute: func(map[string]any) (integration.Contribution, error) {
 		return integration.NewContribution(nil), nil
 	}}
 	registry, err := integration.NewRegistry(d)
@@ -60,7 +60,7 @@ func (*setEnabledRepository) Delete(string, uint64) (uint64, error) { return 0, 
 func (r *setEnabledRepository) Snapshot() (DesiredSnapshot, error)  { return r.snapshot, nil }
 
 func TestIntegrationServiceSetEnabledPreservesInstanceAndUsesExpectedRevision(t *testing.T) {
-	definition := integration.IntegrationDefinition{ID: "redis", Version: "1.0.0", Validate: func(map[string]any) error { return nil }, Contribute: func(integration.IntegrationInstance) (integration.Contribution, error) {
+	definition := integration.IntegrationDefinition{ID: "redis", Version: "1.0.0", Validate: func(map[string]any) error { return nil }, Contribute: func(map[string]any) (integration.Contribution, error) {
 		return integration.NewContribution(nil), nil
 	}}
 	registry, err := integration.NewRegistry(definition)
@@ -90,7 +90,7 @@ func TestIntegrationServiceSetEnabledPreservesInstanceAndUsesExpectedRevision(t 
 }
 
 func TestIntegrationServiceSetEnabledRejectsStaleRevisionWithoutWriting(t *testing.T) {
-	registry, err := integration.NewRegistry(integration.IntegrationDefinition{ID: "redis", Version: "1.0.0", Validate: func(map[string]any) error { return nil }, Contribute: func(integration.IntegrationInstance) (integration.Contribution, error) {
+	registry, err := integration.NewRegistry(integration.IntegrationDefinition{ID: "redis", Version: "1.0.0", Validate: func(map[string]any) error { return nil }, Contribute: func(map[string]any) (integration.Contribution, error) {
 		return integration.NewContribution(nil), nil
 	}})
 	if err != nil {
@@ -105,7 +105,7 @@ func TestIntegrationServiceSetEnabledRejectsStaleRevisionWithoutWriting(t *testi
 }
 
 func TestIntegrationServiceSetEnabledReportsMissingInstance(t *testing.T) {
-	registry, err := integration.NewRegistry(integration.IntegrationDefinition{ID: "redis", Version: "1.0.0", Validate: func(map[string]any) error { return nil }, Contribute: func(integration.IntegrationInstance) (integration.Contribution, error) {
+	registry, err := integration.NewRegistry(integration.IntegrationDefinition{ID: "redis", Version: "1.0.0", Validate: func(map[string]any) error { return nil }, Contribute: func(map[string]any) (integration.Contribution, error) {
 		return integration.NewContribution(nil), nil
 	}})
 	if err != nil {
@@ -119,7 +119,7 @@ func TestIntegrationServiceSetEnabledReportsMissingInstance(t *testing.T) {
 }
 
 func TestIntegrationServicePutPreservingEnabledKeepsExistingEnabledValue(t *testing.T) {
-	registry, err := integration.NewRegistry(integration.IntegrationDefinition{ID: "redis", Version: "1.0.0", Validate: func(map[string]any) error { return nil }, Contribute: func(integration.IntegrationInstance) (integration.Contribution, error) {
+	registry, err := integration.NewRegistry(integration.IntegrationDefinition{ID: "redis", Version: "1.0.0", Validate: func(map[string]any) error { return nil }, Contribute: func(map[string]any) (integration.Contribution, error) {
 		return integration.NewContribution(nil), nil
 	}})
 	if err != nil {
