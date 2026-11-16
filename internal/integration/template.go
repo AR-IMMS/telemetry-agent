@@ -101,7 +101,11 @@ func GeneratedInstanceID(owner TemplateOwner, templateID string, resource Resour
 
 // ResolveTemplateSettings applies Definition defaults, explicit settings and declared resource bindings.
 func ResolveTemplateSettings(template IntegrationTemplate, definition IntegrationDefinition, resource MatchResource) (map[string]any, error) {
-	return templatesapp.ResolveSettings(template, definition, resource)
+	input, err := monitoringTemplateInput(template)
+	if err != nil {
+		return nil, err
+	}
+	return templatesapp.ResolveSettings(input, definition, resource)
 }
 
 func validTemplateOwner(owner TemplateOwner) bool {

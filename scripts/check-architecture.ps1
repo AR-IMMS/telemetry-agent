@@ -158,13 +158,17 @@ try {
     }
     $monitoringDomain = "$monitoringProfilesRoot/domain"
     $monitoringApplication = "$monitoringProfilesRoot/application"
-    # Monitoring Template resolution composes profile rules with normalized
-    # resource evidence. It must remain independent of the temporary Integration
-    # facade and all persistence / inventory adapters.
+    # Monitoring Template matching has real domain and application layers.
+    # Narrow input/evidence contracts stay independent of Configuration's
+    # persisted aggregate and all persistence / inventory adapters.
     $monitoringTemplatesRoot = "$modulePath/internal/monitoring/templates"
+    $monitoringTemplatesDomain = "$monitoringTemplatesRoot/domain"
     $monitoringTemplatesApplication = "$monitoringTemplatesRoot/application"
-    if (-not (Test-Path -LiteralPath (Join-Path $repoRoot 'internal/monitoring/templates/application') -PathType Container)) {
-        $violations.Add('Monitoring Templates requires an application package under internal/monitoring/templates')
+    foreach ($layer in @('domain', 'application')) {
+        $layerPath = Join-Path $repoRoot ("internal/monitoring/templates/{0}" -f $layer)
+        if (-not (Test-Path -LiteralPath $layerPath -PathType Container)) {
+            $violations.Add("Monitoring Templates requires a real $layer layer under internal/monitoring/templates")
+        }
     }
     # Configuration Templates are a cohesive capability: the domain owns the
     # persisted template model; the application owns validation and CAS use cases.
@@ -232,8 +236,19 @@ try {
             foreach ($imported in $imports) {
                 if ($imported.StartsWith("$modulePath/internal/integration", [StringComparison]::Ordinal) -or
                     $imported.StartsWith("$modulePath/internal/configuration/sqlite", [StringComparison]::Ordinal) -or
+                    $imported.StartsWith("$modulePath/internal/configuration", [StringComparison]::Ordinal) -or
                     $imported.StartsWith("$modulePath/internal/inventory", [StringComparison]::Ordinal)) {
-                    $violations.Add("Monitoring Templates application must depend on context contracts, not Integration facade, persistence, or Inventory adapters: $package -> $imported")
+                    $violations.Add("Monitoring Templates application must depend on its narrow evaluation contract, not Configuration, Integration, persistence, or Inventory packages: $package -> $imported")
+                }
+            }
+        }
+        if ($package -eq $monitoringTemplatesDomain) {
+            foreach ($imported in $imports) {
+                if ($imported.StartsWith("$modulePath/internal/configuration", [StringComparison]::Ordinal) -or
+                    $imported.StartsWith("$modulePath/internal/integration", [StringComparison]::Ordinal) -or
+                    $imported.StartsWith("$monitoringTemplatesApplication", [StringComparison]::Ordinal) -or
+                    $imported.StartsWith("$monitoringTemplatesRoot/yaml", [StringComparison]::Ordinal)) {
+                    $violations.Add("Monitoring Templates domain must not depend on Configuration or outer layers: $package -> $imported")
                 }
             }
         }

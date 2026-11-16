@@ -1,4 +1,5 @@
-// Package application resolves Configuration Templates against exact Monitoring
-// definitions and normalized resource evidence. It returns secret-free settings
-// or typed resolution errors; it does not own template persistence or desired state.
+// Package application evaluates narrow Template projections against exact
+// Monitoring definitions and normalized resource evidence. It returns
+// configuration-neutral candidates and secret-free settings; it does not own
+// Template persistence, lifecycle, or desired state.
 package application

@@ -5,10 +5,9 @@ import (
 	"reflect"
 	"testing"
 
-	configurationdomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
-	templatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/templates/domain"
 	matchingdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/domain"
 	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions"
+	templatesdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/templates/domain"
 )
 
 func TestResolveSettingsPreservesDefaultAndBindingPrecedence(t *testing.T) {
@@ -54,13 +53,13 @@ func TestResolveSettingsReportsUnavailableBindingEvidence(t *testing.T) {
 	}
 }
 
-func settingsTemplate() templatedomain.Template {
-	return templatedomain.Template{
-		ID: "redis-default", Owner: configurationdomain.TemplateOwnerLocal, Revision: 1,
-		Status: templatedomain.StatusEnabled, DefinitionID: "redis", DefinitionVersion: "1.0.0",
+func settingsTemplate() templatesdomain.TemplateInput {
+	return templatesdomain.TemplateInput{
+		ID: "redis-default", Owner: "local", Revision: 1, Evaluate: true,
+		DefinitionID: "redis", DefinitionVersion: "1.0.0",
 		Settings: map[string]any{},
-		Bindings: []templatedomain.SettingBinding{{Target: "endpoint", Source: templatedomain.BindingSource{
-			Kind: templatedomain.SourceEndpoint, EndpointScope: "host", EndpointProtocol: "tcp", EndpointProvenance: "published_port",
+		Bindings: []templatesdomain.TemplateSettingBinding{{Target: "endpoint", Source: templatesdomain.TemplateBindingSource{
+			Kind: templatesdomain.TemplateSourceEndpoint, EndpointScope: "host", EndpointProtocol: "tcp", EndpointProvenance: "published_port",
 		}}},
 	}
 }
