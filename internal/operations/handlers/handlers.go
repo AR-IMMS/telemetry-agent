@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
-	"github.com/ar-imms/telemetry-agent/internal/operations"
+	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
+	operations "github.com/ar-imms/telemetry-agent/internal/operations/command"
 )
 
 const maxHandlerResultBytes = 32 * 1024

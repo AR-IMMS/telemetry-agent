@@ -3,7 +3,7 @@ package agentlifecycle
 import (
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
+	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 )
 
 func TestRuntimeWatcherReportsCollectorExporterNetworkFailure(t *testing.T) {

@@ -1,11 +1,22 @@
-package agentstate
+package sqlite
 
 import (
 	"database/sql"
 	"fmt"
+
+	sqlitemigrate "github.com/ar-imms/telemetry-agent/internal/platform/sqlite/migrate"
 )
 
-func migrateOperationsExecution(db *sql.DB) error {
+// Migrations returns the Operations-owned schema definition at its established version.
+func Migrations() []sqlitemigrate.Migration {
+	return []sqlitemigrate.Migration{{
+		Version: 14,
+		Name:    "Operations execution and outbox",
+		Apply:   migrateExecutionSchema,
+	}}
+}
+
+func migrateExecutionSchema(db *sql.DB) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return fmt.Errorf("begin Operations execution migration: %w", err)

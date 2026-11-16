@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
+	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 )
 
 func TestRunStatusSeparatesRuntimeReadinessFromDelivery(t *testing.T) {

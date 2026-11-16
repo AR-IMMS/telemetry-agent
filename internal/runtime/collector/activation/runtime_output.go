@@ -1,7 +1,7 @@
 package agentlifecycle
 
 import (
-	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
+	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
 )
 

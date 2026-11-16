@@ -25,7 +25,10 @@ try {
         "$modulePath/internal/identity",
         "$modulePath/internal/integration",
         "$modulePath/internal/inventory",
-        "$modulePath/internal/monitoringprofile"
+        "$modulePath/internal/monitoringprofile",
+        "$modulePath/internal/health",
+        "$modulePath/internal/operations/command",
+        "$modulePath/internal/operations/handlers"
     )
     $adapterRoots = @(
         "$modulePath/internal/runtime/service",
@@ -44,7 +47,11 @@ try {
         "$modulePath/internal/identity/sqlite",
         "$modulePath/internal/inventory/docker",
         "$modulePath/internal/inventory/sqlite",
-        "$modulePath/internal/runtime/collector/supervisor"
+        "$modulePath/internal/runtime/collector/supervisor",
+        "$modulePath/internal/operations/dockeradapter",
+        "$modulePath/internal/operations/nats",
+        "$modulePath/internal/operations/sqlite",
+        "$modulePath/internal/operations/testsupport"
     )
 
     # Configuration consumes Runtime-owned immutable candidate/application

@@ -16,17 +16,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	credentialstore "github.com/ar-imms/telemetry-agent/internal/identity/credentials"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
-	"github.com/ar-imms/telemetry-agent/internal/operations"
+	operations "github.com/ar-imms/telemetry-agent/internal/operations/command"
 	operationsdocker "github.com/ar-imms/telemetry-agent/internal/operations/dockeradapter"
 	"github.com/ar-imms/telemetry-agent/internal/operations/handlers"
 	operationssqlite "github.com/ar-imms/telemetry-agent/internal/operations/sqlite"
 	"github.com/ar-imms/telemetry-agent/internal/operations/testsupport/mockcore"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 	"github.com/nats-io/nats.go/jetstream"
 )
 
