@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
-	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 )
 
 func managedRuntimeCandidate(
@@ -41,7 +41,7 @@ func managedRuntimeCandidate(
 		t.Fatalf("load Agent state for local candidate: %v", err)
 	}
 	gatewayRepository := agentstate.NewCoreGatewayStore(statePath)
-	gateway, err := gatewayRepository.EffectiveGateway()
+	gateway, err := gatewayRepository.EffectiveGateway(context.Background())
 	if err != nil {
 		t.Fatalf("resolve current Gateway for local candidate: %v", err)
 	}

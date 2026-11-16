@@ -18,7 +18,9 @@ func (r retryServiceDesired) Snapshot() (configuration.DesiredSnapshot, error) {
 
 type retryServiceBaseline struct{ snapshot BaselineSnapshot }
 
-func (r retryServiceBaseline) Snapshot() (BaselineSnapshot, error) { return r.snapshot, nil }
+func (r retryServiceBaseline) Snapshot(context.Context) (BaselineSnapshot, error) {
+	return r.snapshot, nil
+}
 
 type retryServiceDiagnostics struct {
 	evidence   reconciliationcontracts.TargetEvidence

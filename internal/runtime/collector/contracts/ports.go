@@ -47,7 +47,7 @@ type RenderInput struct {
 // fingerprint observed while building it. It does not promise a cross-store
 // read transaction; CandidateApplier rechecks freshness before admission.
 type BaselineReader interface {
-	Snapshot() (BaselineSnapshot, error)
+	Snapshot(context.Context) (BaselineSnapshot, error)
 }
 
 // CandidateApplyRequest binds one immutable compiled candidate to the desired

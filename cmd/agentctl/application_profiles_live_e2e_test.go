@@ -132,7 +132,7 @@ func TestLiveDockerApplicationProfilesDeliverOTLP(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	initial, err := baseline.Snapshot()
+	initial, err := baseline.Snapshot(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

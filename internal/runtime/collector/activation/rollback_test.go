@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 )
 
 func TestRollbackUnappliedConfigurationRestoresCommittedArtifact(t *testing.T) {
@@ -85,7 +85,7 @@ func TestRollbackRestoresCollectorConfigAndGatewayEndpointPair(t *testing.T) {
 		t.Fatal(err)
 	}
 	gateway := agentstate.NewCoreGatewayStore(statePath)
-	accepted, err := gateway.AcceptGatewaySnapshot(coreconfig.GatewaySnapshot{
+	accepted, err := gateway.AcceptGatewaySnapshot(context.Background(), coreconfig.GatewaySnapshot{
 		InstallationID: id.String(),
 		Revision:       9,
 		Endpoint:       "core.example:4317",
@@ -122,11 +122,11 @@ func TestRollbackRestoresCollectorConfigAndGatewayEndpointPair(t *testing.T) {
 	if state.DesiredGeneration != accepted.Generation || state.ActivatedGeneration != state.AppliedGeneration || state.PendingActivation != nil {
 		t.Fatalf("state after rollback = %+v", state)
 	}
-	effective, err := gateway.EffectiveGateway()
+	effective, err := gateway.EffectiveGateway(context.Background())
 	if err != nil || effective.Owner != coreconfig.CoreOwner || effective.Revision != 9 || effective.Endpoint != "core.example:4317" {
 		t.Fatalf("accepted desired Gateway after rollback = %+v, %v", effective, err)
 	}
-	runtime, err := gateway.GatewayForGeneration(state.ActivatedGeneration)
+	runtime, err := gateway.GatewayForGeneration(context.Background(), state.ActivatedGeneration)
 	if err != nil || runtime.Endpoint != "bootstrap.example:4317" {
 		t.Fatalf("runtime Gateway after rollback = %+v, %v", runtime, err)
 	}

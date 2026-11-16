@@ -44,7 +44,7 @@ func (w runtimeWatcher) onCollectorReady(
 			err = candidateStore.MarkCandidateGenerationApplied(generation, options.GatewayEndpoint)
 		}
 	} else if w.gatewayRuntime != nil {
-		err = w.gatewayRuntime.MarkGatewayApplied(generation, options.GatewayEndpoint)
+		err = w.gatewayRuntime.MarkGatewayApplied(ctx, generation, options.GatewayEndpoint)
 	} else {
 		_, err = w.store.Update(func(state *agentstate.State) error {
 			return state.MarkGenerationApplied(generation)

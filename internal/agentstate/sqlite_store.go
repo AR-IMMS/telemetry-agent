@@ -1,6 +1,7 @@
 package agentstate
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -35,7 +36,12 @@ func NewSQLiteStore(path string) SQLiteStore {
 
 // OpenDatabase opens the operational database after initializing its shared schema.
 func (s SQLiteStore) OpenDatabase() (*sql.DB, error) {
-	return s.open()
+	return s.openWithContext(context.Background())
+}
+
+// OpenDatabaseContext opens the operational database under the caller context.
+func (s SQLiteStore) OpenDatabaseContext(ctx context.Context) (*sql.DB, error) {
+	return s.openWithContext(ctx)
 }
 
 // Save atomically replaces the persisted Agent state.
@@ -113,10 +119,14 @@ func (s SQLiteStore) Update(mutate StateMutation) (State, error) {
 }
 
 func (s SQLiteStore) open() (*sql.DB, error) {
+	return s.openWithContext(context.Background())
+}
+
+func (s SQLiteStore) openWithContext(ctx context.Context) (*sql.DB, error) {
 	if s.path == "" {
 		return nil, fmt.Errorf("Agent SQLite database path is required")
 	}
-	return platformsqlite.Open(s.path, func(db *sql.DB) error {
+	return platformsqlite.Open(ctx, s.path, func(db *sql.DB) error {
 		if err := ensureSQLiteSchema(db); err != nil {
 			return err
 		}

@@ -393,7 +393,7 @@ func (s *snapshotReader) Snapshot() (configuration.DesiredSnapshot, error) { ret
 
 type staticBaseline struct{}
 
-func (staticBaseline) Snapshot() (BaselineSnapshot, error) {
+func (staticBaseline) Snapshot(context.Context) (BaselineSnapshot, error) {
 	return BaselineSnapshot{DesiredGeneration: 4, Fingerprint: "fingerprint", Input: runtimecontracts.RenderInput{Platform: identity.PlatformInfo{OS: "windows", Architecture: "amd64"}}}, nil
 }
 
@@ -488,7 +488,7 @@ func (s *sequenceReader) Snapshot() (configuration.DesiredSnapshot, error) {
 
 type changingBaseline struct{ generation uint64 }
 
-func (b *changingBaseline) Snapshot() (BaselineSnapshot, error) {
+func (b *changingBaseline) Snapshot(context.Context) (BaselineSnapshot, error) {
 	return BaselineSnapshot{DesiredGeneration: b.generation, Fingerprint: "baseline", Input: runtimecontracts.RenderInput{Platform: identity.PlatformInfo{OS: "windows", Architecture: "amd64"}}}, nil
 }
 
@@ -497,7 +497,7 @@ type sequenceBaseline struct {
 	calls     int
 }
 
-func (b *sequenceBaseline) Snapshot() (BaselineSnapshot, error) {
+func (b *sequenceBaseline) Snapshot(context.Context) (BaselineSnapshot, error) {
 	index := b.calls
 	if index >= len(b.snapshots) {
 		index = len(b.snapshots) - 1
@@ -514,7 +514,7 @@ type testCleanBaseline struct {
 	values       map[string]string
 }
 
-func (b testCleanBaseline) Snapshot() (BaselineSnapshot, error) {
+func (b testCleanBaseline) Snapshot(context.Context) (BaselineSnapshot, error) {
 	state, err := b.store.Load()
 	if err != nil {
 		return BaselineSnapshot{}, err

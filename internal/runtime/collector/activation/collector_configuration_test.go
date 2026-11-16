@@ -8,11 +8,11 @@ import (
 	"testing"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
-	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
-	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 )
 
 func TestCollectorConfigurationActivatorActivatesEnabledReceivers(
@@ -217,11 +217,11 @@ func (r *gatewayValidationRunner) Run(_ context.Context, command bootstrap.Comma
 
 type gatewayRepositoryStub struct{ endpoint string }
 
-func (r gatewayRepositoryStub) AcceptGatewaySnapshot(coreconfig.GatewaySnapshot) (coreconfig.Acceptance, error) {
+func (r gatewayRepositoryStub) AcceptGatewaySnapshot(context.Context, coreconfig.GatewaySnapshot) (coreconfig.Acceptance, error) {
 	return coreconfig.Acceptance{}, nil
 }
 
-func (r gatewayRepositoryStub) EffectiveGateway() (coreconfig.EffectiveGateway, error) {
+func (r gatewayRepositoryStub) EffectiveGateway(context.Context) (coreconfig.EffectiveGateway, error) {
 	return coreconfig.EffectiveGateway{Owner: coreconfig.CoreOwner, Endpoint: r.endpoint, Generation: 1}, nil
 }
 

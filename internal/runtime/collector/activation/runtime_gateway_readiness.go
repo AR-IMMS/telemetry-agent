@@ -19,7 +19,7 @@ func (w runtimeWatcher) verifyPendingGatewayRevision(
 	if w.gatewayRuntime == nil {
 		return nil
 	}
-	gateway, err := w.gatewayRuntime.GatewayForGeneration(generation)
+	gateway, err := w.gatewayRuntime.GatewayForGeneration(ctx, generation)
 	if err != nil {
 		return fmt.Errorf("load Gateway readiness state: %w", err)
 	}
@@ -46,7 +46,7 @@ func (w runtimeWatcher) verifyPendingGatewayRevision(
 		return nil
 	default:
 	}
-	if err := w.gatewayRuntime.MarkGatewayApplied(generation, options.GatewayEndpoint); err != nil {
+	if err := w.gatewayRuntime.MarkGatewayApplied(ctx, generation, options.GatewayEndpoint); err != nil {
 		return fmt.Errorf("commit readiness-confirmed Core Gateway revision: %w", err)
 	}
 	return nil

@@ -87,7 +87,7 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	baselineSnapshot, err := baseline.Snapshot()
+	baselineSnapshot, err := baseline.Snapshot(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

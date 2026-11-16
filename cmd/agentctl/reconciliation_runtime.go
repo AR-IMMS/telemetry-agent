@@ -7,7 +7,6 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/app"
-	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation"
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
@@ -18,6 +17,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	runtimecontracts "github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 )
@@ -72,12 +72,12 @@ func newRuntimeBaseline(statePath string) (runtimeBaseline, error) {
 	}, nil
 }
 
-func (b runtimeBaseline) Snapshot() (reconciliation.BaselineSnapshot, error) {
+func (b runtimeBaseline) Snapshot(ctx context.Context) (reconciliation.BaselineSnapshot, error) {
 	state, err := b.store.Load()
 	if err != nil {
 		return reconciliation.BaselineSnapshot{}, err
 	}
-	gateway, err := b.gateways.EffectiveGateway()
+	gateway, err := b.gateways.EffectiveGateway(ctx)
 	if err != nil {
 		return reconciliation.BaselineSnapshot{}, err
 	}

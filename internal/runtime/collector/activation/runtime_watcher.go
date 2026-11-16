@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
 )
 
@@ -55,7 +55,7 @@ func (w runtimeWatcher) Run(ctx context.Context) error {
 	}
 
 	for {
-		snapshot, options, cleanupLaunchConfig, err := w.prepareLaunch()
+		snapshot, options, cleanupLaunchConfig, err := w.prepareLaunch(ctx)
 		if err != nil {
 			return err
 		}
@@ -197,7 +197,7 @@ func (w runtimeWatcher) Run(ctx context.Context) error {
 
 // prepareLaunch reads state and snapshots config under the same lifecycle lock
 // so the launched bytes match the activated generation.
-func (w runtimeWatcher) prepareLaunch() (agentstate.State, supervisor.Options, func(), error) {
+func (w runtimeWatcher) prepareLaunch(ctx context.Context) (agentstate.State, supervisor.Options, func(), error) {
 	cleanup := func() {}
 	if w.lockPath != "" {
 		lock, err := agentstate.AcquireLifecycleLock(w.lockPath)
@@ -212,7 +212,7 @@ func (w runtimeWatcher) prepareLaunch() (agentstate.State, supervisor.Options, f
 	}
 	options := w.launchOptions()
 	if w.gatewayRuntime != nil {
-		gateway, err := w.gatewayRuntime.GatewayForGeneration(snapshot.ActivatedGeneration)
+		gateway, err := w.gatewayRuntime.GatewayForGeneration(ctx, snapshot.ActivatedGeneration)
 		if err != nil {
 			return agentstate.State{}, supervisor.Options{}, cleanup, fmt.Errorf("resolve Gateway endpoint for generation %d: %w", snapshot.ActivatedGeneration, err)
 		}

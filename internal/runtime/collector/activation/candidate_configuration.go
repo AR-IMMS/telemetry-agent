@@ -10,10 +10,10 @@ import (
 	"path/filepath"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
-	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 )
 
 // ApplyCollectorCandidate submits a complete S2 candidate to the existing M2
@@ -49,7 +49,7 @@ func ApplyCollectorCandidate(
 		recover: func(path string) error { return bootstrap.RestoreConfigArtifact(options.ConfigPath, path) },
 	}
 	build := func(state agentstate.State) (candidateActivationPlan, error) {
-		values, validationEnvironment, err := candidateGatewayValues(options)
+		values, validationEnvironment, err := candidateGatewayValues(ctx, options)
 		if err != nil {
 			return candidateActivationPlan{}, err
 		}
@@ -130,7 +130,7 @@ func candidateDigestMatches(content []byte, expected string) bool {
 	return hex.EncodeToString(digest[:]) == expected
 }
 
-func candidateGatewayValues(options CollectorConfigurationOptions) (map[string]string, []string, error) {
+func candidateGatewayValues(ctx context.Context, options CollectorConfigurationOptions) (map[string]string, []string, error) {
 	environment := append([]string(nil), options.ValidationEnvironment...)
 	values := cloneStringMap(options.RenderValues)
 	if options.GatewayRepository == nil {
@@ -142,7 +142,7 @@ func candidateGatewayValues(options CollectorConfigurationOptions) (map[string]s
 		}
 		return values, environment, nil
 	}
-	gateway, err := options.GatewayRepository.EffectiveGateway()
+	gateway, err := options.GatewayRepository.EffectiveGateway(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("resolve effective Gateway endpoint: %w", err)
 	}

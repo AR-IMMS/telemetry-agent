@@ -179,7 +179,7 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 			if baselineErr != nil {
 				return integrationCommandError(stderr, command, baselineErr)
 			}
-			baseline, baselineErr := currentBaseline.Snapshot()
+			baseline, baselineErr := currentBaseline.Snapshot(ctx)
 			if baselineErr != nil {
 				return integrationCommandError(stderr, command, baselineErr)
 			}

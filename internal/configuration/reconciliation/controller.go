@@ -90,7 +90,7 @@ func (c *Controller) Reconcile(ctx context.Context) (Result, error) {
 	if err != nil {
 		return Result{}, Failure{Stage: "snapshot", Code: "desired_snapshot_failed", Class: FailureTransient, Err: err}
 	}
-	baseline, err := c.Baseline.Snapshot()
+	baseline, err := c.Baseline.Snapshot(ctx)
 	if err != nil {
 		return Result{}, Failure{Stage: "baseline", Code: "baseline_snapshot_failed", Class: FailureTransient, Err: err}
 	}
@@ -268,7 +268,7 @@ func (c *Controller) reconcileLatest(ctx context.Context) (Result, error) {
 		if de != nil {
 			return result, Failure{Stage: "latest_desired", Code: "desired_snapshot_failed", Class: FailureTransient, Err: de}
 		}
-		baseline, be := c.Baseline.Snapshot()
+		baseline, be := c.Baseline.Snapshot(ctx)
 		if be != nil {
 			return result, Failure{Stage: "latest_baseline", Code: "baseline_snapshot_failed", Class: FailureTransient, Err: be}
 		}

@@ -1,6 +1,7 @@
 package agentstate
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -303,12 +304,12 @@ func TestCoreGatewayLegacyImportAndRestart(t *testing.T) {
 	if _, err := NewIdentityStore(legacyPath).EnsureInstallationID(mustInstallationID(t, "11111111-2222-4333-8444-555555555555")); err != nil {
 		t.Fatalf("initialize imported installation: %v", err)
 	}
-	accepted, err := repository.AcceptGatewaySnapshot(coreconfig.GatewaySnapshot{InstallationID: "11111111-2222-4333-8444-555555555555", Revision: 3, Endpoint: "core:4317"})
+	accepted, err := repository.AcceptGatewaySnapshot(context.Background(), coreconfig.GatewaySnapshot{InstallationID: "11111111-2222-4333-8444-555555555555", Revision: 3, Endpoint: "core:4317"})
 	if err != nil || accepted.Generation != 3 {
 		t.Fatalf("accept after import = %+v, %v", accepted, err)
 	}
 	restarted := NewCoreGatewayStore(legacyPath)
-	got, err := restarted.EffectiveGateway()
+	got, err := restarted.EffectiveGateway(context.Background())
 	if err != nil || got.Owner != coreconfig.CoreOwner || got.Endpoint != "core:4317" || got.Generation != 3 {
 		t.Fatalf("restart effective Gateway = %+v, %v", got, err)
 	}

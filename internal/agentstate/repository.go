@@ -1,6 +1,7 @@
 package agentstate
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -47,7 +48,7 @@ func NewCoreGatewayStore(path string) coreconfig.GatewayRuntimeRepository {
 }
 
 func newCoreGatewayRepository(store SQLiteStore) coreconfig.GatewayRuntimeRepository {
-	return remoteconfigsqlite.New(store.OpenDatabase, &sqliteUpdateMutex, remoteconfigsqlite.StateAccess{
+	return remoteconfigsqlite.New(func(ctx context.Context) (*sql.DB, error) { return store.OpenDatabaseContext(ctx) }, &sqliteUpdateMutex, remoteconfigsqlite.StateAccess{
 		BeginSnapshotAcceptance: func() (func(), error) {
 			state, err := store.Load()
 			if err != nil {

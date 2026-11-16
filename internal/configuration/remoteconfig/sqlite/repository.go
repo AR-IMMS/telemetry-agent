@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -35,13 +36,13 @@ type StateAccess struct {
 
 // Repository persists accepted Core snapshots and their Runtime attribution.
 type Repository struct {
-	open  func() (*sql.DB, error)
+	open  func(context.Context) (*sql.DB, error)
 	lock  sync.Locker
 	state StateAccess
 }
 
 // New creates a Gateway SQLite repository over the supplied shared database.
-func New(open func() (*sql.DB, error), lock sync.Locker, state StateAccess) *Repository {
+func New(open func(context.Context) (*sql.DB, error), lock sync.Locker, state StateAccess) *Repository {
 	return &Repository{open: open, lock: lock, state: state}
 }
 
@@ -54,7 +55,10 @@ type gatewayRow struct {
 
 // AcceptGatewaySnapshot atomically accepts a trusted Core snapshot and advances
 // local desired generation when its endpoint changes.
-func (s *Repository) AcceptGatewaySnapshot(snapshot remoteconfig.GatewaySnapshot) (remoteconfig.Acceptance, error) {
+func (s *Repository) AcceptGatewaySnapshot(ctx context.Context, snapshot remoteconfig.GatewaySnapshot) (remoteconfig.Acceptance, error) {
+	if err := validateContext(ctx); err != nil {
+		return remoteconfig.Acceptance{}, err
+	}
 	if err := remoteconfig.ValidateSnapshot(snapshot); err != nil {
 		return remoteconfig.Acceptance{}, err
 	}
@@ -67,7 +71,7 @@ func (s *Repository) AcceptGatewaySnapshot(snapshot remoteconfig.GatewaySnapshot
 			defer release()
 		}
 	}
-	db, err := s.openDatabase()
+	db, err := s.openDatabase(ctx)
 	if err != nil {
 		return remoteconfig.Acceptance{}, err
 	}
@@ -76,7 +80,7 @@ func (s *Repository) AcceptGatewaySnapshot(snapshot remoteconfig.GatewaySnapshot
 		s.lock.Lock()
 		defer s.lock.Unlock()
 	}
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return remoteconfig.Acceptance{}, fmt.Errorf("begin Core Gateway acceptance: %w", err)
 	}
@@ -88,7 +92,7 @@ func (s *Repository) AcceptGatewaySnapshot(snapshot remoteconfig.GatewaySnapshot
 	if err != nil {
 		return remoteconfig.Acceptance{}, fmt.Errorf("load Agent state before Core Gateway acceptance: %w", err)
 	}
-	prior, exists, err := readSnapshot(tx)
+	prior, exists, err := readSnapshot(ctx, tx)
 	if err != nil {
 		return remoteconfig.Acceptance{}, err
 	}
@@ -123,7 +127,7 @@ func (s *Repository) AcceptGatewaySnapshot(snapshot remoteconfig.GatewaySnapshot
 	if state.DesiredGeneration > math.MaxInt64 {
 		return remoteconfig.Acceptance{}, errors.New("local desired generation exceeds SQLite integer range")
 	}
-	if _, err := tx.Exec(`INSERT INTO core_gateway_snapshot
+	if _, err := tx.ExecContext(ctx, `INSERT INTO core_gateway_snapshot
 		(id, revision, endpoint, fingerprint, accepted_at, target_generation)
 		VALUES (1, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET revision=excluded.revision,
@@ -132,7 +136,7 @@ func (s *Repository) AcceptGatewaySnapshot(snapshot remoteconfig.GatewaySnapshot
 		snapshot.Revision, snapshot.Endpoint, fingerprint(snapshot.Endpoint), time.Now().UTC().Format(time.RFC3339Nano), state.DesiredGeneration); err != nil {
 		return remoteconfig.Acceptance{}, fmt.Errorf("persist Core Gateway snapshot: %w", err)
 	}
-	if _, err := tx.Exec(`INSERT INTO core_gateway_runtime
+	if _, err := tx.ExecContext(ctx, `INSERT INTO core_gateway_runtime
 		(id,last_good_endpoint,activated_revision,activated_generation,applied_revision,applied_generation)
 		VALUES (1, ?, 0, ?, 0, ?) ON CONFLICT(id) DO NOTHING`, previousEndpoint, state.ActivatedGeneration, state.AppliedGeneration); err != nil {
 		return remoteconfig.Acceptance{}, fmt.Errorf("initialize Core Gateway runtime state: %w", err)
@@ -145,13 +149,16 @@ func (s *Repository) AcceptGatewaySnapshot(snapshot remoteconfig.GatewaySnapshot
 
 // EffectiveGateway resolves Core authority or the Bootstrap endpoint in one
 // transaction so its generation and endpoint are observed together.
-func (s *Repository) EffectiveGateway() (remoteconfig.EffectiveGateway, error) {
-	db, err := s.openDatabase()
+func (s *Repository) EffectiveGateway(ctx context.Context) (remoteconfig.EffectiveGateway, error) {
+	if err := validateContext(ctx); err != nil {
+		return remoteconfig.EffectiveGateway{}, err
+	}
+	db, err := s.openDatabase(ctx)
 	if err != nil {
 		return remoteconfig.EffectiveGateway{}, err
 	}
 	defer db.Close()
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return remoteconfig.EffectiveGateway{}, fmt.Errorf("begin effective Gateway read: %w", err)
 	}
@@ -160,7 +167,7 @@ func (s *Repository) EffectiveGateway() (remoteconfig.EffectiveGateway, error) {
 	if err != nil {
 		return remoteconfig.EffectiveGateway{}, err
 	}
-	row, exists, err := readSnapshot(tx)
+	row, exists, err := readSnapshot(ctx, tx)
 	if err != nil {
 		return remoteconfig.EffectiveGateway{}, err
 	}
@@ -176,13 +183,16 @@ func (s *Repository) EffectiveGateway() (remoteconfig.EffectiveGateway, error) {
 
 // GatewayForGeneration resolves the candidate endpoint only after activation;
 // otherwise it retains the last known-good endpoint.
-func (s *Repository) GatewayForGeneration(generation uint64) (remoteconfig.RuntimeGateway, error) {
-	db, err := s.openDatabase()
+func (s *Repository) GatewayForGeneration(ctx context.Context, generation uint64) (remoteconfig.RuntimeGateway, error) {
+	if err := validateContext(ctx); err != nil {
+		return remoteconfig.RuntimeGateway{}, err
+	}
+	db, err := s.openDatabase(ctx)
 	if err != nil {
 		return remoteconfig.RuntimeGateway{}, err
 	}
 	defer db.Close()
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return remoteconfig.RuntimeGateway{}, fmt.Errorf("begin Gateway runtime resolution: %w", err)
 	}
@@ -191,7 +201,7 @@ func (s *Repository) GatewayForGeneration(generation uint64) (remoteconfig.Runti
 	if err != nil {
 		return remoteconfig.RuntimeGateway{}, err
 	}
-	row, exists, err := readSnapshot(tx)
+	row, exists, err := readSnapshot(ctx, tx)
 	if err != nil {
 		return remoteconfig.RuntimeGateway{}, err
 	}
@@ -199,7 +209,7 @@ func (s *Repository) GatewayForGeneration(generation uint64) (remoteconfig.Runti
 	if exists {
 		var lastGood string
 		var appliedRevision, appliedGeneration int64
-		if err := tx.QueryRow(`SELECT last_good_endpoint,applied_revision,applied_generation FROM core_gateway_runtime WHERE id=1`).Scan(&lastGood, &appliedRevision, &appliedGeneration); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT last_good_endpoint,applied_revision,applied_generation FROM core_gateway_runtime WHERE id=1`).Scan(&lastGood, &appliedRevision, &appliedGeneration); err != nil {
 			return remoteconfig.RuntimeGateway{}, fmt.Errorf("load Core Gateway last-good runtime: %w", err)
 		}
 		if row.generation <= generation {
@@ -216,13 +226,16 @@ func (s *Repository) GatewayForGeneration(generation uint64) (remoteconfig.Runti
 
 // MarkGatewayActivated associates a validated local generation with the
 // accepted Core revision unless a newer revision is already pending.
-func (s *Repository) MarkGatewayActivated(generation uint64) error {
-	db, err := s.openDatabase()
+func (s *Repository) MarkGatewayActivated(ctx context.Context, generation uint64) error {
+	if err := validateContext(ctx); err != nil {
+		return err
+	}
+	db, err := s.openDatabase(ctx)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin Core Gateway activation mapping: %w", err)
 	}
@@ -234,14 +247,14 @@ func (s *Repository) MarkGatewayActivated(generation uint64) error {
 	if state.ActivatedGeneration < generation {
 		return fmt.Errorf("Core Gateway generation %d is not activated", generation)
 	}
-	row, exists, err := readSnapshot(tx)
+	row, exists, err := readSnapshot(ctx, tx)
 	if err != nil {
 		return err
 	}
 	if !exists || row.generation > generation {
 		return nil
 	}
-	if _, err := tx.Exec(`UPDATE core_gateway_runtime SET activated_revision=?,activated_generation=? WHERE id=1`, row.revision, generation); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE core_gateway_runtime SET activated_revision=?,activated_generation=? WHERE id=1`, row.revision, generation); err != nil {
 		return fmt.Errorf("persist activated Core Gateway revision: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -252,11 +265,14 @@ func (s *Repository) MarkGatewayActivated(generation uint64) error {
 
 // MarkGatewayApplied commits the local applied generation and its Gateway
 // endpoint attribution in one transaction.
-func (s *Repository) MarkGatewayApplied(generation uint64, endpoint string) error {
+func (s *Repository) MarkGatewayApplied(ctx context.Context, generation uint64, endpoint string) error {
+	if err := validateContext(ctx); err != nil {
+		return err
+	}
 	if err := remoteconfig.ValidateGatewayEndpoint(endpoint); err != nil {
 		return err
 	}
-	db, err := s.openDatabase()
+	db, err := s.openDatabase(ctx)
 	if err != nil {
 		return err
 	}
@@ -265,7 +281,7 @@ func (s *Repository) MarkGatewayApplied(generation uint64, endpoint string) erro
 		s.lock.Lock()
 		defer s.lock.Unlock()
 	}
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin Gateway applied-state transaction: %w", err)
 	}
@@ -276,21 +292,21 @@ func (s *Repository) MarkGatewayApplied(generation uint64, endpoint string) erro
 	if err := s.state.MarkGenerationApplied(tx, generation); err != nil {
 		return err
 	}
-	row, exists, err := readSnapshot(tx)
+	row, exists, err := readSnapshot(ctx, tx)
 	if err != nil {
 		return err
 	}
 	if exists {
 		var lastGood string
-		if err := tx.QueryRow(`SELECT last_good_endpoint FROM core_gateway_runtime WHERE id=1`).Scan(&lastGood); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT last_good_endpoint FROM core_gateway_runtime WHERE id=1`).Scan(&lastGood); err != nil {
 			return fmt.Errorf("load last-good Gateway endpoint: %w", err)
 		}
 		if row.generation <= generation && row.endpoint == endpoint {
-			if _, err := tx.Exec(`UPDATE core_gateway_runtime SET last_good_endpoint=?,applied_revision=?,applied_generation=? WHERE id=1`, endpoint, row.revision, generation); err != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE core_gateway_runtime SET last_good_endpoint=?,applied_revision=?,applied_generation=? WHERE id=1`, endpoint, row.revision, generation); err != nil {
 				return fmt.Errorf("persist applied Core Gateway revision: %w", err)
 			}
 		} else if lastGood == endpoint {
-			if _, err := tx.Exec(`UPDATE core_gateway_runtime SET applied_generation=? WHERE id=1`, generation); err != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE core_gateway_runtime SET applied_generation=? WHERE id=1`, generation); err != nil {
 				return fmt.Errorf("persist applied local Gateway generation: %w", err)
 			}
 		} else {
@@ -313,9 +329,17 @@ type SnapshotRow struct {
 
 // ReadSnapshot reads Configuration-owned snapshot evidence in a caller's transaction.
 func ReadSnapshot(tx *sql.Tx) (SnapshotRow, bool, error) {
+	return ReadSnapshotContext(context.Background(), tx)
+}
+
+// ReadSnapshotContext reads Gateway evidence within the caller's transaction context.
+func ReadSnapshotContext(ctx context.Context, tx *sql.Tx) (SnapshotRow, bool, error) {
+	if err := validateContext(ctx); err != nil {
+		return SnapshotRow{}, false, err
+	}
 	row := SnapshotRow{}
 	var revision, generation int64
-	err := tx.QueryRow(`SELECT revision,endpoint,fingerprint,target_generation FROM core_gateway_snapshot WHERE id=1`).Scan(&revision, &row.Endpoint, &row.Fingerprint, &generation)
+	err := tx.QueryRowContext(ctx, `SELECT revision,endpoint,fingerprint,target_generation FROM core_gateway_snapshot WHERE id=1`).Scan(&revision, &row.Endpoint, &row.Fingerprint, &generation)
 	if errors.Is(err, sql.ErrNoRows) {
 		return SnapshotRow{}, false, nil
 	}
@@ -329,19 +353,32 @@ func ReadSnapshot(tx *sql.Tx) (SnapshotRow, bool, error) {
 	return row, true, nil
 }
 
-func readSnapshot(tx *sql.Tx) (gatewayRow, bool, error) {
-	row, exists, err := ReadSnapshot(tx)
+func readSnapshot(ctx context.Context, tx *sql.Tx) (gatewayRow, bool, error) {
+	row, exists, err := ReadSnapshotContext(ctx, tx)
 	if err != nil || !exists {
 		return gatewayRow{}, exists, err
 	}
 	return gatewayRow{revision: row.Revision, endpoint: row.Endpoint, proof: row.Fingerprint, generation: row.Generation}, true, nil
 }
 
-func (s *Repository) openDatabase() (*sql.DB, error) {
+func validateContext(ctx context.Context) error {
+	if ctx == nil {
+		return errors.New("Core Gateway context is required")
+	}
+	return ctx.Err()
+}
+
+func (s *Repository) openDatabase(ctx context.Context) (*sql.DB, error) {
+	if ctx == nil {
+		return nil, errors.New("Core Gateway context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if s == nil || s.open == nil {
 		return nil, errors.New("Core Gateway database opener is not configured")
 	}
-	return s.open()
+	return s.open(ctx)
 }
 func (s *Repository) readState(tx *sql.Tx) (AgentState, error) {
 	if s == nil || s.state.Read == nil {

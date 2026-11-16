@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"path/filepath"
@@ -12,6 +13,14 @@ import (
 
 const testInstallationID = "11111111-2222-4333-8444-555555555555"
 
+func TestRepositoryHonorsCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	repository := newGatewayTestRepository(filepath.Join(t.TempDir(), "state.db"))
+	if _, err := repository.EffectiveGateway(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("EffectiveGateway(canceled context) error = %v, want context.Canceled", err)
+	}
+}
 func TestRepositoryOwnsSnapshotRevisionAndRuntimeAttribution(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
 	db := openGatewayTestDB(t, path)
@@ -31,50 +40,50 @@ func TestRepositoryOwnsSnapshotRevisionAndRuntimeAttribution(t *testing.T) {
 
 	repository := newGatewayTestRepository(path)
 	snapshot := remoteconfig.GatewaySnapshot{InstallationID: testInstallationID, Revision: 7, Endpoint: "gateway:4317"}
-	accepted, err := repository.AcceptGatewaySnapshot(snapshot)
+	accepted, err := repository.AcceptGatewaySnapshot(context.Background(), snapshot)
 	if err != nil {
 		t.Fatalf("AcceptGatewaySnapshot() error = %v", err)
 	}
 	if accepted.Generation != 2 || !accepted.Changed {
 		t.Fatalf("AcceptGatewaySnapshot() = %+v, want changed generation 2", accepted)
 	}
-	if duplicate, err := repository.AcceptGatewaySnapshot(snapshot); err != nil || duplicate.Changed || duplicate.Generation != accepted.Generation {
+	if duplicate, err := repository.AcceptGatewaySnapshot(context.Background(), snapshot); err != nil || duplicate.Changed || duplicate.Generation != accepted.Generation {
 		t.Fatalf("idempotent AcceptGatewaySnapshot() = %+v, %v", duplicate, err)
 	}
-	if _, err := repository.AcceptGatewaySnapshot(remoteconfig.GatewaySnapshot{InstallationID: testInstallationID, Revision: 6, Endpoint: "other:4317"}); !errors.Is(err, remoteconfig.ErrStaleRevision) {
+	if _, err := repository.AcceptGatewaySnapshot(context.Background(), remoteconfig.GatewaySnapshot{InstallationID: testInstallationID, Revision: 6, Endpoint: "other:4317"}); !errors.Is(err, remoteconfig.ErrStaleRevision) {
 		t.Fatalf("stale revision error = %v", err)
 	}
-	if _, err := repository.AcceptGatewaySnapshot(remoteconfig.GatewaySnapshot{InstallationID: testInstallationID, Revision: 7, Endpoint: "other:4317"}); !errors.Is(err, remoteconfig.ErrRevisionConflict) {
+	if _, err := repository.AcceptGatewaySnapshot(context.Background(), remoteconfig.GatewaySnapshot{InstallationID: testInstallationID, Revision: 7, Endpoint: "other:4317"}); !errors.Is(err, remoteconfig.ErrRevisionConflict) {
 		t.Fatalf("revision conflict error = %v", err)
 	}
 
-	effective, err := repository.EffectiveGateway()
+	effective, err := repository.EffectiveGateway(context.Background())
 	if err != nil || effective.Owner != remoteconfig.CoreOwner || effective.Endpoint != "gateway:4317" || effective.Generation != 2 {
 		t.Fatalf("EffectiveGateway() = %+v, %v", effective, err)
 	}
 	setGatewayTestState(t, path, "UPDATE test_agent_state SET activated_generation=2 WHERE id=1")
-	if err := repository.MarkGatewayActivated(2); err != nil {
+	if err := repository.MarkGatewayActivated(context.Background(), 2); err != nil {
 		t.Fatalf("MarkGatewayActivated() error = %v", err)
 	}
-	if err := repository.MarkGatewayApplied(2, "gateway:4317"); err != nil {
+	if err := repository.MarkGatewayApplied(context.Background(), 2, "gateway:4317"); err != nil {
 		t.Fatalf("MarkGatewayApplied() error = %v", err)
 	}
-	runtime, err := repository.GatewayForGeneration(2)
+	runtime, err := repository.GatewayForGeneration(context.Background(), 2)
 	if err != nil || runtime.Endpoint != "gateway:4317" || runtime.Revision != 7 || runtime.AppliedRevision != 7 {
 		t.Fatalf("GatewayForGeneration() = %+v, %v", runtime, err)
 	}
 
-	if _, err := repository.AcceptGatewaySnapshot(remoteconfig.GatewaySnapshot{InstallationID: testInstallationID, Revision: 8, Endpoint: "next:4317"}); err != nil {
+	if _, err := repository.AcceptGatewaySnapshot(context.Background(), remoteconfig.GatewaySnapshot{InstallationID: testInstallationID, Revision: 8, Endpoint: "next:4317"}); err != nil {
 		t.Fatalf("AcceptGatewaySnapshot(next) error = %v", err)
 	}
-	lastGood, err := repository.GatewayForGeneration(2)
+	lastGood, err := repository.GatewayForGeneration(context.Background(), 2)
 	if err != nil || lastGood.Endpoint != "gateway:4317" || lastGood.AppliedRevision != 7 {
 		t.Fatalf("GatewayForGeneration() before next activation = %+v, %v", lastGood, err)
 	}
 }
 
 func newGatewayTestRepository(path string) *Repository {
-	return New(func() (*sql.DB, error) { return sql.Open("sqlite", path) }, nil, StateAccess{
+	return New(func(context.Context) (*sql.DB, error) { return sql.Open("sqlite", path) }, nil, StateAccess{
 		ReadInstallationID: func(*sql.Tx) (string, bool, error) { return testInstallationID, true, nil },
 		Read: func(tx *sql.Tx) (AgentState, error) {
 			var state AgentState

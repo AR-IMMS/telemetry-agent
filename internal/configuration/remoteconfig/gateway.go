@@ -1,6 +1,7 @@
 package remoteconfig
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -68,27 +69,27 @@ type Acceptance struct {
 // generation updates.
 type SnapshotRepository interface {
 	// AcceptGatewaySnapshot atomically stores a validated, trusted snapshot.
-	AcceptGatewaySnapshot(GatewaySnapshot) (Acceptance, error)
+	AcceptGatewaySnapshot(context.Context, GatewaySnapshot) (Acceptance, error)
 	// EffectiveGateway reads the Bootstrap or committed Core endpoint.
-	EffectiveGateway() (EffectiveGateway, error)
+	EffectiveGateway(context.Context) (EffectiveGateway, error)
 }
 
 // GatewayRepository supplies the effective endpoint to Collector configuration
 // validation. It is intentionally narrower than the snapshot acceptance and
 // runtime attribution repositories.
 type GatewayRepository interface {
-	EffectiveGateway() (EffectiveGateway, error)
+	EffectiveGateway(context.Context) (EffectiveGateway, error)
 }
 
 // RuntimeRepository resolves the endpoint for a candidate generation and
 // commits the endpoint only after that generation passes readiness.
 type RuntimeRepository interface {
 	// GatewayForGeneration returns the candidate endpoint or the last applied endpoint.
-	GatewayForGeneration(uint64) (RuntimeGateway, error)
+	GatewayForGeneration(context.Context, uint64) (RuntimeGateway, error)
 	// MarkGatewayActivated associates the accepted Core revision with a validated local generation.
-	MarkGatewayActivated(uint64) error
+	MarkGatewayActivated(context.Context, uint64) error
 	// MarkGatewayApplied atomically records the local applied generation and endpoint.
-	MarkGatewayApplied(uint64, string) error
+	MarkGatewayApplied(context.Context, uint64, string) error
 }
 
 // GatewayRuntimeRepository composes Core configuration authority with Runtime

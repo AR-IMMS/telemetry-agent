@@ -49,7 +49,7 @@ func (s RetryService) RetryCurrentTarget(ctx context.Context) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	baseline, err := s.baseline.Snapshot()
+	baseline, err := s.baseline.Snapshot(ctx)
 	if err != nil {
 		return 0, err
 	}

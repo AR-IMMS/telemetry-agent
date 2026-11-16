@@ -86,7 +86,7 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	snapshot, err := baseline.Snapshot()
+	snapshot, err := baseline.Snapshot(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

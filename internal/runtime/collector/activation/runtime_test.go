@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
 )
 
@@ -217,7 +217,7 @@ func TestRuntimeLaunchSnapshotWaitsForConfigActivationLock(t *testing.T) {
 	}
 	done := make(chan launchResult, 1)
 	go func() {
-		state, options, cleanup, err := watcher.prepareLaunch()
+		state, options, cleanup, err := watcher.prepareLaunch(context.Background())
 		cleanup()
 		done <- launchResult{state: state, path: options.ConfigPath, readinessToken: options.ReadinessBody, err: err}
 	}()
@@ -272,7 +272,7 @@ func TestRuntimeLaunchUsesGatewayForActivatedGeneration(t *testing.T) {
 		}},
 		options: supervisor.Options{GatewayEndpoint: "bootstrap.example:4317"},
 	}
-	_, options, cleanup, err := watcher.prepareLaunch()
+	_, options, cleanup, err := watcher.prepareLaunch(context.Background())
 	defer cleanup()
 	if err != nil {
 		t.Fatal(err)
@@ -308,7 +308,7 @@ func TestRuntimeLaunchAddsGenerationReadinessToLegacyConfigSnapshot(t *testing.T
 			return launchPath, func() {}, nil
 		},
 	}
-	_, options, cleanup, err := watcher.prepareLaunch()
+	_, options, cleanup, err := watcher.prepareLaunch(context.Background())
 	defer cleanup()
 	if err != nil {
 		t.Fatal(err)
@@ -433,23 +433,23 @@ type pendingGatewayRuntime struct {
 	marks   chan uint64
 }
 
-func (r *pendingGatewayRuntime) AcceptGatewaySnapshot(coreconfig.GatewaySnapshot) (coreconfig.Acceptance, error) {
+func (r *pendingGatewayRuntime) AcceptGatewaySnapshot(context.Context, coreconfig.GatewaySnapshot) (coreconfig.Acceptance, error) {
 	return coreconfig.Acceptance{}, nil
 }
 
-func (r *pendingGatewayRuntime) EffectiveGateway() (coreconfig.EffectiveGateway, error) {
+func (r *pendingGatewayRuntime) EffectiveGateway(context.Context) (coreconfig.EffectiveGateway, error) {
 	return coreconfig.EffectiveGateway{}, nil
 }
 
-func (r *pendingGatewayRuntime) GatewayForGeneration(uint64) (coreconfig.RuntimeGateway, error) {
+func (r *pendingGatewayRuntime) GatewayForGeneration(context.Context, uint64) (coreconfig.RuntimeGateway, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.gateway, nil
 }
 
-func (r *pendingGatewayRuntime) MarkGatewayActivated(uint64) error { return nil }
+func (r *pendingGatewayRuntime) MarkGatewayActivated(context.Context, uint64) error { return nil }
 
-func (r *pendingGatewayRuntime) MarkGatewayApplied(generation uint64, _ string) error {
+func (r *pendingGatewayRuntime) MarkGatewayApplied(_ context.Context, generation uint64, _ string) error {
 	_, err := r.store.Update(func(state *agentstate.State) error {
 		return state.MarkGenerationApplied(generation)
 	})
@@ -476,21 +476,23 @@ type fakeGatewayRuntimeRepository struct {
 	applied  []any
 }
 
-func (r fakeGatewayRuntimeRepository) AcceptGatewaySnapshot(coreconfig.GatewaySnapshot) (coreconfig.Acceptance, error) {
+func (r fakeGatewayRuntimeRepository) AcceptGatewaySnapshot(context.Context, coreconfig.GatewaySnapshot) (coreconfig.Acceptance, error) {
 	return coreconfig.Acceptance{}, nil
 }
 
-func (r fakeGatewayRuntimeRepository) EffectiveGateway() (coreconfig.EffectiveGateway, error) {
+func (r fakeGatewayRuntimeRepository) EffectiveGateway(context.Context) (coreconfig.EffectiveGateway, error) {
 	return coreconfig.EffectiveGateway{}, nil
 }
 
-func (r fakeGatewayRuntimeRepository) GatewayForGeneration(uint64) (coreconfig.RuntimeGateway, error) {
+func (r fakeGatewayRuntimeRepository) GatewayForGeneration(context.Context, uint64) (coreconfig.RuntimeGateway, error) {
 	return r.resolved, nil
 }
 
-func (r fakeGatewayRuntimeRepository) MarkGatewayActivated(uint64) error { return nil }
+func (r fakeGatewayRuntimeRepository) MarkGatewayActivated(context.Context, uint64) error { return nil }
 
-func (r fakeGatewayRuntimeRepository) MarkGatewayApplied(uint64, string) error { return nil }
+func (r fakeGatewayRuntimeRepository) MarkGatewayApplied(context.Context, uint64, string) error {
+	return nil
+}
 
 func TestRuntimeWatcherRestartsWhenActivationAdvancesBeforeReadinessAcknowledgement(
 	t *testing.T,
