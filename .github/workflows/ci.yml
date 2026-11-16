@@ -212,7 +212,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Build PR-06 Agent and current Agent for native service lifecycle E2E
-        if: github.event_name == 'pull_request' && github.event.pull_request.number == 30
+        if: github.event_name == 'pull_request' && (github.event.pull_request.number == 30 || github.event.pull_request.number == 36)
         shell: pwsh
         run: |
           $legacySource = Join-Path $env:RUNNER_TEMP 'pr07-legacy-source'
@@ -242,7 +242,7 @@ jobs:
           "AR_IMMS_PR07C_SERVICE_EVIDENCE_DIR=$evidenceDirectory" | Add-Content $env:GITHUB_ENV
 
       - name: Native service upgrade, migration, rollback, restart, and uninstall E2E
-        if: github.event_name == 'pull_request' && github.event.pull_request.number == 30
+        if: github.event_name == 'pull_request' && (github.event.pull_request.number == 30 || github.event.pull_request.number == 36)
         shell: pwsh
         run: |
           $testBinary = Join-Path $env:RUNNER_TEMP 'pr07-native-service.test'
@@ -266,7 +266,7 @@ jobs:
           }
 
       - name: Upload native service lifecycle evidence
-        if: always() && github.event_name == 'pull_request' && github.event.pull_request.number == 30
+        if: always() && github.event_name == 'pull_request' && (github.event.pull_request.number == 30 || github.event.pull_request.number == 36)
         uses: actions/upload-artifact@v6
         with:
           name: pr07c-native-service-${{ runner.os }}
