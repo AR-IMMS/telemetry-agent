@@ -63,25 +63,39 @@ type Acceptance struct {
 	Changed    bool
 }
 
-// GatewayRepository is the narrow desired-state port used by a future
-// authenticated ingress. Acceptance must be atomic with generation updates.
-type GatewayRepository interface {
+// SnapshotRepository accepts trusted Core desired snapshots and resolves
+// effective Core/bootstrap authority. Acceptance is atomic with local desired
+// generation updates.
+type SnapshotRepository interface {
 	// AcceptGatewaySnapshot atomically stores a validated, trusted snapshot.
 	AcceptGatewaySnapshot(GatewaySnapshot) (Acceptance, error)
 	// EffectiveGateway reads the Bootstrap or committed Core endpoint.
 	EffectiveGateway() (EffectiveGateway, error)
 }
 
-// GatewayRuntimeRepository resolves the endpoint for a candidate generation
-// and commits the endpoint only after that generation passes readiness.
-type GatewayRuntimeRepository interface {
-	GatewayRepository
+// GatewayRepository supplies the effective endpoint to Collector configuration
+// validation. It is intentionally narrower than the snapshot acceptance and
+// runtime attribution repositories.
+type GatewayRepository interface {
+	EffectiveGateway() (EffectiveGateway, error)
+}
+
+// RuntimeRepository resolves the endpoint for a candidate generation and
+// commits the endpoint only after that generation passes readiness.
+type RuntimeRepository interface {
 	// GatewayForGeneration returns the candidate endpoint or the last applied endpoint.
 	GatewayForGeneration(uint64) (RuntimeGateway, error)
 	// MarkGatewayActivated associates the accepted Core revision with a validated local generation.
 	MarkGatewayActivated(uint64) error
 	// MarkGatewayApplied atomically records the local applied generation and endpoint.
 	MarkGatewayApplied(uint64, string) error
+}
+
+// GatewayRuntimeRepository composes Core configuration authority with Runtime
+// activation attribution for consumers that require both capabilities.
+type GatewayRuntimeRepository interface {
+	SnapshotRepository
+	RuntimeRepository
 }
 
 // ValidateSnapshot rejects malformed identity, revision, or Gateway address.

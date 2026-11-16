@@ -3,10 +3,12 @@ package agentstate
 import (
 	"database/sql"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	remoteconfigsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig/sqlite"
 	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
 	identityenrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
 	identityinstallationsqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
@@ -30,13 +32,16 @@ func TestCandidateJournalMigrationPreservesVersionSixLifecycleState(t *testing.T
 		}
 	}
 	configurationMigrations := configurationsqlite.Migrations()
+	gatewayMigrations := remoteconfigsqlite.Migrations(func(*sql.Tx) (remoteconfigsqlite.AgentState, error) {
+		return remoteconfigsqlite.AgentState{}, os.ErrNotExist
+	})
 	if len(configurationMigrations) == 0 || configurationMigrations[0].Version != 6 {
 		t.Fatalf("Configuration migration registry does not start at version 6: %+v", configurationMigrations)
 	}
 	for _, migrate := range []func(*sql.DB) error{
 		identityinstallationsqlite.Migrations()[0].Apply,
-		migrateCoreGatewaySnapshot,
-		migrateCoreGatewayRuntime,
+		gatewayMigrations[0].Apply,
+		gatewayMigrations[1].Apply,
 		identityenrollmentsqlite.Migrations()[0].Apply,
 		configurationMigrations[0].Apply,
 	} {

@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	remoteconfigsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig/sqlite"
 	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
 	identityenrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
 	identityinstallationsqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
@@ -42,10 +43,13 @@ func ensureSQLiteSchema(db *sql.DB) error {
 		{Version: 1, Name: "Agent state and activation journal", Apply: initializeBaseSchema},
 	}
 	migrations = append(migrations, identityinstallationsqlite.Migrations()...)
-	migrations = append(migrations,
-		sqlitemigrate.Migration{Version: 3, Name: "Core Gateway snapshot", Apply: migrateCoreGatewaySnapshot},
-		sqlitemigrate.Migration{Version: 4, Name: "Core Gateway runtime", Apply: migrateCoreGatewayRuntime},
-	)
+	migrations = append(migrations, remoteconfigsqlite.Migrations(func(tx *sql.Tx) (remoteconfigsqlite.AgentState, error) {
+		state, err := loadSQLiteState(tx)
+		if err != nil {
+			return remoteconfigsqlite.AgentState{}, err
+		}
+		return remoteconfigsqlite.AgentState{BootstrapEndpoint: state.Collector.GatewayEndpoint, DesiredGeneration: state.DesiredGeneration, ActivatedGeneration: state.ActivatedGeneration, AppliedGeneration: state.AppliedGeneration}, nil
+	})...)
 	migrations = append(migrations, identityenrollmentsqlite.Migrations()...)
 	migrations = append(migrations, migration6)
 	migrations = append(migrations, activationsqlite.Migrations()...)

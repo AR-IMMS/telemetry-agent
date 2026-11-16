@@ -8,8 +8,24 @@ import (
 	"time"
 
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
+	remoteconfigsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig/sqlite"
 	activationsqlite "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/sqlite"
 )
+
+type coreGatewayRow struct {
+	revision   uint64
+	endpoint   string
+	proof      string
+	generation uint64
+}
+
+func loadCoreGatewayRow(tx *sql.Tx) (coreGatewayRow, bool, error) {
+	row, exists, err := remoteconfigsqlite.ReadSnapshot(tx)
+	if err != nil || !exists {
+		return coreGatewayRow{}, exists, err
+	}
+	return coreGatewayRow{revision: row.Revision, endpoint: row.Endpoint, proof: row.Fingerprint, generation: row.Generation}, true, nil
+}
 
 // CandidateAdmission binds one compiled candidate to the current durable
 // Integration and M2 revisions before the lifecycle begins activation.
