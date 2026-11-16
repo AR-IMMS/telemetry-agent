@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 
-	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 )
 
 // ValidateCandidate invokes the pinned Collector validator without activation.
