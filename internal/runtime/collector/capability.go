@@ -51,6 +51,12 @@ func (c Catalog) ArtifactVersion() string { return c.version }
 // ManifestVersion returns the reviewed static manifest version represented by the catalog.
 func (c Catalog) ManifestVersion() string { return c.manifestVersion }
 
+// Supports reports whether the exact capability is present for the requested operating system.
+func (c Catalog) Supports(id, osName string) bool {
+	_, err := c.lookup(id, osName)
+	return err == nil
+}
+
 // NewCatalog creates a catalog from reviewed manifest entries and rejects duplicates or incomplete wiring.
 func NewCatalog(version, manifestVersion string, entries []Capability) (Catalog, error) {
 	if strings.TrimSpace(version) == "" || strings.TrimSpace(manifestVersion) == "" {

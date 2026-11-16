@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 )
 
 type integrationMatchOutput struct {
@@ -60,35 +60,6 @@ type matchDiagnosticView struct {
 	DefinitionID string `json:"definition_id,omitempty"`
 }
 
-type catalogCapabilityAssessor struct {
-	catalog  collectorruntime.Catalog
-	platform string
-}
-
-func (a catalogCapabilityAssessor) Assess(required []string) (integration.CapabilityAssessment, error) {
-	manifest := a.catalog.Manifest()
-	supported := make(map[string]struct{}, len(manifest))
-	for _, entry := range manifest {
-		supported[entry.ID] = struct{}{}
-	}
-	assessment := integration.CapabilityAssessment{
-		Platform: a.platform, ArtifactVersion: a.catalog.ArtifactVersion(),
-		ManifestVersion: a.catalog.ManifestVersion(), Required: append([]string(nil), required...),
-		Unsupported: make([]string, 0),
-	}
-	for _, id := range required {
-		if _, ok := supported[id]; !ok {
-			assessment.Unsupported = append(assessment.Unsupported, id)
-		}
-	}
-	sort.Strings(assessment.Unsupported)
-	assessment.Status = integration.CapabilitySupported
-	if len(assessment.Unsupported) > 0 {
-		assessment.Status = integration.CapabilityUnsupported
-	}
-	return assessment, nil
-}
-
 func runIntegrationMatch(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("integration match", flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -115,7 +86,7 @@ func runIntegrationMatch(ctx context.Context, args []string, stdout, stderr io.W
 	var assessor integration.CapabilityAssessor
 	platform := identity.PlatformInfo{OS: runtime.GOOS, Architecture: runtime.GOARCH}
 	if catalog, catalogErr := collectorruntime.StaticCatalog(platform); catalogErr == nil {
-		assessor = catalogCapabilityAssessor{catalog: catalog, platform: platform.OS + "/" + platform.Architecture}
+		assessor = integration.NewCatalogCapabilityAssessor(catalog, platform.OS, platform.OS+"/"+platform.Architecture)
 	}
 	report, err := integration.NewMatcher(registry, assessor).Match(projectInventory(snapshot, time.Now().UTC()))
 	if err != nil {
