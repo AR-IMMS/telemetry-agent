@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ar-imms/telemetry-agent/internal/config"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 )
 
 // RenderWindowsExporterConfig creates the complete Agent-owned exporter config.

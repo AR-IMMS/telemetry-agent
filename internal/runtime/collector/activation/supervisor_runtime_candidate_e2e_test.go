@@ -13,7 +13,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
-	"github.com/ar-imms/telemetry-agent/internal/config"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 )

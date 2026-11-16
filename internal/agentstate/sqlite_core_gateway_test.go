@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
+	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 )
 
 func TestCoreGatewayAcceptanceKeepsRevisionsSeparateFromGenerations(t *testing.T) {

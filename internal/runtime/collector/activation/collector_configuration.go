@@ -7,8 +7,8 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
-	"github.com/ar-imms/telemetry-agent/internal/config"
-	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
+	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 )

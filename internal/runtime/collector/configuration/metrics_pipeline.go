@@ -1,4 +1,4 @@
-package config
+package collectorconfig
 
 // MetricsReceiverLayer creates the final configuration layer that selects the
 // receivers attached to the Collector metrics pipeline.

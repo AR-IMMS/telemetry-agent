@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
+	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 )
 
 func TestUnchangedCoreRevisionWaitsForRuntimeReadinessBeforeAppliedMapping(t *testing.T) {

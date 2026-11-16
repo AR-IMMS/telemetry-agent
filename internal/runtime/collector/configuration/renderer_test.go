@@ -1,4 +1,4 @@
-package config
+package collectorconfig
 
 import (
 	"os"
@@ -57,7 +57,10 @@ func list(t *testing.T, document map[string]any, keys ...string) []string {
 }
 
 func TestRenderMergesLayers(t *testing.T) {
-	rendered, err := Render(RenderInput{Layers: []Layer{{"base", writeLayer(t, "receivers: {otlp: {}}\nprocessors: {base: {}}\nexporters: {gateway: {endpoint: base}}\nservice:\n  pipelines:\n    metrics:\n      receivers: [otlp]\n      exporters: [gateway]\n")}, {"profile", writeLayer(t, "exporters:\n  gateway:\n    endpoint: profile\nprocessors:\n  extra: {}\nservice:\n  pipelines:\n    metrics:\n      receivers: [otlp, hostmetrics]\n      exporters: [gateway]\n")}}})
+	rendered, err := Render(RenderInput{Layers: []Layer{
+		{Name: "base", Path: writeLayer(t, "receivers: {otlp: {}}\nprocessors: {base: {}}\nexporters: {gateway: {endpoint: base}}\nservice:\n  pipelines:\n    metrics:\n      receivers: [otlp]\n      exporters: [gateway]\n")},
+		{Name: "profile", Path: writeLayer(t, "exporters:\n  gateway:\n    endpoint: profile\nprocessors:\n  extra: {}\nservice:\n  pipelines:\n    metrics:\n      receivers: [otlp, hostmetrics]\n      exporters: [gateway]\n")},
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -526,7 +529,7 @@ func assertProductionHostMetricsConfig(
 ) map[string]any {
 	t.Helper()
 
-	configRoot := filepath.Join("..", "..", "configs")
+	configRoot := filepath.Join("..", "..", "..", "..", "configs")
 
 	rendered, err := Render(RenderInput{
 		Layers: []Layer{
@@ -602,7 +605,7 @@ func assertProductionHostMetricsConfig(
 func TestRenderProductionGatewayExporterUsesPlaintextForHomelabPoC(
 	t *testing.T,
 ) {
-	configRoot := filepath.Join("..", "..", "configs")
+	configRoot := filepath.Join("..", "..", "..", "..", "configs")
 
 	rendered, err := Render(RenderInput{
 		Layers: []Layer{
@@ -648,7 +651,7 @@ func TestRenderProductionGatewayExporterUsesPlaintextForHomelabPoC(
 func TestRenderRepositoryWindowsConfigScrapesWindowsExporter(
 	t *testing.T,
 ) {
-	configRoot := filepath.Join("..", "..", "configs")
+	configRoot := filepath.Join("..", "..", "..", "..", "configs")
 
 	rendered, err := Render(RenderInput{
 		Platform: identity.PlatformInfo{
@@ -715,7 +718,7 @@ func TestRenderRepositoryWindowsConfigScrapesWindowsExporter(
 func TestRenderRepositoryLinuxConfigScrapesNodeExporter(
 	t *testing.T,
 ) {
-	configRoot := filepath.Join("..", "..", "configs")
+	configRoot := filepath.Join("..", "..", "..", "..", "configs")
 
 	rendered, err := Render(RenderInput{
 		Platform: identity.PlatformInfo{
@@ -781,7 +784,7 @@ func TestRenderRepositoryLinuxConfigScrapesNodeExporter(
 func TestRenderRepositoryWindowsConfigScrapesLibreHardwareMonitor(
 	t *testing.T,
 ) {
-	configRoot := filepath.Join("..", "..", "configs")
+	configRoot := filepath.Join("..", "..", "..", "..", "configs")
 
 	rendered, err := Render(RenderInput{
 		Platform: identity.PlatformInfo{

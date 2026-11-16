@@ -1,4 +1,4 @@
-package config
+package collectorconfig
 
 import (
 	"crypto/rand"

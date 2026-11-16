@@ -10,17 +10,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation"
 	runtimecontracts "github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
-	"github.com/ar-imms/telemetry-agent/internal/config"
+
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	redisintegration "github.com/ar-imms/telemetry-agent/internal/integration/redis"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 	"gopkg.in/yaml.v3"
 )
 
@@ -100,10 +100,10 @@ func TestStaleAdmissionImmediatelyReconcilesLatestDesiredRevision(t *testing.T) 
 func TestReconcileLatestRepeatsWhenBaselineFingerprintChangesAfterApply(t *testing.T) {
 	desired := &snapshotReader{snapshot: configuration.DesiredSnapshot{Revision: 12}}
 	baseline := &sequenceBaseline{snapshots: []BaselineSnapshot{
-		{DesiredGeneration: 4, Fingerprint: "before", Input: config.RenderInput{Platform: identity.PlatformInfo{OS: "windows", Architecture: "amd64"}}},
-		{DesiredGeneration: 4, Fingerprint: "after", Input: config.RenderInput{Platform: identity.PlatformInfo{OS: "windows", Architecture: "amd64"}}},
-		{DesiredGeneration: 4, Fingerprint: "after", Input: config.RenderInput{Platform: identity.PlatformInfo{OS: "windows", Architecture: "amd64"}}},
-		{DesiredGeneration: 4, Fingerprint: "after", Input: config.RenderInput{Platform: identity.PlatformInfo{OS: "windows", Architecture: "amd64"}}},
+		{DesiredGeneration: 4, Fingerprint: "before", Input: runtimecontracts.RenderInput{Platform: identity.PlatformInfo{OS: "windows", Architecture: "amd64"}}},
+		{DesiredGeneration: 4, Fingerprint: "after", Input: runtimecontracts.RenderInput{Platform: identity.PlatformInfo{OS: "windows", Architecture: "amd64"}}},
+		{DesiredGeneration: 4, Fingerprint: "after", Input: runtimecontracts.RenderInput{Platform: identity.PlatformInfo{OS: "windows", Architecture: "amd64"}}},
+		{DesiredGeneration: 4, Fingerprint: "after", Input: runtimecontracts.RenderInput{Platform: identity.PlatformInfo{OS: "windows", Architecture: "amd64"}}},
 	}}
 	controller := Controller{
 		Desired: desired, Baseline: baseline, Resolver: &testResolver{}, Compiler: &testCompiler{},
@@ -240,7 +240,7 @@ service:
 	if err != nil {
 		t.Fatal(err)
 	}
-	layers := []config.Layer{{Name: "base", Path: layerPath}}
+	layers := []runtimecontracts.Layer{{Name: "base", Path: layerPath}}
 	values := map[string]string{"OTEL_GATEWAY_ENDPOINT": "127.0.0.1:4317"}
 	store := agentstate.NewSQLiteStore(statePath)
 	if _, err := store.Update(func(*agentstate.State) error { return nil }); err != nil {
@@ -394,7 +394,7 @@ func (s *snapshotReader) Snapshot() (configuration.DesiredSnapshot, error) { ret
 type staticBaseline struct{}
 
 func (staticBaseline) Snapshot() (BaselineSnapshot, error) {
-	return BaselineSnapshot{DesiredGeneration: 4, Fingerprint: "fingerprint", Input: config.RenderInput{Platform: identity.PlatformInfo{OS: "windows", Architecture: "amd64"}}}, nil
+	return BaselineSnapshot{DesiredGeneration: 4, Fingerprint: "fingerprint", Input: runtimecontracts.RenderInput{Platform: identity.PlatformInfo{OS: "windows", Architecture: "amd64"}}}, nil
 }
 
 type testResolver struct {
@@ -415,7 +415,7 @@ type testCompiler struct {
 	resolvedIDs []string
 }
 
-func (c *testCompiler) Compile(_ config.RenderInput, resolved []integration.ResolvedInstance) (collectorruntime.Candidate, error) {
+func (c *testCompiler) Compile(_ runtimecontracts.RenderInput, resolved []integration.ResolvedInstance) (collectorruntime.Candidate, error) {
 	c.count++
 	for _, item := range resolved {
 		c.resolvedIDs = append(c.resolvedIDs, item.Instance.ID)
@@ -489,7 +489,7 @@ func (s *sequenceReader) Snapshot() (configuration.DesiredSnapshot, error) {
 type changingBaseline struct{ generation uint64 }
 
 func (b *changingBaseline) Snapshot() (BaselineSnapshot, error) {
-	return BaselineSnapshot{DesiredGeneration: b.generation, Fingerprint: "baseline", Input: config.RenderInput{Platform: identity.PlatformInfo{OS: "windows", Architecture: "amd64"}}}, nil
+	return BaselineSnapshot{DesiredGeneration: b.generation, Fingerprint: "baseline", Input: runtimecontracts.RenderInput{Platform: identity.PlatformInfo{OS: "windows", Architecture: "amd64"}}}, nil
 }
 
 type sequenceBaseline struct {
@@ -510,7 +510,7 @@ type testCleanBaseline struct {
 	store        agentstate.Repository
 	platform     identity.PlatformInfo
 	dependencies dependency.Catalog
-	layers       []config.Layer
+	layers       []runtimecontracts.Layer
 	values       map[string]string
 }
 

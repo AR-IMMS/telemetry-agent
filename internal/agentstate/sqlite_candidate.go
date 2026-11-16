@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
+	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	activationsqlite "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/sqlite"
 )
 

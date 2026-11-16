@@ -12,8 +12,8 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
-	"github.com/ar-imms/telemetry-agent/internal/config"
-	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
+	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 )
 
 // ApplyCollectorCandidate submits a complete S2 candidate to the existing M2

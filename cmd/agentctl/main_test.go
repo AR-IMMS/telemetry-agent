@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/config"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
@@ -333,6 +333,42 @@ func TestRunPassesExplicitStatePathToRuntime(t *testing.T) {
 			"stdout = %q, want Collector stopped message",
 			stdout.String(),
 		)
+	}
+}
+
+func TestMonitoringHierarchyAliasesPreserveLegacyUseCaseOutput(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "state.db")
+	deps := testDependencies(identity.PlatformInfo{OS: "linux", Architecture: "amd64"})
+	tests := []struct {
+		name   string
+		legacy []string
+		alias  []string
+	}{
+		{
+			name:   "instance list",
+			legacy: []string{"integration", "list", "--state-path", statePath},
+			alias:  []string{"monitoring", "instance", "list", "--state-path", statePath},
+		},
+		{
+			name:   "template list",
+			legacy: []string{"integration", "template", "list", "--state-path", statePath},
+			alias:  []string{"monitoring", "template", "list", "--state-path", statePath},
+		},
+		{
+			name:   "proposal list",
+			legacy: []string{"discovery", "proposals", "list", "--state-path", statePath},
+			alias:  []string{"monitoring", "proposal", "list", "--state-path", statePath},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			legacyCode, legacyOut, legacyErr := runForTest(t, test.legacy, deps)
+			aliasCode, aliasOut, aliasErr := runForTest(t, test.alias, deps)
+			if aliasCode != legacyCode || aliasOut != legacyOut || aliasErr != legacyErr {
+				t.Fatalf("alias result (%d, %q, %q) differs from legacy result (%d, %q, %q)", aliasCode, aliasOut, aliasErr, legacyCode, legacyOut, legacyErr)
+			}
+		})
 	}
 }
 

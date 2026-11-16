@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/coreapi"
-	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
+	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 )
 

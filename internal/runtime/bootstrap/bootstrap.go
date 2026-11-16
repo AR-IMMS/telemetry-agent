@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/config"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 )
 
 // Run renders and activates a validated Collector configuration, then installs

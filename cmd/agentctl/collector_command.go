@@ -5,7 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/config"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation"

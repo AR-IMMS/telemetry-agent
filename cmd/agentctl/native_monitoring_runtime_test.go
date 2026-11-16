@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/config"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 	"github.com/ar-imms/telemetry-agent/internal/integration"

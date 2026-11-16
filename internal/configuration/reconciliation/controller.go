@@ -8,10 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
-	"github.com/ar-imms/telemetry-agent/internal/config"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 )
 
 // Failure gives diagnostics a stable stage, code, and retry classification.
@@ -49,7 +48,7 @@ type resolver interface {
 	Resolve(integration.IntegrationInstance) (integration.ResolvedInstance, error)
 }
 type compiler interface {
-	Compile(input config.RenderInput, resolved []integration.ResolvedInstance) (contracts.Candidate, error)
+	Compile(input contracts.RenderInput, resolved []integration.ResolvedInstance) (contracts.Candidate, error)
 }
 
 type candidateValidator func(context.Context, contracts.Candidate) error

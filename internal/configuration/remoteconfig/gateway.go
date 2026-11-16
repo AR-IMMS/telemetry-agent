@@ -1,4 +1,4 @@
-package coreconfig
+package remoteconfig
 
 import (
 	"errors"

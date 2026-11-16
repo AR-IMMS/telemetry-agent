@@ -10,7 +10,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
+	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
 )

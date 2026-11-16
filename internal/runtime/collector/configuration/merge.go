@@ -1,4 +1,4 @@
-package config
+package collectorconfig
 
 func mergeDocument(base, overlay map[string]any) map[string]any {
 	// Maps merge recursively while scalars and lists are replaced by the later layer.

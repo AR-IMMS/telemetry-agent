@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/config"
-	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
+	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
 )

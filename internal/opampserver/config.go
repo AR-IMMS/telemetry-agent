@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/ar-imms/telemetry-agent/internal/coreapi"
-	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
+	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 )
 
 // RenderGatewayConfig creates a partial Collector fragment containing only the
