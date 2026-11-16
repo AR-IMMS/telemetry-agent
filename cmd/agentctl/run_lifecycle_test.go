@@ -5,7 +5,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentlifecycle"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 )
 
