@@ -6,6 +6,7 @@ import (
 	"math"
 
 	"github.com/ar-imms/telemetry-agent/internal/integration"
+	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions"
 )
 
 var (
@@ -37,12 +38,12 @@ type TemplateRepository interface {
 // TemplateService validates local operator Templates before durable persistence.
 // It does not discover resources, materialize Integration instances, or activate Collector.
 type TemplateService struct {
-	registry   integration.Registry
+	registry   definitions.Registry
 	repository TemplateRepository
 }
 
 // NewTemplateService creates the local Template application service.
-func NewTemplateService(registry integration.Registry, repository TemplateRepository) TemplateService {
+func NewTemplateService(registry definitions.Registry, repository TemplateRepository) TemplateService {
 	return TemplateService{registry: registry, repository: repository}
 }
 
@@ -132,13 +133,13 @@ func (s TemplateService) Delete(id string, expectedRevision uint64) (integration
 	return integration.IntegrationTemplate{}, 0, ErrTemplateNotFound
 }
 
-func validateTemplateDefinition(template integration.IntegrationTemplate, definition integration.IntegrationDefinition) error {
+func validateTemplateDefinition(template integration.IntegrationTemplate, definition definitions.Definition) error {
 	for key, value := range template.Settings {
 		rule, ok := definition.TemplateSettingRules[key]
 		if !ok {
 			return fmt.Errorf("%w: Definition does not allow Template setting %q", integration.ErrInvalidTemplate, key)
 		}
-		if err := integration.ValidateTemplateSettingValue(key, value, rule); err != nil {
+		if err := definitions.ValidateTemplateSettingValue(key, value, rule); err != nil {
 			return err
 		}
 	}

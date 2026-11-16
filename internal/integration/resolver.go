@@ -2,22 +2,25 @@ package integration
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+
+	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions"
 )
 
-// ResolvedInstance contains a validated instance and its deterministic contribution.
+// ResolvedInstance preserves the compatibility result shape used by existing Runtime callers.
 type ResolvedInstance struct {
 	Instance     IntegrationInstance
 	Contribution Contribution
 }
 
-// Resolver validates desired instances and invokes their registered contributor.
+// Resolver adapts the Configuration-owned instance model to Monitoring's settings projection.
 type Resolver struct{ registry Registry }
 
-// NewResolver creates a resolver over a static definition registry.
+// NewResolver creates a compatibility adapter over Monitoring's static registry.
 func NewResolver(registry Registry) Resolver { return Resolver{registry: registry} }
 
-// Resolve validates and resolves one instance without I/O or persistence.
+// Resolve validates and projects one desired instance before delegating profile resolution to Monitoring.
 func (r Resolver) Resolve(instance IntegrationInstance) (ResolvedInstance, error) {
 	if instance.Source == "" {
 		instance.Source = SourceLocal
@@ -25,27 +28,32 @@ func (r Resolver) Resolve(instance IntegrationInstance) (ResolvedInstance, error
 	if err := ValidateInstance(instance); err != nil {
 		return ResolvedInstance{}, err
 	}
-	definition, err := r.registry.ResolveDefinition(instance.DefinitionID, instance.DefinitionVersion)
+	encoded, err := json.Marshal(instance.Configuration)
 	if err != nil {
-		return ResolvedInstance{}, err
+		return ResolvedInstance{}, fmt.Errorf("%w: copy settings", ErrInvalidInstance)
 	}
-	configuration, _ := json.Marshal(instance.Configuration)
 	var copied map[string]any
-	_ = json.Unmarshal(configuration, &copied)
+	if err := json.Unmarshal(encoded, &copied); err != nil {
+		return ResolvedInstance{}, fmt.Errorf("%w: copy settings", ErrInvalidInstance)
+	}
 	instance.Configuration = copied
 	if instance.Binding != nil {
 		binding := *instance.Binding
 		instance.Binding = &binding
 	}
-	if err := definition.Validate(instance.Configuration); err != nil {
-		return ResolvedInstance{}, fmt.Errorf("%w: %v", ErrInvalidInstance, err)
-	}
-	if !instance.Enabled {
-		return ResolvedInstance{Instance: instance, Contribution: NewContribution(nil)}, nil
-	}
-	contribution, err := definition.Contribute(instance.Configuration)
+	resolved, err := definitions.NewResolver(r.registry).Resolve(definitions.ResolveInput{
+		DefinitionID: instance.DefinitionID, Version: instance.DefinitionVersion,
+		Enabled: instance.Enabled, Settings: instance.Configuration,
+	})
 	if err != nil {
-		return ResolvedInstance{}, fmt.Errorf("%w: %v", ErrInvalidContribution, err)
+		if errors.Is(err, definitions.ErrUnknownDefinition) || errors.Is(err, definitions.ErrInvalidContribution) {
+			return ResolvedInstance{}, err
+		}
+		if err != nil {
+			return ResolvedInstance{}, fmt.Errorf("%w: %v", ErrInvalidInstance, err)
+		}
+		return ResolvedInstance{}, err
 	}
-	return ResolvedInstance{Instance: instance, Contribution: NewContribution(contribution.Intents())}, nil
+	instance.Configuration = resolved.Settings
+	return ResolvedInstance{Instance: instance, Contribution: resolved.Contribution}, nil
 }

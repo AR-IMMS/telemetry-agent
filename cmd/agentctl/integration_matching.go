@@ -14,6 +14,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	matchingapp "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/application"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 )
 
@@ -88,7 +89,7 @@ func runIntegrationMatch(ctx context.Context, args []string, stdout, stderr io.W
 	if catalog, catalogErr := collectorruntime.StaticCatalog(platform); catalogErr == nil {
 		assessor = integration.NewCatalogCapabilityAssessor(catalog, platform.OS, platform.OS+"/"+platform.Architecture)
 	}
-	report, err := integration.NewMatcher(registry, assessor).Match(projectInventory(snapshot, time.Now().UTC()))
+	report, err := matchingapp.NewMatcher(registry, assessor).Match(projectInventory(snapshot, time.Now().UTC()))
 	if err != nil {
 		return integrationCommandError(stderr, "match", err)
 	}

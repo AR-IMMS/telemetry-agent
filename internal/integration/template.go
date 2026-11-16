@@ -6,17 +6,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"net"
 	"regexp"
 	"sort"
 
 	"github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
+	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions"
 )
 
 var (
-	// ErrInvalidTemplate identifies malformed or secret-bearing template input.
-	ErrInvalidTemplate = errors.New("invalid Integration Configuration Template")
+
 	// ErrTemplateSettingsConflict identifies incompatible fixed settings sources.
 	ErrTemplateSettingsConflict = errors.New("Integration Template settings conflict")
 	// ErrTemplateValueUnavailable identifies a binding source that is absent or ambiguous.
@@ -48,63 +47,12 @@ const (
 	TemplateDeleted TemplateStatus = "deleted"
 )
 
-// TemplateSettingRule declares the JSON setting schema and which values a Template may override or bind.
-type TemplateSettingRule struct {
-	Type                     string          `json:"type,omitempty"`
-	Description              string          `json:"description,omitempty"`
-	Required                 bool            `json:"required,omitempty"`
-	Constraints              []string        `json:"constraints,omitempty"`
-	Validate                 func(any) error `json:"-"`
-	Default                  any             `json:"default,omitempty"`
-	DefaultOverridable       bool            `json:"default_overridable,omitempty"`
-	AllowResourceBinding     bool            `json:"allow_resource_binding,omitempty"`
-	BindingOverridesTemplate bool            `json:"binding_overrides_template,omitempty"`
-}
+// TemplateSettingRule is retained as a compatibility alias for Monitoring's profile schema.
+type TemplateSettingRule = definitions.TemplateSettingRule
 
-// ValidateTemplateSettingValue checks a Template value against its declared JSON type.
+// ValidateTemplateSettingValue forwards profile setting validation to Monitoring.
 func ValidateTemplateSettingValue(name string, value any, rule TemplateSettingRule) error {
-	if rule.Type == "" || !templateSettingValueMatchesType(value, rule.Type) {
-		return fmt.Errorf("%w: setting %q must be %s", ErrInvalidTemplate, name, rule.Type)
-	}
-	if rule.Validate != nil {
-		if err := rule.Validate(value); err != nil {
-			return fmt.Errorf("%w: setting %q: %v", ErrInvalidTemplate, name, err)
-		}
-	}
-	return nil
-}
-
-func templateSettingValueMatchesType(value any, valueType string) bool {
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		return false
-	}
-	var normalized any
-	if err := json.Unmarshal(encoded, &normalized); err != nil {
-		return false
-	}
-	switch valueType {
-	case "string":
-		_, ok := normalized.(string)
-		return ok
-	case "integer":
-		number, ok := normalized.(float64)
-		return ok && math.Trunc(number) == number
-	case "number":
-		_, ok := normalized.(float64)
-		return ok
-	case "boolean":
-		_, ok := normalized.(bool)
-		return ok
-	case "object":
-		_, ok := normalized.(map[string]any)
-		return ok
-	case "array":
-		_, ok := normalized.([]any)
-		return ok
-	default:
-		return false
-	}
+	return definitions.ValidateTemplateSettingValue(name, value, rule)
 }
 
 // IntegrationTemplate is an operator-authorized reusable configuration for one Integration.

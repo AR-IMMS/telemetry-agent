@@ -225,7 +225,7 @@ func (m Matcher) evaluateTemplate(snapshot MatchSnapshot, template IntegrationTe
 		return templateResolutionFailure(result, "template_candidate_digest_failed", ResolutionInvalid), true
 	}
 	digest := sha256.Sum256(payload)
-	result.Candidate = &Candidate{configuration: encoded, digest: "sha256:" + hex.EncodeToString(digest[:])}
+	result.Candidate = candidateFromBytes(encoded, "sha256:"+hex.EncodeToString(digest[:]))
 	result.ResolutionStatus = ResolutionReady
 	if result.CapabilityStatus != CapabilityUnsupported && result.CapabilityStatus != CapabilityUnverified {
 		id, err := GeneratedInstanceID(template.Owner, template.ID, identityOf(resource), definition.ID)

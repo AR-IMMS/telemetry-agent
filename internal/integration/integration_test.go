@@ -58,7 +58,8 @@ func TestComponentIntentAndContributionCopyMutableData(t *testing.T) {
 	first[0] = 'x'
 	contribution := NewContribution([]ComponentIntent{intent})
 	copyOfIntents := contribution.Intents()
-	copyOfIntents[0].config[0] = 'x'
+	copyOfIntentConfig := copyOfIntents[0].Configuration()
+	copyOfIntentConfig[0] = 'x'
 	if got := string(contribution.Intents()[0].Configuration()); got != `{"nested":{"value":"before"}}` {
 		t.Fatalf("configuration = %s", got)
 	}
