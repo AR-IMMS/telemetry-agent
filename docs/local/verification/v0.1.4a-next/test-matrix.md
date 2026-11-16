@@ -40,6 +40,8 @@ This is a scoped before/after comparison for the consolidation changes; it does 
 
 PR #39 implementation/workflow head `0a90b9252d99981fd837a85f03e48f29d1eff227` passed Windows/Ubuntu CI [43839603999](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43839603999). Both runners passed full tests, focused race checks and native service lifecycle E2E; Ubuntu additionally passed the live Docker, JetStream, OTLP profile and managed Supervisor checks listed in the [verification report](pr-verification/pr-09.5-report.md). Windows live Docker/JetStream/profile steps were skipped by workflow conditions. Later report/architecture/tracker edits are documentation-only and receive CI on PR #39 without changing tested Go or workflow files.
 
+The report-only PR head `de0cf5ca692cb5280460fffaa381f967e1df751c` also passed both CI jobs in [43841832018](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43841832018). This closeout entry is documentation-only; the executable source and workflow remain unchanged.
+
 | Behavior / boundary | Before | After | Evidence / invariant |
 |---|---|---|---|
 | Integration enable/update/retry decisions | CLI coordinated writes and retry freshness checks | Configuration owns these decisions; CLI composes the use case | PR-09.5f source tests and final-head CI [43833504369](https://github.com/AR-IMMS/telemetry-agent/actions/runs/43833504369); flags, CAS, no-op revision and omitted-enabled preservation retained |
