@@ -1,21 +1,21 @@
 package main
 
 import (
-	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles"
 	profilesapplication "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/application"
+	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	yamlprofiles "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/yaml"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 )
 
 // loadMonitoringProfiles composes Monitoring policy from the built-in profile
 // and validated local definitions at the executable boundary.
-func loadMonitoringProfiles(configRoot string) (monitoringprofile.Registry, error) {
+func loadMonitoringProfiles(configRoot string) (monitoringdomain.Registry, error) {
 	return profilesapplication.LoadDirectory(configRoot, yamlprofiles.DirectorySource{})
 }
 
 // collectorMonitoringProfiles translates Monitoring-owned intent into the
 // narrow Runtime Collector input contract at the composition boundary.
-func collectorMonitoringProfiles(profiles []monitoringprofile.Profile) []contracts.DockerMonitoringProfile {
+func collectorMonitoringProfiles(profiles []monitoringdomain.Profile) []contracts.DockerMonitoringProfile {
 	result := make([]contracts.DockerMonitoringProfile, 0, len(profiles))
 	for _, profile := range profiles {
 		translated := contracts.DockerMonitoringProfile{

@@ -14,7 +14,8 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
-	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles"
+	profilesapplication "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/application"
+	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	collectorruntime "github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 )
 
@@ -76,7 +77,7 @@ func runInventory(ctx context.Context, args []string, stdout, stderr io.Writer) 
 		fmt.Fprintf(stderr, "inventory %s: %v\n", command, err)
 		return 1
 	}
-	profileRegistry := monitoringprofile.DefaultRegistry()
+	profileRegistry := monitoringdomain.DefaultRegistry()
 	if state, stateErr := agentstate.NewStore(*statePath).Load(); stateErr == nil {
 		profileRegistry, err = loadMonitoringProfiles(state.Collector.ConfigRoot)
 		if err != nil {
@@ -117,12 +118,12 @@ func runInventory(ctx context.Context, args []string, stdout, stderr io.Writer) 
 					if !collectorruntime.ProfileCredentialsConfigured(profile.ReceiverType, profile.Settings.UsernameEnv, profile.Settings.PasswordEnv) {
 						fmt.Fprintln(stdout, "Monitoring configuration: requires_configuration (PostgreSQL credential values are unavailable to the Agent service)")
 					}
-					diagnostic := monitoringprofile.DiagnoseEndpointWithAttributes(profile, runtime.GOOS, resource.Endpoints, fetchCollectorScrapeEvidence(ctx), resource.Attributes)
+					diagnostic := profilesapplication.DiagnoseEndpointWithAttributes(profile, runtime.GOOS, resource.Endpoints, fetchCollectorScrapeEvidence(ctx), resource.Attributes)
 					fmt.Fprintf(stdout, "Monitoring profile: %s\nProfile endpoint: %s (candidates=%d, evidence=%s)\n",
 						profile.ID, diagnostic.State, diagnostic.CandidateCount, diagnostic.EvidenceSource)
-					if diagnostic.State == monitoringprofile.EndpointResolved {
+					if diagnostic.State == profilesapplication.EndpointResolved {
 						fmt.Fprintln(stdout, "Endpoint reachability: unverified; only a matching OTel receiver error can establish unreachable")
-					} else if diagnostic.State == monitoringprofile.EndpointUnreachable {
+					} else if diagnostic.State == profilesapplication.EndpointUnreachable {
 						fmt.Fprintf(stdout, "Endpoint reachability: unreachable (last OTel evidence code=%s at %s)\n", diagnostic.EvidenceCode, diagnostic.EvidenceTime.UTC().Format(time.RFC3339Nano))
 					}
 				}
@@ -153,7 +154,7 @@ func runInventory(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	return 2
 }
 
-func fetchCollectorScrapeEvidence(ctx context.Context) []monitoringprofile.CollectorScrapeEvidence {
+func fetchCollectorScrapeEvidence(ctx context.Context) []profilesapplication.CollectorScrapeEvidence {
 	statusContext, cancel := context.WithTimeout(ctx, 400*time.Millisecond)
 	defer cancel()
 	snapshot, err := agenthealth.FetchStatus(statusContext, &http.Client{Timeout: 400 * time.Millisecond}, defaultStatusEndpoint)
@@ -163,11 +164,11 @@ func fetchCollectorScrapeEvidence(ctx context.Context) []monitoringprofile.Colle
 	return collectorScrapeEvidenceFromSnapshot(snapshot)
 }
 
-func collectorScrapeEvidenceFromSnapshot(snapshot agenthealth.Snapshot) []monitoringprofile.CollectorScrapeEvidence {
-	evidence := make([]monitoringprofile.CollectorScrapeEvidence, 0, len(snapshot.CollectorFailures))
+func collectorScrapeEvidenceFromSnapshot(snapshot agenthealth.Snapshot) []profilesapplication.CollectorScrapeEvidence {
+	evidence := make([]profilesapplication.CollectorScrapeEvidence, 0, len(snapshot.CollectorFailures))
 	for _, failure := range snapshot.CollectorFailures {
 		observedAt, _ := time.Parse(time.RFC3339Nano, failure.ObservedAt)
-		evidence = append(evidence, monitoringprofile.CollectorScrapeEvidence{ReceiverID: failure.Receiver, Endpoint: failure.Endpoint, FailureCode: failure.Code, ObservedAt: observedAt})
+		evidence = append(evidence, profilesapplication.CollectorScrapeEvidence{ReceiverID: failure.Receiver, Endpoint: failure.Endpoint, FailureCode: failure.Code, ObservedAt: observedAt})
 	}
 	return evidence
 }

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	monitoringprofile "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles"
+	monitoringprofile "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 )
 

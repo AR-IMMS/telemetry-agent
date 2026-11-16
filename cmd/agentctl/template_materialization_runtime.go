@@ -14,7 +14,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
-	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles"
+	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 )
@@ -28,7 +28,7 @@ type runtimeTemplateMaterializer struct {
 	service          configuration.MaterializationService
 	matcher          integration.Matcher
 	nativeMonitoring bool
-	nativeProfiles   monitoringprofile.Registry
+	nativeProfiles   monitoringdomain.Registry
 }
 
 func newRuntimeTemplateMaterializer(statePath string, publisher ...events.Publisher) (runtimeTemplateMaterializer, error) {

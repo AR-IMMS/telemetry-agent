@@ -1,4 +1,4 @@
-package monitoringprofile
+package domain
 
 import (
 	"testing"

@@ -10,7 +10,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
-	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles"
+	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 )
 
 type supportedTemplateCapability struct{}
@@ -145,7 +145,7 @@ func TestNativeRedisProfileDoesNotCreateAgentInstancesDuringContainerChurn(t *te
 		inventory: store.InventoryRepository(), templates: templates, desired: store.IntegrationRepository(),
 		service:          configuration.NewMaterializationService(store.MaterializationRepository()),
 		matcher:          integration.NewMatcher(registry, supportedTemplateCapability{}),
-		nativeMonitoring: true, nativeProfiles: monitoringprofile.DefaultRegistry(),
+		nativeMonitoring: true, nativeProfiles: monitoringdomain.DefaultRegistry(),
 	}
 	for _, ids := range [][]string{{"container-a"}, {"container-a", "container-b"}, {"container-b"}, {"container-a-recreated", "container-b"}} {
 		provider.snapshot = nativeRedisProviderSnapshot(ids...)

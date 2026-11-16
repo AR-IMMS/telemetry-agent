@@ -102,6 +102,42 @@ try {
     }
 
     $violations = [System.Collections.Generic.List[string]]::new()
+    # Monitoring Profiles has completed its move under an explicit
+    # Context -> Capability -> Layer structure. Keep the domain and application
+    # packages real; the YAML directory is an input adapter.
+    $monitoringProfilesRoot = "$modulePath/internal/monitoring/profiles"
+    foreach ($layer in @('domain', 'application')) {
+        $layerPath = Join-Path $repoRoot ("internal/monitoring/profiles/{0}" -f $layer)
+        if (-not (Test-Path -LiteralPath $layerPath -PathType Container)) {
+            $violations.Add("Monitoring Profiles requires a real $layer layer under internal/monitoring/profiles")
+        }
+    }
+    $monitoringDomain = "$monitoringProfilesRoot/domain"
+    $monitoringApplication = "$monitoringProfilesRoot/application"
+    foreach ($line in $packageLines) {
+        $parts = $line -split '\|', 2
+        if ($parts.Count -ne 2) { continue }
+        $package = $parts[0]
+        $imports = @()
+        if (-not [string]::IsNullOrWhiteSpace($parts[1])) {
+            $imports = @($parts[1] -split ',' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        }
+        if ($package -eq $monitoringDomain) {
+            foreach ($imported in $imports) {
+                if ($imported.StartsWith("$monitoringProfilesRoot/application", [StringComparison]::Ordinal) -or
+                    $imported.StartsWith("$monitoringProfilesRoot/yaml", [StringComparison]::Ordinal)) {
+                    $violations.Add("Monitoring Profiles domain imports an outer layer: $package -> $imported")
+                }
+            }
+        }
+        if ($package -eq $monitoringApplication) {
+            foreach ($imported in $imports) {
+                if ($imported.StartsWith("$monitoringProfilesRoot/yaml", [StringComparison]::Ordinal)) {
+                    $violations.Add("Monitoring Profiles application imports an input adapter: $package -> $imported")
+                }
+            }
+        }
+    }
     $legacyMonitoringProfileRoot = Join-Path $repoRoot 'internal/monitoringprofile'
     if (Test-Path -LiteralPath $legacyMonitoringProfileRoot) {
         $legacyMonitoringProfileFiles = Get-ChildItem -LiteralPath $legacyMonitoringProfileRoot -Recurse -File -Filter '*.go'

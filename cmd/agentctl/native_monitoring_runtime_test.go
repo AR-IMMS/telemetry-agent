@@ -11,14 +11,14 @@ import (
 	"testing"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
-	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles"
+	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	collectorruntime "github.com/ar-imms/telemetry-agent/internal/runtime/collector"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 )
 
 func TestPinnedCollectorValidatesNativeDockerRedisProfile(t *testing.T) {
@@ -43,7 +43,7 @@ func TestPinnedCollectorValidatesNativeDockerRedisProfile(t *testing.T) {
 	if platform.OS == "windows" {
 		dockerEndpoint = "npipe:////./pipe/docker_engine"
 	}
-	profileLayer, receiverNames, err := collectorruntime.DockerMonitoringLayer(collectorMonitoringProfiles(monitoringprofile.DefaultRegistry().Profiles()), platform.OS, dockerEndpoint, "11111111-2222-4333-8444-555555555555")
+	profileLayer, receiverNames, err := collectorruntime.DockerMonitoringLayer(collectorMonitoringProfiles(monitoringdomain.DefaultRegistry().Profiles()), platform.OS, dockerEndpoint, "11111111-2222-4333-8444-555555555555")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,13 +184,13 @@ func TestNativeMonitoringInputsAcceptPinnedPostgreSQLProfileCapability(t *testin
 		dockerEndpoint = "npipe:////./pipe/docker_engine"
 	}
 	t.Setenv(dockerDiscoveryEndpointEnv, dockerEndpoint)
-	postgres := monitoringprofile.Profile{
-		ID: "postgres", Provider: "docker", MatchLabels: map[string]string{monitoringprofile.LabelMonitoringEnabled: "true", monitoringprofile.LabelMonitoringProfile: "postgres"},
-		RequiredCapabilities: []string{monitoringprofile.PostgresqlCapability}, ReceiverType: "postgresql", CollectionInterval: "10s",
-		EndpointStrategies: []monitoringprofile.EndpointStrategy{{ID: "alternate_port", OS: platform.OS, When: "alternate_port > 0 and port == 5432", Endpoint: "127.0.0.1:`alternate_port`", Scope: inventoryctx.EndpointHost, Provenance: "published_port", TargetPort: 5432, Priority: 100}},
-		Settings:           monitoringprofile.ReceiverSettings{UsernameEnv: "AR_IMMS_PG_USER", PasswordEnv: "AR_IMMS_PG_PASSWORD"},
+	postgres := monitoringdomain.Profile{
+		ID: "postgres", Provider: "docker", MatchLabels: map[string]string{monitoringdomain.LabelMonitoringEnabled: "true", monitoringdomain.LabelMonitoringProfile: "postgres"},
+		RequiredCapabilities: []string{monitoringdomain.PostgresqlCapability}, ReceiverType: "postgresql", CollectionInterval: "10s",
+		EndpointStrategies: []monitoringdomain.EndpointStrategy{{ID: "alternate_port", OS: platform.OS, When: "alternate_port > 0 and port == 5432", Endpoint: "127.0.0.1:`alternate_port`", Scope: inventoryctx.EndpointHost, Provenance: "published_port", TargetPort: 5432, Priority: 100}},
+		Settings:           monitoringdomain.ReceiverSettings{UsernameEnv: "AR_IMMS_PG_USER", PasswordEnv: "AR_IMMS_PG_PASSWORD"},
 	}
-	registry, err := monitoringprofile.NewRegistry(postgres)
+	registry, err := monitoringdomain.NewRegistry(postgres)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +232,7 @@ func TestNativeOwnershipResolverDelegatesExactlyOneReceiverOwner(t *testing.T) {
 	}
 	resolver := nativeOwnershipResolver{
 		delegate: delegate, inventory: nativeOwnershipInventory{snapshot: inventoryctx.InventorySnapshot{Resources: []inventoryctx.Resource{resource}}},
-		profiles: monitoringprofile.DefaultRegistry(), enabled: true,
+		profiles: monitoringdomain.DefaultRegistry(), enabled: true,
 	}
 	resolved, err := resolver.Resolve(nativeBoundRedisInstance("container-a"))
 	if err != nil {
@@ -256,7 +256,7 @@ func TestNativeOwnershipResolverKeepsLegacyAndUnmatchedTargetsAgentOwned(t *test
 			delegate := &nativeOwnershipDelegate{contribution: integration.NewContribution([]integration.ComponentIntent{intent})}
 			resolver := nativeOwnershipResolver{
 				delegate: delegate, inventory: nativeOwnershipInventory{snapshot: inventoryctx.InventorySnapshot{Resources: []inventoryctx.Resource{resource}}},
-				profiles: monitoringprofile.DefaultRegistry(), enabled: true,
+				profiles: monitoringdomain.DefaultRegistry(), enabled: true,
 			}
 			resolved, err := resolver.Resolve(nativeBoundRedisInstance("container-a"))
 			if err != nil {
@@ -273,7 +273,7 @@ func TestNativeOwnershipResolverFailsClosedWhenInventoryCannotBeRead(t *testing.
 	delegate := &nativeOwnershipDelegate{}
 	resolver := nativeOwnershipResolver{
 		delegate: delegate, inventory: nativeOwnershipInventory{err: errors.New("inventory unavailable")},
-		profiles: monitoringprofile.DefaultRegistry(), enabled: true,
+		profiles: monitoringdomain.DefaultRegistry(), enabled: true,
 	}
 	if _, err := resolver.Resolve(nativeBoundRedisInstance("container-a")); err == nil {
 		t.Fatal("Resolve() succeeded without ownership evidence")

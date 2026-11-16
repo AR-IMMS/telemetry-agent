@@ -1,13 +1,14 @@
-package monitoringprofile
+package application
 
 import (
 	"testing"
 
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 )
 
 func TestDiagnoseEndpointDistinguishesMissingAmbiguousAndResolved(t *testing.T) {
-	profile := RedisProfile()
+	profile := domain.RedisProfile()
 	tests := []struct {
 		name      string
 		osName    string
@@ -32,8 +33,8 @@ func TestDiagnoseEndpointDistinguishesMissingAmbiguousAndResolved(t *testing.T) 
 }
 
 func TestDiagnoseEndpointUsesValidatedPortOverrideAndDeterministicNetwork(t *testing.T) {
-	profile := RedisProfile()
-	attributes := map[string]string{"label." + LabelMonitoringPort: "6380"}
+	profile := domain.RedisProfile()
+	attributes := map[string]string{"label." + domain.LabelMonitoringPort: "6380"}
 	endpoints := []inventoryctx.Endpoint{
 		{Address: "172.20.0.4", NetworkName: "zeta", NetworkPriority: 2, Port: 6380, ContainerPort: 6380, Protocol: "tcp", Scope: inventoryctx.EndpointContainer, Provenance: "container_network"},
 		{Address: "172.19.0.4", NetworkName: "alpha", NetworkPriority: 1, Port: 6380, ContainerPort: 6380, Protocol: "tcp", Scope: inventoryctx.EndpointContainer, Provenance: "container_network"},
@@ -50,7 +51,7 @@ func TestDiagnoseEndpointUsesValidatedPortOverrideAndDeterministicNetwork(t *tes
 func TestDiagnoseEndpointRejectsInvalidPortOverride(t *testing.T) {
 	for _, value := range []string{"0", "65536", "+6380", "6380x", " 6380", "１２３"} {
 		t.Run(value, func(t *testing.T) {
-			got := DiagnoseEndpointWithAttributes(RedisProfile(), "linux", nil, nil, map[string]string{"label." + LabelMonitoringPort: value})
+			got := DiagnoseEndpointWithAttributes(domain.RedisProfile(), "linux", nil, nil, map[string]string{"label." + domain.LabelMonitoringPort: value})
 			if got.State != EndpointInvalid || got.EvidenceCode != "invalid_target_port" {
 				t.Fatalf("invalid target port diagnosis=%+v", got)
 			}
@@ -59,7 +60,7 @@ func TestDiagnoseEndpointRejectsInvalidPortOverride(t *testing.T) {
 }
 
 func TestDiagnoseEndpointUsesNetworkNameForPriorityTie(t *testing.T) {
-	profile := RedisProfile()
+	profile := domain.RedisProfile()
 	endpoints := []inventoryctx.Endpoint{
 		{Address: "172.20.0.4", NetworkName: "zeta", Port: 6379, ContainerPort: 6379, Protocol: "tcp", Scope: inventoryctx.EndpointContainer, Provenance: "container_network"},
 		{Address: "172.19.0.4", NetworkName: "alpha", Port: 6379, ContainerPort: 6379, Protocol: "tcp", Scope: inventoryctx.EndpointContainer, Provenance: "container_network"},
@@ -71,7 +72,7 @@ func TestDiagnoseEndpointUsesNetworkNameForPriorityTie(t *testing.T) {
 }
 
 func TestDiagnoseEndpointFailsClosedWithoutNetworkIdentity(t *testing.T) {
-	profile := RedisProfile()
+	profile := domain.RedisProfile()
 	endpoints := []inventoryctx.Endpoint{
 		{Address: "172.20.0.4", Port: 6379, ContainerPort: 6379, Protocol: "tcp", Scope: inventoryctx.EndpointContainer, Provenance: "container_network"},
 		{Address: "172.19.0.4", Port: 6379, ContainerPort: 6379, Protocol: "tcp", Scope: inventoryctx.EndpointContainer, Provenance: "container_network"},
@@ -83,7 +84,7 @@ func TestDiagnoseEndpointFailsClosedWithoutNetworkIdentity(t *testing.T) {
 }
 
 func TestDiagnoseEndpointRequiresMatchingOTelScrapeFailureForUnreachable(t *testing.T) {
-	profile := RedisProfile()
+	profile := domain.RedisProfile()
 	endpoint := inventoryctx.Endpoint{Address: "127.0.0.1", Port: 16379, Protocol: "tcp", Scope: inventoryctx.EndpointHost, Provenance: "published_port", ContainerPort: 6379}
 	withoutEvidence := DiagnoseEndpoint(profile, "windows", []inventoryctx.Endpoint{endpoint}, nil)
 	if withoutEvidence.State != EndpointResolved {
@@ -93,30 +94,5 @@ func TestDiagnoseEndpointRequiresMatchingOTelScrapeFailureForUnreachable(t *test
 	got := DiagnoseEndpoint(profile, "windows", []inventoryctx.Endpoint{endpoint}, evidence)
 	if got.State != EndpointUnreachable || got.EvidenceSource != EvidenceCollectorScrapeError {
 		t.Fatalf("diagnosis=%+v, want OTel-evidenced unreachable endpoint", got)
-	}
-}
-
-func TestParseCollectorScrapeFailureUsesOTelReceiverAndNetworkErrorEvidence(t *testing.T) {
-	line := `2026-11-12T20:33:22.592+0700 error scraperhelper@v0.160.0/obs_metrics.go:61 Error scraping metrics {"otelcol.component.id":"redis/alternate_port","otelcol.component.kind":"receiver","otelcol.signal":"metrics","scraper":"redis","error":"dial tcp 127.0.0.1:16379: connectex: connection refused"}`
-	evidence, ok := ParseCollectorLog(line)
-	if !ok {
-		t.Fatal("ParseCollectorLog() did not recognize OTel Redis scrape failure")
-	}
-	if evidence.ReceiverID != "redis/alternate_port" || evidence.Endpoint != "127.0.0.1:16379" || evidence.FailureCode != "connection_failed" {
-		t.Fatalf("evidence=%+v", evidence)
-	}
-	if _, ok := ParseCollectorLog(`2026-11-12T20:33:22.592+0700 info service ready {"otelcol.component.id":"receiver_creator"}`); ok {
-		t.Fatal("non-failure Collector log was treated as an endpoint failure")
-	}
-}
-
-func TestParseCollectorReceiverCreatorFailureUsesDynamicReceiverName(t *testing.T) {
-	line := `2026-11-12T20:33:22.592+0700 error scraperhelper@v0.160.0/obs_metrics.go:61 Error scraping metrics {"otelcol.component.id":"receiver_creator","otelcol.component.kind":"extension","otelcol.signal":"metrics","name":"redis/alternate_port/receiver_creator{endpoint=\"127.0.0.1:16379\"}/container-id:16379","scraper":"redis","error":"dial tcp 127.0.0.1:16379: connectex: connection refused"}`
-	evidence, ok := ParseCollectorLog(line)
-	if !ok {
-		t.Fatal("ParseCollectorLog() did not recognize Receiver Creator dynamic receiver failure")
-	}
-	if evidence.ReceiverID != "redis/alternate_port" || evidence.Endpoint != "127.0.0.1:16379" || evidence.FailureCode != "connection_failed" {
-		t.Fatalf("evidence=%+v", evidence)
 	}
 }

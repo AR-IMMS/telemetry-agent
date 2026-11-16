@@ -12,7 +12,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
-	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles"
+	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 )
 
@@ -24,7 +24,7 @@ func TestCatalogCapabilityAssessorUsesPinnedRuntimeCatalog(t *testing.T) {
 	}
 	assessor := integration.NewCatalogCapabilityAssessor(catalog, platform.OS, platform.OS+"/"+platform.Architecture)
 
-	assessment, err := assessor.Assess([]string{monitoringprofile.RedisCapability})
+	assessment, err := assessor.Assess([]string{monitoringdomain.RedisCapability})
 	if err != nil {
 		t.Fatalf("assess Redis capability: %v", err)
 	}
@@ -33,7 +33,7 @@ func TestCatalogCapabilityAssessorUsesPinnedRuntimeCatalog(t *testing.T) {
 		t.Fatalf("Redis assessment lacks exact pinned Runtime evidence: %+v", assessment)
 	}
 
-	assessment, err = assessor.Assess([]string{monitoringprofile.RedisCapability, "otel.receiver.not_in_pinned_catalog.metrics"})
+	assessment, err = assessor.Assess([]string{monitoringdomain.RedisCapability, "otel.receiver.not_in_pinned_catalog.metrics"})
 	if err != nil {
 		t.Fatalf("assess unsupported capability: %v", err)
 	}

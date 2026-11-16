@@ -1,4 +1,4 @@
-package monitoringprofile
+package domain
 
 import inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 

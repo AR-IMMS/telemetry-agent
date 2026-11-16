@@ -8,13 +8,13 @@ import (
 	"strings"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
-	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles"
+	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 )
 
 // nativeDockerMonitoringInputs opts into OTel-native profile discovery only
@@ -45,7 +45,7 @@ func nativeDockerMonitoringInputsWithConfigRoot(statePath, osName, configRoot st
 	return nativeDockerMonitoringInputsWithProfiles(statePath, osName, profiles)
 }
 
-func nativeDockerMonitoringInputsWithProfiles(statePath, osName string, profiles monitoringprofile.Registry) ([]config.InlineLayer, []string, error) {
+func nativeDockerMonitoringInputsWithProfiles(statePath, osName string, profiles monitoringdomain.Registry) ([]config.InlineLayer, []string, error) {
 	endpoint := strings.TrimSpace(os.Getenv(dockerDiscoveryEndpointEnv))
 	if endpoint == "" {
 		return nil, nil, nil
@@ -88,7 +88,7 @@ type nativeOwnershipResolver struct {
 	inventory interface {
 		Snapshot() (inventoryctx.InventorySnapshot, error)
 	}
-	profiles monitoringprofile.Registry
+	profiles monitoringdomain.Registry
 	enabled  bool
 }
 

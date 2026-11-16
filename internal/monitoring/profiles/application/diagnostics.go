@@ -1,7 +1,6 @@
-package monitoringprofile
+package application
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
 	"sort"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 )
 
 // EndpointState classifies endpoint evidence for one opted-in resource.
@@ -54,14 +54,14 @@ type EndpointDiagnostic struct {
 
 // DiagnoseEndpoint resolves one endpoint using the profile's ordered strategies.
 // A resolved candidate is not considered reachable without matching OTel error evidence.
-func DiagnoseEndpoint(profile Profile, osName string, endpoints []inventoryctx.Endpoint, otelEvidence []CollectorScrapeEvidence) EndpointDiagnostic {
+func DiagnoseEndpoint(profile domain.Profile, osName string, endpoints []inventoryctx.Endpoint, otelEvidence []CollectorScrapeEvidence) EndpointDiagnostic {
 	return DiagnoseEndpointWithAttributes(profile, osName, endpoints, otelEvidence, nil)
 }
 
 // DiagnoseEndpointWithAttributes resolves one profile endpoint using provider metadata such as port overrides.
-func DiagnoseEndpointWithAttributes(profile Profile, osName string, endpoints []inventoryctx.Endpoint, otelEvidence []CollectorScrapeEvidence, attributes map[string]string) EndpointDiagnostic {
+func DiagnoseEndpointWithAttributes(profile domain.Profile, osName string, endpoints []inventoryctx.Endpoint, otelEvidence []CollectorScrapeEvidence, attributes map[string]string) EndpointDiagnostic {
 	result := EndpointDiagnostic{ProfileID: profile.ID, State: EndpointMissing, EvidenceSource: EvidenceAgentInventory}
-	strategies := make([]EndpointStrategy, 0, len(profile.EndpointStrategies))
+	strategies := make([]domain.EndpointStrategy, 0, len(profile.EndpointStrategies))
 	for _, strategy := range profile.EndpointStrategies {
 		if strategy.OS == osName {
 			strategies = append(strategies, strategy)
@@ -141,7 +141,7 @@ func DiagnoseEndpointWithAttributes(profile Profile, osName string, endpoints []
 	return result
 }
 
-func strategyTargetPort(strategy EndpointStrategy, attributes map[string]string) (uint16, error) {
+func strategyTargetPort(strategy domain.EndpointStrategy, attributes map[string]string) (uint16, error) {
 	if strategy.TargetPortLabel == "" {
 		return strategy.TargetPort, nil
 	}
@@ -162,65 +162,6 @@ func strategyTargetPort(strategy EndpointStrategy, attributes map[string]string)
 		return 0, fmt.Errorf("target port is outside the valid TCP range")
 	}
 	return uint16(port), nil
-}
-
-// ParseCollectorLog extracts a per-endpoint failure only from OTel's Redis scrape error record.
-func ParseCollectorLog(line string) (CollectorScrapeEvidence, bool) {
-	if !strings.Contains(line, "Error scraping metrics") {
-		return CollectorScrapeEvidence{}, false
-	}
-	jsonStart := strings.IndexByte(line, '{')
-	if jsonStart < 0 {
-		return CollectorScrapeEvidence{}, false
-	}
-	var fields map[string]any
-	if err := json.Unmarshal([]byte(line[jsonStart:]), &fields); err != nil {
-		return CollectorScrapeEvidence{}, false
-	}
-	componentID, _ := fields["otelcol.component.id"].(string)
-	receiverID := componentID
-	if componentID == "receiver_creator" {
-		dynamicName, _ := fields["name"].(string)
-		const receiverCreatorMarker = "/receiver_creator{"
-		marker := strings.Index(dynamicName, receiverCreatorMarker)
-		if marker <= 0 {
-			return CollectorScrapeEvidence{}, false
-		}
-		receiverID = dynamicName[:marker]
-	}
-	signal, _ := fields["otelcol.signal"].(string)
-	message, _ := fields["error"].(string)
-	if signal != "metrics" || !strings.Contains(receiverID, "/") || !isNetworkScrapeFailure(message) {
-		return CollectorScrapeEvidence{}, false
-	}
-	endpoint, ok := scrapeFailureEndpoint(message)
-	if !ok {
-		return CollectorScrapeEvidence{}, false
-	}
-	return CollectorScrapeEvidence{ReceiverID: receiverID, Endpoint: endpoint, FailureCode: "connection_failed"}, true
-}
-
-func isNetworkScrapeFailure(message string) bool {
-	return strings.Contains(strings.ToLower(message), "dial tcp ")
-}
-
-func scrapeFailureEndpoint(message string) (string, bool) {
-	const marker = "dial tcp "
-	start := strings.Index(strings.ToLower(message), marker)
-	if start < 0 {
-		return "", false
-	}
-	start += len(marker)
-	rest := message[start:]
-	end := strings.Index(rest, ": ")
-	if end < 0 {
-		return "", false
-	}
-	endpoint := rest[:end]
-	if _, _, err := net.SplitHostPort(endpoint); err != nil {
-		return "", false
-	}
-	return endpoint, true
 }
 
 func evidenceMatchesEndpoint(target string, candidate inventoryctx.Endpoint) bool {

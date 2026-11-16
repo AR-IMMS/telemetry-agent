@@ -21,7 +21,8 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
-	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles"
+	profilesapplication "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/application"
+	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 )
@@ -210,13 +211,13 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 	if unpublished.Key.ProviderResourceID == "" {
 		t.Fatalf("unpublished Redis container %q was not retained in inventory", thirdID)
 	}
-	diagnostic := monitoringprofile.DiagnoseEndpoint(monitoringprofile.RedisProfile(), runtime.GOOS, unpublished.Endpoints, nil)
-	if runtime.GOOS == "windows" && diagnostic.State != monitoringprofile.EndpointMissing {
+	diagnostic := profilesapplication.DiagnoseEndpoint(monitoringdomain.RedisProfile(), runtime.GOOS, unpublished.Endpoints, nil)
+	if runtime.GOOS == "windows" && diagnostic.State != profilesapplication.EndpointMissing {
 		t.Fatalf("unpublished Windows endpoint diagnosis=%+v, want missing without host mapping", diagnostic)
 	}
 	if runtime.GOOS == "linux" {
 		want := expectedNativeNetworkEndpoint(unpublished.Endpoints)
-		if diagnostic.State != monitoringprofile.EndpointResolved || diagnostic.Endpoint.NetworkName != want.NetworkName || diagnostic.Endpoint.Address != want.Address {
+		if diagnostic.State != profilesapplication.EndpointResolved || diagnostic.Endpoint.NetworkName != want.NetworkName || diagnostic.Endpoint.Address != want.Address {
 			t.Fatalf("multi-network endpoint diagnosis=%+v, want deterministic priority/name selection %+v", diagnostic, want)
 		}
 	}
@@ -277,8 +278,8 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 			if resource.Key.ProviderResourceID != secondID {
 				continue
 			}
-			diagnostic := monitoringprofile.DiagnoseEndpointWithAttributes(monitoringprofile.RedisProfile(), runtime.GOOS, resource.Endpoints, collectorScrapeEvidenceFromSnapshot(collectorLogs.health.Snapshot()), resource.Attributes)
-			if diagnostic.State != monitoringprofile.EndpointUnreachable || diagnostic.EvidenceTime.IsZero() {
+			diagnostic := profilesapplication.DiagnoseEndpointWithAttributes(monitoringdomain.RedisProfile(), runtime.GOOS, resource.Endpoints, collectorScrapeEvidenceFromSnapshot(collectorLogs.health.Snapshot()), resource.Attributes)
+			if diagnostic.State != profilesapplication.EndpointUnreachable || diagnostic.EvidenceTime.IsZero() {
 				t.Fatalf("live endpoint failure diagnosis=%+v, want unreachable with timestamped OTel evidence", diagnostic)
 			}
 			foundDiagnostic = true

@@ -12,7 +12,8 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
-	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles"
+	profilesapplication "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/application"
+	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 )
 
 func TestInventoryCommandsReadPersistedSnapshot(t *testing.T) {
@@ -151,8 +152,8 @@ func TestInventoryEvidenceClassifiesMatchingCollectorEndpointAsUnreachable(t *te
 		Receiver: "redis/alternate_port", Endpoint: "127.0.0.1:16379", Code: "connection_failed", ObservedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	}}}
 	evidence := collectorScrapeEvidenceFromSnapshot(snapshot)
-	endpoint := monitoringprofile.DiagnoseEndpoint(monitoringprofile.RedisProfile(), "windows", []inventoryctx.Endpoint{{Address: "127.0.0.1", Port: 16379, ContainerPort: 6379, Protocol: "tcp", Scope: inventoryctx.EndpointHost, Provenance: "published_port"}}, evidence)
-	if endpoint.State != monitoringprofile.EndpointUnreachable || endpoint.EvidenceCode != "connection_failed" {
+	endpoint := profilesapplication.DiagnoseEndpoint(monitoringdomain.RedisProfile(), "windows", []inventoryctx.Endpoint{{Address: "127.0.0.1", Port: 16379, ContainerPort: 6379, Protocol: "tcp", Scope: inventoryctx.EndpointHost, Provenance: "published_port"}}, evidence)
+	if endpoint.State != profilesapplication.EndpointUnreachable || endpoint.EvidenceCode != "connection_failed" {
 		t.Fatalf("diagnostic with matching OTel scrape failure=%+v, want unreachable with connection_failed evidence", endpoint)
 	}
 }

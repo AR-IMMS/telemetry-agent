@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	monitoringprofile "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles"
 	profilesapplication "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/application"
+	domain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	yamlprofiles "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/yaml"
 	collectorruntime "github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
@@ -36,8 +36,8 @@ profiles:
 		t.Fatal(err)
 	}
 	if _, ok := registry.Match("docker", map[string]string{
-		"label." + monitoringprofile.LabelMonitoringEnabled: "true",
-		"label." + monitoringprofile.LabelMonitoringProfile: "cooling-exporter",
+		"label." + domain.LabelMonitoringEnabled: "true",
+		"label." + domain.LabelMonitoringProfile: "cooling-exporter",
 	}); !ok {
 		t.Fatal("loaded profile did not match opt-in labels")
 	}
@@ -155,8 +155,8 @@ profiles:
 		t.Fatal(err)
 	}
 	profile, matched := registry.Match("docker", map[string]string{
-		"label." + monitoringprofile.LabelMonitoringEnabled: "true",
-		"label." + monitoringprofile.LabelMonitoringProfile: "postgres",
+		"label." + domain.LabelMonitoringEnabled: "true",
+		"label." + domain.LabelMonitoringProfile: "postgres",
 	})
 	if !matched || collectorruntime.ProfileCredentialsConfigured(profile.ReceiverType, profile.Settings.UsernameEnv, profile.Settings.PasswordEnv) {
 		t.Fatal("PostgreSQL profile should match while reporting unavailable credentials")
@@ -196,7 +196,7 @@ func dockerEndpoint(os string) string {
 	return "unix:///var/run/docker.sock"
 }
 
-func runtimeProfileInputs(profiles []monitoringprofile.Profile) []contracts.DockerMonitoringProfile {
+func runtimeProfileInputs(profiles []domain.Profile) []contracts.DockerMonitoringProfile {
 	result := make([]contracts.DockerMonitoringProfile, 0, len(profiles))
 	for _, profile := range profiles {
 		converted := contracts.DockerMonitoringProfile{

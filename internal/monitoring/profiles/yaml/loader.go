@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	monitoringprofile "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles"
+	domain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	"gopkg.in/yaml.v3"
 )
 
@@ -45,7 +45,7 @@ type profileRecord struct {
 
 // Load reads bounded, versioned Agent profile definitions from the local config root.
 // Files cannot provide Collector YAML, expressions, or executable extensions.
-func (DirectorySource) Load(configRoot string) ([]monitoringprofile.Profile, error) {
+func (DirectorySource) Load(configRoot string) ([]domain.Profile, error) {
 	directory := filepath.Join(configRoot, "monitoring-profiles")
 	entries, err := os.ReadDir(directory)
 	if os.IsNotExist(err) {
@@ -69,7 +69,7 @@ func (DirectorySource) Load(configRoot string) ([]monitoringprofile.Profile, err
 		return nil, fmt.Errorf("monitoring profile file count exceeds %d", maxProfileFiles)
 	}
 	totalBytes := int64(0)
-	profiles := make([]monitoringprofile.Profile, 0)
+	profiles := make([]domain.Profile, 0)
 	for _, path := range paths {
 		info, err := os.Stat(path)
 		if err != nil {
@@ -91,7 +91,7 @@ func (DirectorySource) Load(configRoot string) ([]monitoringprofile.Profile, err
 	return profiles, nil
 }
 
-func loadProfileFile(path string) ([]monitoringprofile.Profile, error) {
+func loadProfileFile(path string) ([]domain.Profile, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open monitoring profile file %q: %w", path, err)
@@ -117,7 +117,7 @@ func loadProfileFile(path string) ([]monitoringprofile.Profile, error) {
 	if document.APIVersion != profileSchemaVersion || len(document.Profiles) == 0 {
 		return nil, fmt.Errorf("monitoring profile file %q requires api_version %q and at least one profile", path, profileSchemaVersion)
 	}
-	profiles := make([]monitoringprofile.Profile, 0, len(document.Profiles))
+	profiles := make([]domain.Profile, 0, len(document.Profiles))
 	for _, record := range document.Profiles {
 		profile, err := record.toProfile()
 		if err != nil {
@@ -128,51 +128,51 @@ func loadProfileFile(path string) ([]monitoringprofile.Profile, error) {
 	return profiles, nil
 }
 
-func (record profileRecord) toProfile() (monitoringprofile.Profile, error) {
+func (record profileRecord) toProfile() (domain.Profile, error) {
 	if record.Provider != "docker" {
-		return monitoringprofile.Profile{}, fmt.Errorf("profile %q uses unsupported provider %q", record.ID, record.Provider)
+		return domain.Profile{}, fmt.Errorf("profile %q uses unsupported provider %q", record.ID, record.Provider)
 	}
 	if record.TargetPort == 0 {
-		return monitoringprofile.Profile{}, fmt.Errorf("profile %q requires target_port", record.ID)
+		return domain.Profile{}, fmt.Errorf("profile %q requires target_port", record.ID)
 	}
 	interval, err := time.ParseDuration(record.CollectionInterval)
 	if err != nil || interval < time.Second || interval > 5*time.Minute {
-		return monitoringprofile.Profile{}, fmt.Errorf("profile %q collection_interval must be between 1s and 5m", record.ID)
+		return domain.Profile{}, fmt.Errorf("profile %q collection_interval must be between 1s and 5m", record.ID)
 	}
-	if record.MatchLabels[monitoringprofile.LabelMonitoringEnabled] != "true" || record.MatchLabels[monitoringprofile.LabelMonitoringProfile] != record.ID {
-		return monitoringprofile.Profile{}, fmt.Errorf("profile %q must match its explicit Docker monitoring opt-in labels", record.ID)
+	if record.MatchLabels[domain.LabelMonitoringEnabled] != "true" || record.MatchLabels[domain.LabelMonitoringProfile] != record.ID {
+		return domain.Profile{}, fmt.Errorf("profile %q must match its explicit Docker monitoring opt-in labels", record.ID)
 	}
-	profile := monitoringprofile.Profile{
+	profile := domain.Profile{
 		ID: record.ID, Provider: record.Provider, MatchLabels: record.MatchLabels,
 		RequiredCapabilities: record.RequiredCapabilities, ReceiverType: record.ReceiverType,
 		CollectionInterval: record.CollectionInterval,
-		EndpointStrategies: monitoringprofile.EndpointStrategiesFor(record.ID, record.ReceiverType, record.TargetPort, record.TargetPortLabel),
-		Settings:           monitoringprofile.ReceiverSettings{MetricsPath: record.MetricsPath, UsernameEnv: record.UsernameEnv, PasswordEnv: record.PasswordEnv, TLSCAFile: record.TLSCAFile},
+		EndpointStrategies: domain.EndpointStrategiesFor(record.ID, record.ReceiverType, record.TargetPort, record.TargetPortLabel),
+		Settings:           domain.ReceiverSettings{MetricsPath: record.MetricsPath, UsernameEnv: record.UsernameEnv, PasswordEnv: record.PasswordEnv, TLSCAFile: record.TLSCAFile},
 	}
 	switch record.ReceiverType {
 	case "redis":
-		if len(profile.RequiredCapabilities) != 1 || profile.RequiredCapabilities[0] != monitoringprofile.RedisCapability {
-			return monitoringprofile.Profile{}, fmt.Errorf("profile %q must declare the Redis capability", record.ID)
+		if len(profile.RequiredCapabilities) != 1 || profile.RequiredCapabilities[0] != domain.RedisCapability {
+			return domain.Profile{}, fmt.Errorf("profile %q must declare the Redis capability", record.ID)
 		}
 	case "postgresql":
 		if record.UsernameEnv == "" || record.PasswordEnv == "" {
-			return monitoringprofile.Profile{}, fmt.Errorf("profile %q requires username_env and password_env references", record.ID)
+			return domain.Profile{}, fmt.Errorf("profile %q requires username_env and password_env references", record.ID)
 		}
-		if len(profile.RequiredCapabilities) != 1 || profile.RequiredCapabilities[0] != monitoringprofile.PostgresqlCapability {
-			return monitoringprofile.Profile{}, fmt.Errorf("profile %q must declare the PostgreSQL capability", record.ID)
+		if len(profile.RequiredCapabilities) != 1 || profile.RequiredCapabilities[0] != domain.PostgresqlCapability {
+			return domain.Profile{}, fmt.Errorf("profile %q must declare the PostgreSQL capability", record.ID)
 		}
 	case "prometheus":
 		if record.MetricsPath == "" {
 			profile.Settings.MetricsPath = "/metrics"
 		}
 		if !strings.HasPrefix(profile.Settings.MetricsPath, "/") || len(profile.Settings.MetricsPath) > 256 || strings.ContainsAny(profile.Settings.MetricsPath, "?#\x00\r\n") {
-			return monitoringprofile.Profile{}, fmt.Errorf("profile %q metrics_path must be a local path without query or fragment", record.ID)
+			return domain.Profile{}, fmt.Errorf("profile %q metrics_path must be a local path without query or fragment", record.ID)
 		}
-		if len(profile.RequiredCapabilities) != 1 || profile.RequiredCapabilities[0] != monitoringprofile.PrometheusCapability {
-			return monitoringprofile.Profile{}, fmt.Errorf("profile %q must declare the Prometheus capability", record.ID)
+		if len(profile.RequiredCapabilities) != 1 || profile.RequiredCapabilities[0] != domain.PrometheusCapability {
+			return domain.Profile{}, fmt.Errorf("profile %q must declare the Prometheus capability", record.ID)
 		}
 	default:
-		return monitoringprofile.Profile{}, fmt.Errorf("profile %q uses unsupported receiver type %q", record.ID, record.ReceiverType)
+		return domain.Profile{}, fmt.Errorf("profile %q uses unsupported receiver type %q", record.ID, record.ReceiverType)
 	}
 	return profile, nil
 }
