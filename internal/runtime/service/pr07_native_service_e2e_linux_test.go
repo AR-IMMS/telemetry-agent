@@ -26,7 +26,7 @@ func nativeServiceE2ERequireCleanHost(layout Layout) error {
 	if err != nil || state != "not-found" {
 		return fmt.Errorf("Agent service is not absent (load_state=%q, error=%v)", state, err)
 	}
-	collector, supervisor, err := nativeServiceE2EProcessCounts()
+	collector, supervisor, err := nativeServiceE2EProcessCounts(layout)
 	if err != nil || collector != 0 || supervisor != 0 {
 		return fmt.Errorf("test host has preexisting runtime processes (collector=%d supervisor=%d error=%v)", collector, supervisor, err)
 	}
@@ -70,19 +70,19 @@ func nativeServiceE2ERestart(ctx context.Context, serviceName string) error {
 	return nil
 }
 
-func nativeServiceE2EProcessCounts() (int, int, error) {
-	collector, err := processMatchCount("[o]telcol-contrib")
+func nativeServiceE2EProcessCounts(layout Layout) (int, int, error) {
+	collector, err := processMatchCount("[o]telcol-contrib", layout.CollectorInstallDirectory)
 	if err != nil {
 		return 0, 0, err
 	}
-	supervisor, err := processMatchCount("[o]pampsupervisor")
+	supervisor, err := processMatchCount("[o]pampsupervisor", layout.SupervisorInstallDirectory)
 	if err != nil {
 		return 0, 0, err
 	}
 	return collector, supervisor, nil
 }
 
-func processMatchCount(pattern string) (int, error) {
+func processMatchCount(pattern, ownedDirectory string) (int, error) {
 	output, err := exec.Command("pgrep", "-af", pattern).CombinedOutput()
 	if err != nil {
 		if exit, ok := err.(*exec.ExitError); ok && exit.ExitCode() == 1 {
@@ -92,7 +92,7 @@ func processMatchCount(pattern string) (int, error) {
 	}
 	count := 0
 	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
-		if strings.TrimSpace(line) != "" {
+		if strings.Contains(line, ownedDirectory) {
 			count++
 		}
 	}

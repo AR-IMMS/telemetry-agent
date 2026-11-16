@@ -39,7 +39,7 @@ func nativeServiceE2ERequireCleanHost(layout Layout) error {
 	if err != nil || installed {
 		return fmt.Errorf("Agent service is not absent (installed=%t, error=%v)", installed, err)
 	}
-	collector, supervisor, err := nativeServiceE2EProcessCounts()
+	collector, supervisor, err := nativeServiceE2EProcessCounts(layout)
 	if err != nil || collector != 0 || supervisor != 0 {
 		return fmt.Errorf("test host has preexisting runtime processes (collector=%d supervisor=%d error=%v)", collector, supervisor, err)
 	}
@@ -106,7 +106,7 @@ func nativeServiceE2EStopped(serviceName string) (bool, error) {
 	return regexp.MustCompile(`(?im)^\s*STATE\s*:\s*1\s+STOPPED\s*$`).Match(output), nil
 }
 
-func nativeServiceE2EProcessCounts() (int, int, error) {
+func nativeServiceE2EProcessCounts(_ Layout) (int, int, error) {
 	collector, err := tasklistProcessCount("otelcol-contrib.exe")
 	if err != nil {
 		return 0, 0, err

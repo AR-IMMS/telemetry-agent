@@ -163,7 +163,7 @@ func TestPR07NativeServiceUpgradeMigrationRollbackUninstall(t *testing.T) {
 	if err := nativeServiceE2ERequireRemoved(layout); err != nil {
 		t.Fatalf("uninstall left owned service resources: %v", err)
 	}
-	if err := waitForNativeServiceE2EProcesses(ctx, 0, 0); err != nil {
+	if err := waitForNativeServiceE2EProcesses(ctx, layout, 0, 0); err != nil {
 		t.Fatalf("uninstall left Agent-owned runtime processes: %v", err)
 	}
 	record("uninstall=service_paths_and_runtime_processes_removed")
@@ -197,7 +197,7 @@ func waitForNativeServiceE2ERuntime(ctx context.Context, binary string, layout L
 		active, serviceErr := nativeServiceE2EActive(layout.ServiceName)
 		statusOutput, statusErr := nativeServiceE2ERun(ctx, binary, "status")
 		state, stateErr := agentstate.NewStore(layout.StatePath).Load()
-		collectorCount, supervisorCount, processErr := nativeServiceE2EProcessCounts()
+		collectorCount, supervisorCount, processErr := nativeServiceE2EProcessCounts(layout)
 		if serviceErr == nil && active && statusErr == nil && strings.Contains(statusOutput, "Agent health: healthy") && strings.Contains(statusOutput, "Collector state: ready") && stateErr == nil && state.Supervisor.Enabled == supervisorEnabled && collectorCount == 1 && boolToCount(supervisorEnabled) == supervisorCount {
 			return nil
 		}
@@ -211,9 +211,9 @@ func waitForNativeServiceE2ERuntime(ctx context.Context, binary string, layout L
 	}
 }
 
-func waitForNativeServiceE2EProcesses(ctx context.Context, collectorWant, supervisorWant int) error {
+func waitForNativeServiceE2EProcesses(ctx context.Context, layout Layout, collectorWant, supervisorWant int) error {
 	for {
-		collectorCount, supervisorCount, err := nativeServiceE2EProcessCounts()
+		collectorCount, supervisorCount, err := nativeServiceE2EProcessCounts(layout)
 		if err == nil && collectorCount == collectorWant && supervisorCount == supervisorWant {
 			return nil
 		}
