@@ -11,6 +11,7 @@ import (
 	"sort"
 
 	"github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
+	templatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/templates/domain"
 	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions"
 )
 
@@ -23,7 +24,6 @@ var (
 )
 
 var templateIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
-var templateAttributePattern = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,127}$`)
 
 // TemplateOwner aliases Configuration provenance during the model ownership migration.
 type TemplateOwner = domain.TemplateOwner
@@ -35,17 +35,36 @@ const (
 	TemplateOwnerCore = domain.TemplateOwnerCore
 )
 
-// TemplateStatus is the durable lifecycle state of one configuration template.
-type TemplateStatus string
+// TemplateStatus preserves the historical name for Configuration's Template lifecycle state.
+type TemplateStatus = templatedomain.Status
 
 const (
 	// TemplateEnabled authorizes automatic materialization for matching resources.
-	TemplateEnabled TemplateStatus = "enabled"
+	TemplateEnabled = templatedomain.StatusEnabled
 	// TemplateDisabled pauses materialization while preserving the template identity.
-	TemplateDisabled TemplateStatus = "disabled"
+	TemplateDisabled = templatedomain.StatusDisabled
 	// TemplateDeleted is a permanent tombstone that prevents ID reuse or reactivation.
-	TemplateDeleted TemplateStatus = "deleted"
+	TemplateDeleted = templatedomain.StatusDeleted
 )
+
+// TemplateBindingSourceKind preserves the historical source-kind name.
+type TemplateBindingSourceKind = templatedomain.BindingSourceKind
+
+const (
+	// TemplateSourceAttribute reads one exact allowlisted normalized attribute.
+	TemplateSourceAttribute = templatedomain.SourceAttribute
+	// TemplateSourceEndpoint selects an endpoint by exact scope, protocol and provenance.
+	TemplateSourceEndpoint = templatedomain.SourceEndpoint
+)
+
+// TemplateBindingSource preserves the historical source declaration name.
+type TemplateBindingSource = templatedomain.BindingSource
+
+// TemplateSettingBinding preserves the historical settings-binding name.
+type TemplateSettingBinding = templatedomain.SettingBinding
+
+// IntegrationTemplate is retained as a source-compatible alias for Configuration's Template.
+type IntegrationTemplate = templatedomain.Template
 
 // TemplateSettingRule is retained as a compatibility alias for Monitoring's profile schema.
 type TemplateSettingRule = definitions.TemplateSettingRule
@@ -55,91 +74,12 @@ func ValidateTemplateSettingValue(name string, value any, rule TemplateSettingRu
 	return definitions.ValidateTemplateSettingValue(name, value, rule)
 }
 
-// IntegrationTemplate is an operator-authorized reusable configuration for one Integration.
-// Revision is mutable metadata and never contributes to generated instance identity.
-type IntegrationTemplate struct {
-	ID                string                   `json:"id"`
-	DefinitionID      string                   `json:"definition_id"`
-	DefinitionVersion string                   `json:"definition_version"`
-	Owner             TemplateOwner            `json:"owner"`
-	Revision          uint64                   `json:"revision"`
-	Status            TemplateStatus           `json:"status"`
-	Selector          *MatchSelector           `json:"selector,omitempty"`
-	Settings          map[string]any           `json:"settings,omitempty"`
-	Bindings          []TemplateSettingBinding `json:"bindings,omitempty"`
-}
-
-// TemplateBindingSourceKind identifies one supported resource evidence shape.
-type TemplateBindingSourceKind string
-
-const (
-	// TemplateSourceAttribute reads one exact allowlisted normalized attribute.
-	TemplateSourceAttribute TemplateBindingSourceKind = "attribute"
-	// TemplateSourceEndpoint selects one endpoint by exact scope, protocol and provenance.
-	TemplateSourceEndpoint TemplateBindingSourceKind = "endpoint"
-)
-
-// TemplateBindingSource selects one bounded field from a normalized resource.
-type TemplateBindingSource struct {
-	Kind               TemplateBindingSourceKind `json:"kind"`
-	Attribute          string                    `json:"attribute,omitempty"`
-	EndpointScope      string                    `json:"endpoint_scope,omitempty"`
-	EndpointProtocol   string                    `json:"endpoint_protocol,omitempty"`
-	EndpointProvenance string                    `json:"endpoint_provenance,omitempty"`
-}
-
-// TemplateSettingBinding assigns one selected resource value to a Definition setting.
-type TemplateSettingBinding struct {
-	Target string                `json:"target"`
-	Source TemplateBindingSource `json:"source"`
-}
-
-// ValidateIntegrationTemplate checks template identity, state and secret-free settings.
-func ValidateIntegrationTemplate(template IntegrationTemplate) error {
-	if !templateIDPattern.MatchString(template.ID) || !definitionIDPattern.MatchString(template.DefinitionID) ||
-		!versionPattern.MatchString(template.DefinitionVersion) || template.Revision == 0 ||
-		!validTemplateOwner(template.Owner) || !validTemplateStatus(template.Status) {
-		return fmt.Errorf("%w: malformed identity, revision, owner or status", ErrInvalidTemplate)
-	}
-	if template.Selector != nil {
-		if err := validateMatchingDefinition(&MatchingDefinition{Selector: template.Selector}); err != nil {
-			return fmt.Errorf("%w: invalid selector: %v", ErrInvalidTemplate, err)
-		}
-	}
-	if len(template.Settings) > 128 || len(template.Bindings) > 64 {
-		return fmt.Errorf("%w: settings or binding limits exceeded", ErrInvalidTemplate)
-	}
-	encoded, err := json.Marshal(template.Settings)
-	if err != nil || containsSecret(encoded) {
-		return fmt.Errorf("%w: invalid or secret-bearing settings", ErrInvalidTemplate)
-	}
-	seen := make(map[string]struct{}, len(template.Bindings))
-	for _, binding := range template.Bindings {
-		if !matchFieldPattern.MatchString(binding.Target) {
-			return fmt.Errorf("%w: malformed target setting", ErrInvalidTemplate)
-		}
-		if _, duplicate := seen[binding.Target]; duplicate {
-			return fmt.Errorf("%w: duplicate binding target", ErrInvalidTemplate)
-		}
-		seen[binding.Target] = struct{}{}
-		if err := validateTemplateSource(binding.Source); err != nil {
-			return err
-		}
-	}
-	return nil
-}
+// ValidateIntegrationTemplate delegates validation to Configuration's Template domain.
+func ValidateIntegrationTemplate(template IntegrationTemplate) error { return template.Validate() }
 
 // CloneIntegrationTemplate returns a deep copy suitable for crossing module seams.
 func CloneIntegrationTemplate(template IntegrationTemplate) (IntegrationTemplate, error) {
-	encoded, err := json.Marshal(template)
-	if err != nil {
-		return IntegrationTemplate{}, fmt.Errorf("copy Integration Template: %w", err)
-	}
-	var cloned IntegrationTemplate
-	if err := json.Unmarshal(encoded, &cloned); err != nil {
-		return IntegrationTemplate{}, fmt.Errorf("decode copied Integration Template: %w", err)
-	}
-	return cloned, nil
+	return templatedomain.CloneTemplate(template)
 }
 
 // GeneratedInstanceID returns a deterministic ID for one owner/template/resource/Integration pairing.
@@ -240,21 +180,7 @@ func ResolveTemplateSettings(template IntegrationTemplate, definition Integratio
 }
 
 func validateTemplateSource(source TemplateBindingSource) error {
-	switch source.Kind {
-	case TemplateSourceAttribute:
-		if !templateAttributePattern.MatchString(source.Attribute) || sensitiveMatchKey(source.Attribute) ||
-			source.EndpointScope != "" || source.EndpointProtocol != "" || source.EndpointProvenance != "" {
-			return fmt.Errorf("%w: invalid attribute source", ErrInvalidTemplate)
-		}
-	case TemplateSourceEndpoint:
-		if source.Attribute != "" || (source.EndpointScope != "host" && source.EndpointScope != "container") ||
-			source.EndpointProtocol != "tcp" || source.EndpointProvenance == "" || len(source.EndpointProvenance) > 64 {
-			return fmt.Errorf("%w: invalid endpoint source", ErrInvalidTemplate)
-		}
-	default:
-		return fmt.Errorf("%w: unsupported binding source", ErrInvalidTemplate)
-	}
-	return nil
+	return source.Validate()
 }
 
 func resolveTemplateSource(source TemplateBindingSource, resource MatchResource) (any, error) {

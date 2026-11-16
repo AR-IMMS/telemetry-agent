@@ -158,6 +158,17 @@ try {
     }
     $monitoringDomain = "$monitoringProfilesRoot/domain"
     $monitoringApplication = "$monitoringProfilesRoot/application"
+    # Configuration Templates are a cohesive capability: the domain owns the
+    # persisted template model; the application owns validation and CAS use cases.
+    $configurationTemplatesRoot = "$modulePath/internal/configuration/templates"
+    foreach ($layer in @('domain', 'application')) {
+        $layerPath = Join-Path $repoRoot ("internal/configuration/templates/{0}" -f $layer)
+        if (-not (Test-Path -LiteralPath $layerPath -PathType Container)) {
+            $violations.Add("Configuration Templates requires a real $layer layer under internal/configuration/templates")
+        }
+    }
+    $configurationTemplateDomain = "$configurationTemplatesRoot/domain"
+    $configurationTemplateApplication = "$configurationTemplatesRoot/application"
     foreach ($line in $packageLines) {
         $parts = $line -split '\|', 2
         if ($parts.Count -ne 2) { continue }
@@ -188,6 +199,24 @@ try {
             foreach ($imported in $imports) {
                 if ($imported.StartsWith("$monitoringProfilesRoot/yaml", [StringComparison]::Ordinal)) {
                     $violations.Add("Monitoring Profiles application imports an input adapter: $package -> $imported")
+                }
+            }
+        }
+        if ($package -eq $configurationTemplateDomain) {
+            foreach ($imported in $imports) {
+                if ($imported.StartsWith("$configurationTemplatesRoot/application", [StringComparison]::Ordinal) -or
+                    $imported.StartsWith("$modulePath/internal/configuration/sqlite", [StringComparison]::Ordinal) -or
+                    $imported.StartsWith("$modulePath/internal/integration", [StringComparison]::Ordinal)) {
+                    $violations.Add("Configuration Templates domain imports an outer layer or compatibility facade: $package -> $imported")
+                }
+            }
+        }
+        if ($package -eq $configurationTemplateApplication) {
+            foreach ($imported in $imports) {
+                if ($imported.StartsWith("$modulePath/internal/configuration/sqlite", [StringComparison]::Ordinal) -or
+                    $imported.StartsWith("$modulePath/internal/integration", [StringComparison]::Ordinal) -or
+                    $imported.StartsWith("$modulePath/internal/inventory", [StringComparison]::Ordinal)) {
+                    $violations.Add("Configuration Templates application must use owner contracts, not adapters, Inventory, or the Integration facade: $package -> $imported")
                 }
             }
         }
