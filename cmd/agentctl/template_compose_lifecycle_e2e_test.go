@@ -13,12 +13,11 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/app"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 )
 
 const composeLifecycleE2EEnv = "AR_IMMS_S4_COMPOSE_LIFECYCLE_E2E"
@@ -130,7 +129,7 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 	runDiscoveryCycle := func() inventoryctx.InventorySnapshot {
 		t.Helper()
 		cycle, err := coordinator.DiscoverOnce(ctx)
-		if err != nil || !app.DiscoveryCycleSucceeded(cycle) {
+		if err != nil || !cycle.Succeeded() {
 			t.Fatalf("complete Docker discovery cycle failed: result=%+v err=%v", cycle, err)
 		}
 		if err := materializer.Refresh(ctx); err != nil {

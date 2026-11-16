@@ -158,7 +158,7 @@ func runAgentControlLoops(ctx context.Context, components RuntimeComponents) err
 		err := components.Inventory.RunWithCycle(serviceContext, DiscoveryPollInterval, func(error) {
 			log.Printf("Discovery inventory cycle failed code=inventory_store_error")
 		}, func(result inventoryctx.CycleResult) error {
-			if components.RefreshTemplates != nil && DiscoveryCycleSucceeded(result) {
+			if components.RefreshTemplates != nil && result.Succeeded() {
 				if err := components.RefreshTemplates(serviceContext); err != nil {
 					log.Printf("Template materialization refresh failed code=materialization_error")
 				}
@@ -176,16 +176,6 @@ func runAgentControlLoops(ctx context.Context, components RuntimeComponents) err
 	cancel()
 	<-discoveryDone
 	return err
-}
-
-// DiscoveryCycleSucceeded reports whether every configured provider completed without an error.
-func DiscoveryCycleSucceeded(result inventoryctx.CycleResult) bool {
-	for _, provider := range result.ProviderResults {
-		if provider.ErrorCode != "" {
-			return false
-		}
-	}
-	return true
 }
 
 func isExpectedReconciliationOutcome(err error) bool {

@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 )
 
 type runtimeProposalRefresher struct {
@@ -34,7 +34,7 @@ func newRuntimeProposalRefresher(statePath string) (runtimeProposalRefresher, er
 	platform := identity.PlatformInfo{OS: runtime.GOOS, Architecture: runtime.GOARCH}
 	var assessor integration.CapabilityAssessor
 	if catalog, catalogErr := collectorruntime.StaticCatalog(platform); catalogErr == nil {
-		assessor = catalogCapabilityAssessor{catalog: catalog, platform: platform.OS + "/" + platform.Architecture}
+		assessor = integration.NewCatalogCapabilityAssessor(catalog, platform.OS, platform.OS+"/"+platform.Architecture)
 	}
 	return runtimeProposalRefresher{
 		inventory: store.InventoryRepository(), templates: store.TemplateRepository(), manager: proposals.NewProposalManager(store.ProposalRepository()),
@@ -142,7 +142,7 @@ func newRuntimeApprovalService(statePath string) (proposals.ApprovalService, err
 	platform := identity.PlatformInfo{OS: runtime.GOOS, Architecture: runtime.GOARCH}
 	var assessor integration.CapabilityAssessor
 	if catalog, catalogErr := collectorruntime.StaticCatalog(platform); catalogErr == nil {
-		assessor = catalogCapabilityAssessor{catalog: catalog, platform: platform.OS + "/" + platform.Architecture}
+		assessor = integration.NewCatalogCapabilityAssessor(catalog, platform.OS, platform.OS+"/"+platform.Architecture)
 	}
 	matcher := integration.NewMatcher(registry, assessor)
 	verifier := runtimeApprovalVerifier{

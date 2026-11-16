@@ -41,3 +41,105 @@ func TestIntegrationServiceValidatesAndContributesBeforePersistence(t *testing.T
 		t.Fatalf("valid Put err=%v writes=%d", err, repo.writes)
 	}
 }
+
+type setEnabledRepository struct {
+	snapshot DesiredSnapshot
+	stored   integration.IntegrationInstance
+	expected uint64
+	writes   int
+}
+
+func (r *setEnabledRepository) Put(value integration.IntegrationInstance, expected uint64) (integration.IntegrationInstance, uint64, error) {
+	r.writes++
+	r.stored = value
+	r.expected = expected
+	r.stored.Revision = expected + 1
+	return r.stored, r.snapshot.Revision + 1, nil
+}
+func (*setEnabledRepository) Delete(string, uint64) (uint64, error) { return 0, nil }
+func (r *setEnabledRepository) Snapshot() (DesiredSnapshot, error)  { return r.snapshot, nil }
+
+func TestIntegrationServiceSetEnabledPreservesInstanceAndUsesExpectedRevision(t *testing.T) {
+	definition := integration.IntegrationDefinition{ID: "redis", Version: "1.0.0", Validate: func(map[string]any) error { return nil }, Contribute: func(integration.IntegrationInstance) (integration.Contribution, error) {
+		return integration.NewContribution(nil), nil
+	}}
+	registry, err := integration.NewRegistry(definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	existing := integration.IntegrationInstance{
+		ID: "redis-a", DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true,
+		Configuration: map[string]any{"endpoint": "redis.internal:6379", "namespace": "primary"}, Revision: 4,
+	}
+	repository := &setEnabledRepository{snapshot: DesiredSnapshot{Revision: 12, Instances: []integration.IntegrationInstance{existing}}}
+	service := NewIntegrationService(integration.NewResolver(registry), repository)
+
+	stored, desiredRevision, err := service.SetEnabled("redis-a", false, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Enabled || stored.ID != existing.ID || stored.DefinitionID != existing.DefinitionID || stored.DefinitionVersion != existing.DefinitionVersion {
+		t.Fatalf("updated instance=%+v", stored)
+	}
+	if stored.Configuration["endpoint"] != "redis.internal:6379" || stored.Configuration["namespace"] != "primary" {
+		t.Fatalf("configuration changed: %#v", stored.Configuration)
+	}
+	if repository.writes != 1 || repository.expected != 4 || desiredRevision != 13 {
+		t.Fatalf("writes=%d expected=%d desiredRevision=%d", repository.writes, repository.expected, desiredRevision)
+	}
+}
+
+func TestIntegrationServiceSetEnabledRejectsStaleRevisionWithoutWriting(t *testing.T) {
+	registry, err := integration.NewRegistry(integration.IntegrationDefinition{ID: "redis", Version: "1.0.0", Validate: func(map[string]any) error { return nil }, Contribute: func(integration.IntegrationInstance) (integration.Contribution, error) {
+		return integration.NewContribution(nil), nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := &setEnabledRepository{snapshot: DesiredSnapshot{Instances: []integration.IntegrationInstance{{ID: "redis-a", Revision: 4}}}}
+	service := NewIntegrationService(integration.NewResolver(registry), repository)
+	_, _, err = service.SetEnabled("redis-a", false, 3)
+	if !errors.Is(err, ErrRevisionConflict) || repository.writes != 0 {
+		t.Fatalf("err=%v writes=%d", err, repository.writes)
+	}
+}
+
+func TestIntegrationServiceSetEnabledReportsMissingInstance(t *testing.T) {
+	registry, err := integration.NewRegistry(integration.IntegrationDefinition{ID: "redis", Version: "1.0.0", Validate: func(map[string]any) error { return nil }, Contribute: func(integration.IntegrationInstance) (integration.Contribution, error) {
+		return integration.NewContribution(nil), nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := NewIntegrationService(integration.NewResolver(registry), &setEnabledRepository{})
+	_, _, err = service.SetEnabled("missing", true, 0)
+	if !errors.Is(err, ErrIntegrationNotFound) {
+		t.Fatalf("err=%v, want ErrIntegrationNotFound", err)
+	}
+}
+
+func TestIntegrationServicePutPreservingEnabledKeepsExistingEnabledValue(t *testing.T) {
+	registry, err := integration.NewRegistry(integration.IntegrationDefinition{ID: "redis", Version: "1.0.0", Validate: func(map[string]any) error { return nil }, Contribute: func(integration.IntegrationInstance) (integration.Contribution, error) {
+		return integration.NewContribution(nil), nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	existing := integration.IntegrationInstance{
+		ID: "redis-a", DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: false,
+		Configuration: map[string]any{"namespace": "primary"}, Revision: 6,
+	}
+	repository := &setEnabledRepository{snapshot: DesiredSnapshot{Revision: 20, Instances: []integration.IntegrationInstance{existing}}}
+	service := NewIntegrationService(integration.NewResolver(registry), repository)
+
+	stored, revision, err := service.PutPreservingEnabled(integration.IntegrationInstance{
+		ID: "redis-a", DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true,
+		Configuration: map[string]any{"namespace": "secondary"},
+	}, 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Enabled || stored.Configuration["namespace"] != "secondary" || repository.writes != 1 || repository.expected != 6 || revision != 21 {
+		t.Fatalf("stored=%+v writes=%d expected=%d revision=%d", stored, repository.writes, repository.expected, revision)
+	}
+}

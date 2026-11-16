@@ -10,9 +10,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 )
 
 type integrationCatalogView struct {
@@ -166,7 +166,7 @@ func buildIntegrationCatalogView(definitions []integration.IntegrationDefinition
 			if len(item.Capabilities.Required) > 0 {
 				item.Capabilities.Status = integration.CapabilityUnverified
 				if catalogErr == nil {
-					assessment, err := (catalogCapabilityAssessor{catalog: catalog, platform: view.Platform}).Assess(item.Capabilities.Required)
+					assessment, err := integration.NewCatalogCapabilityAssessor(catalog, strings.SplitN(view.Platform, "/", 2)[0], view.Platform).Assess(item.Capabilities.Required)
 					if err == nil {
 						item.Capabilities = capabilityView{
 							Status: assessment.Status, Platform: assessment.Platform,

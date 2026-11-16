@@ -16,6 +16,16 @@ type CycleResult struct {
 	ProviderResults   []ProviderResult
 }
 
+// Succeeded reports whether every configured provider completed without an error.
+func (r CycleResult) Succeeded() bool {
+	for _, provider := range r.ProviderResults {
+		if provider.ErrorCode != "" {
+			return false
+		}
+	}
+	return true
+}
+
 // ProviderResult contains an identity and safe outcome code.
 type ProviderResult struct {
 	ProviderID         ProviderID

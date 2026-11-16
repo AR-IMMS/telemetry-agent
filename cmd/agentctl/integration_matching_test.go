@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 )
 
 func TestCatalogCapabilityAssessorUsesPinnedRuntimeCatalog(t *testing.T) {
@@ -22,7 +22,7 @@ func TestCatalogCapabilityAssessorUsesPinnedRuntimeCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load Runtime catalog for %s/%s: %v", platform.OS, platform.Architecture, err)
 	}
-	assessor := catalogCapabilityAssessor{catalog: catalog, platform: platform.OS + "/" + platform.Architecture}
+	assessor := integration.NewCatalogCapabilityAssessor(catalog, platform.OS, platform.OS+"/"+platform.Architecture)
 
 	assessment, err := assessor.Assess([]string{monitoringprofile.RedisCapability})
 	if err != nil {

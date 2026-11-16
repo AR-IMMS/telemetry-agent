@@ -10,13 +10,12 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/app"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 )
 
 // TestLiveDockerTemplateAutoMaterializesDesiredInstance verifies the live Docker
@@ -61,7 +60,7 @@ func TestLiveDockerTemplateAutoMaterializesDesiredInstance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !app.DiscoveryCycleSucceeded(cycle) {
+	if !cycle.Succeeded() {
 		t.Fatalf("Docker provider cycle failed: %+v", cycle.ProviderResults)
 	}
 	inventory, err := store.InventoryRepository().Snapshot()
@@ -92,7 +91,7 @@ func TestLiveDockerTemplateAutoMaterializesDesiredInstance(t *testing.T) {
 	materializer := runtimeTemplateMaterializer{
 		inventory: store.InventoryRepository(), templates: templateRepository, desired: store.IntegrationRepository(),
 		service: configuration.NewMaterializationService(store.MaterializationRepository()),
-		matcher: integration.NewMatcher(registry, catalogCapabilityAssessor{catalog: catalog, platform: runtime.GOOS + "/" + runtime.GOARCH}),
+		matcher: integration.NewMatcher(registry, integration.NewCatalogCapabilityAssessor(catalog, runtime.GOOS, runtime.GOOS+"/"+runtime.GOARCH)),
 	}
 	if err := materializer.Refresh(context.Background()); err != nil {
 		t.Fatal(err)

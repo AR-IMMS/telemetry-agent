@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -136,6 +137,43 @@ type CapabilityAssessment struct {
 // CapabilityAssessor checks required IDs against the selected platform's verified catalog.
 type CapabilityAssessor interface {
 	Assess(required []string) (CapabilityAssessment, error)
+}
+
+// CapabilityCatalog is the narrow read contract Monitoring uses for pinned Runtime component support.
+type CapabilityCatalog interface {
+	Supports(id, platformOS string) bool
+	ArtifactVersion() string
+	ManifestVersion() string
+}
+
+type catalogCapabilityAssessor struct {
+	catalog    CapabilityCatalog
+	platformOS string
+	platform   string
+}
+
+// NewCatalogCapabilityAssessor creates the Monitoring adapter for Runtime's pinned catalog query.
+func NewCatalogCapabilityAssessor(catalog CapabilityCatalog, platformOS, platform string) CapabilityAssessor {
+	return catalogCapabilityAssessor{catalog: catalog, platformOS: platformOS, platform: platform}
+}
+
+func (a catalogCapabilityAssessor) Assess(required []string) (CapabilityAssessment, error) {
+	assessment := CapabilityAssessment{
+		Platform: a.platform, ArtifactVersion: a.catalog.ArtifactVersion(),
+		ManifestVersion: a.catalog.ManifestVersion(), Required: append([]string(nil), required...),
+		Unsupported: make([]string, 0),
+	}
+	for _, id := range required {
+		if !a.catalog.Supports(id, a.platformOS) {
+			assessment.Unsupported = append(assessment.Unsupported, id)
+		}
+	}
+	sort.Strings(assessment.Unsupported)
+	assessment.Status = CapabilitySupported
+	if len(assessment.Unsupported) > 0 {
+		assessment.Status = CapabilityUnsupported
+	}
+	return assessment, nil
 }
 
 // Candidate stores canonical, validated, secret-free configuration as immutable JSON bytes.

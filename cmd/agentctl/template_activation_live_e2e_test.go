@@ -16,12 +16,12 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/app"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 )
 
 const templateRuntimeE2EEnv = "AR_IMMS_S4_TEMPLATE_RUNTIME_E2E"
@@ -114,7 +114,7 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	cycle, err := discoveryCoordinator.DiscoverOnce(ctx)
-	if err != nil || !app.DiscoveryCycleSucceeded(cycle) {
+	if err != nil || !cycle.Succeeded() {
 		t.Fatalf("discover live Docker resources: result=%+v err=%v", cycle, err)
 	}
 	materializer, err := newRuntimeTemplateMaterializer(statePath)
