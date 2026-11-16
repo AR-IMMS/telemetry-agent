@@ -86,7 +86,24 @@ func TestPR07NativeServiceUpgradeMigrationRollbackUninstall(t *testing.T) {
 	record("legacy_agentctl_sha256=%s", legacyDigest)
 	record("current_agentctl_sha256=%s", currentDigest)
 	record("service=%s", layout.ServiceName)
-	installLegacy := []string{"install", "--config-root", configRoot, "--gateway-endpoint", "127.0.0.1:4317", "--validation-endpoint", "127.0.0.1:4317", "--timeout", "2m"}
+	// The integration-branch Agent is the upgrade baseline. Bootstrap its
+	// Collector first so its persisted state reflects the supported PR-06
+	// install sequence; the current Agent's Installer also handles a missing
+	// state record directly.
+	bootstrapLegacy := []string{
+		"bootstrap", "--config-root", configRoot,
+		"--install-dir", layout.CollectorInstallDirectory,
+		"--config-path", layout.CollectorConfigurationPath,
+		"--state-path", layout.StatePath,
+		"--gateway-endpoint", "127.0.0.1:4317",
+		"--validation-endpoint", "127.0.0.1:4317",
+		"--timeout", "2m",
+	}
+	if output, err := nativeServiceE2ERun(ctx, legacyBinary, bootstrapLegacy...); err != nil {
+		t.Fatalf("bootstrap PR-06 legacy Agent state: %v; output=%s", err, output)
+	}
+	record("legacy_bootstrap=collector_state_initialized")
+	installLegacy := []string{"install", "--config-root", configRoot, "--gateway-endpoint", "127.0.0.1:4317", "--validation-endpoint", "127.0.0.1:4317", "--disable-opamp-supervisor", "--timeout", "2m"}
 	installed = true
 	if output, err := nativeServiceE2ERun(ctx, legacyBinary, installLegacy...); err != nil {
 		t.Fatalf("install PR-06 legacy Agent: %v; output=%s", err, output)
