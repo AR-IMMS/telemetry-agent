@@ -10,6 +10,8 @@ import (
 	"net"
 	"regexp"
 	"sort"
+
+	"github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 )
 
 var (
@@ -24,14 +26,14 @@ var (
 var templateIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
 var templateAttributePattern = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,127}$`)
 
-// TemplateOwner records the authority scope used for template identity.
-type TemplateOwner string
+// TemplateOwner aliases Configuration provenance during the model ownership migration.
+type TemplateOwner = domain.TemplateOwner
 
 const (
-	// TemplateOwnerLocal identifies an operator-created standalone template.
-	TemplateOwnerLocal TemplateOwner = "local"
-	// TemplateOwnerCore reserves the authority value for a future Core contract.
-	TemplateOwnerCore TemplateOwner = "core"
+	// TemplateOwnerLocal identifies an operator-created standalone Template.
+	TemplateOwnerLocal = domain.TemplateOwnerLocal
+	// TemplateOwnerCore reserves the authority value for the existing Core contract.
+	TemplateOwnerCore = domain.TemplateOwnerCore
 )
 
 // TemplateStatus is the durable lifecycle state of one configuration template.

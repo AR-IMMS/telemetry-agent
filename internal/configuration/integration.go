@@ -1,102 +1,54 @@
 package configuration
 
 import (
-	"errors"
-	"fmt"
-
+	"github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 )
 
 var (
-	ErrRevisionConflict = errors.New("integration revision conflict")
+	// ErrRevisionConflict reports an optimistic concurrency mismatch.
+	ErrRevisionConflict = application.ErrRevisionConflict
 	// ErrIntegrationNotFound identifies a desired Integration absent from the snapshot.
-	ErrIntegrationNotFound = errors.New("Integration not found")
+	ErrIntegrationNotFound = application.ErrInstanceNotFound
 	// ErrTemplateOwnedInstance prevents local CRUD from mutating generated ownership records.
-	ErrTemplateOwnedInstance = errors.New("Integration instance is owned by a Template")
+	ErrTemplateOwnedInstance = application.ErrTemplateOwnedInstance
 )
 
-// DesiredSnapshot is a consistent desired Integration set and its change marker.
-type DesiredSnapshot struct {
-	Revision  uint64
-	Instances []integration.IntegrationInstance
-}
+// DesiredSnapshot preserves the existing name for the application-owned snapshot.
+type DesiredSnapshot = application.Snapshot
 
-// IntegrationRepository stores resolved desired instances using optimistic concurrency.
-type IntegrationRepository interface {
-	Put(integration.IntegrationInstance, uint64) (integration.IntegrationInstance, uint64, error)
-	Delete(string, uint64) (uint64, error)
-	Snapshot() (DesiredSnapshot, error)
-}
+// IntegrationRepository preserves the existing repository name for desired state.
+type IntegrationRepository = application.Repository
 
-// IntegrationService validates and resolves an instance before persisting it.
-type IntegrationService struct {
-	resolver   integration.Resolver
-	repository IntegrationRepository
-}
+// IntegrationService preserves the prior API while delegating to its application capability.
+type IntegrationService struct{ service application.Service }
 
-// NewIntegrationService wires the pure resolver to a desired-state repository.
+// NewIntegrationService wires the Monitoring resolver and desired-state repository through ports.
 func NewIntegrationService(resolver integration.Resolver, repository IntegrationRepository) IntegrationService {
-	return IntegrationService{resolver: resolver, repository: repository}
+	return IntegrationService{service: application.NewService(resolverAdapter{resolver: resolver}, repository)}
 }
 
 // Put validates and resolves before applying an expected-revision mutation.
 func (s IntegrationService) Put(instance integration.IntegrationInstance, expected uint64) (integration.IntegrationInstance, uint64, error) {
-	if instance.Source == integration.SourceTemplate {
-		return integration.IntegrationInstance{}, 0, ErrTemplateOwnedInstance
-	}
-	resolved, err := s.resolver.Resolve(instance)
-	if err != nil {
-		return integration.IntegrationInstance{}, 0, err
-	}
-	stored, revision, err := s.repository.Put(resolved.Instance, expected)
-	if err != nil {
-		return integration.IntegrationInstance{}, 0, fmt.Errorf("store desired Integration: %w", err)
-	}
-	return stored, revision, nil
+	return s.service.Put(instance, expected)
 }
 
-// SetEnabled changes only the desired lifecycle flag using the caller's expected instance revision.
-// It preserves the stored definition and settings, then delegates validation, resolution and CAS to Put.
+// SetEnabled changes the desired lifecycle flag using the expected instance revision.
 func (s IntegrationService) SetEnabled(id string, enabled bool, expected uint64) (integration.IntegrationInstance, uint64, error) {
-	if s.repository == nil {
-		return integration.IntegrationInstance{}, 0, fmt.Errorf("Integration repository is required")
-	}
-	snapshot, err := s.repository.Snapshot()
-	if err != nil {
-		return integration.IntegrationInstance{}, 0, err
-	}
-	for _, instance := range snapshot.Instances {
-		if instance.ID != id {
-			continue
-		}
-		if instance.Revision != expected {
-			return integration.IntegrationInstance{}, 0, ErrRevisionConflict
-		}
-		instance.Enabled = enabled
-		return s.Put(instance, expected)
-	}
-	return integration.IntegrationInstance{}, 0, ErrIntegrationNotFound
+	return s.service.SetEnabled(id, enabled, expected)
 }
 
-// PutPreservingEnabled updates an existing Integration while retaining its current enabled state.
-// The expected instance revision protects the read-modify-write from stale CLI input.
+// PutPreservingEnabled updates an instance while retaining its current enabled state.
 func (s IntegrationService) PutPreservingEnabled(instance integration.IntegrationInstance, expected uint64) (integration.IntegrationInstance, uint64, error) {
-	if s.repository == nil {
-		return integration.IntegrationInstance{}, 0, fmt.Errorf("Integration repository is required")
-	}
-	snapshot, err := s.repository.Snapshot()
+	return s.service.PutPreservingEnabled(instance, expected)
+}
+
+type resolverAdapter struct{ resolver integration.Resolver }
+
+func (a resolverAdapter) Resolve(instance integration.IntegrationInstance) (integration.IntegrationInstance, error) {
+	resolved, err := a.resolver.Resolve(instance)
 	if err != nil {
-		return integration.IntegrationInstance{}, 0, err
+		return integration.IntegrationInstance{}, err
 	}
-	for _, existing := range snapshot.Instances {
-		if existing.ID != instance.ID {
-			continue
-		}
-		if existing.Revision != expected {
-			return integration.IntegrationInstance{}, 0, ErrRevisionConflict
-		}
-		instance.Enabled = existing.Enabled
-		return s.Put(instance, expected)
-	}
-	return integration.IntegrationInstance{}, 0, ErrIntegrationNotFound
+	return resolved.Instance, nil
 }

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 )
 
 var (
@@ -17,8 +19,9 @@ var (
 )
 
 var (
-	ErrInvalidDefinition   = errors.New("invalid integration definition")
-	ErrInvalidInstance     = errors.New("invalid integration instance")
+	ErrInvalidDefinition = errors.New("invalid integration definition")
+	// ErrInvalidInstance identifies malformed desired Integration input.
+	ErrInvalidInstance     = domain.ErrInvalidInstance
 	ErrUnknownDefinition   = errors.New("unknown integration definition")
 	ErrInvalidContribution = errors.New("invalid integration contribution")
 )
@@ -69,37 +72,23 @@ func (c Contribution) Intents() []ComponentIntent {
 	return out
 }
 
-// IntegrationInstance is desired configuration pinned to an exact definition version.
-type IntegrationInstance struct {
-	ID, DefinitionID, DefinitionVersion string
-	Configuration                       map[string]any
-	Source                              DesiredSource    `json:"source,omitempty"`
-	Binding                             *ResourceBinding `json:"resource_binding,omitempty"`
-	TemplateOwner                       TemplateOwner    `json:"template_owner,omitempty"`
-	TemplateID                          string           `json:"template_id,omitempty"`
-	TemplateRevision                    uint64           `json:"template_revision,omitempty"`
-	Enabled                             bool
-	Revision                            uint64
-}
+// IntegrationInstance is retained as a source-compatibility alias while callers migrate to Configuration.
+type IntegrationInstance = domain.Instance
 
-// DesiredSource records how an Integration instance entered local desired state.
-type DesiredSource string
+// DesiredSource is retained as a source-compatibility alias while callers migrate to Configuration.
+type DesiredSource = domain.Source
 
 const (
-	// SourceLocal identifies an instance configured through a local Agent operation.
-	SourceLocal DesiredSource = "local"
-	// SourceDiscovery identifies an instance explicitly approved from resource evidence.
-	SourceDiscovery DesiredSource = "discovery"
-	// SourceTemplate identifies an instance generated under an enabled Integration Template.
-	SourceTemplate DesiredSource = "template"
+	// SourceLocal identifies a local desired-state instance.
+	SourceLocal = domain.SourceLocal
+	// SourceDiscovery identifies an instance created from approved evidence.
+	SourceDiscovery = domain.SourceDiscovery
+	// SourceTemplate identifies an instance materialized from a Template.
+	SourceTemplate = domain.SourceTemplate
 )
 
-// ResourceBinding links an Integration instance to provider-scoped observed resource identity.
-type ResourceBinding struct {
-	Provider         string `json:"provider"`
-	ProviderInstance string `json:"provider_instance"`
-	ResourceID       string `json:"resource_id"`
-}
+// ResourceBinding is retained as a source-compatibility alias while callers migrate to Configuration.
+type ResourceBinding = domain.ResourceBinding
 
 // Contributor deterministically converts a validated instance into component intents.
 type Contributor func(IntegrationInstance) (Contribution, error)
@@ -127,33 +116,8 @@ func ValidateDefinition(d IntegrationDefinition) error {
 	return nil
 }
 
-// ValidateInstance validates identity, exact definition reference, configuration shape and secrets.
-func ValidateInstance(i IntegrationInstance) error {
-	if !definitionIDPattern.MatchString(i.ID) || !definitionIDPattern.MatchString(i.DefinitionID) || !versionPattern.MatchString(i.DefinitionVersion) || i.Configuration == nil {
-		return fmt.Errorf("%w: malformed identity, version, or configuration", ErrInvalidInstance)
-	}
-	if i.Source != "" && i.Source != SourceLocal && i.Source != SourceDiscovery && i.Source != SourceTemplate {
-		return fmt.Errorf("%w: unknown desired source", ErrInvalidInstance)
-	}
-	if i.Source == SourceDiscovery && i.Binding == nil {
-		return fmt.Errorf("%w: discovery source requires a resource binding", ErrInvalidInstance)
-	}
-	if i.Source == SourceTemplate {
-		if i.Binding == nil || !validTemplateOwner(i.TemplateOwner) || !templateIDPattern.MatchString(i.TemplateID) || i.TemplateRevision == 0 {
-			return fmt.Errorf("%w: template source requires owner, template revision and resource binding", ErrInvalidInstance)
-		}
-	} else if i.TemplateOwner != "" || i.TemplateID != "" || i.TemplateRevision != 0 {
-		return fmt.Errorf("%w: non-template instance cannot carry template provenance", ErrInvalidInstance)
-	}
-	if i.Binding != nil && !validResourceBinding(*i.Binding) {
-		return fmt.Errorf("%w: malformed resource binding", ErrInvalidInstance)
-	}
-	b, err := json.Marshal(i.Configuration)
-	if err != nil || containsSecret(json.RawMessage(b)) {
-		return fmt.Errorf("%w: invalid or secret-bearing configuration", ErrInvalidInstance)
-	}
-	return nil
-}
+// ValidateInstance forwards to the Configuration-owned desired-state model during migration.
+func ValidateInstance(i IntegrationInstance) error { return i.Validate() }
 
 func validateTemplateSettingRules(rules map[string]TemplateSettingRule) error {
 	if len(rules) > 128 {
