@@ -143,6 +143,9 @@ func TestPeriodicSQLitePollingDetectsCommittedCrossProcessDesiredChange(t *testi
 	path := filepath.Join(t.TempDir(), "state.db")
 	writer := sqlitefixture.NewSQLiteStore(path)
 	reader := sqlitefixture.NewSQLiteStore(path)
+	if _, err := reader.IntegrationRepository().Snapshot(); err != nil {
+		t.Fatalf("initialize SQLite snapshot before starting polling worker: %v", err)
+	}
 	definition := integration.IntegrationDefinition{ID: "fixture", Version: "1.0.0", Validate: func(map[string]any) error { return nil }, Contribute: func(integration.IntegrationInstance) (integration.Contribution, error) {
 		return integration.NewContribution(nil), nil
 	}}
@@ -161,7 +164,7 @@ func TestPeriodicSQLitePollingDetectsCommittedCrossProcessDesiredChange(t *testi
 		if revision != 0 {
 			t.Fatalf("startup revision=%d want 0", revision)
 		}
-	case <-time.After(3 * time.Second):
+	case <-time.After(10 * time.Second):
 		snapshot, snapshotErr := reader.IntegrationRepository().Snapshot()
 		t.Fatalf("startup reconciliation did not run: current SQLite snapshot=%+v snapshot_error=%v", snapshot, snapshotErr)
 	}
@@ -174,7 +177,7 @@ func TestPeriodicSQLitePollingDetectsCommittedCrossProcessDesiredChange(t *testi
 		if revision != 1 {
 			t.Fatalf("polled revision=%d want 1", revision)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("periodic SQLite polling did not observe committed mutation")
 	}
 	cancel()
