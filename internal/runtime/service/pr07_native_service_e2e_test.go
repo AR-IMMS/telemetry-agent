@@ -114,7 +114,13 @@ func TestPR07NativeServiceUpgradeMigrationRollbackUninstall(t *testing.T) {
 	assertNativeServiceE2EOwner(t, layout, false)
 	record("legacy_install=active healthy collector_processes=1 supervisor_processes=0")
 
-	installManaged := append(append([]string(nil), installLegacy...), "--opamp-server-url", "ws://127.0.0.1:1/v1/opamp")
+	installManaged := []string{
+		"install", "--config-root", configRoot,
+		"--gateway-endpoint", "127.0.0.1:4317",
+		"--validation-endpoint", "127.0.0.1:4317",
+		"--opamp-server-url", "ws://127.0.0.1:1/v1/opamp",
+		"--timeout", "2m",
+	}
 	if output, err := nativeServiceE2ERun(ctx, currentBinary, installManaged...); err != nil {
 		t.Fatalf("upgrade and migrate to managed Supervisor: %v; output=%s", err, output)
 	}
