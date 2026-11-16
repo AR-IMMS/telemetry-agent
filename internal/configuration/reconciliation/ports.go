@@ -1,6 +1,6 @@
 package reconciliation
 
-import "github.com/ar-imms/telemetry-agent/internal/collectorruntime/contracts"
+import "github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 
 // BaselineSnapshot is the clean Collector render input and freshness identity
 // consumed by reconciliation. It excludes the generated Integration candidate

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/ar-imms/telemetry-agent/internal/collectorruntime/contracts"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 	"github.com/ar-imms/telemetry-agent/internal/config"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	"gopkg.in/yaml.v3"

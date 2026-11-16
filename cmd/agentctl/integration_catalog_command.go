@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 )
