@@ -158,6 +158,14 @@ try {
     }
     $monitoringDomain = "$monitoringProfilesRoot/domain"
     $monitoringApplication = "$monitoringProfilesRoot/application"
+    # Monitoring Template resolution composes profile rules with normalized
+    # resource evidence. It must remain independent of the temporary Integration
+    # facade and all persistence / inventory adapters.
+    $monitoringTemplatesRoot = "$modulePath/internal/monitoring/templates"
+    $monitoringTemplatesApplication = "$monitoringTemplatesRoot/application"
+    if (-not (Test-Path -LiteralPath (Join-Path $repoRoot 'internal/monitoring/templates/application') -PathType Container)) {
+        $violations.Add('Monitoring Templates requires an application package under internal/monitoring/templates')
+    }
     # Configuration Templates are a cohesive capability: the domain owns the
     # persisted template model; the application owns validation and CAS use cases.
     $configurationTemplatesRoot = "$modulePath/internal/configuration/templates"
@@ -217,6 +225,15 @@ try {
                     $imported.StartsWith("$modulePath/internal/integration", [StringComparison]::Ordinal) -or
                     $imported.StartsWith("$modulePath/internal/inventory", [StringComparison]::Ordinal)) {
                     $violations.Add("Configuration Templates application must use owner contracts, not adapters, Inventory, or the Integration facade: $package -> $imported")
+                }
+            }
+        }
+        if ($package -eq $monitoringTemplatesApplication) {
+            foreach ($imported in $imports) {
+                if ($imported.StartsWith("$modulePath/internal/integration", [StringComparison]::Ordinal) -or
+                    $imported.StartsWith("$modulePath/internal/configuration/sqlite", [StringComparison]::Ordinal) -or
+                    $imported.StartsWith("$modulePath/internal/inventory", [StringComparison]::Ordinal)) {
+                    $violations.Add("Monitoring Templates application must depend on context contracts, not Integration facade, persistence, or Inventory adapters: $package -> $imported")
                 }
             }
         }
