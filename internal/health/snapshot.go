@@ -1,6 +1,10 @@
 package health
 
-import "time"
+import (
+	"time"
+
+	runtimecontracts "github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
+)
 
 // Status is the compatibility classification for Collector readiness and configuration application.
 type Status string
@@ -10,31 +14,19 @@ const (
 	StatusDegraded Status = "degraded"
 )
 
-// CollectorState identifies the Collector phase observed by the Agent runtime.
-type CollectorState string
+// CollectorState is the Runtime-owned Collector process phase used in Health snapshots.
+type CollectorState = runtimecontracts.CollectorState
 
 const (
-	CollectorStateStarting CollectorState = "starting"
-	CollectorStateReady    CollectorState = "ready"
-	CollectorStateStopping CollectorState = "stopping"
-	CollectorStateStopped  CollectorState = "stopped"
-	CollectorStateFailed   CollectorState = "failed"
+	CollectorStateStarting = runtimecontracts.CollectorStateStarting
+	CollectorStateReady    = runtimecontracts.CollectorStateReady
+	CollectorStateStopping = runtimecontracts.CollectorStateStopping
+	CollectorStateStopped  = runtimecontracts.CollectorStateStopped
+	CollectorStateFailed   = runtimecontracts.CollectorStateFailed
 )
 
-// RuntimeObservation contains transient facts used by the Agent health assessment.
-// Its validity deadline is supplied by the evidence owner and is not persisted as desired state.
-type RuntimeObservation struct {
-	CollectorState        CollectorState
-	DesiredGeneration     uint64
-	ActivatedGeneration   uint64
-	AppliedGeneration     uint64
-	PendingTeardowns      int
-	LastError             string
-	ObservedAt            time.Time
-	ValidUntil            *time.Time
-	SupervisorConfigured  bool
-	ConfigurationObserved bool
-}
+// RuntimeObservation aliases Runtime-owned evidence consumed by Health.
+type RuntimeObservation = runtimecontracts.RuntimeObservation
 
 // Snapshot combines the compatible runtime status with independent health evidence.
 type Snapshot struct {

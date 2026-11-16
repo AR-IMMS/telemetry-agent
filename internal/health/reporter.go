@@ -7,14 +7,14 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	runtimecontracts "github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 )
 
 const maxCollectorFailures = 32
 
-// CollectorOutputReporter accepts one complete Collector output line for safe diagnostic extraction.
-type CollectorOutputReporter interface {
-	ReportCollectorOutput(string)
-}
+// CollectorOutputReporter is the Runtime-owned Collector diagnostic input port.
+type CollectorOutputReporter = runtimecontracts.CollectorOutputReporter
 
 // Provider exposes the latest local Agent health snapshot.
 type Provider interface {
@@ -27,10 +27,8 @@ type ContextProvider interface {
 	SnapshotContext(context.Context) Snapshot
 }
 
-// ObservationReporter records transient Collector runtime observations.
-type ObservationReporter interface {
-	Report(RuntimeObservation)
-}
+// ObservationReporter records Runtime-owned transient Collector observations.
+type ObservationReporter = runtimecontracts.ObservationReporter
 
 // EvidenceSource reads one owner-provided component observation at snapshot time.
 // Sources must be read-only and bound their work; the context supports request-scoped cancellation.

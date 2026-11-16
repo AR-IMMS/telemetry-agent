@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
+	runtimecontracts "github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
 )
 
@@ -22,7 +22,7 @@ func (w runtimeWatcher) onCollectorReady(
 	if previous != nil {
 		if err := previous(); err != nil {
 			cancel()
-			w.reportHealth(agenthealth.CollectorStateFailed, err.Error())
+			w.reportHealth(runtimecontracts.CollectorStateFailed, err.Error())
 			return err
 		}
 	}
@@ -53,7 +53,7 @@ func (w runtimeWatcher) onCollectorReady(
 	if err != nil {
 		cancel()
 		wrapped := fmt.Errorf("mark Collector generation %d applied: %w", generation, err)
-		w.reportHealth(agenthealth.CollectorStateFailed, wrapped.Error())
+		w.reportHealth(runtimecontracts.CollectorStateFailed, wrapped.Error())
 		return wrapped
 	}
 	if snapshot.PendingActivation != nil && snapshot.PendingActivation.RecoveryPath != "" {
@@ -63,10 +63,10 @@ func (w runtimeWatcher) onCollectorReady(
 		if err := w.applyTeardowns(ctx); err != nil {
 			cancel()
 			wrapped := fmt.Errorf("apply pending dependency teardowns: %w", err)
-			w.reportHealth(agenthealth.CollectorStateFailed, wrapped.Error())
+			w.reportHealth(runtimecontracts.CollectorStateFailed, wrapped.Error())
 			return wrapped
 		}
 	}
-	w.reportHealth(agenthealth.CollectorStateReady, "")
+	w.reportHealth(runtimecontracts.CollectorStateReady, "")
 	return nil
 }

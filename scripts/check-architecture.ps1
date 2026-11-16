@@ -60,6 +60,7 @@ try {
     # forbidden to Configuration.
     $contextContractImportAllowlist = @{
         "$modulePath/internal/configuration/reconciliation|$modulePath/internal/runtime/collector/contracts" = 'OD-05: Configuration owns reconciliation decisions and depends on Runtime only through the candidate/application contract.'
+        "$modulePath/internal/health|$modulePath/internal/runtime/collector/contracts" = 'Runtime owns Collector lifecycle evidence; Health consumes the evidence contract to assess it.'
     }
     # One observed transition: identity currently reads the Windows registry
     # directly. Keep the exception specific and reasoned until an adapter exists.
@@ -87,6 +88,8 @@ try {
     # runtime contract values, but not on the concrete lifecycle package.
     $reconciliationContextRoot = "$modulePath/internal/configuration/reconciliation"
     $agentLifecyclePackage = "$modulePath/internal/runtime/collector/activation"
+    $runtimeContextRoot = "$modulePath/internal/runtime"
+    $healthContextRoot = "$modulePath/internal/health"
     $platformPackageRoot = "$modulePath/internal/platform"
 
     # This pre-existing file is 454 lines. Avoid a mechanical split in the
@@ -220,6 +223,13 @@ try {
             $package.StartsWith("$reconciliationContextRoot/", [StringComparison]::Ordinal)
         if ($isReconciliationPackage -and $imports -contains $agentLifecyclePackage) {
             $violations.Add("forbidden context dependency: $package -> $agentLifecyclePackage (Reconciliation owns its CandidateApplier and baseline ports; runtime implements them.)")
+        }
+
+        $isRuntimePackage = $package -eq $runtimeContextRoot -or
+            $package.StartsWith("$runtimeContextRoot/", [StringComparison]::Ordinal)
+        if ($isRuntimePackage -and ($imports -contains $healthContextRoot -or
+            @($imports | Where-Object { $_.StartsWith("$healthContextRoot/", [StringComparison]::Ordinal) }).Count -gt 0)) {
+            $violations.Add("forbidden context dependency: $package -> $healthContextRoot (Runtime publishes Collector evidence through its contracts; Health consumes it.)")
         }
 
         if ($package.StartsWith("$modulePath/internal/", [StringComparison]::Ordinal)) {

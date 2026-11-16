@@ -9,9 +9,9 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
-	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	runtimecontracts "github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
 )
 
@@ -48,7 +48,7 @@ func RunCollectorRuntimeWithHealth(
 	ctx context.Context,
 	statePath string,
 	teardown DependencyTeardownFunc,
-	healthReporter agenthealth.ObservationReporter,
+	healthReporter runtimecontracts.ObservationReporter,
 	stores RuntimeStoreFactory,
 ) error {
 	return runCollectorRuntimeWithReconciliation(ctx, statePath, teardown, healthReporter, nil, nil, stores)
@@ -59,7 +59,7 @@ func RunCollectorRuntimeWithReconciliation(
 	ctx context.Context,
 	statePath string,
 	teardown DependencyTeardownFunc,
-	healthReporter agenthealth.ObservationReporter,
+	healthReporter runtimecontracts.ObservationReporter,
 	reconcile func(context.Context) error,
 	onRecoveryFailure func(agentstate.State, error) error,
 	stores RuntimeStoreFactory,
@@ -71,7 +71,7 @@ func runCollectorRuntimeWithReconciliation(
 	ctx context.Context,
 	statePath string,
 	teardown DependencyTeardownFunc,
-	healthReporter agenthealth.ObservationReporter,
+	healthReporter runtimecontracts.ObservationReporter,
 	reconcile func(context.Context) error,
 	onRecoveryFailure func(agentstate.State, error) error,
 	storeFactory RuntimeStoreFactory,

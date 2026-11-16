@@ -8,8 +8,8 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
-	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
+	runtimecontracts "github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
 )
 
@@ -39,7 +39,7 @@ type runtimeWatcher struct {
 	rollback               func(context.Context, string, uint64) error
 	verifyGatewayReadiness gatewayReadinessVerifier
 
-	healthReporter agenthealth.ObservationReporter
+	healthReporter runtimecontracts.ObservationReporter
 }
 
 // Run launches the Collector for the currently activated configuration.
@@ -60,7 +60,7 @@ func (w runtimeWatcher) Run(ctx context.Context) error {
 			return err
 		}
 
-		w.reportHealth(agenthealth.CollectorStateStarting, "")
+		w.reportHealth(runtimecontracts.CollectorStateStarting, "")
 
 		launchGeneration := snapshot.ActivatedGeneration
 		stableConfigPath := w.options.ConfigPath
@@ -96,7 +96,7 @@ func (w runtimeWatcher) Run(ctx context.Context) error {
 						}
 					}
 					w.reportHealth(
-						agenthealth.CollectorStateFailed,
+						runtimecontracts.CollectorStateFailed,
 						err.Error(),
 					)
 
@@ -165,7 +165,7 @@ func (w runtimeWatcher) Run(ctx context.Context) error {
 						<-runDone
 						cleanupLaunchConfig()
 						wrapped := fmt.Errorf("confirm unchanged Core Gateway revision readiness: %w", err)
-						w.reportHealth(agenthealth.CollectorStateFailed, wrapped.Error())
+						w.reportHealth(runtimecontracts.CollectorStateFailed, wrapped.Error())
 						return wrapped
 					}
 					continue
@@ -181,7 +181,7 @@ func (w runtimeWatcher) Run(ctx context.Context) error {
 						err,
 					)
 					w.reportHealth(
-						agenthealth.CollectorStateFailed,
+						runtimecontracts.CollectorStateFailed,
 						wrapped.Error(),
 					)
 
@@ -258,7 +258,7 @@ func (w runtimeWatcher) prepareLaunch(ctx context.Context) (agentstate.State, su
 }
 
 func (w runtimeWatcher) reportHealth(
-	collectorState agenthealth.CollectorState,
+	collectorState runtimecontracts.CollectorState,
 	lastError string,
 ) {
 	if w.healthReporter == nil {
@@ -279,7 +279,7 @@ func (w runtimeWatcher) reportHealth(
 		}
 	}
 
-	w.healthReporter.Report(agenthealth.RuntimeObservation{
+	w.healthReporter.Report(runtimecontracts.RuntimeObservation{
 		CollectorState:        collectorState,
 		DesiredGeneration:     state.DesiredGeneration,
 		ActivatedGeneration:   state.ActivatedGeneration,
@@ -296,7 +296,7 @@ func (w runtimeWatcher) reportHealthStateUnavailable(lastError string) {
 	if w.healthReporter == nil {
 		return
 	}
-	w.healthReporter.Report(agenthealth.RuntimeObservation{
+	w.healthReporter.Report(runtimecontracts.RuntimeObservation{
 		ObservedAt: time.Now().UTC(),
 		LastError:  lastError,
 	})
