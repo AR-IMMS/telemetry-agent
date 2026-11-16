@@ -13,7 +13,6 @@ import (
 func RequestDependencyUninstalls(
 	ctx context.Context,
 	store agentstate.Repository,
-	options CollectorConfigurationOptions,
 	names []string,
 ) ([]string, error) {
 	if ctx == nil {
@@ -40,8 +39,6 @@ func RequestDependencyUninstalls(
 		return nil, nil
 	}
 
-	_ = options // retained for source compatibility; activation belongs to the Agent Service.
-
 	return changed, nil
 }
 
@@ -50,7 +47,6 @@ func RequestDependencyUninstalls(
 func RequestAllDependencyUninstalls(
 	ctx context.Context,
 	store agentstate.Repository,
-	options CollectorConfigurationOptions,
 ) ([]string, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf(
@@ -76,10 +72,5 @@ func RequestAllDependencyUninstalls(
 		return nil, nil
 	}
 
-	return RequestDependencyUninstalls(
-		ctx,
-		store,
-		options,
-		names,
-	)
+	return RequestDependencyUninstalls(ctx, store, names)
 }

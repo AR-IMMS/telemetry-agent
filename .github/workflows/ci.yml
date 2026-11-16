@@ -105,7 +105,7 @@ jobs:
         run: ./scripts/check-architecture.ps1
 
       - name: Build PR-06 Agent and current Agent for native service lifecycle E2E
-        if: github.event_name == 'pull_request' && (github.event.pull_request.number == 30 || github.event.pull_request.number == 36)
+        if: github.event_name == 'pull_request' && (github.event.pull_request.number == 30 || github.event.pull_request.number == 36 || github.event.pull_request.number == 39)
         shell: pwsh
         run: |
           $legacySource = Join-Path $env:RUNNER_TEMP 'pr07-legacy-source'
@@ -135,7 +135,7 @@ jobs:
           "AR_IMMS_PR07C_SERVICE_EVIDENCE_DIR=$evidenceDirectory" | Add-Content $env:GITHUB_ENV
 
       - name: Native service upgrade, migration, rollback, restart, and uninstall E2E
-        if: github.event_name == 'pull_request' && (github.event.pull_request.number == 30 || github.event.pull_request.number == 36)
+        if: github.event_name == 'pull_request' && (github.event.pull_request.number == 30 || github.event.pull_request.number == 36 || github.event.pull_request.number == 39)
         shell: pwsh
         run: |
           $testBinary = Join-Path $env:RUNNER_TEMP 'pr07-native-service.test'
@@ -164,7 +164,7 @@ jobs:
           }
 
       - name: Upload native service lifecycle evidence
-        if: always() && github.event_name == 'pull_request' && (github.event.pull_request.number == 30 || github.event.pull_request.number == 36)
+        if: always() && github.event_name == 'pull_request' && (github.event.pull_request.number == 30 || github.event.pull_request.number == 36 || github.event.pull_request.number == 39)
         uses: actions/upload-artifact@v6
         with:
           name: pr07c-native-service-${{ runner.os }}
@@ -201,6 +201,10 @@ jobs:
 
       - name: Test
         run: go test ./... -count=1
+
+      - name: Race-sensitive state and uninstall tests
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 39
+        run: go test -race ./internal/agentstate ./internal/identity/sqlite ./internal/identity/enrollment/sqlite ./internal/runtime/collector/activation ./cmd/agentctl -count=1
 
       - name: Live Docker Inventory provider E2E
         if: always() && runner.os == 'Linux' && steps.isolated_docker_engine.outcome == 'success'

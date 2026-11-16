@@ -1,3 +1,5 @@
+%% Context Collaboration / business and data flow. Arrows are not Go package imports.
+%% See consolidation/03-target-architecture.md#code-dependency-go-imports for the separate import view.
 flowchart LR
     CLI[cmd/agentctl] --> App[app composition]
     App --> ID[identity]
