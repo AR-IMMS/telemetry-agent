@@ -180,8 +180,9 @@ func TestManagedSupervisorEnrollmentAndRemoteGatewayE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	service := enrollment.Service{
-		Repository:  sqlitefixture.NewEnrollmentStore(statePath),
-		Credentials: credentialstore.New(statePath), Client: coreapi.NewEnrollmentClient(),
+		Repository:  enrollmentAttemptRepositoryTrace{AttemptRepository: sqlitefixture.NewEnrollmentStore(statePath), t: t},
+		Credentials: enrollmentCredentialStoreTrace{CredentialStore: credentialstore.New(statePath), t: t},
+		Client:      coreapi.NewEnrollmentClient(),
 	}
 	result, err := service.Start(ctx, origin, enrollment.EnrollmentPayload{
 		Installation: enrollment.Installation{ID: installationID.String()},
@@ -635,6 +636,36 @@ service:
 	}
 	writeManagedControlE2EEvidence(t, result.InstallationID, result.Binding.NodeID)
 	t.Logf("verified enrollment identity=%s Node=%s; offline Agent-managed fallback delivered before OpAMP connected; authenticated reconnect applied policy revisions=1,2,3,4,5; replacement credential revoked the prior bearer; durable revision-3 publication resolved after Mock Core restart; restarted OpAMP and Agent runtime applied revision 4; revision-5 rollback re-attributed the prior applied hash and continued OTLP delivery", result.InstallationID, result.Binding.NodeID)
+}
+
+type enrollmentAttemptRepositoryTrace struct {
+	enrollment.AttemptRepository
+	t *testing.T
+}
+
+func (r enrollmentAttemptRepositoryTrace) CompleteAttempt(attemptID string, result enrollment.EnrollmentResult, credentialRef string) error {
+	err := r.AttemptRepository.CompleteAttempt(attemptID, result, credentialRef)
+	if err != nil {
+		r.t.Logf("enrollment completion persistence failed: %v", err)
+	}
+	return err
+}
+
+type enrollmentCredentialStoreTrace struct {
+	enrollment.CredentialStore
+	t *testing.T
+}
+
+func (s enrollmentCredentialStoreTrace) Put(reference, value string) error {
+	err := s.CredentialStore.Put(reference, value)
+	if err != nil {
+		kind := "bootstrap"
+		if strings.HasPrefix(reference, "enrollment/agent/") {
+			kind = "Agent access"
+		}
+		s.t.Logf("enrollment %s credential persistence failed: %v", kind, err)
+	}
+	return err
 }
 
 func managedRuntimeEnrollmentHandler(t *testing.T, corePointer *atomic.Pointer[mockcore.Server], accessToken, replacementToken, bootstrapToken, replacementBootstrap, nodeID string) http.Handler {
