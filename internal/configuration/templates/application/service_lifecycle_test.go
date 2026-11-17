@@ -4,11 +4,14 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/integration"
+	desiredstate "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
+	templatesdomain "github.com/ar-imms/telemetry-agent/internal/configuration/templates/domain"
+	definitionsapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
+	definitionsdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
 )
 
 func TestTemplateServiceRejectsCoreOwnedOrUnknownDefinitionBeforePersistence(t *testing.T) {
-	registry, err := integration.NewRegistry(templateTestDefinition())
+	registry, err := definitionsapp.NewRegistry(templateTestDefinition())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -17,13 +20,13 @@ func TestTemplateServiceRejectsCoreOwnedOrUnknownDefinitionBeforePersistence(t *
 
 	tests := []struct {
 		name   string
-		change func(*integration.IntegrationTemplate)
+		change func(*templatesdomain.Template)
 	}{
-		{"core owner", func(value *integration.IntegrationTemplate) { value.Owner = integration.TemplateOwnerCore }},
-		{"unknown definition version", func(value *integration.IntegrationTemplate) { value.DefinitionVersion = "2.0.0" }},
-		{"undeclared setting", func(value *integration.IntegrationTemplate) { value.Settings["password"] = "should-not-persist" }},
-		{"wrong declared setting type", func(value *integration.IntegrationTemplate) { value.Settings["endpoint"] = 6379 }},
-		{"missing required setting", func(value *integration.IntegrationTemplate) { value.Bindings = nil }},
+		{"core owner", func(value *templatesdomain.Template) { value.Owner = desiredstate.TemplateOwnerCore }},
+		{"unknown definition version", func(value *templatesdomain.Template) { value.DefinitionVersion = "2.0.0" }},
+		{"undeclared setting", func(value *templatesdomain.Template) { value.Settings["password"] = "should-not-persist" }},
+		{"wrong declared setting type", func(value *templatesdomain.Template) { value.Settings["endpoint"] = 6379 }},
+		{"missing required setting", func(value *templatesdomain.Template) { value.Bindings = nil }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -40,7 +43,7 @@ func TestTemplateServiceRejectsCoreOwnedOrUnknownDefinitionBeforePersistence(t *
 }
 
 func TestTemplateServiceStoresLocalEnabledTemplate(t *testing.T) {
-	registry, err := integration.NewRegistry(templateTestDefinition())
+	registry, err := definitionsapp.NewRegistry(templateTestDefinition())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,51 +53,51 @@ func TestTemplateServiceStoresLocalEnabledTemplate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Put() error = %v", err)
 	}
-	if stored.Owner != integration.TemplateOwnerLocal || stored.Revision != 1 || revision != 1 || repository.writes != 1 {
+	if stored.Owner != desiredstate.TemplateOwnerLocal || stored.Revision != 1 || revision != 1 || repository.writes != 1 {
 		t.Fatalf("stored=%+v revision=%d writes=%d", stored, revision, repository.writes)
 	}
 }
 
 func TestTemplateServiceEnableDisableDeleteUsesCASAndPermanentTombstone(t *testing.T) {
-	registry, err := integration.NewRegistry(templateTestDefinition())
+	registry, err := definitionsapp.NewRegistry(templateTestDefinition())
 	if err != nil {
 		t.Fatal(err)
 	}
-	repository := &templateLifecycleMemoryRepository{templates: make(map[string]integration.IntegrationTemplate)}
+	repository := &templateLifecycleMemoryRepository{templates: make(map[string]templatesdomain.Template)}
 	service := NewService(registry, repository)
 	created, _, err := service.Put(templateTestValue(), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	disabled, _, err := service.SetEnabled(created.ID, false, created.Revision)
-	if err != nil || disabled.Status != integration.TemplateDisabled || disabled.Revision != 2 {
+	if err != nil || disabled.Status != templatesdomain.StatusDisabled || disabled.Revision != 2 {
 		t.Fatalf("disable=%+v err=%v", disabled, err)
 	}
 	if _, _, err := service.SetEnabled(created.ID, true, created.Revision); !errors.Is(err, ErrRevisionConflict) {
 		t.Fatalf("stale enable error=%v", err)
 	}
 	deleted, _, err := service.Delete(created.ID, disabled.Revision)
-	if err != nil || deleted.Status != integration.TemplateDeleted || deleted.Revision != 3 {
+	if err != nil || deleted.Status != templatesdomain.StatusDeleted || deleted.Revision != 3 {
 		t.Fatalf("delete=%+v err=%v", deleted, err)
 	}
 	if _, _, err := service.SetEnabled(created.ID, true, deleted.Revision); !errors.Is(err, ErrTemplateDeleted) {
 		t.Fatalf("deleted Template re-enable error=%v", err)
 	}
 	again, _, err := service.Delete(created.ID, deleted.Revision)
-	if err != nil || again.Status != integration.TemplateDeleted || again.Revision != deleted.Revision {
+	if err != nil || again.Status != templatesdomain.StatusDeleted || again.Revision != deleted.Revision {
 		t.Fatalf("idempotent delete=%+v err=%v", again, err)
 	}
 }
 
 type templateMemoryRepository struct {
 	writes   int
-	template integration.IntegrationTemplate
+	template templatesdomain.Template
 }
 
-func (r *templateMemoryRepository) Put(value integration.IntegrationTemplate, expected uint64) (integration.IntegrationTemplate, uint64, error) {
+func (r *templateMemoryRepository) Put(value templatesdomain.Template, expected uint64) (templatesdomain.Template, uint64, error) {
 	r.writes++
 	if expected != 0 {
-		return integration.IntegrationTemplate{}, 0, ErrRevisionConflict
+		return templatesdomain.Template{}, 0, ErrRevisionConflict
 	}
 	value.Revision = 1
 	r.template = value
@@ -106,17 +109,17 @@ func (*templateMemoryRepository) Snapshot() (Snapshot, error) {
 }
 
 type templateLifecycleMemoryRepository struct {
-	templates map[string]integration.IntegrationTemplate
+	templates map[string]templatesdomain.Template
 	revision  uint64
 }
 
-func (r *templateLifecycleMemoryRepository) Put(value integration.IntegrationTemplate, expected uint64) (integration.IntegrationTemplate, uint64, error) {
+func (r *templateLifecycleMemoryRepository) Put(value templatesdomain.Template, expected uint64) (templatesdomain.Template, uint64, error) {
 	current, exists := r.templates[value.ID]
 	if exists && current.Revision != expected || !exists && expected != 0 {
-		return integration.IntegrationTemplate{}, 0, ErrRevisionConflict
+		return templatesdomain.Template{}, 0, ErrRevisionConflict
 	}
-	if exists && current.Status == integration.TemplateDeleted && value.Status != integration.TemplateDeleted {
-		return integration.IntegrationTemplate{}, 0, ErrTemplateDeleted
+	if exists && current.Status == templatesdomain.StatusDeleted && value.Status != templatesdomain.StatusDeleted {
+		return templatesdomain.Template{}, 0, ErrTemplateDeleted
 	}
 	value.Revision = expected + 1
 	r.revision++
@@ -125,33 +128,33 @@ func (r *templateLifecycleMemoryRepository) Put(value integration.IntegrationTem
 }
 
 func (r *templateLifecycleMemoryRepository) Snapshot() (Snapshot, error) {
-	values := make([]integration.IntegrationTemplate, 0, len(r.templates))
+	values := make([]templatesdomain.Template, 0, len(r.templates))
 	for _, value := range r.templates {
 		values = append(values, value)
 	}
 	return Snapshot{Revision: r.revision, Templates: values}, nil
 }
 
-func templateTestDefinition() integration.IntegrationDefinition {
-	return integration.IntegrationDefinition{
+func templateTestDefinition() definitionsdomain.Definition {
+	return definitionsdomain.Definition{
 		ID: "redis", Version: "1.0.0",
 		Validate: func(map[string]any) error { return nil },
-		Contribute: func(map[string]any) (integration.Contribution, error) {
-			return integration.NewContribution(nil), nil
+		Contribute: func(map[string]any) (definitionsdomain.Contribution, error) {
+			return definitionsdomain.NewContribution(nil), nil
 		},
-		TemplateSettingRules: map[string]integration.TemplateSettingRule{
+		TemplateSettingRules: map[string]definitionsdomain.TemplateSettingRule{
 			"endpoint": {Type: "string", Description: "Target endpoint", Required: true, AllowResourceBinding: true},
 		},
 	}
 }
 
-func templateTestValue() integration.IntegrationTemplate {
-	return integration.IntegrationTemplate{
+func templateTestValue() templatesdomain.Template {
+	return templatesdomain.Template{
 		ID: "redis-default", DefinitionID: "redis", DefinitionVersion: "1.0.0",
-		Owner: integration.TemplateOwnerLocal, Revision: 1, Status: integration.TemplateEnabled,
+		Owner: desiredstate.TemplateOwnerLocal, Revision: 1, Status: templatesdomain.StatusEnabled,
 		Settings: map[string]any{},
-		Bindings: []integration.TemplateSettingBinding{{Target: "endpoint", Source: integration.TemplateBindingSource{
-			Kind: integration.TemplateSourceEndpoint, EndpointScope: "host", EndpointProtocol: "tcp", EndpointProvenance: "published_port",
+		Bindings: []templatesdomain.SettingBinding{{Target: "endpoint", Source: templatesdomain.BindingSource{
+			Kind: templatesdomain.SourceEndpoint, EndpointScope: "host", EndpointProtocol: "tcp", EndpointProvenance: "published_port",
 		}}},
 	}
 }
