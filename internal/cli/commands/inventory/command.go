@@ -16,7 +16,52 @@ import (
 	domain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
 	profilesapplication "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/application"
 	profilesdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
+	"github.com/spf13/cobra"
 )
+
+// NewCommand builds the existing Inventory command group and forwards each
+// operation's unchanged argument path, context, streams, and exit code.
+func NewCommand(
+	dispatch func(context.Context, []string, io.Writer, io.Writer) int,
+	setExitCode func(int),
+) *cobra.Command {
+	group := &cobra.Command{
+		Use:                "inventory",
+		Short:              "Existing inventory commands",
+		DisableFlagParsing: true,
+		Run: func(command *cobra.Command, args []string) {
+			if hasHelpArgument(args) {
+				_ = command.Help()
+				return
+			}
+			setExitCode(dispatch(command.Context(), append([]string{"inventory"}, args...), command.OutOrStdout(), command.ErrOrStderr()))
+		},
+	}
+	for _, operation := range []string{"list", "inspect", "status"} {
+		legacyOperation := operation
+		group.AddCommand(&cobra.Command{
+			Use:                legacyOperation,
+			DisableFlagParsing: true,
+			Run: func(command *cobra.Command, args []string) {
+				if hasHelpArgument(args) {
+					_ = command.Help()
+					return
+				}
+				setExitCode(dispatch(command.Context(), append([]string{"inventory", legacyOperation}, args...), command.OutOrStdout(), command.ErrOrStderr()))
+			},
+		})
+	}
+	return group
+}
+
+func hasHelpArgument(args []string) bool {
+	for _, arg := range args {
+		if arg == "--help" || arg == "-h" {
+			return true
+		}
+	}
+	return false
+}
 
 // Dependencies provide the Inventory read and cross-context evidence required
 // by the command. Implementations are supplied at executable composition.

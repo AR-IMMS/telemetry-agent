@@ -5,6 +5,7 @@ import (
 	"io"
 
 	dependencycommands "github.com/ar-imms/telemetry-agent/internal/cli/commands/dependency"
+	inventorycommands "github.com/ar-imms/telemetry-agent/internal/cli/commands/inventory"
 	monitoringcommands "github.com/ar-imms/telemetry-agent/internal/cli/commands/monitoring"
 	"github.com/spf13/cobra"
 )
@@ -67,52 +68,14 @@ func newRootCommand(dispatch Dispatch, stdout, stderr io.Writer, rootHelp func(i
 	root.AddCommand(dependencycommands.NewCommand(dispatch, func(code int) {
 		*exitCode = code
 	}))
-	root.AddCommand(newLegacyOperationsCommand("inventory", []string{
-		"list", "inspect", "status",
-	}, dispatch, exitCode))
+	root.AddCommand(inventorycommands.NewCommand(dispatch, func(code int) {
+		*exitCode = code
+	}))
 	root.AddCommand(newLegacyCommand("service", true, dispatch, exitCode))
 	root.AddCommand(monitoringcommands.NewCommand(dispatch, func(code int) {
 		*exitCode = code
 	}))
 	return root
-}
-
-func newLegacyOperationsCommand(name string, operations []string, dispatch Dispatch, exitCode *int) *cobra.Command {
-	group := &cobra.Command{
-		Use:                name,
-		Short:              "Existing " + name + " commands",
-		DisableFlagParsing: true,
-		Run: func(command *cobra.Command, args []string) {
-			if hasHelpArgument(args) {
-				_ = command.Help()
-				return
-			}
-			*exitCode = dispatch(command.Context(), append([]string{name}, args...), command.OutOrStdout(), command.ErrOrStderr())
-		},
-	}
-	for _, operation := range operations {
-		group.AddCommand(&cobra.Command{
-			Use:                operation,
-			DisableFlagParsing: true,
-			Run: func(command *cobra.Command, args []string) {
-				if hasHelpArgument(args) {
-					_ = command.Help()
-					return
-				}
-				*exitCode = dispatch(command.Context(), append([]string{name, operation}, args...), command.OutOrStdout(), command.ErrOrStderr())
-			},
-		})
-	}
-	return group
-}
-
-func hasHelpArgument(args []string) bool {
-	for _, arg := range args {
-		if arg == "--help" || arg == "-h" {
-			return true
-		}
-	}
-	return false
 }
 
 func newLegacyCommand(name string, hidden bool, dispatch Dispatch, exitCode *int) *cobra.Command {
