@@ -9,11 +9,10 @@ import (
 	materializationdomain "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/domain"
 	templatesconfigapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	matchingdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/domain"
 	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
-	templatesapp "github.com/ar-imms/telemetry-agent/internal/monitoring/templates/application"
+	templatesmonitoringapp "github.com/ar-imms/telemetry-agent/internal/monitoring/templates/application"
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 	"log"
@@ -29,7 +28,7 @@ type runtimeTemplateMaterializer struct {
 	templates        templatesconfigapp.Repository
 	desired          desiredstateapp.Repository
 	service          materializationapp.Service
-	matcher          integration.Matcher
+	matcher          templatesmonitoringapp.Evaluator
 	nativeMonitoring bool
 	nativeProfiles   monitoringdomain.Registry
 }
@@ -49,9 +48,9 @@ func newRuntimeTemplateMaterializer(statePath string, publisher ...events.Publis
 		return runtimeTemplateMaterializer{}, err
 	}
 	platform := identity.PlatformInfo{OS: runtime.GOOS, Architecture: runtime.GOARCH}
-	var assessor integration.CapabilityAssessor
+	var assessor matchingdomain.CapabilityAssessor
 	if catalog, catalogErr := collectorruntime.StaticCatalog(platform); catalogErr == nil {
-		assessor = integration.NewCatalogCapabilityAssessor(catalog, platform.OS, platform.OS+"/"+platform.Architecture)
+		assessor = matchingdomain.NewCatalogCapabilityAssessor(catalog, platform.OS, platform.OS+"/"+platform.Architecture)
 	}
 	materializationRepository := store.MaterializationRepository()
 	if len(publisher) > 0 && publisher[0] != nil {
@@ -64,7 +63,7 @@ func newRuntimeTemplateMaterializer(statePath string, publisher ...events.Publis
 	return runtimeTemplateMaterializer{
 		inventory: store.InventoryRepository(), templates: store.TemplateRepository(), desired: store.IntegrationRepository(),
 		service:          materializationapp.NewService(materializationRepository),
-		matcher:          integration.NewMatcher(registry, assessor),
+		matcher:          templatesmonitoringapp.NewEvaluator(registry, assessor),
 		nativeMonitoring: len(nativeLayers) > 0, nativeProfiles: profiles,
 	}, nil
 }
@@ -98,13 +97,17 @@ func (r runtimeTemplateMaterializer) Refresh(ctx context.Context) error {
 			}
 			matchSnapshot.Resources = filtered
 		}
-		matches, err := r.matcher.MatchTemplates(matchSnapshot, templates.Templates)
+		monitoringTemplates, err := monitoringTemplateInputs(templates.Templates)
+		if err != nil {
+			return fmt.Errorf("project Configuration Templates for Monitoring evaluation: %w", err)
+		}
+		matches, err := r.matcher.MatchTemplates(matchSnapshot, monitoringTemplates)
 		if err != nil {
 			return fmt.Errorf("match Templates against inventory: %w", err)
 		}
 		plan, err := materializationapp.BuildPlan(materializationapp.Input{
 			InventoryRevision: inventory.Revision, InventoryWriteRevision: inventory.WriteRevision,
-			Templates: templates, Desired: desired, Resources: matchSnapshot.Resources, Matches: materializationMatchReport(matches),
+			Templates: templates, Desired: desired, Resources: matchSnapshot.Resources, Matches: matches,
 			StaleAfter: inventoryctx.DefaultPolicy().StaleAfter,
 		})
 		if err != nil {
@@ -138,31 +141,4 @@ func logMaterializationDiagnostics(diagnostics []materializationdomain.Diagnosti
 	for _, code := range codes {
 		log.Printf("Template materialization skipped candidates code=%s count=%d", code, counts[code])
 	}
-}
-
-func materializationMatchReport(report integration.TemplateMatchReport) templatesapp.TemplateMatchReport {
-	converted := templatesapp.TemplateMatchReport{
-		InventoryRevision: report.InventoryRevision,
-		EvaluatedAt:       report.EvaluatedAt,
-		Results:           make([]templatesapp.TemplateMatchResult, 0, len(report.Results)),
-	}
-	for _, result := range report.Results {
-		resource := matchingdomain.ResourceIdentity{Provider: result.Resource.Provider, ProviderInstance: result.Resource.ProviderInstance, ResourceID: result.Resource.ResourceID}
-		current := templatesapp.TemplateMatchResult{
-			TemplateID: result.TemplateID, TemplateOwner: string(result.TemplateOwner), TemplateRevision: result.TemplateRevision,
-			Resource: resource, DefinitionID: result.DefinitionID, DefinitionVersion: result.DefinitionVersion,
-			MatchStatus: matchingdomain.MatchStatus(result.MatchStatus), ResolutionStatus: matchingdomain.ResolutionStatus(result.ResolutionStatus),
-			CapabilityStatus: matchingdomain.CapabilityStatus(result.CapabilityStatus), Capability: result.Capability,
-			Applicable: result.Applicable, Conflict: result.Conflict, Materializable: result.Materializable,
-			Candidate: result.Candidate, Diagnostics: make([]matchingdomain.MatchDiagnostic, 0, len(result.Diagnostics)),
-		}
-		if result.Instance != nil {
-			current.Settings = result.Instance.Configuration
-		}
-		for _, diagnostic := range result.Diagnostics {
-			current.Diagnostics = append(current.Diagnostics, matchingdomain.MatchDiagnostic{Code: diagnostic.Code})
-		}
-		converted.Results = append(converted.Results, current)
-	}
-	return converted
 }

@@ -221,11 +221,17 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 type desiredStateResolverAdapter struct{ resolver definitionapp.Resolver }
 
 func (a desiredStateResolverAdapter) Resolve(instance desiredstatedomain.Instance) (desiredstatedomain.Instance, error) {
+	resolved, _, err := a.ResolveWithContribution(instance)
+	return resolved, err
+}
+
+// ResolveWithContribution validates desired state and returns its Monitoring result for Runtime composition.
+func (a desiredStateResolverAdapter) ResolveWithContribution(instance desiredstatedomain.Instance) (desiredstatedomain.Instance, definitionsdomain.Contribution, error) {
 	if instance.Source == "" {
 		instance.Source = desiredstatedomain.SourceLocal
 	}
 	if err := instance.Validate(); err != nil {
-		return desiredstatedomain.Instance{}, err
+		return desiredstatedomain.Instance{}, definitionsdomain.Contribution{}, err
 	}
 	resolved, err := a.resolver.Resolve(definitionapp.ResolveInput{
 		DefinitionID: instance.DefinitionID, Version: instance.DefinitionVersion,
@@ -233,16 +239,16 @@ func (a desiredStateResolverAdapter) Resolve(instance desiredstatedomain.Instanc
 	})
 	if err != nil {
 		if errors.Is(err, definitionsdomain.ErrUnknownDefinition) || errors.Is(err, definitionsdomain.ErrInvalidContribution) {
-			return desiredstatedomain.Instance{}, err
+			return desiredstatedomain.Instance{}, definitionsdomain.Contribution{}, err
 		}
-		return desiredstatedomain.Instance{}, fmt.Errorf("%w: %v", desiredstatedomain.ErrInvalidInstance, err)
+		return desiredstatedomain.Instance{}, definitionsdomain.Contribution{}, fmt.Errorf("%w: %v", desiredstatedomain.ErrInvalidInstance, err)
 	}
 	instance.Configuration = resolved.Settings
 	if instance.Binding != nil {
 		binding := *instance.Binding
 		instance.Binding = &binding
 	}
-	return instance, nil
+	return instance, resolved.Contribution, nil
 }
 
 func usageIntegration(w io.Writer, message string) int {

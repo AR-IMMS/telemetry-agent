@@ -15,7 +15,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	installationapp "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
 
-	"github.com/ar-imms/telemetry-agent/internal/integration"
+	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	definitionsdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
 	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
@@ -213,20 +213,20 @@ func (i nativeOwnershipInventory) Snapshot() (inventoryctx.InventorySnapshot, er
 
 type nativeOwnershipDelegate struct {
 	calls        int
-	contribution integration.Contribution
+	contribution definitionsdomain.Contribution
 }
 
-func (d *nativeOwnershipDelegate) Resolve(instance integration.IntegrationInstance) (definitionsdomain.Contribution, error) {
+func (d *nativeOwnershipDelegate) ResolveWithContribution(instance desiredstatedomain.Instance) (desiredstatedomain.Instance, definitionsdomain.Contribution, error) {
 	d.calls++
-	return d.contribution, nil
+	return instance, d.contribution, nil
 }
 
 func TestNativeOwnershipResolverDelegatesExactlyOneReceiverOwner(t *testing.T) {
-	intent, err := integration.NewComponentIntent("redis", map[string]any{"endpoint": "127.0.0.1:16379"})
+	intent, err := definitionsdomain.NewComponentIntent("redis", map[string]any{"endpoint": "127.0.0.1:16379"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	delegate := &nativeOwnershipDelegate{contribution: integration.NewContribution([]integration.ComponentIntent{intent})}
+	delegate := &nativeOwnershipDelegate{contribution: definitionsdomain.NewContribution([]definitionsdomain.ComponentIntent{intent})}
 	resource := inventoryctx.Resource{
 		Key: inventoryctx.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-a"},
 		Attributes: map[string]string{
@@ -247,7 +247,7 @@ func TestNativeOwnershipResolverDelegatesExactlyOneReceiverOwner(t *testing.T) {
 }
 
 func TestNativeOwnershipResolverKeepsLegacyAndUnmatchedTargetsAgentOwned(t *testing.T) {
-	intent, err := integration.NewComponentIntent("redis", map[string]any{"endpoint": "127.0.0.1:16379"})
+	intent, err := definitionsdomain.NewComponentIntent("redis", map[string]any{"endpoint": "127.0.0.1:16379"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +256,7 @@ func TestNativeOwnershipResolverKeepsLegacyAndUnmatchedTargetsAgentOwned(t *test
 		"different target": {Key: inventoryctx.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-b"}, Attributes: map[string]string{"label.ar-imms.monitoring.enabled": "true", "label.ar-imms.monitoring.profile": "redis"}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			delegate := &nativeOwnershipDelegate{contribution: integration.NewContribution([]integration.ComponentIntent{intent})}
+			delegate := &nativeOwnershipDelegate{contribution: definitionsdomain.NewContribution([]definitionsdomain.ComponentIntent{intent})}
 			resolver := nativeOwnershipResolver{
 				delegate: delegate, inventory: nativeOwnershipInventory{snapshot: inventoryctx.InventorySnapshot{Resources: []inventoryctx.Resource{resource}}},
 				profiles: monitoringdomain.DefaultRegistry(), enabled: true,
@@ -286,10 +286,10 @@ func TestNativeOwnershipResolverFailsClosedWhenInventoryCannotBeRead(t *testing.
 	}
 }
 
-func nativeBoundRedisInstance(resourceID string) integration.IntegrationInstance {
-	return integration.IntegrationInstance{
+func nativeBoundRedisInstance(resourceID string) desiredstatedomain.Instance {
+	return desiredstatedomain.Instance{
 		ID: "redis-instance", DefinitionID: "redis", DefinitionVersion: "1.0.0",
 		Configuration: map[string]any{"endpoint": "127.0.0.1:16379"}, Enabled: true,
-		Binding: &integration.ResourceBinding{Provider: "docker", ProviderInstance: "local", ResourceID: resourceID},
+		Binding: &desiredstatedomain.ResourceBinding{Provider: "docker", ProviderInstance: "local", ResourceID: resourceID},
 	}
 }

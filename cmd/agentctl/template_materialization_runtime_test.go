@@ -3,11 +3,16 @@ package main
 import (
 	"context"
 	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
+	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	materializationapp "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/application"
+	materializationdomain "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/domain"
 	templatesapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
+	templatesconfigdomain "github.com/ar-imms/telemetry-agent/internal/configuration/templates/domain"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	matchingdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/domain"
+	definitionapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
 	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
+	templatesmonitoringapp "github.com/ar-imms/telemetry-agent/internal/monitoring/templates/application"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"path/filepath"
 	"testing"
@@ -16,8 +21,8 @@ import (
 
 type supportedTemplateCapability struct{}
 
-func (supportedTemplateCapability) Assess(required []string) (integration.CapabilityAssessment, error) {
-	return integration.CapabilityAssessment{Status: integration.CapabilitySupported, Platform: "windows/amd64", ArtifactVersion: "test", ManifestVersion: "test", Required: required}, nil
+func (supportedTemplateCapability) Assess(required []string) (matchingdomain.CapabilityAssessment, error) {
+	return matchingdomain.CapabilityAssessment{Status: matchingdomain.CapabilitySupported, Platform: "windows/amd64", ArtifactVersion: "test", ManifestVersion: "test", Required: required}, nil
 }
 
 type mutableTemplateProvider struct {
@@ -53,7 +58,7 @@ func TestRuntimeTemplateMaterializerProjectsStableInstancesAndNoOps(t *testing.T
 	materializer := runtimeTemplateMaterializer{
 		inventory: store.InventoryRepository(), templates: templates, desired: store.IntegrationRepository(),
 		service: materializationapp.NewService(store.MaterializationRepository()),
-		matcher: integration.NewMatcher(registry, supportedTemplateCapability{}),
+		matcher: templatesmonitoringapp.NewEvaluator(registry, supportedTemplateCapability{}),
 	}
 	if err := materializer.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
@@ -102,7 +107,7 @@ func TestRuntimeTemplateMaterializerProjectsStableInstancesAndNoOps(t *testing.T
 		t.Fatalf("disabled desired snapshot=%+v err=%v", disabled, err)
 	}
 	for _, instance := range disabled.Instances {
-		if instance.Enabled || instance.Source != integration.SourceTemplate {
+		if instance.Enabled || instance.Source != desiredstatedomain.SourceTemplate {
 			t.Fatalf("disabled Template did not suspend only generated instances: %+v", instance)
 		}
 	}
@@ -120,7 +125,7 @@ func TestRuntimeTemplateMaterializerProjectsStableInstancesAndNoOps(t *testing.T
 		t.Fatalf("re-enabled desired snapshot=%+v err=%v", reenabled, err)
 	}
 	for _, instance := range reenabled.Instances {
-		if !instance.Enabled || instance.Source != integration.SourceTemplate {
+		if !instance.Enabled || instance.Source != desiredstatedomain.SourceTemplate {
 			t.Fatalf("re-enabled Template did not restore generated instances: %+v", instance)
 		}
 	}
@@ -145,7 +150,7 @@ func TestNativeRedisProfileDoesNotCreateAgentInstancesDuringContainerChurn(t *te
 	materializer := runtimeTemplateMaterializer{
 		inventory: store.InventoryRepository(), templates: templates, desired: store.IntegrationRepository(),
 		service:          materializationapp.NewService(store.MaterializationRepository()),
-		matcher:          integration.NewMatcher(registry, supportedTemplateCapability{}),
+		matcher:          templatesmonitoringapp.NewEvaluator(registry, supportedTemplateCapability{}),
 		nativeMonitoring: true, nativeProfiles: monitoringdomain.DefaultRegistry(),
 	}
 	for _, ids := range [][]string{{"container-a"}, {"container-a", "container-b"}, {"container-b"}, {"container-a-recreated", "container-b"}} {
@@ -207,14 +212,14 @@ func TestRuntimeTemplateUpdateChangesGeneratedInstancesButPreservesManualState(t
 	materializer := runtimeTemplateMaterializer{
 		inventory: store.InventoryRepository(), templates: templates, desired: desiredRepository,
 		service: materializationapp.NewService(store.MaterializationRepository()),
-		matcher: integration.NewMatcher(registry, supportedTemplateCapability{}),
+		matcher: templatesmonitoringapp.NewEvaluator(registry, supportedTemplateCapability{}),
 	}
 	if err := materializer.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	manual, err := (integration.NewResolver(registry)).Resolve(integration.IntegrationInstance{
+	manual, err := (desiredStateResolverAdapter{resolver: definitionapp.NewResolver(registry)}).Resolve(desiredstatedomain.Instance{
 		ID: "manual-redis", DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true,
-		Configuration: map[string]any{"endpoint": "192.0.2.10:6379"}, Source: integration.SourceLocal,
+		Configuration: map[string]any{"endpoint": "192.0.2.10:6379"}, Source: desiredstatedomain.SourceLocal,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -223,7 +228,7 @@ func TestRuntimeTemplateUpdateChangesGeneratedInstancesButPreservesManualState(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	storedManual, _, err := desiredRepository.Put(manual.Instance, 0)
+	storedManual, _, err := desiredRepository.Put(manual, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,10 +256,10 @@ func TestRuntimeTemplateUpdateChangesGeneratedInstancesButPreservesManualState(t
 	manualPreserved := false
 	for _, instance := range afterUpdate.Instances {
 		if instance.ID == storedManual.ID {
-			manualPreserved = instance.Revision == storedManual.Revision && instance.Source == integration.SourceLocal && instance.Configuration["endpoint"] == "192.0.2.10:6379"
+			manualPreserved = instance.Revision == storedManual.Revision && instance.Source == desiredstatedomain.SourceLocal && instance.Configuration["endpoint"] == "192.0.2.10:6379"
 			continue
 		}
-		if instance.Source != integration.SourceTemplate || instance.TemplateID != template.ID || instance.Configuration["collection_interval"] != "15s" || instance.Revision != 2 {
+		if instance.Source != desiredstatedomain.SourceTemplate || instance.TemplateID != template.ID || instance.Configuration["collection_interval"] != "15s" || instance.Revision != 2 {
 			t.Fatalf("Template update did not update only its generated instance: %+v", instance)
 		}
 	}
@@ -283,7 +288,7 @@ func TestRuntimeTemplateMaterializerPreservesFailureAndTracksResourceLifecycle(t
 	materializer := runtimeTemplateMaterializer{
 		inventory: store.InventoryRepository(), templates: templates, desired: desiredRepository,
 		service: materializationapp.NewService(store.MaterializationRepository()),
-		matcher: integration.NewMatcher(registry, supportedTemplateCapability{}),
+		matcher: templatesmonitoringapp.NewEvaluator(registry, supportedTemplateCapability{}),
 	}
 	refreshAfterSuccessfulCycle := func() {
 		t.Helper()
@@ -343,7 +348,7 @@ func TestRuntimeTemplateMaterializerPreservesFailureAndTracksResourceLifecycle(t
 	provider.snapshot = redisProviderSnapshot("container-b")
 	refreshAfterSuccessfulCycle()
 	afterFirstReplacementMiss := readDesired()
-	newID, err := integration.GeneratedInstanceID(integration.TemplateOwnerLocal, "redis-auto", integration.ResourceIdentity{
+	newID, err := materializationdomain.GeneratedInstanceID(desiredstatedomain.TemplateOwnerLocal, "redis-auto", desiredstatedomain.ResourceBinding{
 		Provider: "docker", ProviderInstance: "local", ResourceID: "container-b",
 	}, "redis")
 	if err != nil {
@@ -398,12 +403,12 @@ func TestRuntimeTemplateMaterializerPreservesFailureAndTracksResourceLifecycle(t
 	}
 }
 
-func redisRuntimeTemplate() integration.IntegrationTemplate {
-	return integration.IntegrationTemplate{
-		ID: "redis-auto", DefinitionID: "redis", DefinitionVersion: "1.0.0", Owner: integration.TemplateOwnerLocal,
-		Revision: 1, Status: integration.TemplateEnabled,
-		Selector: &integration.MatchSelector{ResourceKinds: []string{"container"}, ExactAttributes: map[string]string{"container.image.repository": "docker.io/library/redis"}},
-		Bindings: []integration.TemplateSettingBinding{{Target: "endpoint", Source: integration.TemplateBindingSource{Kind: integration.TemplateSourceEndpoint, EndpointScope: "host", EndpointProtocol: "tcp", EndpointProvenance: "published_port"}}},
+func redisRuntimeTemplate() templatesconfigdomain.Template {
+	return templatesconfigdomain.Template{
+		ID: "redis-auto", DefinitionID: "redis", DefinitionVersion: "1.0.0", Owner: desiredstatedomain.TemplateOwnerLocal,
+		Revision: 1, Status: templatesconfigdomain.StatusEnabled,
+		Selector: &matchingdomain.MatchSelector{ResourceKinds: []string{"container"}, ExactAttributes: map[string]string{"container.image.repository": "docker.io/library/redis"}},
+		Bindings: []templatesconfigdomain.SettingBinding{{Target: "endpoint", Source: templatesconfigdomain.BindingSource{Kind: templatesconfigdomain.SourceEndpoint, EndpointScope: "host", EndpointProtocol: "tcp", EndpointProvenance: "published_port"}}},
 	}
 }
 

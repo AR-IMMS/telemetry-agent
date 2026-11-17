@@ -12,7 +12,7 @@ import (
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
+	definitionapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
 	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
@@ -171,7 +171,7 @@ func newRuntimeReconciliationController(statePath string, runner bootstrap.Comma
 	if nativeErr != nil {
 		return nil, nil, fmt.Errorf("resolve native monitoring ownership: %w", nativeErr)
 	}
-	resolver := nativeOwnershipResolver{delegate: integrationContributionResolver{resolver: integration.NewResolver(registry)}, inventory: sqliteStore.InventoryRepository(), profiles: profiles, enabled: len(nativeLayers) > 0}
+	resolver := nativeOwnershipResolver{delegate: desiredStateResolverAdapter{resolver: definitionapp.NewResolver(registry)}, inventory: sqliteStore.InventoryRepository(), profiles: profiles, enabled: len(nativeLayers) > 0}
 	options := agentlifecycle.CollectorConfigurationOptions{Platform: baseline.platform, Catalog: baseline.dependencies, Layers: baseline.layers, AdditionalBaselineInputs: additionalBaselineInputs, BinaryPath: state.Collector.BinaryPath, ConfigPath: state.Collector.ConfigPath, ValidationEnvironment: []string{"OTEL_GATEWAY_ENDPOINT=" + state.Collector.GatewayEndpoint}, Runner: runner, GatewayRepository: baseline.gateways}
 	attempts := agentstate.NewSQLiteAttemptsFromStore(sqliteStore)
 	controller := &reconciliation.Controller{Desired: sqliteStore.IntegrationRepository(), Baseline: baseline, Resolver: resolver, Compiler: runtimeCandidateCompiler{compiler: collectorruntime.NewCompiler(collectorCatalog)}, Validator: func(ctx context.Context, candidate runtimecontracts.Candidate) error {

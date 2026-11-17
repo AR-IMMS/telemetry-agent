@@ -17,6 +17,8 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
+	matchingdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/domain"
+	templatesmonitoringapp "github.com/ar-imms/telemetry-agent/internal/monitoring/templates/application"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 )
 
@@ -93,7 +95,7 @@ func TestLiveDockerTemplateAutoMaterializesDesiredInstance(t *testing.T) {
 	materializer := runtimeTemplateMaterializer{
 		inventory: store.InventoryRepository(), templates: templateRepository, desired: store.IntegrationRepository(),
 		service: materializationapp.NewService(store.MaterializationRepository()),
-		matcher: integration.NewMatcher(registry, integration.NewCatalogCapabilityAssessor(catalog, runtime.GOOS, runtime.GOOS+"/"+runtime.GOARCH)),
+		matcher: templatesmonitoringapp.NewEvaluator(registry, matchingdomain.NewCatalogCapabilityAssessor(catalog, runtime.GOOS, runtime.GOOS+"/"+runtime.GOARCH)),
 	}
 	if err := materializer.Refresh(context.Background()); err != nil {
 		t.Fatal(err)

@@ -3,9 +3,9 @@ package main
 import (
 	"errors"
 	"fmt"
+	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	definitionsdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
 	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
@@ -92,22 +92,13 @@ type nativeOwnershipResolver struct {
 }
 
 type contributionResolver interface {
-	Resolve(integration.IntegrationInstance) (definitionsdomain.Contribution, error)
+	ResolveWithContribution(desiredstatedomain.Instance) (desiredstatedomain.Instance, definitionsdomain.Contribution, error)
 }
 
-type integrationContributionResolver struct{ resolver integration.Resolver }
-
-func (r integrationContributionResolver) Resolve(instance integration.IntegrationInstance) (definitionsdomain.Contribution, error) {
-	resolved, err := r.resolver.Resolve(instance)
-	if err != nil {
-		return definitionsdomain.Contribution{}, err
-	}
-	return resolved.Contribution, nil
-}
-
-func (r nativeOwnershipResolver) Resolve(instance integration.IntegrationInstance) (definitionsdomain.Contribution, error) {
+func (r nativeOwnershipResolver) Resolve(instance desiredstatedomain.Instance) (definitionsdomain.Contribution, error) {
 	if !r.enabled || instance.Binding == nil {
-		return r.delegate.Resolve(instance)
+		_, contribution, err := r.delegate.ResolveWithContribution(instance)
+		return contribution, err
 	}
 	snapshot, err := r.inventory.Snapshot()
 	if err != nil {
@@ -119,16 +110,17 @@ func (r nativeOwnershipResolver) Resolve(instance integration.IntegrationInstanc
 			continue
 		}
 		if profile, matched := r.profiles.Match(string(resource.Key.Provider), resource.Attributes); matched && profile.ID == instance.DefinitionID {
-			_, err := r.delegate.Resolve(instance)
+			_, _, err := r.delegate.ResolveWithContribution(instance)
 			if err != nil {
 				return definitionsdomain.Contribution{}, err
 			}
 			return definitionsdomain.Contribution{}, nil
 		}
 	}
-	return r.delegate.Resolve(instance)
+	_, contribution, err := r.delegate.ResolveWithContribution(instance)
+	return contribution, err
 }
 
 var _ interface {
-	Resolve(integration.IntegrationInstance) (definitionsdomain.Contribution, error)
+	Resolve(desiredstatedomain.Instance) (definitionsdomain.Contribution, error)
 } = nativeOwnershipResolver{}
