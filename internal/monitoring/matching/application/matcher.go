@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions"
+	definitions "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
 	"net/netip"
 	"sort"
 	"strings"

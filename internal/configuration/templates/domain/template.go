@@ -7,7 +7,7 @@ import (
 
 	configurationdomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	matchingdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/domain"
-	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions"
+	definitions "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
 )
 
 var (

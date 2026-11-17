@@ -9,7 +9,7 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	templatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/templates/domain"
-	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions"
+	definitions "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
 	templatesapp "github.com/ar-imms/telemetry-agent/internal/monitoring/templates/application"
 )
 

@@ -1,11 +1,13 @@
-package definitions
+package application
 
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
 )
 
-// ResolveInput is the configuration projection Monitoring needs to validate and resolve a definition.
+// ResolveInput is the narrow settings projection required to resolve a profile definition.
 type ResolveInput struct {
 	DefinitionID string
 	Version      string
@@ -18,11 +20,11 @@ type Resolved struct {
 	DefinitionID string
 	Version      string
 	Settings     map[string]any
-	Contribution Contribution
+	Contribution domain.Contribution
 }
 
 // Intents returns a defensive copy of the resolved component intents.
-func (r Resolved) Intents() []ComponentIntent { return r.Contribution.Intents() }
+func (r Resolved) Intents() []domain.ComponentIntent { return r.Contribution.Intents() }
 
 // Resolver validates a narrow settings projection and invokes the exact registered definition.
 type Resolver struct{ registry Registry }
@@ -38,20 +40,20 @@ func (r Resolver) Resolve(input ResolveInput) (Resolved, error) {
 	}
 	settings, err := cloneSettings(input.Settings)
 	if err != nil {
-		return Resolved{}, fmt.Errorf("%w: copy settings: %v", ErrInvalidDefinition, err)
+		return Resolved{}, fmt.Errorf("%w: copy settings: %v", domain.ErrInvalidDefinition, err)
 	}
 	if err := definition.Validate(settings); err != nil {
-		return Resolved{}, fmt.Errorf("%w: %v", ErrInvalidDefinition, err)
+		return Resolved{}, fmt.Errorf("%w: %v", domain.ErrInvalidDefinition, err)
 	}
-	resolved := Resolved{DefinitionID: definition.ID, Version: definition.Version, Settings: settings, Contribution: NewContribution(nil)}
+	resolved := Resolved{DefinitionID: definition.ID, Version: definition.Version, Settings: settings, Contribution: domain.NewContribution(nil)}
 	if !input.Enabled {
 		return resolved, nil
 	}
 	contribution, err := definition.Contribute(settings)
 	if err != nil {
-		return Resolved{}, fmt.Errorf("%w: %v", ErrInvalidContribution, err)
+		return Resolved{}, fmt.Errorf("%w: %v", domain.ErrInvalidContribution, err)
 	}
-	resolved.Contribution = NewContribution(contribution.Intents())
+	resolved.Contribution = domain.NewContribution(contribution.Intents())
 	return resolved, nil
 }
 
@@ -61,18 +63,6 @@ func cloneSettings(settings map[string]any) (map[string]any, error) {
 		return nil, err
 	}
 	var copied map[string]any
-	if err := json.Unmarshal(encoded, &copied); err != nil {
-		return nil, err
-	}
-	return copied, nil
-}
-
-func cloneJSONValue(value any) (any, error) {
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		return nil, err
-	}
-	var copied any
 	if err := json.Unmarshal(encoded, &copied); err != nil {
 		return nil, err
 	}

@@ -11,7 +11,8 @@ import (
 
 	matchingapp "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/application"
 	matchingdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/domain"
-	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions"
+	definitionapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
+	definitions "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
 	templatedomain "github.com/ar-imms/telemetry-agent/internal/monitoring/templates/domain"
 )
 
@@ -49,12 +50,12 @@ type TemplateMatchReport struct {
 // Evaluator matches Configuration-owned Templates against normalized Inventory
 // evidence and Monitoring definitions. It never creates desired state or persists results.
 type Evaluator struct {
-	registry   definitions.Registry
+	registry   definitionapp.Registry
 	capability matchingdomain.CapabilityAssessor
 }
 
 // NewEvaluator creates a read-only Template evaluator over the exact-version profile registry.
-func NewEvaluator(registry definitions.Registry, capability matchingdomain.CapabilityAssessor) Evaluator {
+func NewEvaluator(registry definitionapp.Registry, capability matchingdomain.CapabilityAssessor) Evaluator {
 	return Evaluator{registry: registry, capability: capability}
 }
 

@@ -5,11 +5,12 @@ import (
 	"time"
 
 	matchingdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/domain"
-	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions"
+	definitionapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
+	definitions "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
 )
 
 func TestMatcherReturnsSettingsCandidateFromMonitoringOwnedDefinition(t *testing.T) {
-	registry, err := definitions.NewRegistry(definitions.Definition{
+	registry, err := definitionapp.NewRegistry(definitions.Definition{
 		ID: "sample", Version: "1.0.0",
 		Validate: func(settings map[string]any) error {
 			if settings["endpoint"] != "127.0.0.1:9000" {

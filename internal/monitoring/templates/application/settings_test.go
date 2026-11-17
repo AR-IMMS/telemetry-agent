@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	matchingdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/domain"
-	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions"
+	definitions "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
 	templatesdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/templates/domain"
 )
 

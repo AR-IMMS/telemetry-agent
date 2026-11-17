@@ -1,4 +1,4 @@
-package definitions
+package domain
 
 import (
 	"bytes"

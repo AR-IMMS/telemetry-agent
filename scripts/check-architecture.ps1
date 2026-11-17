@@ -181,6 +181,15 @@ try {
     }
     $configurationTemplateDomain = "$configurationTemplatesRoot/domain"
     $configurationTemplateApplication = "$configurationTemplatesRoot/application"
+    $monitoringDefinitionRoot = "$modulePath/internal/monitoring/profiles/definitions"
+    $monitoringDefinitionDomain = "$monitoringDefinitionRoot/domain"
+    $monitoringDefinitionApplication = "$monitoringDefinitionRoot/application"
+    foreach ($layer in @('domain', 'application')) {
+        $layerPath = Join-Path $repoRoot ("internal/monitoring/profiles/definitions/{0}" -f $layer)
+        if (-not (Test-Path -LiteralPath $layerPath -PathType Container)) {
+            $violations.Add("Monitoring definitions requires a real $layer layer under internal/monitoring/profiles/definitions")
+        }
+    }
     foreach ($line in $packageLines) {
         $parts = $line -split '\|', 2
         if ($parts.Count -ne 2) { continue }
@@ -189,7 +198,27 @@ try {
         if (-not [string]::IsNullOrWhiteSpace($parts[1])) {
             $imports = @($parts[1] -split ',' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
         }
-        if ($package -eq $monitoringDomain) {
+        if ($package -eq $monitoringDefinitionDomain) {
+            foreach ($imported in $imports) {
+                if ($imported.StartsWith("$monitoringDefinitionApplication", [StringComparison]::Ordinal) -or
+                    $imported.StartsWith("$modulePath/internal/configuration", [StringComparison]::Ordinal) -or
+                    $imported.StartsWith("$modulePath/internal/integration", [StringComparison]::Ordinal) -or
+                    $imported.StartsWith("$modulePath/internal/inventory", [StringComparison]::Ordinal) -or
+                    $imported.StartsWith("$modulePath/internal/runtime", [StringComparison]::Ordinal)) {
+                    $violations.Add("Monitoring definition domain must not depend on application, Configuration, compatibility, Inventory, or Runtime packages: $package -> $imported")
+                }
+            }
+        }
+        if ($package -eq $monitoringDefinitionApplication) {
+            foreach ($imported in $imports) {
+                if ($imported.StartsWith("$modulePath/internal/configuration/sqlite", [StringComparison]::Ordinal) -or
+                    $imported.StartsWith("$modulePath/internal/integration", [StringComparison]::Ordinal) -or
+                    $imported.StartsWith("$modulePath/internal/inventory", [StringComparison]::Ordinal) -or
+                    $imported.StartsWith("$modulePath/internal/runtime/collector/activation", [StringComparison]::Ordinal)) {
+                    $violations.Add("Monitoring definition application must use domain/evidence contracts, not compatibility, persistence, Inventory, or activation adapters: $package -> $imported")
+                }
+            }
+        }        if ($package -eq $monitoringDomain) {
             foreach ($imported in $imports) {
                 if ($imported.StartsWith("$modulePath/internal/inventory", [StringComparison]::Ordinal)) {
                     $violations.Add("Monitoring Profiles domain must translate Inventory evidence at the application boundary: $package -> $imported")

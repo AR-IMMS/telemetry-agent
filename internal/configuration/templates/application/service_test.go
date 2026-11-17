@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	domain "github.com/ar-imms/telemetry-agent/internal/configuration/templates/domain"
-	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions"
+	definitions "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
 )
 
 func TestServiceCreatesUpdatesAndTombstonesTemplateWithCAS(t *testing.T) {

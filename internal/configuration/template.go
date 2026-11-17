@@ -3,7 +3,7 @@ package configuration
 import (
 	templatesapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
-	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions"
+	definitionapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
 )
 
 var (
@@ -28,7 +28,7 @@ type TemplateRepository = templatesapp.Repository
 type TemplateService struct{ service templatesapp.Service }
 
 // NewTemplateService creates the local Template application service.
-func NewTemplateService(registry definitions.Registry, repository TemplateRepository) TemplateService {
+func NewTemplateService(registry definitionapp.Registry, repository TemplateRepository) TemplateService {
 	return TemplateService{service: templatesapp.NewService(registry, repository)}
 }
 

@@ -6,7 +6,8 @@ import (
 	"time"
 
 	matchingdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/domain"
-	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions"
+	definitionapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
+	definitions "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
 	templatesdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/templates/domain"
 )
 
@@ -116,7 +117,7 @@ func newTemplateEvaluator(t *testing.T, capability matchingdomain.CapabilityStat
 			"endpoint": {Type: "string", Description: "Target endpoint", Required: true, AllowResourceBinding: true},
 		},
 	}
-	registry, err := definitions.NewRegistry(definition)
+	registry, err := definitionapp.NewRegistry(definition)
 	if err != nil {
 		t.Fatal(err)
 	}

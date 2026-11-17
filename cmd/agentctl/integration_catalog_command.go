@@ -13,7 +13,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	matchingapp "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/application"
 	matchingdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/domain"
-	profiledefs "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions"
+	profiledefs "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 )
 

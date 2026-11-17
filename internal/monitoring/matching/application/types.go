@@ -2,11 +2,12 @@ package application
 
 import (
 	matchingdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/domain"
-	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions"
+	definitionapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
+	definitions "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
 )
 
 // Registry is the exact-version registry consumed by the matcher.
-type Registry = definitions.Registry
+type Registry = definitionapp.Registry
 
 // IntegrationDefinition is the validated definition evaluated by Monitoring.
 type IntegrationDefinition = definitions.Definition

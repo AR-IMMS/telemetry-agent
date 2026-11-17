@@ -5,7 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions"
+	definitionapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
+	definitions "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
 )
 
 // ResolvedInstance preserves the compatibility result shape used by existing Runtime callers.
@@ -41,7 +42,7 @@ func (r Resolver) Resolve(instance IntegrationInstance) (ResolvedInstance, error
 		binding := *instance.Binding
 		instance.Binding = &binding
 	}
-	resolved, err := definitions.NewResolver(r.registry).Resolve(definitions.ResolveInput{
+	resolved, err := definitionapp.NewResolver(r.registry).Resolve(definitionapp.ResolveInput{
 		DefinitionID: instance.DefinitionID, Version: instance.DefinitionVersion,
 		Enabled: instance.Enabled, Settings: instance.Configuration,
 	})
