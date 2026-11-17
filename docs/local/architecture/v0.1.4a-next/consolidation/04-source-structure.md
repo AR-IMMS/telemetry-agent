@@ -32,7 +32,9 @@ internal/
 │   │   └── sqlite/                             attempt repository; identity lookup in same transaction
 │   └── credentials/                            protected credential-store port and OS adapters
 ├── inventory/
-│   ├── observation/                            provider snapshots, normalization and completeness
+│   ├── observation/
+│   │   ├── domain/                             provider-neutral snapshots, normalization and absence invariants
+│   │   └── application/                        serialized discovery workflow and provider/repository ports
 │   ├── docker/                                 Docker API provider and Docker-specific evidence
 │   └── sqlite/                                 inventory-owned rows and snapshot transactions
 ├── monitoring/
@@ -194,9 +196,12 @@ These source types are currently shared or located outside their target owner. T
 
 | Capability and responsibility | Current source → intended package | Dependencies / invariants to preserve |
 |---|---|---|
-| Observation coordination and normalization | `discovery/{coordinator,types,normalize,reconcile}.go` → `inventory/observation` | Provider contract, Identity association and Monitoring read port; complete snapshots only, provider-scoped IDs, provenance, missing/history semantics. `reconcile.go` resource absence logic stays here; proposal projection does not. |
-| Docker discovery | `discovery/docker/provider.go` → `inventory/docker` | Docker API plus observation contract; labels/endpoints/network metadata remain evidence, incomplete or failed scans never delete inventory. |
+| Observation domain | `discovery/{types,normalize,reconcile}.go` → `inventory/observation/domain` | Provider-neutral identities, snapshot validation, sensitive-attribute filtering, deterministic ordering, freshness and complete-snapshot absence policy. No provider, persistence, or orchestration imports. |
+| Discovery application | `discovery/coordinator.go` → `inventory/observation/application` | Serialized provider cycles, bounded provider timeout, safe failure evidence, optimistic write retry, and explicit provider/repository ports; uses Inventory domain invariants and does not implement adapters. |
+| Docker discovery | `discovery/docker/provider.go` → `inventory/docker` | Docker API plus Inventory domain and discovery-provider contract; labels/endpoints/network metadata remain evidence, incomplete or failed scans never delete inventory. |
 | Inventory persistence | `discovery/sqlite/{store,inventory}.go` and `agentstate/sqlite_discovery.go`, `sqlite_inventory_schema.go` → `inventory/sqlite` | Central migration registration; atomic snapshot, completeness, write revision and change evidence. Preserve migrations 10–11. |
+
+**Current implementation note (PR-09.5h):** `internal/inventory/observation/domain` owns the provider-neutral models, normalization, freshness, and absence reconciliation. `internal/inventory/observation/application` owns the discovery coordinator and ports. Docker and SQLite adapters consume those owner packages directly; App Host and CLI discovery composition consume the application package. The root `internal/inventory` package is a temporary source-compatibility facade for remaining command, monitoring, configuration, and Agent-state callers. Retire it after production and test imports reach zero and the direct-import architecture guard passes; do not extend it with new behavior.
 
 #### Monitoring
 
