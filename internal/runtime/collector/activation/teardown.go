@@ -94,10 +94,7 @@ func (c teardownCoordinator) applyDependency(
 	}
 
 	if state.OwnsDependency(name) {
-		resources := append(
-			[]servicedomain.OwnedResource(nil),
-			dependency.Ownership.Resources...,
-		)
+		resources := state.OwnedDependencyResources(name)
 		if err := c.teardown(ctx, name, pending.Action, resources); err != nil {
 			return fmt.Errorf("teardown dependency %q: %w", name, err)
 		}

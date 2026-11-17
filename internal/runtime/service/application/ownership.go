@@ -54,6 +54,16 @@ func OwnsDependency(current OwnershipSnapshot, name string) bool {
 	return exists && record != nil && len(record.Resources) > 0
 }
 
+// DependencyResources returns a defensive copy of the resources owned by one
+// dependency, or nil when its ownership record is absent.
+func DependencyResources(current OwnershipSnapshot, name string) []servicedomain.OwnedResource {
+	record := current.Dependencies[normalizeName(name)]
+	if record == nil {
+		return nil
+	}
+	return append([]servicedomain.OwnedResource(nil), record.Resources...)
+}
+
 // ValidateAgentInstallation normalizes and validates the platform service and
 // concrete owned resources recorded for an installed Agent.
 func ValidateAgentInstallation(

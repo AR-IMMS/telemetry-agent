@@ -140,8 +140,8 @@ func (l managedDependencyLifecycle) Apply(
 		}
 
 		if !dependencyState.Enabled {
-			if dependencyState.Ownership == nil ||
-				len(dependencyState.Ownership.Resources) == 0 {
+			resources := state.OwnedDependencyResources(normalizedName)
+			if len(resources) == 0 {
 				return fmt.Errorf(
 					"dependency %q is disabled without Agent-owned resources; install it again",
 					name,
@@ -157,7 +157,7 @@ func (l managedDependencyLifecycle) Apply(
 			if err := l.enable(
 				ctx,
 				name,
-				dependencyState.Ownership.Resources,
+				resources,
 			); err != nil {
 				return fmt.Errorf(
 					"enable dependency %q: %w",

@@ -41,6 +41,20 @@ func TestRecordDependencyOwnershipRequiresExistingDependency(t *testing.T) {
 	}
 }
 
+func TestDependencyResourcesReturnsDefensiveCopy(t *testing.T) {
+	snapshot := OwnershipSnapshot{Dependencies: map[string]*servicedomain.OwnershipRecord{
+		"node-exporter": {Resources: []servicedomain.OwnedResource{{
+			Kind: "service", Identifier: "node-exporter",
+		}}},
+	}}
+
+	resources := DependencyResources(snapshot, " NODE-EXPORTER ")
+	resources[0].Identifier = "changed"
+	if got := snapshot.Dependencies["node-exporter"].Resources[0].Identifier; got != "node-exporter" {
+		t.Fatalf("DependencyResources() exposed stored resources: %q", got)
+	}
+}
+
 func TestValidateAgentInstallationNormalizesAndCopiesOwnership(t *testing.T) {
 	installation := servicedomain.AgentInstallation{
 		Platform:    " Windows ",

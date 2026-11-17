@@ -203,21 +203,21 @@ service:
 	if !state.Dependencies["windows-exporter"].Enabled {
 		t.Fatal("windows-exporter Enabled = false, want true")
 	}
-	ownership := state.Dependencies["windows-exporter"].Ownership
+	ownership := state.OwnedDependencyResources("windows-exporter")
 
-	if ownership == nil {
-		t.Fatal("windows-exporter Ownership = nil, want recorded resources")
+	if len(ownership) == 0 {
+		t.Fatal("windows-exporter ownership = empty, want recorded resources")
 	}
-	if len(ownership.Resources) != 2 {
+	if len(ownership) != 2 {
 		t.Fatalf(
 			"ownership resources = %#v, want two resources",
-			ownership.Resources,
+			ownership,
 		)
 	}
-	if ownership.Resources[0].Identifier != "windows_exporter" {
+	if ownership[0].Identifier != "windows_exporter" {
 		t.Fatalf(
 			"first owned resource = %#v, want windows_exporter service",
-			ownership.Resources[0],
+			ownership[0],
 		)
 	}
 	if state.DesiredGeneration != 1 {
@@ -548,9 +548,11 @@ service:
 		state.AppliedGeneration = 1
 		state.Dependencies = map[string]dependencydomain.DependencyState{
 			"windows-exporter": {
-				Enabled:   false,
-				Ownership: &servicedomain.OwnershipRecord{Resources: ownership},
+				Enabled: false,
 			},
+		}
+		if err := state.RecordOwnership("windows-exporter", ownership); err != nil {
+			return err
 		}
 
 		return nil

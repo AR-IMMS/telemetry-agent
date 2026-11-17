@@ -196,7 +196,7 @@ func TestCoreGatewayConcurrentLocalUpdatePreservesM1State(t *testing.T) {
 		}
 	}
 	state, err := store.Load()
-	if err != nil || state.DesiredGeneration != 6 || !state.Dependencies["postgresql"].Enabled || state.Dependencies["redis"].Ownership.Resources[0].Identifier != "redis-service" {
+	if err != nil || state.DesiredGeneration != 6 || !state.Dependencies["postgresql"].Enabled || state.OwnedDependencyResources("redis")[0].Identifier != "redis-service" {
 		t.Fatalf("concurrent state = %+v, %v", state, err)
 	}
 	effective, err := store.EffectiveGateway()
@@ -265,7 +265,7 @@ func TestCoreGatewaySnapshotWriteFailureKeepsBootstrapOwnership(t *testing.T) {
 		t.Fatal("acceptance succeeded despite failed snapshot write")
 	}
 	state, err := store.Load()
-	if err != nil || state.DesiredGeneration != 4 || state.Dependencies["redis"].Ownership.Resources[0].Identifier != "redis-service" {
+	if err != nil || state.DesiredGeneration != 4 || state.OwnedDependencyResources("redis")[0].Identifier != "redis-service" {
 		t.Fatalf("failed acceptance changed M1 state = %+v, %v", state, err)
 	}
 	effective, err := store.EffectiveGateway()
@@ -328,7 +328,10 @@ func TestCoreGatewayLegacyImportAndRestart(t *testing.T) {
 func seededGatewayStore(t *testing.T) (SQLiteStore, string) {
 	t.Helper()
 	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
-	want := State{Collector: collectordomain.CollectorContext{GatewayEndpoint: "bootstrap:4317"}, DesiredGeneration: 4, ActivatedGeneration: 4, AppliedGeneration: 3, Dependencies: map[string]dependencydomain.DependencyState{"redis": {Enabled: true, Ownership: &servicedomain.OwnershipRecord{Resources: []servicedomain.OwnedResource{{Kind: "service", Identifier: "redis-service"}}}}}}
+	want := State{Collector: collectordomain.CollectorContext{GatewayEndpoint: "bootstrap:4317"}, DesiredGeneration: 4, ActivatedGeneration: 4, AppliedGeneration: 3, Dependencies: map[string]dependencydomain.DependencyState{"redis": {Enabled: true}}}
+	if err := want.RecordOwnership("redis", []servicedomain.OwnedResource{{Kind: "service", Identifier: "redis-service"}}); err != nil {
+		t.Fatalf("record seeded ownership: %v", err)
+	}
 	if err := store.Save(want); err != nil {
 		t.Fatalf("seed M1 state: %v", err)
 	}

@@ -32,12 +32,13 @@ func TestSQLiteIdentityRepositoryInitializesAndReusesCommittedID(t *testing.T) {
 		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {
 				Enabled: true,
-				Ownership: &servicedomain.OwnershipRecord{Resources: []servicedomain.OwnedResource{{
-					Kind:       "systemd-service",
-					Identifier: "node-exporter",
-				}}},
 			},
 		},
+	}
+	if err := wantState.RecordOwnership("node-exporter", []servicedomain.OwnedResource{{
+		Kind: "systemd-service", Identifier: "node-exporter",
+	}}); err != nil {
+		t.Fatalf("record Agent-owned resources: %v", err)
 	}
 	if err := store.Save(wantState); err != nil {
 		t.Fatalf("initialize M1 state: %v", err)

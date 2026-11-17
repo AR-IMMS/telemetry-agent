@@ -2,8 +2,6 @@ package agentlifecycle
 
 import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
-	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 // configurationPlan is an immutable desired-state snapshot bound to one
@@ -14,38 +12,9 @@ type configurationPlan struct {
 }
 
 func newConfigurationPlan(state agentstate.State) configurationPlan {
-	// Copy nested mutable fields so the plan remains tied to the revision read
+	// Clone mutable nested state so the plan remains tied to the revision read
 	// before configuration compilation and runtime activation begin.
-	snapshot := state
-	if state.Dependencies != nil {
-		snapshot.Dependencies = make(
-			map[string]dependencydomain.DependencyState,
-			len(state.Dependencies),
-		)
-		for name, dependency := range state.Dependencies {
-			if dependency.PendingTeardown != nil {
-				pending := *dependency.PendingTeardown
-				dependency.PendingTeardown = &pending
-			}
-			if dependency.Ownership != nil {
-				ownership := *dependency.Ownership
-				ownership.Resources = append(
-					[]servicedomain.OwnedResource(nil),
-					ownership.Resources...,
-				)
-				dependency.Ownership = &ownership
-			}
-			snapshot.Dependencies[name] = dependency
-		}
-	}
-	if state.Installation != nil {
-		installation := *state.Installation
-		installation.Ownership.Resources = append(
-			[]servicedomain.OwnedResource(nil),
-			installation.Ownership.Resources...,
-		)
-		snapshot.Installation = &installation
-	}
+	snapshot := state.Clone()
 
 	return configurationPlan{
 		revision: state.DesiredGeneration,

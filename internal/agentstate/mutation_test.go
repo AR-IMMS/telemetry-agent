@@ -252,14 +252,14 @@ func TestStateRecordsOwnedResourcesWithoutChangingGeneration(
 		t.Fatalf("RecordOwnership() error = %v", err)
 	}
 
-	ownership := state.Dependencies["node-exporter"].Ownership
-	if ownership == nil {
+	ownership := state.OwnedDependencyResources("node-exporter")
+	if len(ownership) == 0 {
 		t.Fatal("Ownership = nil, want recorded ownership")
 	}
-	if !reflect.DeepEqual(ownership.Resources, resources) {
+	if !reflect.DeepEqual(ownership, resources) {
 		t.Fatalf(
 			"Ownership Resources = %#v, want %#v",
-			ownership.Resources,
+			ownership,
 			resources,
 		)
 	}
@@ -276,18 +276,14 @@ func TestStateReportsDependencyOwnedOnlyWithRecordedResources(
 ) {
 	state := State{
 		Dependencies: map[string]dependencydomain.DependencyState{
-			"windows-exporter": {
-				Ownership: &servicedomain.OwnershipRecord{
-					Resources: []servicedomain.OwnedResource{
-						{
-							Kind:       "windows-service",
-							Identifier: "windows_exporter",
-						},
-					},
-				},
-			},
-			"node-exporter": {},
+			"windows-exporter": {},
+			"node-exporter":    {},
 		},
+	}
+	if err := state.RecordOwnership("windows-exporter", []servicedomain.OwnedResource{{
+		Kind: "windows-service", Identifier: "windows_exporter",
+	}}); err != nil {
+		t.Fatalf("RecordOwnership() error = %v", err)
 	}
 
 	if !state.OwnsDependency(" WINDOWS-EXPORTER ") {

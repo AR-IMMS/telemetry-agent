@@ -904,28 +904,20 @@ func TestRuntimeWatcherCompletesPendingUninstallAfterCollectorReady(
 		filepath.Join(t.TempDir(), "state.json"),
 	)
 
-	if err := store.Save(agentstate.State{
+	if err := store.Save(stateWithDependencyOwnership(t, agentstate.State{
 		DesiredGeneration:   3,
 		ActivatedGeneration: 3,
 		AppliedGeneration:   2,
 		Dependencies: map[string]dependencydomain.DependencyState{
 			"windows-exporter": {
 				Enabled: false,
-				Ownership: &servicedomain.OwnershipRecord{
-					Resources: []servicedomain.OwnedResource{
-						{
-							Kind:       "windows-service",
-							Identifier: "windows_exporter",
-						},
-					},
-				},
 				PendingTeardown: &dependencydomain.PendingTeardown{
 					Action:     dependencydomain.TeardownActionUninstall,
 					Generation: 3,
 				},
 			},
 		},
-	}); err != nil {
+	}, "windows-exporter", []servicedomain.OwnedResource{{Kind: "windows-service", Identifier: "windows_exporter"}})); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
 

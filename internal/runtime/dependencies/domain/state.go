@@ -1,7 +1,5 @@
 package dependencydomain
 
-import servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
-
 // TeardownAction identifies the host-resource operation permitted after the
 // Collector has acknowledged a configuration generation.
 type TeardownAction string
@@ -22,7 +20,6 @@ type PendingTeardown struct {
 
 // DependencyState is the desired lifecycle state of one managed dependency.
 type DependencyState struct {
-	Enabled         bool                           `json:"enabled"`
-	Ownership       *servicedomain.OwnershipRecord `json:"ownership,omitempty"`
-	PendingTeardown *PendingTeardown               `json:"pendingTeardown,omitempty"`
+	Enabled         bool             `json:"enabled"`
+	PendingTeardown *PendingTeardown `json:"pendingTeardown,omitempty"`
 }

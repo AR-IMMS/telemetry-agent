@@ -19,28 +19,20 @@ func TestTeardownCoordinatorExecutesAppliedOwnedDisable(
 		filepath.Join(t.TempDir(), "state.json"),
 	)
 
-	if err := store.Save(agentstate.State{
+	if err := store.Save(stateWithDependencyOwnership(t, agentstate.State{
 		DesiredGeneration:   4,
 		ActivatedGeneration: 4,
 		AppliedGeneration:   4,
 		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {
 				Enabled: false,
-				Ownership: &servicedomain.OwnershipRecord{
-					Resources: []servicedomain.OwnedResource{
-						{
-							Kind:       "systemd-service",
-							Identifier: "ar-imms-node-exporter.service",
-						},
-					},
-				},
 				PendingTeardown: &dependencydomain.PendingTeardown{
 					Action:     dependencydomain.TeardownActionDisable,
 					Generation: 4,
 				},
 			},
 		},
-	}); err != nil {
+	}, "node-exporter", []servicedomain.OwnedResource{{Kind: "systemd-service", Identifier: "ar-imms-node-exporter.service"}})); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
 
@@ -104,20 +96,17 @@ func TestTeardownCoordinatorDoesNotHoldStateLockDuringExternalTeardown(
 	t *testing.T,
 ) {
 	store := agentstate.NewFileStore(filepath.Join(t.TempDir(), "state.json"))
-	if err := store.Save(agentstate.State{
+	if err := store.Save(stateWithDependencyOwnership(t, agentstate.State{
 		DesiredGeneration: 1,
 		AppliedGeneration: 1,
 		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {
-				Ownership: &servicedomain.OwnershipRecord{Resources: []servicedomain.OwnedResource{{
-					Kind: "service", Identifier: "node-exporter",
-				}}},
 				PendingTeardown: &dependencydomain.PendingTeardown{
 					Action: dependencydomain.TeardownActionDisable, Generation: 1,
 				},
 			},
 		},
-	}); err != nil {
+	}, "node-exporter", []servicedomain.OwnedResource{{Kind: "service", Identifier: "node-exporter"}})); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
 
@@ -173,19 +162,16 @@ func TestTeardownSerializesWithDependencyReenable(t *testing.T) {
 	root := t.TempDir()
 	configPath := filepath.Join(root, "otel.yaml")
 	store := agentstate.NewFileStore(filepath.Join(root, "state.json"))
-	if err := store.Save(agentstate.State{
+	if err := store.Save(stateWithDependencyOwnership(t, agentstate.State{
 		Collector:         collectordomain.CollectorContext{ConfigPath: configPath},
 		DesiredGeneration: 1,
 		AppliedGeneration: 1,
 		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {
-				Ownership: &servicedomain.OwnershipRecord{Resources: []servicedomain.OwnedResource{{
-					Kind: "service", Identifier: "node-exporter",
-				}}},
 				PendingTeardown: &dependencydomain.PendingTeardown{Action: dependencydomain.TeardownActionDisable, Generation: 1},
 			},
 		},
-	}); err != nil {
+	}, "node-exporter", []servicedomain.OwnedResource{{Kind: "service", Identifier: "node-exporter"}})); err != nil {
 		t.Fatal(err)
 	}
 	started := make(chan struct{})

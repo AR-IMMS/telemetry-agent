@@ -48,11 +48,13 @@ func TestSQLiteStoreImportsLegacyJSONState(t *testing.T) {
 		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {
 				Enabled: true,
-				Ownership: &servicedomain.OwnershipRecord{Resources: []servicedomain.OwnedResource{{
-					Kind: "systemd-service", Identifier: "node-exporter",
-				}}},
 			},
 		},
+	}
+	if err := want.RecordOwnership("node-exporter", []servicedomain.OwnedResource{{
+		Kind: "systemd-service", Identifier: "node-exporter",
+	}}); err != nil {
+		t.Fatalf("record Agent-owned resources: %v", err)
 	}
 	if err := legacy.Save(want); err != nil {
 		t.Fatalf("save legacy state: %v", err)
@@ -62,7 +64,7 @@ func TestSQLiteStoreImportsLegacyJSONState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if got.Dependencies["node-exporter"].Ownership.Resources[0].Identifier != "node-exporter" ||
+	if got.OwnedDependencyResources("node-exporter")[0].Identifier != "node-exporter" ||
 		got.DesiredGeneration != want.DesiredGeneration {
 		t.Fatalf("migrated state = %#v, want %#v", got, want)
 	}

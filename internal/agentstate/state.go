@@ -18,9 +18,52 @@ type State struct {
 	ActivatedGeneration uint64                           `json:"activatedGeneration"`
 	AppliedGeneration   uint64                           `json:"appliedGeneration"`
 	// PendingActivation supports recovery between config promotion and commit.
-	PendingActivation *activationdomain.PendingActivation         `json:"pendingActivation,omitempty"`
-	Dependencies      map[string]dependencydomain.DependencyState `json:"dependencies"`
-	Installation      *servicedomain.AgentInstallation            `json:"installation,omitempty"`
+	PendingActivation   *activationdomain.PendingActivation         `json:"pendingActivation,omitempty"`
+	Dependencies        map[string]dependencydomain.DependencyState `json:"-"`
+	Installation        *servicedomain.AgentInstallation            `json:"installation,omitempty"`
+	dependencyOwnership map[string]*servicedomain.OwnershipRecord
+}
+
+// Clone returns an independent copy of mutable state used to prepare one
+// Collector configuration plan.
+func (s State) Clone() State {
+	cloned := s
+	if s.Dependencies != nil {
+		cloned.Dependencies = make(map[string]dependencydomain.DependencyState, len(s.Dependencies))
+		for name, dependency := range s.Dependencies {
+			if dependency.PendingTeardown != nil {
+				pending := *dependency.PendingTeardown
+				dependency.PendingTeardown = &pending
+			}
+			cloned.Dependencies[name] = dependency
+		}
+	}
+	if s.dependencyOwnership != nil {
+		cloned.dependencyOwnership = make(map[string]*servicedomain.OwnershipRecord, len(s.dependencyOwnership))
+		for name, record := range s.dependencyOwnership {
+			if record == nil {
+				cloned.dependencyOwnership[name] = nil
+				continue
+			}
+			cloned.dependencyOwnership[name] = &servicedomain.OwnershipRecord{
+				Resources: append([]servicedomain.OwnedResource(nil), record.Resources...),
+			}
+		}
+	}
+	if s.Installation != nil {
+		installation := *s.Installation
+		installation.Ownership.Resources = append([]servicedomain.OwnedResource(nil), installation.Ownership.Resources...)
+		cloned.Installation = &installation
+	}
+	if s.PendingActivation != nil {
+		pending := *s.PendingActivation
+		if s.PendingActivation.Candidate != nil {
+			candidate := *s.PendingActivation.Candidate
+			pending.Candidate = &candidate
+		}
+		cloned.PendingActivation = &pending
+	}
+	return cloned
 }
 
 // RequiresApply reports whether the Collector must reload an activated
@@ -104,6 +147,12 @@ func (s State) OwnsDependency(name string) bool {
 	return serviceapplication.OwnsDependency(s.dependencyOwnershipSnapshot(), name)
 }
 
+// OwnedDependencyResources returns a copy of the concrete host resources
+// recorded for one dependency, or nil when the Agent owns none.
+func (s State) OwnedDependencyResources(name string) []servicedomain.OwnedResource {
+	return serviceapplication.DependencyResources(s.dependencyOwnershipSnapshot(), name)
+}
+
 // RecordAgentInstallation persists validated platform and ownership metadata.
 func (s *State) RecordAgentInstallation(
 	installation servicedomain.AgentInstallation,
@@ -130,33 +179,35 @@ func (s *State) RequestUninstalls(
 }
 
 func (s State) dependencySnapshot() dependencyapplication.Snapshot {
+	dependencies := make(map[string]dependencydomain.DependencyState, len(s.Dependencies))
+	for name, dependency := range s.Dependencies {
+		dependencies[name] = dependency
+	}
 	return dependencyapplication.Snapshot{
 		DesiredGeneration: s.DesiredGeneration,
 		AppliedGeneration: s.AppliedGeneration,
-		Dependencies:      s.Dependencies,
+		Dependencies:      dependencies,
 	}
 }
 
 func (s *State) applyDependencySnapshot(snapshot dependencyapplication.Snapshot) {
 	s.DesiredGeneration = snapshot.DesiredGeneration
 	s.Dependencies = snapshot.Dependencies
+	for name := range s.dependencyOwnership {
+		if _, exists := s.Dependencies[name]; !exists {
+			delete(s.dependencyOwnership, name)
+		}
+	}
 }
 
 func (s State) dependencyOwnershipSnapshot() serviceapplication.OwnershipSnapshot {
 	dependencies := make(map[string]*servicedomain.OwnershipRecord, len(s.Dependencies))
-	for name, dependency := range s.Dependencies {
-		dependencies[name] = dependency.Ownership
+	for name := range s.Dependencies {
+		dependencies[name] = s.dependencyOwnership[name]
 	}
 	return serviceapplication.OwnershipSnapshot{Dependencies: dependencies}
 }
 
 func (s *State) applyDependencyOwnership(snapshot serviceapplication.OwnershipSnapshot) {
-	for name, ownership := range snapshot.Dependencies {
-		dependency, exists := s.Dependencies[name]
-		if !exists {
-			continue
-		}
-		dependency.Ownership = ownership
-		s.Dependencies[name] = dependency
-	}
+	s.dependencyOwnership = snapshot.Dependencies
 }
