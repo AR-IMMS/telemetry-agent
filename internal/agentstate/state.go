@@ -28,32 +28,17 @@ type State struct {
 // RequiresApply reports whether the Collector must reload an activated
 // configuration generation.
 func (s State) RequiresApply() bool {
-	return s.ActivatedGeneration > s.AppliedGeneration
+	return s.activationState().RequiresApply()
 }
 
 // MarkGenerationApplied records that the Collector is healthy with one
 // activated configuration generation.
 func (s *State) MarkGenerationApplied(generation uint64) error {
-	if generation > s.ActivatedGeneration {
-		return fmt.Errorf(
-			"applied generation %d exceeds activated generation %d",
-			generation,
-			s.ActivatedGeneration,
-		)
+	next, err := s.activationState().MarkGenerationApplied(generation)
+	if err != nil {
+		return err
 	}
-	if generation < s.AppliedGeneration {
-		return fmt.Errorf(
-			"applied generation %d is older than current applied generation %d",
-			generation,
-			s.AppliedGeneration,
-		)
-	}
-
-	s.AppliedGeneration = generation
-	if s.PendingActivation != nil && s.PendingActivation.Generation <= generation {
-		s.PendingActivation = nil
-	}
-
+	s.applyActivationState(next)
 	return nil
 }
 

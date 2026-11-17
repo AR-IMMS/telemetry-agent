@@ -201,6 +201,20 @@ try {
             $runtimeActivationModels -notmatch '(?m)^type\s+CandidateMapping\s+struct\b') {
             $violations.Add('Runtime activation domain must own PendingActivation and CandidateMapping')
         }
+        $runtimeActivationStatePath = Join-Path $runtimeActivationDomain 'activation_state.go'
+        if (-not (Test-Path -LiteralPath $runtimeActivationStatePath -PathType Leaf)) {
+            $violations.Add('Runtime activation invariants require activation/domain.ActivationState')
+        } else {
+            $runtimeActivationState = Get-Content -LiteralPath $runtimeActivationStatePath -Raw
+            if ($runtimeActivationState -notmatch '(?m)^type\s+ActivationState\s+struct\b') {
+                $violations.Add('Runtime activation domain must own ActivationState')
+            }
+            foreach ($transition in @('RequiresApply', 'MarkGenerationApplied', 'BeginActivation', 'CompleteActivation', 'MarkGenerationActivated', 'MarkCandidateGenerationActivated', 'RollbackUnappliedActivation')) {
+                if ($runtimeActivationState -notmatch "(?m)^func \(s ActivationState\) $transition\(") {
+                    $violations.Add("Runtime activation domain must own the $transition transition")
+                }
+            }
+        }
     }
     foreach ($sourceRoot in @((Join-Path $repoRoot 'internal'), (Join-Path $repoRoot 'cmd'))) {
         foreach ($sourceFile in (Get-ChildItem -LiteralPath $sourceRoot -Recurse -File -Filter '*.go')) {
@@ -249,6 +263,25 @@ try {
                 ($sourceFile.FullName.StartsWith((Join-Path $repoRoot 'internal/agentstate') + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase) -and
                     $source -match '(?m)^type\s+SupervisorContext\s+struct\b')) {
                 $violations.Add("$($sourceFile.FullName) must reference SupervisorContext through its Runtime owner package")
+            }
+        }
+    }
+
+    $agentStateActivationPath = Join-Path $repoRoot 'internal/agentstate/activation.go'
+    if (Test-Path -LiteralPath $agentStateActivationPath -PathType Leaf) {
+        $agentStateActivation = Get-Content -LiteralPath $agentStateActivationPath -Raw
+        foreach ($transition in @('BeginActivation', 'CompleteActivation', 'MarkGenerationActivated', 'MarkCandidateGenerationActivated', 'RollbackUnappliedActivation')) {
+            if ($agentStateActivation -notmatch "s\.activationState\(\)\.$transition\(") {
+                $violations.Add("Agent-state persistence adapter must delegate $transition to Runtime activation domain")
+            }
+        }
+    }
+    $agentStateTransitionPath = Join-Path $repoRoot 'internal/agentstate/state.go'
+    if (Test-Path -LiteralPath $agentStateTransitionPath -PathType Leaf) {
+        $agentStateTransition = Get-Content -LiteralPath $agentStateTransitionPath -Raw
+        foreach ($transition in @('RequiresApply', 'MarkGenerationApplied')) {
+            if ($agentStateTransition -notmatch "s\.activationState\(\)\.$transition\(") {
+                $violations.Add("Agent-state persistence adapter must delegate $transition to Runtime activation domain")
             }
         }
     }

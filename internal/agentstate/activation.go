@@ -1,41 +1,51 @@
 package agentstate
 
-import (
-	"fmt"
+import activationdomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/domain"
 
-	activationdomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/domain"
-)
+func (s State) activationState() activationdomain.ActivationState {
+	return activationdomain.ActivationState{
+		DesiredGeneration:   s.DesiredGeneration,
+		ActivatedGeneration: s.ActivatedGeneration,
+		AppliedGeneration:   s.AppliedGeneration,
+		PendingActivation:   s.PendingActivation,
+	}
+}
+
+func (s *State) applyActivationState(state activationdomain.ActivationState) {
+	s.DesiredGeneration = state.DesiredGeneration
+	s.ActivatedGeneration = state.ActivatedGeneration
+	s.AppliedGeneration = state.AppliedGeneration
+	s.PendingActivation = state.PendingActivation
+}
 
 // BeginActivation records a durable recovery intent before config promotion.
 func (s *State) BeginActivation(generation uint64, recoveryPath string) error {
-	if generation != s.DesiredGeneration {
-		return fmt.Errorf("activation intent does not match desired generation or recovery artifact")
+	next, err := s.activationState().BeginActivation(generation, recoveryPath)
+	if err != nil {
+		return err
 	}
-	s.PendingActivation = &activationdomain.PendingActivation{Generation: generation, RecoveryPath: recoveryPath}
+	s.applyActivationState(next)
 	return nil
 }
 
 // CompleteActivation clears the matching recovery intent when its revision commits.
 func (s *State) CompleteActivation(generation uint64) error {
-	if s.PendingActivation == nil || s.PendingActivation.Generation != generation {
-		return fmt.Errorf("activation intent for generation %d is not current", generation)
+	next, err := s.activationState().CompleteActivation(generation)
+	if err != nil {
+		return err
 	}
-	s.PendingActivation = nil
+	s.applyActivationState(next)
 	return nil
 }
 
 // MarkGenerationActivated records that the desired configuration generation
 // was rendered, validated, and atomically activated.
 func (s *State) MarkGenerationActivated(generation uint64) error {
-	if generation != s.DesiredGeneration {
-		return fmt.Errorf(
-			"activated generation %d does not match desired generation %d",
-			generation,
-			s.DesiredGeneration,
-		)
+	next, err := s.activationState().MarkGenerationActivated(generation)
+	if err != nil {
+		return err
 	}
-
-	s.ActivatedGeneration = generation
+	s.applyActivationState(next)
 	return nil
 }
 
@@ -44,37 +54,21 @@ func (s *State) MarkGenerationActivated(generation uint64) error {
 // the generation, and the newer desired state remains outstanding for the next
 // reconciliation pass.
 func (s *State) MarkCandidateGenerationActivated(generation uint64) error {
-	if s.PendingActivation == nil || s.PendingActivation.Generation != generation || s.PendingActivation.Candidate == nil {
-		return fmt.Errorf("candidate activation intent for generation %d is not current", generation)
+	next, err := s.activationState().MarkCandidateGenerationActivated(generation)
+	if err != nil {
+		return err
 	}
-	if generation > s.DesiredGeneration {
-		return fmt.Errorf("candidate generation %d exceeds desired generation %d", generation, s.DesiredGeneration)
-	}
-	if generation <= s.ActivatedGeneration {
-		return fmt.Errorf("candidate generation %d is not newer than activated generation %d", generation, s.ActivatedGeneration)
-	}
-	s.ActivatedGeneration = generation
+	s.applyActivationState(next)
 	return nil
 }
 
 // RollbackUnappliedActivation restores the activated revision to the last
 // Collector-applied revision while leaving desired state unchanged.
 func (s *State) RollbackUnappliedActivation(generation uint64) error {
-	if generation != s.ActivatedGeneration {
-		return fmt.Errorf(
-			"failed activation generation %d is not current activated generation %d",
-			generation,
-			s.ActivatedGeneration,
-		)
+	next, err := s.activationState().RollbackUnappliedActivation(generation)
+	if err != nil {
+		return err
 	}
-	if generation <= s.AppliedGeneration {
-		return fmt.Errorf(
-			"activation generation %d is already applied at generation %d",
-			generation,
-			s.AppliedGeneration,
-		)
-	}
-
-	s.ActivatedGeneration = s.AppliedGeneration
+	s.applyActivationState(next)
 	return nil
 }
