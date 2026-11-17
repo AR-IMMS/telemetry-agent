@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/configuration"
+	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
 	reconciliationcontracts "github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation/contracts"
 )
 
@@ -17,7 +17,7 @@ var (
 
 // DesiredSnapshotReader exposes the Configuration desired revision needed to validate an explicit retry.
 type DesiredSnapshotReader interface {
-	Snapshot() (configuration.DesiredSnapshot, error)
+	Snapshot() (desiredstateapp.Snapshot, error)
 }
 
 // RetryService validates that durable retry evidence still refers to the current desired and baseline revisions.

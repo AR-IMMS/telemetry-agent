@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/configuration"
+	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 	proposaldomain "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/domain"
@@ -83,7 +83,7 @@ func (s approvalSQLite) CommitApproval(commit application.ApprovalCommit) (domai
 		return domain.Instance{}, 0, fmt.Errorf("read desired Integration revision: %w", err)
 	}
 	if desiredRevision != commit.ExpectedDesiredRevision {
-		return domain.Instance{}, 0, configuration.ErrRevisionConflict
+		return domain.Instance{}, 0, desiredstateapp.ErrRevisionConflict
 	}
 	instance := commit.Instance
 	if err := validateApprovalInstance(proposal, instance); err != nil {
@@ -135,7 +135,7 @@ func (s approvalSQLite) CommitApproval(commit application.ApprovalCommit) (domai
 		if err != nil {
 			return domain.Instance{}, 0, fmt.Errorf("check desired Integration revision update: %w", err)
 		}
-		return domain.Instance{}, 0, configuration.ErrRevisionConflict
+		return domain.Instance{}, 0, desiredstateapp.ErrRevisionConflict
 	}
 	proposal.Status = proposaldomain.ProposalApproved
 	proposal.ApprovedInstanceID = instance.ID

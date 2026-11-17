@@ -3,21 +3,22 @@ package agentstate
 import (
 	"database/sql"
 
-	"github.com/ar-imms/telemetry-agent/internal/configuration"
+	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
 	materializationapp "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/application"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 	reconciliationcontracts "github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation/contracts"
 	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
+	templatesapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 )
 
 // IntegrationRepository returns the Configuration-owned desired-state adapter.
-func (s SQLiteStore) IntegrationRepository() configuration.IntegrationRepository {
+func (s SQLiteStore) IntegrationRepository() desiredstateapp.Repository {
 	return configurationsqlite.NewIntegrationRepository(s.OpenDatabase, &sqliteUpdateMutex)
 }
 
 // TemplateRepository returns the Configuration-owned Template adapter.
-func (s SQLiteStore) TemplateRepository() configuration.TemplateRepository {
+func (s SQLiteStore) TemplateRepository() templatesapp.Repository {
 	return configurationsqlite.NewTemplateRepository(s.OpenDatabase, &sqliteUpdateMutex)
 }
 

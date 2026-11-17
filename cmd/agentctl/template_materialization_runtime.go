@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/ar-imms/telemetry-agent/internal/configuration"
+	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
 	materializationapp "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/application"
 	materializationdomain "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/domain"
+	templatesconfigapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
@@ -25,8 +26,8 @@ const materializationCASAttempts = 3
 
 type runtimeTemplateMaterializer struct {
 	inventory        inventoryctx.InventoryRepository
-	templates        configuration.TemplateRepository
-	desired          configuration.IntegrationRepository
+	templates        templatesconfigapp.Repository
+	desired          desiredstateapp.Repository
 	service          materializationapp.Service
 	matcher          integration.Matcher
 	nativeMonitoring bool

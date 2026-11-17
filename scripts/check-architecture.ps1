@@ -445,6 +445,15 @@ try {
             }
         }
     }
+    # The root Configuration package was a transitional facade. Production
+    # callers must use the desiredstate, templates, or materialization owner
+    # packages directly; keep it retired rather than recreating a god facade.
+    foreach ($sourcePath in Get-ChildItem -LiteralPath (Join-Path $repoRoot 'internal'), (Join-Path $repoRoot 'cmd') -Recurse -Filter '*.go' -File | Where-Object { $_.Name -notlike '*_test.go' }) {
+        $source = Get-Content -LiteralPath $sourcePath.FullName -Raw
+        if ($source -match '"github\.com/ar-imms/telemetry-agent/internal/configuration"') {
+            $violations.Add("$($sourcePath.FullName) must use an owning Configuration capability instead of the retired root facade")
+        }
+    }
     $proposalApprovalRuntime = Join-Path $repoRoot 'cmd/agentctl/proposal_approval_runtime.go'
     if (Test-Path -LiteralPath $proposalApprovalRuntime -PathType Leaf) {
         $source = Get-Content -LiteralPath $proposalApprovalRuntime -Raw
