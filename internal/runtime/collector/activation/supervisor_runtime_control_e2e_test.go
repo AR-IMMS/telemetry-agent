@@ -12,6 +12,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"net"
 	"net/http"
@@ -649,8 +650,8 @@ func managedRuntimeEnrollmentHandler(t *testing.T, corePointer *atomic.Pointer[m
 			core.ServeHTTP(writer, request)
 			return
 		}
-		var input enrollment.EnrollmentRequest
-		if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+		input, err := decodeManagedRuntimeEnrollmentRequest(request.Body)
+		if err != nil {
 			http.Error(writer, "invalid enrollment request", http.StatusUnauthorized)
 			return
 		}
@@ -693,6 +694,30 @@ func managedRuntimeEnrollmentHandler(t *testing.T, corePointer *atomic.Pointer[m
 		_ = json.NewEncoder(writer).Encode(map[string]any{"data": response, "meta": map[string]string{"request_id": "pr07c-e2e-request"}})
 		enrollmentCount++
 	})
+}
+
+type managedRuntimeEnrollmentRequest struct {
+	BootstrapToken string `json:"bootstrap_token"`
+	enrollment.EnrollmentPayload
+}
+
+func decodeManagedRuntimeEnrollmentRequest(reader io.Reader) (managedRuntimeEnrollmentRequest, error) {
+	var input managedRuntimeEnrollmentRequest
+	err := json.NewDecoder(reader).Decode(&input)
+	return input, err
+}
+
+func TestDecodeManagedRuntimeEnrollmentRequestUsesCoreWireJSON(t *testing.T) {
+	input, err := decodeManagedRuntimeEnrollmentRequest(strings.NewReader(`{"bootstrap_token":"bootstrap-secret","enrollment_attempt_id":"attempt-1","installation":{"id":"installation-1"},"agent":{"version":"test"},"environment":{"os":"windows","architecture":"amd64"}}`))
+	if err != nil {
+		t.Fatalf("decode managed runtime enrollment request: %v", err)
+	}
+	if input.BootstrapToken != "bootstrap-secret" {
+		t.Fatalf("decoded bootstrap token = %q", input.BootstrapToken)
+	}
+	if input.AttemptID != "attempt-1" || input.Installation.ID != "installation-1" {
+		t.Fatalf("decoded enrollment payload = %+v", input.EnrollmentPayload)
+	}
 }
 
 func newManagedRuntimeTestCertificate(t *testing.T) (tls.Certificate, []byte) {
