@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"time"
+
+	activationdomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/domain"
 )
 
 // InitializeBaseSQLiteSchema creates the Agent-owned base tables and records
@@ -111,7 +113,7 @@ func recordActivationTransition(
 	if outcome == "" {
 		return nil
 	}
-	var candidate *CandidateMapping
+	var candidate *activationdomain.CandidateMapping
 	if current.PendingActivation != nil && current.PendingActivation.Generation == generation {
 		candidate = current.PendingActivation.Candidate
 	}

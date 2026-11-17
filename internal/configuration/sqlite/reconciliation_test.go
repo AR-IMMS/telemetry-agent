@@ -10,6 +10,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation/contracts"
 	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
+	activationdomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/domain"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
@@ -290,7 +291,7 @@ func candidateAdmission(revision, generation uint64, baseline, digest string) ag
 	return agentstate.CandidateAdmission{
 		DesiredSetRevision: revision, ExpectedGeneration: generation,
 		ExpectedFingerprint: baseline, VerifiedFingerprint: baseline, RecoveryPath: "recovery.yaml",
-		Mapping: agentstate.CandidateMapping{
+		Mapping: activationdomain.CandidateMapping{
 			DesiredSetRevision: revision, BaselineFingerprint: baseline, CandidateDigest: digest,
 			EffectiveConfigDigest: "effective-" + digest, CollectorVersion: "0.160.0",
 			ManifestVersion: "test", Platform: "windows/amd64",

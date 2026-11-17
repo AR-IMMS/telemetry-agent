@@ -3,6 +3,7 @@ package agentstate
 import (
 	"encoding/json"
 	"errors"
+	activationdomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/domain"
 	"path/filepath"
 	"testing"
 )
@@ -138,9 +139,9 @@ func TestCandidateFailureReusesReservedGenerationOnRetry(t *testing.T) {
 }
 
 func TestCandidateGenerationCanCommitAfterNewerDesiredGenerationArrives(t *testing.T) {
-	state := State{DesiredGeneration: 8, PendingActivation: &PendingActivation{
+	state := State{DesiredGeneration: 8, PendingActivation: &activationdomain.PendingActivation{
 		Generation: 8,
-		Candidate:  &CandidateMapping{CandidateDigest: "candidate"},
+		Candidate:  &activationdomain.CandidateMapping{CandidateDigest: "candidate"},
 	}}
 	state.DesiredGeneration = 9
 	if err := state.MarkCandidateGenerationActivated(8); err != nil {
@@ -257,7 +258,7 @@ func candidateAdmissionForTest(desiredRevision, generation uint64, baseline, can
 		ExpectedFingerprint: baseline,
 		VerifiedFingerprint: baseline,
 		RecoveryPath:        "recovery.yaml",
-		Mapping: CandidateMapping{
+		Mapping: activationdomain.CandidateMapping{
 			DesiredSetRevision:    desiredRevision,
 			BaselineFingerprint:   baseline,
 			CandidateDigest:       candidate,

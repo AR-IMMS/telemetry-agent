@@ -12,6 +12,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	activationdomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/domain"
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 )
@@ -99,7 +100,7 @@ func ApplyCollectorCandidate(
 		}
 		effectiveHash := sha256.Sum256(effectiveIdentity)
 		return candidateActivationPlan{
-			Mapping: agentstate.CandidateMapping{
+			Mapping: activationdomain.CandidateMapping{
 				DesiredSetRevision:    request.DesiredSetRevision,
 				BaselineFingerprint:   request.BaselineFingerprint,
 				CandidateDigest:       request.Candidate.Digest(),

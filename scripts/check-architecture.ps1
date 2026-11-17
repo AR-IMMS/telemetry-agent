@@ -31,7 +31,8 @@ try {
         "$modulePath/internal/operations/handlers",
         "$modulePath/internal/runtime/service/domain",
         "$modulePath/internal/runtime/dependencies/domain",
-        "$modulePath/internal/runtime/dependencies/application"
+        "$modulePath/internal/runtime/dependencies/application",
+        "$modulePath/internal/runtime/collector/activation/domain"
     )
     $adapterRoots = @(
         "$modulePath/internal/runtime/service",
@@ -185,6 +186,27 @@ try {
             $source = Get-Content -LiteralPath $sourceFile.FullName -Raw
             if ($source -match 'agentstate\.(DependencyState|PendingTeardown|TeardownAction(?:Disable|Uninstall)?)\b') {
                 $violations.Add("$($sourceFile.FullName) must use Runtime dependency lifecycle models from their owning package")
+            }
+        }
+    }
+
+    $runtimeActivationDomain = Join-Path $repoRoot 'internal/runtime/collector/activation/domain'
+    if (-not (Test-Path -LiteralPath $runtimeActivationDomain -PathType Container)) {
+        $violations.Add('Runtime candidate activation contracts require an explicit internal/runtime/collector/activation/domain package')
+    } else {
+        $runtimeActivationModels = Get-Content -LiteralPath (Join-Path $runtimeActivationDomain 'candidate.go') -Raw
+        if ($runtimeActivationModels -notmatch '(?m)^type\s+PendingActivation\s+struct\b' -or
+            $runtimeActivationModels -notmatch '(?m)^type\s+CandidateMapping\s+struct\b') {
+            $violations.Add('Runtime activation domain must own PendingActivation and CandidateMapping')
+        }
+    }
+    foreach ($sourceRoot in @((Join-Path $repoRoot 'internal'), (Join-Path $repoRoot 'cmd'))) {
+        foreach ($sourceFile in (Get-ChildItem -LiteralPath $sourceRoot -Recurse -File -Filter '*.go')) {
+            $source = Get-Content -LiteralPath $sourceFile.FullName -Raw
+            if ($source -match 'agentstate\.(PendingActivation|CandidateMapping)\b' -or
+                ($sourceFile.FullName.StartsWith((Join-Path $repoRoot 'internal/agentstate') + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase) -and
+                    $source -match '(?m)^type\s+(PendingActivation|CandidateMapping)\b')) {
+                $violations.Add("$($sourceFile.FullName) must reference candidate activation contracts through their Runtime owner package")
             }
         }
     }
@@ -594,7 +616,9 @@ try {
             $package -eq "$modulePath/internal/runtime/dependencies/domain" -or
             $package.StartsWith("$modulePath/internal/runtime/dependencies/domain/", [StringComparison]::Ordinal) -or
             $package -eq "$modulePath/internal/runtime/dependencies/application" -or
-            $package.StartsWith("$modulePath/internal/runtime/dependencies/application/", [StringComparison]::Ordinal)
+            $package.StartsWith("$modulePath/internal/runtime/dependencies/application/", [StringComparison]::Ordinal) -or
+            $package -eq "$modulePath/internal/runtime/collector/activation/domain" -or
+            $package.StartsWith("$modulePath/internal/runtime/collector/activation/domain/", [StringComparison]::Ordinal)
         if ($isExplicitRuntimeDomain) { $isContextAdapter = $false }
         if ($isContextAdapter) { continue }
         $isDomain = $false
@@ -613,7 +637,9 @@ try {
             $isExplicitRuntimeDomainImport = $imported -eq "$modulePath/internal/runtime/service/domain" -or
                 $imported.StartsWith("$modulePath/internal/runtime/service/domain/", [StringComparison]::Ordinal) -or
                 $imported -eq "$modulePath/internal/runtime/dependencies/domain" -or
-                $imported.StartsWith("$modulePath/internal/runtime/dependencies/domain/", [StringComparison]::Ordinal)
+                $imported.StartsWith("$modulePath/internal/runtime/dependencies/domain/", [StringComparison]::Ordinal) -or
+                $imported -eq "$modulePath/internal/runtime/collector/activation/domain" -or
+                $imported.StartsWith("$modulePath/internal/runtime/collector/activation/domain/", [StringComparison]::Ordinal)
             if ($isExplicitRuntimeDomainImport) { continue }
 
             foreach ($platformAdapter in $platformAdapterRoots) {

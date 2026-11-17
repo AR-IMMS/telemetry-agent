@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	activationdomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/domain"
 	dependencyapplication "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/application"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
@@ -37,7 +38,7 @@ type State struct {
 	ActivatedGeneration uint64            `json:"activatedGeneration"`
 	AppliedGeneration   uint64            `json:"appliedGeneration"`
 	// PendingActivation supports recovery between config promotion and commit.
-	PendingActivation *PendingActivation                          `json:"pendingActivation,omitempty"`
+	PendingActivation *activationdomain.PendingActivation         `json:"pendingActivation,omitempty"`
 	Dependencies      map[string]dependencydomain.DependencyState `json:"dependencies"`
 	Installation      *servicedomain.AgentInstallation            `json:"installation,omitempty"`
 }

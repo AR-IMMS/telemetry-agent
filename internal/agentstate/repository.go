@@ -13,6 +13,7 @@ import (
 	enrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
 	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
+	activationdomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/domain"
 )
 
 // Repository loads and atomically updates Agent-owned state. Update serializes
@@ -69,7 +70,7 @@ func MarkGenerationAppliedInTransaction(tx *sql.Tx, generation uint64) error {
 	if err != nil {
 		return err
 	}
-	var candidate *CandidateMapping
+	var candidate *activationdomain.CandidateMapping
 	if state.PendingActivation != nil && state.PendingActivation.Generation == generation {
 		candidate = state.PendingActivation.Candidate
 	}

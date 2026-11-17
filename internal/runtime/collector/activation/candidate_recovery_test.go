@@ -9,6 +9,7 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	activationdomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/domain"
 )
 
 func TestCandidateRollbackUsesExistingLKGAndRecordsFailure(t *testing.T) {
@@ -27,7 +28,7 @@ func TestCandidateRollbackUsesExistingLKGAndRecordsFailure(t *testing.T) {
 	store := sqlitefixture.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	if _, err := store.Update(func(state *agentstate.State) error {
 		state.DesiredGeneration, state.ActivatedGeneration, state.AppliedGeneration = 5, 5, 4
-		state.PendingActivation = &agentstate.PendingActivation{Generation: 5, RecoveryPath: recoveryPath, Candidate: &agentstate.CandidateMapping{
+		state.PendingActivation = &activationdomain.PendingActivation{Generation: 5, RecoveryPath: recoveryPath, Candidate: &activationdomain.CandidateMapping{
 			DesiredSetRevision: 12, BaselineFingerprint: "baseline", CandidateDigest: "candidate", EffectiveConfigDigest: "effective",
 		}}
 		return nil
@@ -74,7 +75,7 @@ func TestCandidateCrashRecoveryPreservesAppliedGeneration(t *testing.T) {
 			store := sqlitefixture.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 			if _, err := store.Update(func(state *agentstate.State) error {
 				state.DesiredGeneration, state.ActivatedGeneration, state.AppliedGeneration = 5, activated, 4
-				state.PendingActivation = &agentstate.PendingActivation{Generation: 5, RecoveryPath: recoveryPath, Candidate: &agentstate.CandidateMapping{
+				state.PendingActivation = &activationdomain.PendingActivation{Generation: 5, RecoveryPath: recoveryPath, Candidate: &activationdomain.CandidateMapping{
 					DesiredSetRevision: 12, BaselineFingerprint: "baseline", CandidateDigest: "candidate", EffectiveConfigDigest: "effective",
 				}}
 				return nil

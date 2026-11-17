@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	activationdomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/domain"
 	activationsqlite "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/sqlite"
 )
 
@@ -17,7 +18,7 @@ type CandidateAdmission struct {
 	ExpectedGeneration  uint64
 	ExpectedFingerprint string
 	VerifiedFingerprint string
-	Mapping             CandidateMapping
+	Mapping             activationdomain.CandidateMapping
 	RecoveryPath        string
 }
 
@@ -49,7 +50,7 @@ var ErrStaleBaseline = fmt.Errorf("%w: clean baseline changed", ErrStaleCandidat
 var ErrCandidateTerminalRequired = errors.New("candidate terminal mapping is required")
 
 // AdmitCandidate atomically verifies desired revisions, reserves or reuses an
-// M2 generation, and persists the existing PendingActivation record.
+// M2 generation, and persists the existing activationdomain.PendingActivation record.
 func (s SQLiteStore) AdmitCandidate(request CandidateAdmission) (CandidateAdmissionResult, error) {
 	if request.Mapping.CandidateDigest == "" || request.Mapping.EffectiveConfigDigest == "" || request.Mapping.BaselineFingerprint == "" || request.Mapping.CollectorVersion == "" || request.Mapping.ManifestVersion == "" || request.Mapping.Platform == "" {
 		return CandidateAdmissionResult{}, fmt.Errorf("candidate digests, baseline fingerprint, artifact identity, and platform are required")
@@ -94,7 +95,7 @@ func (s SQLiteStore) AdmitCandidate(request CandidateAdmission) (CandidateAdmiss
 		}
 		return CandidateAdmissionResult{Generation: generation, AlreadyApplied: true}, nil
 	} else if found && outcome != "applied" && generation == state.DesiredGeneration {
-		state.PendingActivation = &PendingActivation{Generation: generation, RecoveryPath: request.RecoveryPath, Candidate: &request.Mapping}
+		state.PendingActivation = &activationdomain.PendingActivation{Generation: generation, RecoveryPath: request.RecoveryPath, Candidate: &request.Mapping}
 		if err := saveCandidateState(tx, state); err != nil {
 			return CandidateAdmissionResult{}, err
 		}
@@ -108,7 +109,7 @@ func (s SQLiteStore) AdmitCandidate(request CandidateAdmission) (CandidateAdmiss
 	}
 	generation := state.DesiredGeneration + 1
 	state.DesiredGeneration = generation
-	state.PendingActivation = &PendingActivation{Generation: generation, RecoveryPath: request.RecoveryPath, Candidate: &request.Mapping}
+	state.PendingActivation = &activationdomain.PendingActivation{Generation: generation, RecoveryPath: request.RecoveryPath, Candidate: &request.Mapping}
 	if err := saveCandidateState(tx, state); err != nil {
 		return CandidateAdmissionResult{}, err
 	}
@@ -212,7 +213,7 @@ func (s SQLiteStore) CompleteCandidateFailure(generation uint64, stage, outcome,
 	return nil
 }
 
-func findCandidateTarget(tx *sql.Tx, mapping CandidateMapping) (uint64, string, bool, error) {
+func findCandidateTarget(tx *sql.Tx, mapping activationdomain.CandidateMapping) (uint64, string, bool, error) {
 	var generation uint64
 	var outcome string
 	err := tx.QueryRow(`SELECT generation, outcome FROM activation_journal WHERE desired_set_revision=? AND baseline_fingerprint=? AND candidate_digest=? AND collector_version=? AND manifest_version=? AND platform=? ORDER BY generation DESC LIMIT 1`, mapping.DesiredSetRevision, mapping.BaselineFingerprint, mapping.CandidateDigest, mapping.CollectorVersion, mapping.ManifestVersion, mapping.Platform).Scan(&generation, &outcome)
@@ -236,7 +237,7 @@ func saveCandidateState(tx *sql.Tx, state State) error {
 	return nil
 }
 
-func writeCandidateJournal(tx *sql.Tx, generation uint64, mapping CandidateMapping) error {
+func writeCandidateJournal(tx *sql.Tx, generation uint64, mapping activationdomain.CandidateMapping) error {
 	history, err := activationsqlite.CandidateJournalHistory(tx, generation, mapping.Outcome, mapping.Stage, mapping.RecoveryResult)
 	if err != nil {
 		return err

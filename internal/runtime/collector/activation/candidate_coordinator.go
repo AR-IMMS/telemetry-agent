@@ -8,6 +8,7 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	activationdomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 )
 
@@ -17,7 +18,7 @@ type candidateLifecycleRepository interface {
 }
 
 type candidateActivationPlan struct {
-	Mapping     agentstate.CandidateMapping
+	Mapping     activationdomain.CandidateMapping
 	Content     []byte
 	Environment []string
 }

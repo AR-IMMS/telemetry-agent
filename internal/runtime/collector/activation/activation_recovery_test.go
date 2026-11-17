@@ -9,6 +9,7 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	activationdomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/domain"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
@@ -83,7 +84,7 @@ func TestRecoverPendingActivationBeforeRuntime(t *testing.T) {
 	recoveryPath := filepath.Join(root, "previous.yaml")
 	if err := store.Save(agentstate.State{
 		DesiredGeneration: 2,
-		PendingActivation: &agentstate.PendingActivation{Generation: 2, RecoveryPath: recoveryPath},
+		PendingActivation: &activationdomain.PendingActivation{Generation: 2, RecoveryPath: recoveryPath},
 		Dependencies:      map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatal(err)
@@ -127,7 +128,7 @@ func TestRecoverInterruptedReadinessRestoresAppliedConfigAndKeepsDesiredState(t 
 		DesiredGeneration:   2,
 		ActivatedGeneration: 2,
 		AppliedGeneration:   1,
-		PendingActivation:   &agentstate.PendingActivation{Generation: 2, RecoveryPath: recoveryPath},
+		PendingActivation:   &activationdomain.PendingActivation{Generation: 2, RecoveryPath: recoveryPath},
 		Dependencies:        map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatal(err)

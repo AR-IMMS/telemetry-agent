@@ -1,39 +1,17 @@
 package agentstate
 
-import "fmt"
+import (
+	"fmt"
 
-// PendingActivation records the recovery artifact for a candidate that may
-// have reached the active config path but is not yet committed in Agent state.
-type PendingActivation struct {
-	// Generation identifies the desired revision being activated.
-	Generation uint64 `json:"generation"`
-	// RecoveryPath identifies the config artifact to restore after interruption.
-	RecoveryPath string `json:"recoveryPath"`
-	// Candidate maps this pending lifecycle generation to its desired Integration target.
-	Candidate *CandidateMapping `json:"candidate,omitempty"`
-}
-
-// CandidateMapping records the configuration identities associated with an
-// Integration candidate admitted through the existing lifecycle.
-type CandidateMapping struct {
-	DesiredSetRevision    uint64 `json:"desiredSetRevision"`
-	BaselineFingerprint   string `json:"baselineFingerprint"`
-	CandidateDigest       string `json:"candidateDigest"`
-	EffectiveConfigDigest string `json:"effectiveConfigDigest"`
-	CollectorVersion      string `json:"collectorVersion"`
-	ManifestVersion       string `json:"manifestVersion"`
-	Platform              string `json:"platform"`
-	Outcome               string `json:"outcome,omitempty"`
-	Stage                 string `json:"stage,omitempty"`
-	RecoveryResult        string `json:"recoveryResult,omitempty"`
-}
+	activationdomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/domain"
+)
 
 // BeginActivation records a durable recovery intent before config promotion.
 func (s *State) BeginActivation(generation uint64, recoveryPath string) error {
 	if generation != s.DesiredGeneration {
 		return fmt.Errorf("activation intent does not match desired generation or recovery artifact")
 	}
-	s.PendingActivation = &PendingActivation{Generation: generation, RecoveryPath: recoveryPath}
+	s.PendingActivation = &activationdomain.PendingActivation{Generation: generation, RecoveryPath: recoveryPath}
 	return nil
 }
 
