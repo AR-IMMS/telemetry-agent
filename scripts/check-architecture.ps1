@@ -76,6 +76,10 @@ try {
     $transitionalImportAllowlist = @{
         "$modulePath/internal/identity/host|golang.org/x/sys/windows/registry" = 'Host identity package still contains the platform-specific registry adapter.'
     }
+    # Transitional file-size exceptions require a bounded maximum and reason.
+    # Keep empty unless a reviewed exception is required; otherwise report the
+    # 450-line policy violation directly.
+    $transitionalSizeAllowlist = @{}
     $platformAdapterRoots = @('golang.org/x/sys/windows/registry')
 
     # Inventory reports provider evidence and must not depend on Monitoring profile policy.
