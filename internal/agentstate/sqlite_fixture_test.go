@@ -8,7 +8,10 @@ import (
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	remoteconfigsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig/sqlite"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
+	enrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
+	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
+	platformsqlite "github.com/ar-imms/telemetry-agent/internal/platform/sqlite"
 	sqlitemigrate "github.com/ar-imms/telemetry-agent/internal/platform/sqlite/migrate"
 )
 
@@ -21,11 +24,13 @@ func newTestStore(path string) Repository {
 }
 
 func newTestIdentityStore(path string) installationid.InstallationIdentityRepository {
-	return NewIdentityStore(path, initializeTestSQLiteSchema)
+	store := newSQLiteStoreForPath(path, initializeTestSQLiteSchema)
+	return identitysqlite.New(store.OpenDatabase)
 }
 
 func newTestEnrollmentStore(path string) enrollment.AttemptRepository {
-	return NewEnrollmentStore(path, initializeTestSQLiteSchema)
+	store := newSQLiteStoreForPath(path, initializeTestSQLiteSchema)
+	return enrollmentsqlite.New(store.OpenDatabase, platformsqlite.UpdateLocker())
 }
 
 func newTestCoreGatewayStore(path string) coreconfig.GatewayRuntimeRepository {

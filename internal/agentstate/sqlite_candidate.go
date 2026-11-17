@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	platformsqlite "github.com/ar-imms/telemetry-agent/internal/platform/sqlite"
 	activationdomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/domain"
 	activationsqlite "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/sqlite"
 )
@@ -61,8 +62,9 @@ func (s SQLiteStore) AdmitCandidate(request CandidateAdmission) (CandidateAdmiss
 	if request.ExpectedFingerprint == "" || request.ExpectedFingerprint != request.VerifiedFingerprint || request.Mapping.BaselineFingerprint != request.ExpectedFingerprint {
 		return CandidateAdmissionResult{}, ErrStaleBaseline
 	}
-	sqliteUpdateMutex.Lock()
-	defer sqliteUpdateMutex.Unlock()
+	locker := platformsqlite.UpdateLocker()
+	locker.Lock()
+	defer locker.Unlock()
 	db, err := s.open()
 	if err != nil {
 		return CandidateAdmissionResult{}, err
@@ -122,8 +124,9 @@ func (s SQLiteStore) AdmitCandidate(request CandidateAdmission) (CandidateAdmiss
 // MarkCandidateGenerationApplied atomically commits AppliedGeneration and the
 // candidate's authoritative terminal mapping after Collector readiness.
 func (s SQLiteStore) MarkCandidateGenerationApplied(generation uint64, gatewayEndpoint string) error {
-	sqliteUpdateMutex.Lock()
-	defer sqliteUpdateMutex.Unlock()
+	locker := platformsqlite.UpdateLocker()
+	locker.Lock()
+	defer locker.Unlock()
 	db, err := s.open()
 	if err != nil {
 		return err
@@ -173,8 +176,9 @@ func (s SQLiteStore) CompleteCandidateFailure(generation uint64, stage, outcome,
 	if stage == "" || outcome == "" || recovery == "" {
 		return fmt.Errorf("candidate failure stage, outcome, and recovery result are required")
 	}
-	sqliteUpdateMutex.Lock()
-	defer sqliteUpdateMutex.Unlock()
+	locker := platformsqlite.UpdateLocker()
+	locker.Lock()
+	defer locker.Unlock()
 	db, err := s.open()
 	if err != nil {
 		return err

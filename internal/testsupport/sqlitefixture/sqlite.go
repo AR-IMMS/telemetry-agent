@@ -10,8 +10,10 @@ import (
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	remoteconfigsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig/sqlite"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
+	enrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
 	installation "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
 	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
+	platformsqlite "github.com/ar-imms/telemetry-agent/internal/platform/sqlite"
 	sqlitemigrate "github.com/ar-imms/telemetry-agent/internal/platform/sqlite/migrate"
 )
 
@@ -27,12 +29,14 @@ func NewStore(path string) agentstate.Repository {
 
 // NewIdentityStore returns a fixture Installation Identity repository.
 func NewIdentityStore(path string) installation.InstallationIdentityRepository {
-	return agentstate.NewIdentityStore(path, initialize)
+	store := agentstate.NewSQLiteStoreForPath(path, initialize)
+	return identitysqlite.New(store.OpenDatabase)
 }
 
 // NewEnrollmentStore returns a fixture Enrollment repository.
 func NewEnrollmentStore(path string) enrollment.AttemptRepository {
-	return agentstate.NewEnrollmentStore(path, initialize)
+	store := agentstate.NewSQLiteStoreForPath(path, initialize)
+	return enrollmentsqlite.New(store.OpenDatabase, platformsqlite.UpdateLocker())
 }
 
 // NewCoreGatewayStore returns a fixture Core Gateway runtime repository.
@@ -40,7 +44,7 @@ func NewCoreGatewayStore(path string) coreconfig.GatewayRuntimeRepository {
 	store := NewSQLiteStore(path)
 	return remoteconfigsqlite.New(func(ctx context.Context) (*sql.DB, error) {
 		return store.OpenDatabaseContext(ctx)
-	}, agentstate.SQLiteUpdateLocker(), remoteconfigsqlite.StateAccess{
+	}, platformsqlite.UpdateLocker(), remoteconfigsqlite.StateAccess{
 		BeginSnapshotAcceptance: func() (func(), error) {
 			state, err := store.Load()
 			if err != nil {

@@ -6,13 +6,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
-	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
-	enrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
-	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
-	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
 	activationdomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/domain"
 )
 
@@ -41,16 +36,11 @@ func NewStoreWithGatewayApplied(path string, initializeSchema func(*sql.DB) erro
 	return store
 }
 
-// NewIdentityStore returns the SQLite adapter for installation identity at
-// the same operational database path used by NewStore.
-func NewIdentityStore(path string, initializeSchema func(*sql.DB) error) installationid.InstallationIdentityRepository {
-	store := newSQLiteStoreForPath(path, initializeSchema)
-	return identitysqlite.New(store.OpenDatabase)
+// NewSQLiteStoreForPath returns the compatibility-aware SQLite store used by
+// owner repositories that share Agent database initialization and JSON import.
+func NewSQLiteStoreForPath(path string, initializeSchema func(*sql.DB) error) SQLiteStore {
+	return newSQLiteStoreForPath(path, initializeSchema)
 }
-
-// SQLiteUpdateLocker returns the shared process-local write lock used by
-// repositories participating in transactions over the Agent database.
-func SQLiteUpdateLocker() sync.Locker { return &sqliteUpdateMutex }
 
 // SetDesiredGenerationInTransaction updates Agent-owned desired-generation
 // state inside the caller's shared-database transaction.
@@ -111,13 +101,6 @@ func persistGatewayGeneration(tx *sql.Tx, state State) error {
 		return fmt.Errorf("persist Agent generation for Core Gateway: expected one state row, got %d", count)
 	}
 	return nil
-}
-
-// NewEnrollmentStore returns the SQLite adapter for durable enrollment attempts
-// at the same operational database path used by other Agent state repositories.
-func NewEnrollmentStore(path string, initializeSchema func(*sql.DB) error) enrollment.AttemptRepository {
-	store := newSQLiteStoreForPath(path, initializeSchema)
-	return enrollmentsqlite.New(store.OpenDatabase, &sqliteUpdateMutex)
 }
 
 func newSQLiteStoreForPath(path string, initializeSchema func(*sql.DB) error) SQLiteStore {

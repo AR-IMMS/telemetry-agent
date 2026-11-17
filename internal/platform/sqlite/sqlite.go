@@ -13,6 +13,12 @@ import (
 )
 
 var initializationMu sync.Mutex
+var updateMu sync.Mutex
+
+// UpdateLocker returns the process-wide lock for coordinated SQLite mutations.
+// Repositories sharing the Agent database use this lock only around short
+// transactions; SQLite still coordinates writers across processes.
+func UpdateLocker() sync.Locker { return &updateMu }
 
 // Open creates a single-connection SQLite handle with the Agent's established
 // durability and locking settings, then calls initialize before returning it.

@@ -10,8 +10,10 @@ import (
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	remoteconfigsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig/sqlite"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
+	enrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
 	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
+	platformsqlite "github.com/ar-imms/telemetry-agent/internal/platform/sqlite"
 	sqlitemigrate "github.com/ar-imms/telemetry-agent/internal/platform/sqlite/migrate"
 )
 
@@ -30,13 +32,15 @@ func NewAgentStateStore(path string) agentstate.Repository {
 // NewInstallationIdentityStore constructs the Identity SQLite adapter using
 // the Application's ordered migration registry.
 func NewInstallationIdentityStore(path string) installationid.InstallationIdentityRepository {
-	return agentstate.NewIdentityStore(path, initializeAgentSQLiteSchema)
+	store := agentstate.NewSQLiteStoreForPath(path, initializeAgentSQLiteSchema)
+	return identitysqlite.New(store.OpenDatabase)
 }
 
 // NewEnrollmentAttemptStore constructs the enrollment adapter using the
 // Application's ordered migration registry.
 func NewEnrollmentAttemptStore(path string) enrollment.AttemptRepository {
-	return agentstate.NewEnrollmentStore(path, initializeAgentSQLiteSchema)
+	store := agentstate.NewSQLiteStoreForPath(path, initializeAgentSQLiteSchema)
+	return enrollmentsqlite.New(store.OpenDatabase, platformsqlite.UpdateLocker())
 }
 
 // NewCoreGatewayRuntimeStore constructs the Core Gateway adapter using the
@@ -45,7 +49,7 @@ func NewCoreGatewayRuntimeStore(path string) coreconfig.GatewayRuntimeRepository
 	store := NewAgentSQLiteStore(path)
 	return remoteconfigsqlite.New(func(ctx context.Context) (*sql.DB, error) {
 		return store.OpenDatabaseContext(ctx)
-	}, agentstate.SQLiteUpdateLocker(), remoteconfigsqlite.StateAccess{
+	}, platformsqlite.UpdateLocker(), remoteconfigsqlite.StateAccess{
 		BeginSnapshotAcceptance: func() (func(), error) {
 			state, err := store.Load()
 			if err != nil {

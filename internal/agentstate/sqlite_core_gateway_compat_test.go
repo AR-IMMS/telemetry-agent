@@ -8,6 +8,7 @@ import (
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	remoteconfigsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig/sqlite"
 	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
+	platformsqlite "github.com/ar-imms/telemetry-agent/internal/platform/sqlite"
 )
 
 func NewCoreGatewayStore(path string, initializeSchema func(*sql.DB) error) coreconfig.GatewayRuntimeRepository {
@@ -18,7 +19,7 @@ func NewCoreGatewayStore(path string, initializeSchema func(*sql.DB) error) core
 func newTestCoreGatewayRepository(store SQLiteStore) coreconfig.GatewayRuntimeRepository {
 	return remoteconfigsqlite.New(func(ctx context.Context) (*sql.DB, error) {
 		return store.OpenDatabaseContext(ctx)
-	}, SQLiteUpdateLocker(), remoteconfigsqlite.StateAccess{
+	}, platformsqlite.UpdateLocker(), remoteconfigsqlite.StateAccess{
 		BeginSnapshotAcceptance: func() (func(), error) {
 			state, err := store.Load()
 			if err != nil {

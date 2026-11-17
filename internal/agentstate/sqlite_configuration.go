@@ -10,38 +10,39 @@ import (
 	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
 	templatesapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
+	platformsqlite "github.com/ar-imms/telemetry-agent/internal/platform/sqlite"
 )
 
 // IntegrationRepository returns the Configuration-owned desired-state adapter.
 func (s SQLiteStore) IntegrationRepository() desiredstateapp.Repository {
-	return configurationsqlite.NewIntegrationRepository(s.OpenDatabase, &sqliteUpdateMutex)
+	return configurationsqlite.NewIntegrationRepository(s.OpenDatabase, platformsqlite.UpdateLocker())
 }
 
 // TemplateRepository returns the Configuration-owned Template adapter.
 func (s SQLiteStore) TemplateRepository() templatesapp.Repository {
-	return configurationsqlite.NewTemplateRepository(s.OpenDatabase, &sqliteUpdateMutex)
+	return configurationsqlite.NewTemplateRepository(s.OpenDatabase, platformsqlite.UpdateLocker())
 }
 
 // MaterializationRepository returns the Configuration-owned projection adapter.
 func (s SQLiteStore) MaterializationRepository() materializationapp.Repository {
-	return configurationsqlite.NewMaterializationRepository(s.OpenDatabase, &sqliteUpdateMutex)
+	return configurationsqlite.NewMaterializationRepository(s.OpenDatabase, platformsqlite.UpdateLocker())
 }
 
 // MaterializationRepositoryWithEvents adds an optional post-commit advisory wakeup.
 func (s SQLiteStore) MaterializationRepositoryWithEvents(publisher interface {
 	Publish(events.DesiredConfigurationChanged) error
 }) materializationapp.Repository {
-	return configurationsqlite.NewMaterializationRepositoryWithEvents(s.OpenDatabase, &sqliteUpdateMutex, publisher)
+	return configurationsqlite.NewMaterializationRepositoryWithEvents(s.OpenDatabase, platformsqlite.UpdateLocker(), publisher)
 }
 
 // ApprovalRepository returns the Configuration-owned atomic approval adapter.
 func (s SQLiteStore) ApprovalRepository() application.ApprovalRepository {
-	return configurationsqlite.NewApprovalRepository(s.OpenDatabase, &sqliteUpdateMutex)
+	return configurationsqlite.NewApprovalRepository(s.OpenDatabase, platformsqlite.UpdateLocker())
 }
 
 // ReconciliationRepository returns Configuration-owned reconciliation persistence.
 func (s SQLiteStore) ReconciliationRepository() reconciliationcontracts.Repository {
-	return configurationsqlite.NewReconciliationRepository(s.OpenDatabase, &sqliteUpdateMutex, s)
+	return configurationsqlite.NewReconciliationRepository(s.OpenDatabase, platformsqlite.UpdateLocker(), s)
 }
 
 func desiredIntegrationRevision(queryer interface {

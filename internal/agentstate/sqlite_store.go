@@ -9,16 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	platformsqlite "github.com/ar-imms/telemetry-agent/internal/platform/sqlite"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
-
-// sqliteUpdateMutex serializes in-process mutations across store values.
-// SQLite's immediate transactions and busy timeout coordinate other processes.
-var sqliteUpdateMutex sync.Mutex
 
 // SQLiteStore persists Agent operational state in one local SQLite database.
 // Each operation owns and closes its database handle; transactions remain
@@ -79,8 +74,9 @@ func (s SQLiteStore) Update(mutate StateMutation) (State, error) {
 	if mutate == nil {
 		return State{}, fmt.Errorf("Agent state mutation is required")
 	}
-	sqliteUpdateMutex.Lock()
-	defer sqliteUpdateMutex.Unlock()
+	locker := platformsqlite.UpdateLocker()
+	locker.Lock()
+	defer locker.Unlock()
 
 	db, err := s.open()
 	if err != nil {

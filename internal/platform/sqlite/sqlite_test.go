@@ -8,6 +8,14 @@ import (
 	"testing"
 )
 
+func TestUpdateLockerReturnsSharedProcessLocker(t *testing.T) {
+	first := UpdateLocker()
+	second := UpdateLocker()
+	if first == nil || first != second {
+		t.Fatal("UpdateLocker() must return the same process-wide locker")
+	}
+}
+
 func TestOpenCreatesDirectoryAndAppliesSharedSQLiteDefaults(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "state.db")
 	initialized := false
