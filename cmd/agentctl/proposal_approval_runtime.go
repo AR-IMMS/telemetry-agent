@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ar-imms/telemetry-agent/internal/app"
 
 	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
@@ -45,7 +46,7 @@ func newRuntimeProposalRefresher(statePath string) (runtimeProposalRefresher, er
 		assessor = matchingdomain.NewCatalogCapabilityAssessor(catalog, platform.OS, platform.OS+"/"+platform.Architecture)
 	}
 	return runtimeProposalRefresher{
-		inventory: store.InventoryRepository(), templates: store.TemplateRepository(), manager: application.NewProposalManager(store.ProposalRepository()),
+		inventory: app.NewInventoryRepository(statePath), templates: store.TemplateRepository(), manager: application.NewProposalManager(store.ProposalRepository()),
 		matcher: matchingapp.NewMatcher(registry, assessor), templateEvaluator: monitoringtemplatesapp.NewEvaluator(registry, assessor),
 	}, nil
 }
@@ -187,7 +188,7 @@ func newRuntimeApprovalService(statePath string) (application.ApprovalService, e
 	}
 	matcher := matchingapp.NewMatcher(registry, assessor)
 	verifier := runtimeApprovalVerifier{
-		inventory: store.InventoryRepository(), matcher: matcher, resolver: definitionapp.NewResolver(registry),
+		inventory: app.NewInventoryRepository(statePath), matcher: matcher, resolver: definitionapp.NewResolver(registry),
 	}
 	return application.NewApprovalService(store.ProposalRepository(), verifier, store.ApprovalRepository()), nil
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/app"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
 	profilesapplication "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/application"
@@ -72,7 +73,7 @@ func runInventory(ctx context.Context, args []string, stdout, stderr io.Writer) 
 		fmt.Fprintf(stderr, "inventory %s: %v\n", command, err)
 		return 1
 	}
-	snapshot, err := newAgentSQLiteStore(*statePath).InventoryRepository().Snapshot()
+	snapshot, err := app.NewInventoryRepository(*statePath).Snapshot()
 	if err != nil {
 		fmt.Fprintf(stderr, "inventory %s: %v\n", command, err)
 		return 1

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ar-imms/telemetry-agent/internal/app"
 	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
 	materializationapp "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/application"
 	materializationdomain "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/domain"
@@ -62,7 +63,7 @@ func newRuntimeTemplateMaterializer(statePath string, publisher ...events.Publis
 		return runtimeTemplateMaterializer{}, fmt.Errorf("resolve native monitoring for template materialization: %w", err)
 	}
 	return runtimeTemplateMaterializer{
-		inventory: store.InventoryRepository(), templates: store.TemplateRepository(), desired: store.IntegrationRepository(),
+		inventory: app.NewInventoryRepository(statePath), templates: store.TemplateRepository(), desired: store.IntegrationRepository(),
 		service:          materializationapp.NewService(materializationRepository),
 		matcher:          templatesmonitoringapp.NewEvaluator(registry, assessor),
 		nativeMonitoring: len(nativeLayers) > 0, nativeProfiles: profiles,

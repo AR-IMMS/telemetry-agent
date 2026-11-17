@@ -13,6 +13,8 @@ import (
 	enrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
 	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
+	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
+	inventorysqlite "github.com/ar-imms/telemetry-agent/internal/inventory/sqlite"
 	platformsqlite "github.com/ar-imms/telemetry-agent/internal/platform/sqlite"
 	sqlitemigrate "github.com/ar-imms/telemetry-agent/internal/platform/sqlite/migrate"
 )
@@ -41,6 +43,13 @@ func NewInstallationIdentityStore(path string) installationid.InstallationIdenti
 func NewEnrollmentAttemptStore(path string) enrollment.AttemptRepository {
 	store := agentstate.NewSQLiteStoreForPath(path, initializeAgentSQLiteSchema)
 	return enrollmentsqlite.New(store.OpenDatabase, platformsqlite.UpdateLocker())
+}
+
+// NewInventoryRepository constructs the Inventory-owned SQLite adapter using
+// the Application's ordered migration registry and shared transaction lock.
+func NewInventoryRepository(path string) inventoryapp.InventoryRepository {
+	store := agentstate.NewSQLiteStoreForPath(path, initializeAgentSQLiteSchema)
+	return inventorysqlite.NewInventoryRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
 }
 
 // NewCoreGatewayRuntimeStore constructs the Core Gateway adapter using the

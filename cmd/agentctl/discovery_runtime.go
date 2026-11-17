@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/ar-imms/telemetry-agent/internal/app"
 	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
 	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
 	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
@@ -21,7 +22,7 @@ func newDockerDiscoveryCoordinator(statePath string) *inventoryapp.Coordinator {
 	if endpoint == "" {
 		return nil
 	}
-	repository := newAgentSQLiteStore(statePath).InventoryRepository()
+	repository := app.NewInventoryRepository(statePath)
 	provider, err := discoverydocker.NewProvider(endpoint)
 	if err != nil {
 		status := inventorydomain.ProviderStatus{

@@ -7,6 +7,7 @@ import (
 
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/domain"
+	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
 )
 
 func TestAgentSQLiteStoreRunsComposedMigrationsInOneDatabase(t *testing.T) {
@@ -22,6 +23,16 @@ func TestAgentSQLiteStoreRunsComposedMigrationsInOneDatabase(t *testing.T) {
 	}
 	if version != 14 {
 		t.Fatalf("latest schema version=%d, want 14", version)
+	}
+}
+
+func TestInventoryRepositoryUsesComposedSQLiteDatabase(t *testing.T) {
+	repository := NewInventoryRepository(filepath.Join(t.TempDir(), "state.db"))
+	if _, err := repository.Snapshot(); err != nil {
+		t.Fatalf("read initial Inventory snapshot: %v", err)
+	}
+	if _, ok := repository.(inventoryapp.ProviderStatusReader); !ok {
+		t.Fatal("composed Inventory adapter does not expose provider health evidence")
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/app"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
 	matchingapp "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/application"
@@ -76,7 +77,7 @@ func runIntegrationMatch(ctx context.Context, args []string, stdout, stderr io.W
 		return integrationCommandError(stderr, "match", err)
 	}
 
-	snapshot, err := newAgentSQLiteStore(*statePath).InventoryRepository().Snapshot()
+	snapshot, err := app.NewInventoryRepository(*statePath).Snapshot()
 	if err != nil {
 		return integrationCommandError(stderr, "match", err)
 	}
