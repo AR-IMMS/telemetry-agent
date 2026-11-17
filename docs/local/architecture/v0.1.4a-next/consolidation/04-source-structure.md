@@ -387,4 +387,6 @@ docs/
 
 **Verified dependency CLI command-tree capability — source commit `13ea105`:** `internal/cli/commands/dependency` owns the compatibility Cobra group and operation aliases for existing dependency use cases. The root CLI composes this capability directly; its command constructor forwards unchanged legacy paths, arguments, context, streams, and exit codes into the existing dispatcher. Runtime remains the dependency-policy and lifecycle owner. The command package introduces no new business behavior or independent handler path.
 
+**Verified Inventory CLI command-tree capability — source commit `fc3c2eb`:** `internal/cli/commands/inventory` owns construction of the existing Inventory Cobra group and operation aliases. The root CLI composes that capability directly; it forwards existing Inventory paths and flags to the same compatibility handler and retains the former command help summary. Repository construction and Inventory behavior remain with their existing owners.
+
 **Source audit correction at `c9f4425`:** The Integration compatibility package and all Go imports of `internal/integration` are absent from the current tree. The historical import counts recorded in earlier migration entries describe those earlier source points only and are superseded. Keep the historical migration narrative; do not treat those counts as current blockers.
