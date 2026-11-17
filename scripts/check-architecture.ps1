@@ -191,6 +191,16 @@ try {
             }
         }
     }
+    $proposalApprovalRuntime = Join-Path $repoRoot 'cmd/agentctl/proposal_approval_runtime.go'
+    if (Test-Path -LiteralPath $proposalApprovalRuntime -PathType Leaf) {
+        $source = Get-Content -LiteralPath $proposalApprovalRuntime -Raw
+        if ($source -match 'integration\.NewResolver|integration\.Resolver') {
+            $violations.Add('cmd/agentctl/proposal_approval_runtime.go must resolve proposal settings through Monitoring definitions/application')
+        }
+        if ($source -notmatch 'internal/monitoring/profiles/definitions/application') {
+            $violations.Add('cmd/agentctl/proposal_approval_runtime.go must use Monitoring definitions/application for approval revalidation')
+        }
+    }
     # Ordered schema composition belongs to the Application boundary. The
     # Agent-state persistence context owns its base schema but does not select
     # or register other contexts' migrations.

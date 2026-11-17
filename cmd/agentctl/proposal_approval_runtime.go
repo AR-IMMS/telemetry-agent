@@ -5,12 +5,16 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
+	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	definitionapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
+	definitionsdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 	"runtime"
 	"time"
@@ -128,7 +132,7 @@ func proposalObservationFromMatch(result integration.MatchResult, inventoryRevis
 type runtimeApprovalVerifier struct {
 	inventory inventoryctx.InventoryRepository
 	matcher   integration.Matcher
-	resolver  integration.Resolver
+	resolver  definitionapp.Resolver
 }
 
 func newRuntimeApprovalService(statePath string) (application.ApprovalService, error) {
@@ -144,7 +148,7 @@ func newRuntimeApprovalService(statePath string) (application.ApprovalService, e
 	}
 	matcher := integration.NewMatcher(registry, assessor)
 	verifier := runtimeApprovalVerifier{
-		inventory: store.InventoryRepository(), matcher: matcher, resolver: integration.NewResolver(registry),
+		inventory: store.InventoryRepository(), matcher: matcher, resolver: definitionapp.NewResolver(registry),
 	}
 	return application.NewApprovalService(store.ProposalRepository(), verifier, store.ApprovalRepository()), nil
 }
@@ -194,15 +198,18 @@ func (v runtimeApprovalVerifier) Verify(ctx context.Context, proposal applicatio
 	if match.ResolutionStatus == integration.ResolutionNeedsInput && len(inputs) == 0 {
 		return application.VerifiedCandidate{}, application.ErrApprovalStale
 	}
-	resolved, err := v.resolver.Resolve(integration.IntegrationInstance{
+	validationInstance := desiredstatedomain.Instance{
 		ID: "approval-validation", DefinitionID: match.DefinitionID, DefinitionVersion: match.DefinitionVersion,
-		Configuration: settings, Enabled: true, Source: integration.SourceDiscovery,
-		Binding: &integration.ResourceBinding{Provider: proposal.Identity.Provider, ProviderInstance: proposal.Identity.ProviderInstance, ResourceID: proposal.Identity.ResourceID},
-	})
+		Configuration: settings, Enabled: true, Source: desiredstatedomain.SourceDiscovery,
+		Binding: &desiredstatedomain.ResourceBinding{
+			Provider: proposal.Identity.Provider, ProviderInstance: proposal.Identity.ProviderInstance, ResourceID: proposal.Identity.ResourceID,
+		},
+	}
+	resolved, err := resolveApprovalSettings(v.resolver, validationInstance)
 	if err != nil {
 		return application.VerifiedCandidate{}, err
 	}
-	encoded, err := json.Marshal(resolved.Instance.Configuration)
+	encoded, err := json.Marshal(resolved.Settings)
 	if err != nil {
 		return application.VerifiedCandidate{}, err
 	}
@@ -212,7 +219,7 @@ func (v runtimeApprovalVerifier) Verify(ctx context.Context, proposal applicatio
 			return application.VerifiedCandidate{}, application.ErrApprovalStale
 		}
 		return application.VerifiedCandidate{
-			DefinitionVersion: resolved.Instance.DefinitionVersion, Configuration: resolved.Instance.Configuration,
+			DefinitionVersion: resolved.Version, Configuration: resolved.Settings,
 			CandidateDigest: match.Candidate.Digest(), InventoryWriteRevision: snapshot.WriteRevision,
 		}, nil
 	}
@@ -235,9 +242,23 @@ func (v runtimeApprovalVerifier) Verify(ctx context.Context, proposal applicatio
 		return application.VerifiedCandidate{}, application.ErrApprovalStale
 	}
 	return application.VerifiedCandidate{
-		DefinitionVersion: resolved.Instance.DefinitionVersion, Configuration: resolved.Instance.Configuration,
+		DefinitionVersion: resolved.Version, Configuration: resolved.Settings,
 		CandidateDigest: candidateDigest, InventoryWriteRevision: snapshot.WriteRevision,
 	}, nil
 }
 
 var _ application.CandidateVerifier = runtimeApprovalVerifier{}
+
+func resolveApprovalSettings(resolver definitionapp.Resolver, instance desiredstatedomain.Instance) (definitionapp.Resolved, error) {
+	if err := instance.Validate(); err != nil {
+		return definitionapp.Resolved{}, err
+	}
+	resolved, err := resolver.Resolve(definitionapp.ResolveInput{
+		DefinitionID: instance.DefinitionID, Version: instance.DefinitionVersion,
+		Enabled: instance.Enabled, Settings: instance.Configuration,
+	})
+	if err == nil || errors.Is(err, definitionsdomain.ErrUnknownDefinition) || errors.Is(err, definitionsdomain.ErrInvalidContribution) {
+		return resolved, err
+	}
+	return definitionapp.Resolved{}, fmt.Errorf("%w: %v", desiredstatedomain.ErrInvalidInstance, err)
+}
