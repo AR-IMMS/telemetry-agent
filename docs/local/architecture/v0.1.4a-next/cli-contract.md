@@ -50,7 +50,7 @@ agentctl discovery proposals {list,inspect,dismiss,approve}
 - Keep CLI preferences separate from Agent desired state and protected credentials.
 - Defer removals, deprecations, new local mutations, Agent service controls, and config-sync behavior until separately approved.
 
-**Implemented foundation (2026-11-18):** Inventory parsing and output now live in `internal/cli/commands/inventory`; `cmd/agentctl` supplies repository, profile, health-evidence, and platform adapters at the composition boundary. The compatibility flag resolver lives in `internal/cli/settings`, an independent settings package usable by command capabilities without importing the CLI command registry. Existing `inventory list|inspect|status` parsing, output text, and exit behavior remain covered by the command and executable regression suites. This extraction does not imply that the proposed Cobra hierarchy or the remaining target commands are implemented.
+**Implemented foundation (2026-11-18):** Inventory parsing and output now live in `internal/cli/commands/inventory`; `cmd/agentctl` supplies repository, profile, health-evidence, and platform adapters at the composition boundary. The compatibility flag resolver lives in `internal/cli/settings`, an independent settings package usable by command capabilities without importing the CLI command registry. Monitoring aliases are composed by `internal/cli/commands/monitoring` and forward unchanged arguments, streams, context, and handler exit codes to existing routes. Existing Inventory behavior and all approved Monitoring alias mappings are covered by command and executable regression suites. This extraction does not imply that the proposed CLI hierarchy beyond these implemented groups is complete.
 
 ## 3. Target CLI hierarchy
 
