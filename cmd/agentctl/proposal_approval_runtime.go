@@ -46,7 +46,7 @@ func newRuntimeProposalRefresher(statePath string) (runtimeProposalRefresher, er
 		assessor = matchingdomain.NewCatalogCapabilityAssessor(catalog, platform.OS, platform.OS+"/"+platform.Architecture)
 	}
 	return runtimeProposalRefresher{
-		inventory: app.NewInventoryRepository(statePath), templates: store.TemplateRepository(), manager: application.NewProposalManager(store.ProposalRepository()),
+		inventory: app.NewInventoryRepository(statePath), templates: store.TemplateRepository(), manager: application.NewProposalManager(app.NewProposalRepository(statePath)),
 		matcher: matchingapp.NewMatcher(registry, assessor), templateEvaluator: monitoringtemplatesapp.NewEvaluator(registry, assessor),
 	}, nil
 }
@@ -190,7 +190,7 @@ func newRuntimeApprovalService(statePath string) (application.ApprovalService, e
 	verifier := runtimeApprovalVerifier{
 		inventory: app.NewInventoryRepository(statePath), matcher: matcher, resolver: definitionapp.NewResolver(registry),
 	}
-	return application.NewApprovalService(store.ProposalRepository(), verifier, store.ApprovalRepository()), nil
+	return application.NewApprovalService(app.NewProposalRepository(statePath), verifier, store.ApprovalRepository()), nil
 }
 
 func (v runtimeApprovalVerifier) Verify(ctx context.Context, proposal application.Proposal, inputs map[string]any) (application.VerifiedCandidate, error) {

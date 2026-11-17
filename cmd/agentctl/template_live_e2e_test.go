@@ -123,7 +123,7 @@ func TestLiveDockerTemplateAutoMaterializesDesiredInstance(t *testing.T) {
 	if err := proposalRefresher.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	proposals, err := store.ProposalRepository().ProposalSnapshot()
+	proposals, err := sqlitefixture.NewProposalRepositoryFromStore(store).ProposalSnapshot()
 	if err != nil {
 		t.Fatal(err)
 	}

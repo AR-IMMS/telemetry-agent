@@ -247,7 +247,7 @@ func TestLiveDockerProposalAndExplicitApproval(t *testing.T) {
 		matchState.AppliedGeneration != before.AppliedGeneration || matchDesired.Revision != desiredBefore.Revision {
 		t.Fatalf("read-only match mutated lifecycle or desired state: before=%+v after=%+v desired %d -> %d", before, matchState, desiredBefore.Revision, matchDesired.Revision)
 	}
-	proposalList, err := store.ProposalRepository().ProposalSnapshot()
+	proposalList, err := sqlitefixture.NewProposalRepositoryFromStore(store).ProposalSnapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,11 +357,11 @@ func TestLiveDatabaseFixturesMatchIntoNeedsInputProposals(t *testing.T) {
 	if len(observations) != 2 {
 		t.Fatalf("test-only matcher observations=%+v, want PostgreSQL and MongoDB fixtures", observations)
 	}
-	manager := proposals.NewProposalManager(store.ProposalRepository())
+	manager := proposals.NewProposalManager(sqlitefixture.NewProposalRepositoryFromStore(store))
 	if err := manager.Refresh(observations, report.EvaluatedAt); err != nil {
 		t.Fatal(err)
 	}
-	proposalList, err := store.ProposalRepository().ProposalSnapshot()
+	proposalList, err := sqlitefixture.NewProposalRepositoryFromStore(store).ProposalSnapshot()
 	if err != nil {
 		t.Fatal(err)
 	}

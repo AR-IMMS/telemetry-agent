@@ -36,7 +36,7 @@ func TestPersistedInventoryToProposalAndExplicitApproval(t *testing.T) {
 	if err := refresher.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	proposalList, err := store.ProposalRepository().ProposalSnapshot()
+	proposalList, err := sqlitefixture.NewProposalRepositoryFromStore(store).ProposalSnapshot()
 	if err != nil || len(proposalList) != 1 || proposalList[0].Status != proposals.ProposalPending {
 		t.Fatalf("proposal snapshot=%+v err=%v", proposalList, err)
 	}

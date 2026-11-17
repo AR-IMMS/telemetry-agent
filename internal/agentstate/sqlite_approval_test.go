@@ -16,7 +16,7 @@ import (
 func TestSQLiteApprovalCommitsProposalAndDesiredStateAtomically(t *testing.T) {
 	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	proposal := sqliteProposalFixture(t)
-	if err := store.ProposalRepository().PutProposal(proposal, 0); err != nil {
+	if err := newTestProposalRepository(store).PutProposal(proposal, 0); err != nil {
 		t.Fatal(err)
 	}
 	commit := approvalFixture(proposal, 0)
@@ -24,7 +24,7 @@ func TestSQLiteApprovalCommitsProposalAndDesiredStateAtomically(t *testing.T) {
 	if err != nil || instance.Revision != 1 || revision != 1 {
 		t.Fatalf("approval instance=%+v desired revision=%d err=%v", instance, revision, err)
 	}
-	proposalList, err := store.ProposalRepository().ProposalSnapshot()
+	proposalList, err := newTestProposalRepository(store).ProposalSnapshot()
 	if err != nil || proposalList[0].Status != proposals.ProposalApproved || proposalList[0].ApprovedInstanceID != instance.ID || proposalList[0].ApprovedCandidateDigest != proposal.CandidateDigest {
 		t.Fatalf("proposal after approval=%+v err=%v", proposalList, err)
 	}
@@ -41,7 +41,7 @@ func TestSQLiteApprovalCommitsProposalAndDesiredStateAtomically(t *testing.T) {
 func TestSQLiteApprovalRollsBackEveryWriteWhenTerminalProposalUpdateFails(t *testing.T) {
 	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	proposal := sqliteProposalFixture(t)
-	if err := store.ProposalRepository().PutProposal(proposal, 0); err != nil {
+	if err := newTestProposalRepository(store).PutProposal(proposal, 0); err != nil {
 		t.Fatal(err)
 	}
 	db, err := store.open()
@@ -60,7 +60,7 @@ func TestSQLiteApprovalRollsBackEveryWriteWhenTerminalProposalUpdateFails(t *tes
 	if err != nil || snapshot.Revision != 0 || len(snapshot.Instances) != 0 {
 		t.Fatalf("partial desired mutation survived rollback: %+v err=%v", snapshot, err)
 	}
-	proposalList, err := store.ProposalRepository().ProposalSnapshot()
+	proposalList, err := newTestProposalRepository(store).ProposalSnapshot()
 	if err != nil || proposalList[0].Status != proposals.ProposalPending {
 		t.Fatalf("proposal changed despite rollback: %+v err=%v", proposalList, err)
 	}
@@ -78,7 +78,7 @@ func TestSQLiteApprovalRejectsStaleDesiredAndInventorySnapshots(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 			proposal := sqliteProposalFixture(t)
-			if err := store.ProposalRepository().PutProposal(proposal, 0); err != nil {
+			if err := newTestProposalRepository(store).PutProposal(proposal, 0); err != nil {
 				t.Fatal(err)
 			}
 			commit := approvalFixture(proposal, 0)
@@ -93,7 +93,7 @@ func TestSQLiteApprovalRejectsStaleDesiredAndInventorySnapshots(t *testing.T) {
 func TestSQLiteApprovalRejectsDuplicateResourceBinding(t *testing.T) {
 	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	first := sqliteProposalFixture(t)
-	if err := store.ProposalRepository().PutProposal(first, 0); err != nil {
+	if err := newTestProposalRepository(store).PutProposal(first, 0); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := store.ApprovalRepository().CommitApproval(approvalFixture(first, 0)); err != nil {
@@ -106,7 +106,7 @@ func TestSQLiteApprovalRejectsDuplicateResourceBinding(t *testing.T) {
 	second.ResourceFingerprint = "sha256:" + repeatedProposalHex('e')
 	second.Revision = 1
 	second.Status = proposals.ProposalPending
-	if err := store.ProposalRepository().PutProposal(second, 0); err != nil {
+	if err := newTestProposalRepository(store).PutProposal(second, 0); err != nil {
 		t.Fatal(err)
 	}
 	commit := approvalFixture(second, 1)
@@ -118,7 +118,7 @@ func TestSQLiteApprovalRejectsDuplicateResourceBinding(t *testing.T) {
 func TestSQLiteApprovalRejectsEquivalentManualIntegration(t *testing.T) {
 	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	proposal := sqliteProposalFixture(t)
-	if err := store.ProposalRepository().PutProposal(proposal, 0); err != nil {
+	if err := newTestProposalRepository(store).PutProposal(proposal, 0); err != nil {
 		t.Fatal(err)
 	}
 	manual := desiredstatedomain.Instance{ID: "manual-cache", DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true, Configuration: map[string]any{"endpoint": "127.0.0.1:6379"}}
@@ -133,7 +133,7 @@ func TestSQLiteApprovalRejectsEquivalentManualIntegration(t *testing.T) {
 func TestSQLiteApprovalConcurrentRepeatAdvancesDesiredSetOnce(t *testing.T) {
 	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	proposal := sqliteProposalFixture(t)
-	if err := store.ProposalRepository().PutProposal(proposal, 0); err != nil {
+	if err := newTestProposalRepository(store).PutProposal(proposal, 0); err != nil {
 		t.Fatal(err)
 	}
 	commit := approvalFixture(proposal, 0)

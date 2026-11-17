@@ -15,7 +15,7 @@ import (
 func TestSQLiteProposalRepositoryCASDismissAndRestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
 	store := newTestSQLiteStore(path)
-	repository := store.ProposalRepository()
+	repository := newTestProposalRepository(store)
 	proposal := sqliteProposalFixture(t)
 	if err := repository.PutProposal(proposal, 0); err != nil {
 		t.Fatal(err)
@@ -29,7 +29,7 @@ func TestSQLiteProposalRepositoryCASDismissAndRestart(t *testing.T) {
 	if err := repository.PutProposal(stale, 2); !errors.Is(err, proposals.ErrProposalConflict) {
 		t.Fatalf("stale insert error = %v", err)
 	}
-	proposalList, err := newTestSQLiteStore(path).ProposalRepository().ProposalSnapshot()
+	proposalList, err := newTestProposalRepository(newTestSQLiteStore(path)).ProposalSnapshot()
 	if err != nil || len(proposalList) != 1 || proposalList[0].Revision != 1 || proposalList[0].CandidateDigest != proposal.CandidateDigest {
 		t.Fatalf("recovered proposals=%+v err=%v", proposalList, err)
 	}
@@ -49,7 +49,7 @@ func TestSQLiteProposalRepositoryCASDismissAndRestart(t *testing.T) {
 }
 
 func TestSQLiteProposalRepositoryConcurrentCreateHasSingleWinner(t *testing.T) {
-	repository := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db")).ProposalRepository()
+	repository := newTestProposalRepository(newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db")))
 	proposal := sqliteProposalFixture(t)
 	start := make(chan struct{})
 	results := make(chan error, 2)
@@ -82,7 +82,7 @@ func TestSQLiteProposalRepositoryConcurrentCreateHasSingleWinner(t *testing.T) {
 }
 
 func TestSQLiteNeedsInputProposalPersistsWithoutCandidateConfiguration(t *testing.T) {
-	repository := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db")).ProposalRepository()
+	repository := newTestProposalRepository(newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db")))
 	proposal := sqliteProposalFixture(t)
 	proposal.Status = proposals.ProposalNeedsInput
 	proposal.CandidateDigest = ""
@@ -127,7 +127,7 @@ func TestMonitoringProposalMigrationFromV11PreservesExistingState(t *testing.T) 
 	}
 	db.Close()
 	restarted := newTestSQLiteStore(path)
-	if _, err := restarted.ProposalRepository().ProposalSnapshot(); err != nil {
+	if _, err := newTestProposalRepository(restarted).ProposalSnapshot(); err != nil {
 		t.Fatal(err)
 	}
 	state, err := restarted.Load()

@@ -5,8 +5,10 @@ import (
 	"fmt"
 
 	"github.com/ar-imms/telemetry-agent/internal/app/migrations"
+	proposalapp "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	remoteconfigsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig/sqlite"
+	proposalsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	enrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
@@ -37,6 +39,10 @@ func newTestEnrollmentStore(path string) enrollment.AttemptRepository {
 
 func newTestInventoryRepository(store SQLiteStore) inventoryapp.InventoryRepository {
 	return inventorysqlite.NewInventoryRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
+}
+
+func newTestProposalRepository(store SQLiteStore) proposalapp.ProposalRepository {
+	return proposalsqlite.NewProposalRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
 }
 
 func newTestCoreGatewayStore(path string) coreconfig.GatewayRuntimeRepository {

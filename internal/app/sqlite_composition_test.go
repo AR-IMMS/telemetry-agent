@@ -36,6 +36,17 @@ func TestInventoryRepositoryUsesComposedSQLiteDatabase(t *testing.T) {
 	}
 }
 
+func TestProposalRepositoryUsesComposedSQLiteDatabase(t *testing.T) {
+	repository := NewProposalRepository(filepath.Join(t.TempDir(), "state.db"))
+	proposals, err := repository.ProposalSnapshot()
+	if err != nil {
+		t.Fatalf("read initial Configuration proposals: %v", err)
+	}
+	if len(proposals) != 0 {
+		t.Fatalf("initial Configuration proposals=%d, want 0", len(proposals))
+	}
+}
+
 func TestIdentityRepositoriesUseComposedSQLiteDatabase(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
 	identity, err := installationid.ParseInstallationID("11111111-2222-4333-8444-555555555555")

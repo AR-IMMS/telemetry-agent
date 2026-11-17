@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/app"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 )
@@ -54,8 +55,7 @@ func runDiscoveryProposals(ctx context.Context, args []string, stdout, stderr io
 	if err := ctx.Err(); err != nil {
 		return integrationCommandError(stderr, "discovery proposals "+command, err)
 	}
-	store := newAgentSQLiteStore(*statePath)
-	proposalRepo := store.ProposalRepository()
+	proposalRepo := app.NewProposalRepository(*statePath)
 	switch command {
 	case "list":
 		items, err := proposalRepo.ProposalSnapshot()
