@@ -133,6 +133,14 @@ try {
     $installationApplication = "$installationFacadeImportPath/application"
     $violations = [System.Collections.Generic.List[string]]::new()
     foreach ($layerPath in @(
+        'internal/inventory/observation/domain',
+        'internal/inventory/observation/application'
+    )) {
+        if (-not (Test-Path -LiteralPath (Join-Path $repoRoot $layerPath) -PathType Container)) {
+            $violations.Add("Inventory observation requires real domain and application layers: $layerPath")
+        }
+    }
+    foreach ($layerPath in @(
         'internal/identity/enrollment/domain', 'internal/identity/enrollment/application',
         'internal/identity/installation/domain', 'internal/identity/installation/application'
     )) {
@@ -703,6 +711,10 @@ try {
         $imports = @()
         if (-not [string]::IsNullOrWhiteSpace($parts[1])) {
             $imports = @($parts[1] -split ',' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        }
+
+        if ($package -ne $inventoryFacade -and $imports -contains $inventoryFacade) {
+            $violations.Add("Production package must use Inventory observation owner contracts instead of the root compatibility facade: $package")
         }
 
         foreach ($rule in $forbiddenContextEdges) {

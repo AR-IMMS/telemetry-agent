@@ -13,7 +13,7 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
-	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
 	profilesapplication "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/application"
 	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	collectorruntime "github.com/ar-imms/telemetry-agent/internal/runtime/collector"
@@ -89,10 +89,10 @@ func runInventory(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	case "list":
 		fmt.Fprintln(stdout, "PROVIDER\tRESOURCE\tKIND\tNAME\tSTATE\tPRESENCE\tFRESHNESS")
 		for _, resource := range snapshot.Resources {
-			if *activeOnly && resource.Presence != inventoryctx.PresencePresent {
+			if *activeOnly && resource.Presence != inventorydomain.PresencePresent {
 				continue
 			}
-			fmt.Fprintf(stdout, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", resource.Key.Provider, resource.Key.String(), resource.Kind, resource.DisplayName, resource.LifecycleState, resource.Presence, resource.FreshnessAt(time.Now().UTC(), inventoryctx.DefaultPolicy().StaleAfter))
+			fmt.Fprintf(stdout, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", resource.Key.Provider, resource.Key.String(), resource.Kind, resource.DisplayName, resource.LifecycleState, resource.Presence, resource.FreshnessAt(time.Now().UTC(), inventorydomain.DefaultPolicy().StaleAfter))
 		}
 		return 0
 	case "inspect":
@@ -100,7 +100,7 @@ func runInventory(ctx context.Context, args []string, stdout, stderr io.Writer) 
 		for _, resource := range snapshot.Resources {
 			if resource.Key.String() == key {
 				fmt.Fprintf(stdout, "Resource: %s\nKind: %s\nName: %s\nLifecycle: %s\nPresence: %s\nFreshness: %s\nFirst seen: %s\nLast seen: %s\n",
-					resource.Key.String(), resource.Kind, resource.DisplayName, resource.LifecycleState, resource.Presence, resource.FreshnessAt(time.Now().UTC(), inventoryctx.DefaultPolicy().StaleAfter), resource.FirstSeenAt.Format(time.RFC3339Nano), resource.LastSeenAt.Format(time.RFC3339Nano))
+					resource.Key.String(), resource.Kind, resource.DisplayName, resource.LifecycleState, resource.Presence, resource.FreshnessAt(time.Now().UTC(), inventorydomain.DefaultPolicy().StaleAfter), resource.FirstSeenAt.Format(time.RFC3339Nano), resource.LastSeenAt.Format(time.RFC3339Nano))
 				fmt.Fprintln(stdout, "Attributes:")
 				attributeNames := make([]string, 0, len(resource.Attributes))
 				for name := range resource.Attributes {

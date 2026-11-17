@@ -6,7 +6,7 @@ import (
 	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
-	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
 	definitionsdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
 	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
@@ -85,7 +85,7 @@ func nativeDockerMonitoringInputsWithProfiles(statePath, osName string, profiles
 type nativeOwnershipResolver struct {
 	delegate  contributionResolver
 	inventory interface {
-		Snapshot() (inventoryctx.InventorySnapshot, error)
+		Snapshot() (inventorydomain.InventorySnapshot, error)
 	}
 	profiles monitoringdomain.Registry
 	enabled  bool

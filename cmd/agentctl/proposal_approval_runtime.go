@@ -13,7 +13,7 @@ import (
 	configurationtemplatesapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
 	configurationtemplatesdomain "github.com/ar-imms/telemetry-agent/internal/configuration/templates/domain"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
-	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
 	matchingapp "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/application"
 	matchingdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/domain"
 	definitionapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
@@ -26,7 +26,7 @@ import (
 )
 
 type runtimeProposalRefresher struct {
-	inventory         inventoryctx.InventoryRepository
+	inventory         inventoryapp.InventoryRepository
 	templates         configurationtemplatesapp.Repository
 	manager           application.ProposalManager
 	matcher           matchingapp.Matcher
@@ -169,7 +169,7 @@ func monitoringTemplateInputs(templates []configurationtemplatesdomain.Template)
 }
 
 type runtimeApprovalVerifier struct {
-	inventory inventoryctx.InventoryRepository
+	inventory inventoryapp.InventoryRepository
 	matcher   matchingapp.Matcher
 	resolver  definitionapp.Resolver
 }

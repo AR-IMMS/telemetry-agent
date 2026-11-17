@@ -12,7 +12,7 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
-	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
 	matchingapp "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/application"
 	matchingdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
@@ -102,7 +102,7 @@ func runIntegrationMatch(ctx context.Context, args []string, stdout, stderr io.W
 	return 0
 }
 
-func projectInventory(snapshot inventoryctx.InventorySnapshot, asOf time.Time) matchingapp.MatchSnapshot {
+func projectInventory(snapshot inventorydomain.InventorySnapshot, asOf time.Time) matchingapp.MatchSnapshot {
 	resources := make([]matchingapp.MatchResource, 0, len(snapshot.Resources))
 	for _, resource := range snapshot.Resources {
 		attributes := make(map[string]string, len(resource.Attributes))
@@ -134,7 +134,7 @@ func projectInventory(snapshot inventoryctx.InventorySnapshot, asOf time.Time) m
 	})
 	return matchingapp.MatchSnapshot{
 		InventoryRevision: snapshot.Revision, AsOf: asOf,
-		StaleAfter: inventoryctx.DefaultPolicy().StaleAfter, Resources: resources,
+		StaleAfter: inventorydomain.DefaultPolicy().StaleAfter, Resources: resources,
 	}
 }
 

@@ -3,7 +3,8 @@ package main
 import (
 	"context"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
-	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
+	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 	"time"
 )
@@ -11,14 +12,14 @@ import (
 const dependencyEvidenceTimeout = 5 * time.Second
 
 type inventoryRepositoryProvider interface {
-	InventoryRepository() inventoryctx.InventoryRepository
+	InventoryRepository() inventoryapp.InventoryRepository
 }
 
 func newAgentHealthEvidenceSources(statePath string) []agenthealth.EvidenceSource {
 	store, ok := newAgentStateStore(statePath).(inventoryRepositoryProvider)
-	var inventory inventoryctx.ProviderStatusReader
+	var inventory inventoryapp.ProviderStatusReader
 	if ok {
-		inventory, _ = store.InventoryRepository().(inventoryctx.ProviderStatusReader)
+		inventory, _ = store.InventoryRepository().(inventoryapp.ProviderStatusReader)
 	}
 
 	return []agenthealth.EvidenceSource{
@@ -26,9 +27,9 @@ func newAgentHealthEvidenceSources(statePath string) []agenthealth.EvidenceSourc
 			if inventory == nil {
 				return agenthealth.EvaluateInventoryEvidence(now, nil, false, false)
 			}
-			statuses, truncated, err := inventory.ReadProviderStatuses(ctx, inventoryctx.MaxProviderStatusReadLimit)
+			statuses, truncated, err := inventory.ReadProviderStatuses(ctx, inventoryapp.MaxProviderStatusReadLimit)
 			observations := make([]agenthealth.InventoryProviderObservation, 0, len(statuses))
-			staleAfter := inventoryctx.DefaultPolicy().StaleAfter
+			staleAfter := inventorydomain.DefaultPolicy().StaleAfter
 			for _, status := range statuses {
 				validUntil := time.Time{}
 				if !status.LastSuccessAt.IsZero() {

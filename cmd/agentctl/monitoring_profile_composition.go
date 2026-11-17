@@ -1,7 +1,7 @@
 package main
 
 import (
-	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
 	profilesapplication "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/application"
 	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	yamlprofiles "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/yaml"
@@ -16,7 +16,7 @@ func loadMonitoringProfiles(configRoot string) (monitoringdomain.Registry, error
 
 // monitoringEndpointEvidence projects persisted Inventory endpoints into the
 // narrow evidence contract consumed by Monitoring profile diagnostics.
-func monitoringEndpointEvidence(endpoints []inventoryctx.Endpoint) []profilesapplication.EndpointObservation {
+func monitoringEndpointEvidence(endpoints []inventorydomain.Endpoint) []profilesapplication.EndpointObservation {
 	result := make([]profilesapplication.EndpointObservation, 0, len(endpoints))
 	for _, endpoint := range endpoints {
 		result = append(result, profilesapplication.EndpointObservation{

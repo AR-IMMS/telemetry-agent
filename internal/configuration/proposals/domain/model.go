@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"time"
 
-	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
 )
 
 var (
@@ -73,7 +73,7 @@ type ProposalIdentity struct {
 
 // StableProposalID returns a deterministic ID independent of definition version or candidate revision.
 func StableProposalID(identity ProposalIdentity) (string, error) {
-	key := inventoryctx.ResourceKey{Provider: inventoryctx.ProviderID(identity.Provider), ProviderInstance: inventoryctx.ProviderInstanceID(identity.ProviderInstance), ProviderResourceID: identity.ResourceID}
+	key := inventorydomain.ResourceKey{Provider: inventorydomain.ProviderID(identity.Provider), ProviderInstance: inventorydomain.ProviderInstanceID(identity.ProviderInstance), ProviderResourceID: identity.ResourceID}
 	if err := key.Validate(); err != nil || !integrationProposalIDPattern.MatchString(identity.IntegrationID) {
 		return "", fmt.Errorf("%w: malformed proposal identity", ErrInvalidProposal)
 	}

@@ -9,7 +9,8 @@ import (
 	materializationdomain "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/domain"
 	templatesconfigapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
-	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
+	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
 	matchingdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/domain"
 	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	templatesmonitoringapp "github.com/ar-imms/telemetry-agent/internal/monitoring/templates/application"
@@ -24,7 +25,7 @@ import (
 const materializationCASAttempts = 3
 
 type runtimeTemplateMaterializer struct {
-	inventory        inventoryctx.InventoryRepository
+	inventory        inventoryapp.InventoryRepository
 	templates        templatesconfigapp.Repository
 	desired          desiredstateapp.Repository
 	service          materializationapp.Service
@@ -108,7 +109,7 @@ func (r runtimeTemplateMaterializer) Refresh(ctx context.Context) error {
 		plan, err := materializationapp.BuildPlan(materializationapp.Input{
 			InventoryRevision: inventory.Revision, InventoryWriteRevision: inventory.WriteRevision,
 			Templates: templates, Desired: desired, Resources: matchSnapshot.Resources, Matches: matches,
-			StaleAfter: inventoryctx.DefaultPolicy().StaleAfter,
+			StaleAfter: inventorydomain.DefaultPolicy().StaleAfter,
 		})
 		if err != nil {
 			return fmt.Errorf("build Integration materialization plan: %w", err)

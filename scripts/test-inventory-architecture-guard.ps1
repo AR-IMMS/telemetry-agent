@@ -21,7 +21,7 @@ import _ "$modulePath/internal/inventory"
 
     $output = & pwsh -NoProfile -File $guardPath 2>&1 | Out-String
     $guardExit = $LASTEXITCODE
-    if ($guardExit -eq 0 -or $output -notmatch 'Inventory adapters must use application/domain contracts') {
+    if ($guardExit -eq 0 -or $output -notmatch '(Inventory adapters must use application/domain contracts|Production package must use Inventory observation owner contracts)') {
         throw "The architecture guard did not reject the compatibility-facade fixture. Output:`n$output"
     }
     Write-Output 'Negative fixture rejected: Inventory adapters cannot import the root compatibility facade.'
