@@ -186,7 +186,13 @@ func dependencyMetricsReceiverLayer(
 	state agentstate.State,
 	additional ...string,
 ) (config.InlineLayer, error) {
-	managedReceivers, err := catalog.CollectorReceivers(osName, state)
+	enabledDependencies := make(dependency.EnabledSet, len(state.Dependencies))
+	for name, dependencyState := range state.Dependencies {
+		if dependencyState.Enabled {
+			enabledDependencies[name] = struct{}{}
+		}
+	}
+	managedReceivers, err := catalog.CollectorReceivers(osName, enabledDependencies)
 	if err != nil {
 		return config.InlineLayer{}, err
 	}

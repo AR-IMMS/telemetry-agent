@@ -110,6 +110,15 @@ try {
     }
 
     $violations = [System.Collections.Generic.List[string]]::new()
+    # Runtime dependency catalog selection consumes only the enabled-name
+    # snapshot it needs; it must not depend on the persisted multi-context state.
+    $dependencyCatalog = Join-Path $repoRoot 'internal/runtime/dependencies/catalog.go'
+    if (Test-Path -LiteralPath $dependencyCatalog -PathType Leaf) {
+        $dependencyCatalogSource = Get-Content -LiteralPath $dependencyCatalog -Raw
+        if ($dependencyCatalogSource -match '"github.com/ar-imms/telemetry-agent/internal/agentstate"') {
+            $violations.Add('internal/runtime/dependencies/catalog.go must consume the enabled dependency-name contract, not internal/agentstate')
+        }
+    }
     # Profile matching and catalog CLI routes consume Monitoring directly after
     # their compatibility migration; keep them off the broad Integration facade.
     foreach ($file in @('cmd/agentctl/integration_matching.go', 'cmd/agentctl/integration_catalog_command.go')) {
