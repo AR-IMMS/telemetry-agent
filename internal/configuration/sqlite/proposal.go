@@ -9,17 +9,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals"
+	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
+	proposaldomain "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/domain"
 )
 
 // NewProposalRepository creates the Configuration proposal adapter over the shared database.
-func NewProposalRepository(open func() (*sql.DB, error), locker sync.Locker) proposals.ProposalRepository {
+func NewProposalRepository(open func() (*sql.DB, error), locker sync.Locker) application.ProposalRepository {
 	return proposalSQLite{store: database{open: open, locker: locker}}
 }
 
 type proposalSQLite struct{ store database }
 
-func (s proposalSQLite) ProposalSnapshot() ([]proposals.Proposal, error) {
+func (s proposalSQLite) ProposalSnapshot() ([]proposaldomain.Proposal, error) {
 	db, err := s.store.openDatabase()
 	if err != nil {
 		return nil, err
@@ -34,7 +35,7 @@ func (s proposalSQLite) ProposalSnapshot() ([]proposals.Proposal, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query monitoring proposals: %w", err)
 	}
-	proposalList := make([]proposals.Proposal, 0)
+	proposalList := make([]proposaldomain.Proposal, 0)
 	for rows.Next() {
 		var id, provider, providerInstance, resourceID, integrationID, status string
 		var revision uint64
@@ -43,12 +44,12 @@ func (s proposalSQLite) ProposalSnapshot() ([]proposals.Proposal, error) {
 			rows.Close()
 			return nil, fmt.Errorf("read monitoring proposal: %w", err)
 		}
-		var proposal proposals.Proposal
+		var proposal proposaldomain.Proposal
 		if err := json.Unmarshal(payload, &proposal); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("decode monitoring proposal: %w", err)
 		}
-		if err := proposals.ValidateProposal(proposal); err != nil {
+		if err := proposaldomain.ValidateProposal(proposal); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("validate persisted monitoring proposal: %w", err)
 		}
@@ -56,7 +57,7 @@ func (s proposalSQLite) ProposalSnapshot() ([]proposals.Proposal, error) {
 			proposal.Identity.ResourceID != resourceID || proposal.Identity.IntegrationID != integrationID ||
 			proposal.Revision != revision || string(proposal.Status) != status {
 			rows.Close()
-			return nil, fmt.Errorf("%w: proposal columns disagree with payload", proposals.ErrInvalidProposal)
+			return nil, fmt.Errorf("%w: proposal columns disagree with payload", proposaldomain.ErrInvalidProposal)
 		}
 		proposalList = append(proposalList, proposal)
 	}
@@ -73,14 +74,14 @@ func (s proposalSQLite) ProposalSnapshot() ([]proposals.Proposal, error) {
 	return proposalList, nil
 }
 
-func (s proposalSQLite) PutProposal(proposal proposals.Proposal, expectedRevision uint64) error {
-	if err := proposals.ValidateProposal(proposal); err != nil {
+func (s proposalSQLite) PutProposal(proposal proposaldomain.Proposal, expectedRevision uint64) error {
+	if err := proposaldomain.ValidateProposal(proposal); err != nil {
 		return err
 	}
 	if expectedRevision > math.MaxInt64 || proposal.Revision > math.MaxInt64 ||
 		(expectedRevision == 0 && proposal.Revision != 1) ||
 		(expectedRevision > 0 && proposal.Revision != expectedRevision+1) {
-		return fmt.Errorf("%w: invalid proposal revision transition", proposals.ErrInvalidProposal)
+		return fmt.Errorf("%w: invalid proposal revision transition", proposaldomain.ErrInvalidProposal)
 	}
 	encoded, err := json.Marshal(proposal)
 	if err != nil {
@@ -105,7 +106,7 @@ func (s proposalSQLite) PutProposal(proposal proposals.Proposal, expectedRevisio
 		var exists int
 		lookupErr := tx.QueryRow(`SELECT 1 FROM integration_proposals WHERE proposal_id=?`, proposal.ID).Scan(&exists)
 		if lookupErr == nil {
-			return proposals.ErrProposalConflict
+			return proposaldomain.ErrProposalConflict
 		}
 		if !errors.Is(lookupErr, sql.ErrNoRows) {
 			return fmt.Errorf("check monitoring proposal before insert: %w", lookupErr)
@@ -121,7 +122,7 @@ func (s proposalSQLite) PutProposal(proposal proposals.Proposal, expectedRevisio
 			var affected int64
 			affected, err = result.RowsAffected()
 			if err == nil && affected != 1 {
-				err = proposals.ErrProposalConflict
+				err = proposaldomain.ErrProposalConflict
 			}
 		}
 	}
@@ -136,7 +137,7 @@ func (s proposalSQLite) PutProposal(proposal proposals.Proposal, expectedRevisio
 
 func (s proposalSQLite) DismissProposal(id string, expectedRevision uint64, at time.Time) error {
 	if id == "" || expectedRevision == 0 || expectedRevision > math.MaxInt64 || at.IsZero() {
-		return proposals.ErrInvalidProposal
+		return proposaldomain.ErrInvalidProposal
 	}
 	unlock, err := s.store.lockWrites()
 	if err != nil {
@@ -158,25 +159,25 @@ func (s proposalSQLite) DismissProposal(id string, expectedRevision uint64, at t
 	if errors.Is(err, sql.ErrNoRows) {
 		var exists int
 		if lookupErr := tx.QueryRow(`SELECT 1 FROM integration_proposals WHERE proposal_id=?`, id).Scan(&exists); errors.Is(lookupErr, sql.ErrNoRows) {
-			return proposals.ErrUnknownProposal
+			return proposaldomain.ErrUnknownProposal
 		} else if lookupErr != nil {
 			return fmt.Errorf("check proposal before dismissal: %w", lookupErr)
 		}
-		return proposals.ErrProposalConflict
+		return proposaldomain.ErrProposalConflict
 	}
 	if err != nil {
 		return fmt.Errorf("load proposal before dismissal: %w", err)
 	}
-	var proposal proposals.Proposal
+	var proposal proposaldomain.Proposal
 	if err := json.Unmarshal(payload, &proposal); err != nil {
 		return fmt.Errorf("decode proposal before dismissal: %w", err)
 	}
-	if proposal.Status != proposals.ProposalPending && proposal.Status != proposals.ProposalNeedsInput {
-		return proposals.ErrProposalTransition
+	if proposal.Status != proposaldomain.ProposalPending && proposal.Status != proposaldomain.ProposalNeedsInput {
+		return proposaldomain.ErrProposalTransition
 	}
-	proposal.Status = proposals.ProposalDismissed
+	proposal.Status = proposaldomain.ProposalDismissed
 	proposal.UpdatedAt = at.UTC()
-	if err := proposals.ValidateProposal(proposal); err != nil {
+	if err := proposaldomain.ValidateProposal(proposal); err != nil {
 		return err
 	}
 	encoded, err := json.Marshal(proposal)
@@ -192,7 +193,7 @@ func (s proposalSQLite) DismissProposal(id string, expectedRevision uint64, at t
 		if err != nil {
 			return fmt.Errorf("check proposal dismissal: %w", err)
 		}
-		return proposals.ErrProposalConflict
+		return proposaldomain.ErrProposalConflict
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit proposal dismissal: %w", err)

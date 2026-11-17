@@ -137,6 +137,20 @@ try {
             }
         }
     }
+    # SQLite is a Configuration adapter and must consume proposal capabilities
+    # directly, rather than depending on the retained legacy import facade.
+    foreach ($file in @(
+        'internal/configuration/sqlite/proposal.go',
+        'internal/configuration/sqlite/approval.go'
+    )) {
+        $sourcePath = Join-Path $repoRoot $file
+        if (Test-Path -LiteralPath $sourcePath -PathType Leaf) {
+            $source = Get-Content -LiteralPath $sourcePath -Raw
+            if ($source -match '"github.com/ar-imms/telemetry-agent/internal/configuration/proposals"') {
+                $violations.Add("$file must depend on Configuration proposal domain/application packages instead of the legacy facade")
+            }
+        }
+    }
     # Ordered schema composition belongs to the Application boundary. The
     # Agent-state persistence context owns its base schema but does not select
     # or register other contexts' migrations.
