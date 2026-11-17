@@ -1,4 +1,4 @@
-package inventory
+package application
 
 import (
 	"context"
@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
 )
 
 // CycleResult contains safe per-provider outcomes.
@@ -28,8 +30,8 @@ func (r CycleResult) Succeeded() bool {
 
 // ProviderResult contains an identity and safe outcome code.
 type ProviderResult struct {
-	ProviderID         ProviderID
-	ProviderInstanceID ProviderInstanceID
+	ProviderID         domain.ProviderID
+	ProviderInstanceID domain.ProviderInstanceID
 	ErrorCode          string
 }
 
@@ -37,14 +39,14 @@ type ProviderResult struct {
 type Coordinator struct {
 	repository InventoryRepository
 	providers  []DiscoveryProvider
-	policy     Policy
+	policy     domain.Policy
 	timeout    time.Duration
 	now        func() time.Time
 	runMu      sync.Mutex
 }
 
 // NewCoordinator validates providers and prevents duplicate provider instances.
-func NewCoordinator(repository InventoryRepository, providers []DiscoveryProvider, policy Policy, timeout time.Duration) (*Coordinator, error) {
+func NewCoordinator(repository InventoryRepository, providers []DiscoveryProvider, policy domain.Policy, timeout time.Duration) (*Coordinator, error) {
 	if repository == nil {
 		return nil, fmt.Errorf("inventory repository is required")
 	}
@@ -57,7 +59,7 @@ func NewCoordinator(repository InventoryRepository, providers []DiscoveryProvide
 	seen := make(map[string]struct{}, len(providers))
 	copyProviders := append([]DiscoveryProvider(nil), providers...)
 	for _, provider := range copyProviders {
-		if provider == nil || !safeIdentifier.MatchString(string(provider.ID())) {
+		if provider == nil || provider.ID().Validate() != nil {
 			return nil, fmt.Errorf("invalid discovery provider")
 		}
 		key := string(provider.ID()) + "/" + string(provider.InstanceID())
@@ -92,7 +94,7 @@ func (c *Coordinator) DiscoverOnce(ctx context.Context) (CycleResult, error) {
 				return result, ctx.Err()
 			}
 			providerResult.ErrorCode = safeProviderErrorCode(err)
-			status := ProviderStatus{ProviderID: provider.ID(), ProviderInstanceID: provider.InstanceID(), Enabled: true, LastAttemptAt: attempted, LastErrorCode: providerResult.ErrorCode}
+			status := domain.ProviderStatus{ProviderID: provider.ID(), ProviderInstanceID: provider.InstanceID(), Enabled: true, LastAttemptAt: attempted, LastErrorCode: providerResult.ErrorCode}
 			if recordErr := c.repository.RecordProviderFailure(status); recordErr != nil {
 				return result, fmt.Errorf("record discovery provider failure: %w", recordErr)
 			}
@@ -101,7 +103,7 @@ func (c *Coordinator) DiscoverOnce(ctx context.Context) (CycleResult, error) {
 		}
 		if raw.ProviderID != provider.ID() || raw.ProviderInstanceID != provider.InstanceID() {
 			providerResult.ErrorCode = "identity_mismatch"
-			status := ProviderStatus{ProviderID: provider.ID(), ProviderInstanceID: provider.InstanceID(), Enabled: true, LastAttemptAt: attempted, LastErrorCode: providerResult.ErrorCode}
+			status := domain.ProviderStatus{ProviderID: provider.ID(), ProviderInstanceID: provider.InstanceID(), Enabled: true, LastAttemptAt: attempted, LastErrorCode: providerResult.ErrorCode}
 			if recordErr := c.repository.RecordProviderFailure(status); recordErr != nil {
 				return result, fmt.Errorf("record invalid discovery provider result: %w", recordErr)
 			}
@@ -109,10 +111,10 @@ func (c *Coordinator) DiscoverOnce(ctx context.Context) (CycleResult, error) {
 			continue
 		}
 		raw.ObservedAt = attempted
-		snapshot, err := NormalizeSnapshot(raw)
+		snapshot, err := domain.NormalizeSnapshot(raw)
 		if err != nil {
 			providerResult.ErrorCode = "invalid_snapshot"
-			status := ProviderStatus{ProviderID: provider.ID(), ProviderInstanceID: provider.InstanceID(), Enabled: true, LastAttemptAt: attempted, LastErrorCode: providerResult.ErrorCode}
+			status := domain.ProviderStatus{ProviderID: provider.ID(), ProviderInstanceID: provider.InstanceID(), Enabled: true, LastAttemptAt: attempted, LastErrorCode: providerResult.ErrorCode}
 			if recordErr := c.repository.RecordProviderFailure(status); recordErr != nil {
 				return result, fmt.Errorf("record invalid discovery snapshot: %w", recordErr)
 			}
@@ -132,13 +134,13 @@ func (c *Coordinator) DiscoverOnce(ctx context.Context) (CycleResult, error) {
 	return result, nil
 }
 
-func (c *Coordinator) applySnapshot(snapshot ProviderSnapshot, at time.Time) error {
+func (c *Coordinator) applySnapshot(snapshot domain.ProviderSnapshot, at time.Time) error {
 	for attempt := 0; attempt < 3; attempt++ {
 		current, err := c.repository.Snapshot()
 		if err != nil {
 			return fmt.Errorf("read inventory before provider snapshot: %w", err)
 		}
-		resources, changed, err := ReconcileProviderSnapshot(current.Resources, snapshot, c.policy)
+		resources, changed, err := domain.ReconcileProviderSnapshot(current.Resources, snapshot, c.policy)
 		if err != nil {
 			return err
 		}

@@ -1,183 +1,101 @@
 package inventory
 
 import (
-	"context"
-	"errors"
-	"fmt"
-	"regexp"
-	"strings"
-	"time"
+	"github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
+	"github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
 )
 
-// ErrIncompleteSnapshot indicates a provider did not confirm a complete inventory.
-var ErrIncompleteSnapshot = errors.New("provider snapshot is incomplete")
+// ErrIncompleteSnapshot is retained for callers of the compatibility package.
+var ErrIncompleteSnapshot = domain.ErrIncompleteSnapshot
 
-// ErrSnapshotConflict indicates another writer changed inventory before commit.
-var ErrSnapshotConflict = errors.New("inventory snapshot changed concurrently")
+// ErrSnapshotConflict is retained for callers of the compatibility package.
+var ErrSnapshotConflict = application.ErrSnapshotConflict
 
-var safeIdentifier = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
+// ProviderID is the provider-neutral identifier alias retained for compatibility.
+type ProviderID = domain.ProviderID
 
-// ProviderID identifies a discovery implementation, such as "docker".
-type ProviderID string
+// ProviderInstanceID identifies one configured provider instance.
+type ProviderInstanceID = domain.ProviderInstanceID
 
-// ProviderInstanceID identifies one explicitly configured instance of a provider.
-type ProviderInstanceID string
+// ResourceKind is a provider-neutral resource class.
+type ResourceKind = domain.ResourceKind
 
-// ResourceKind is a provider-neutral class of observed resource.
-type ResourceKind string
+// Presence describes inventory presence derived from complete observations.
+type Presence = domain.Presence
 
-const (
-	// ResourceContainer identifies a container resource.
-	ResourceContainer ResourceKind = "container"
-	// ResourceProcess identifies a host process resource.
-	ResourceProcess ResourceKind = "process"
-	// ResourceService identifies an operating system service.
-	ResourceService ResourceKind = "service"
-	// ResourceVM identifies a virtual machine resource.
-	ResourceVM ResourceKind = "vm"
-)
+// EndpointScope identifies where an endpoint address applies.
+type EndpointScope = domain.EndpointScope
 
-// Presence describes whether a complete observation currently supports existence.
-type Presence string
-
-const (
-	// PresencePresent means a complete successful snapshot contains the resource.
-	PresencePresent Presence = "present"
-	// PresenceMissing means complete successful snapshots crossed the absence threshold.
-	PresenceMissing Presence = "missing"
-)
-
-// EndpointScope states where an endpoint address applies.
-type EndpointScope string
-
-const (
-	// EndpointContainer identifies an address scoped to the container network.
-	EndpointContainer EndpointScope = "container"
-	// EndpointHost identifies an address scoped to the host.
-	EndpointHost EndpointScope = "host"
-)
-
-// Endpoint records address evidence without asserting reachability.
-type Endpoint struct {
-	Address string `json:"address"`
-	Port    uint16 `json:"port"`
-	// NetworkName preserves Docker's stable network identity for profile-specific endpoint selection.
-	NetworkName string `json:"network_name,omitempty"`
-	// NetworkPriority preserves Docker's gateway selection priority when the API exposes it.
-	NetworkPriority int `json:"network_priority,omitempty"`
-	// ContainerPort links a host-published endpoint to its private container port.
-	// It is optional for older persisted inventory and non-container providers.
-	ContainerPort uint16        `json:"container_port,omitempty"`
-	Protocol      string        `json:"protocol,omitempty"`
-	Scope         EndpointScope `json:"scope"`
-	Provenance    string        `json:"provenance"`
-}
+// Endpoint records endpoint evidence without asserting reachability.
+type Endpoint = domain.Endpoint
 
 // ResourceKey is a provider-scoped stable identity.
-type ResourceKey struct {
-	Provider           ProviderID         `json:"provider"`
-	ProviderInstance   ProviderInstanceID `json:"provider_instance"`
-	ProviderResourceID string             `json:"provider_resource_id"`
-}
+type ResourceKey = domain.ResourceKey
 
-// String returns a stable, CLI-friendly representation of the composite key.
-func (k ResourceKey) String() string {
-	return string(k.Provider) + "/" + string(k.ProviderInstance) + "/" + k.ProviderResourceID
-}
+// ResourceObservation is a provider-neutral resource observation.
+type ResourceObservation = domain.ResourceObservation
 
-// Validate checks that all identity elements are bounded and well-formed.
-func (k ResourceKey) Validate() error {
-	if !safeIdentifier.MatchString(string(k.Provider)) {
-		return fmt.Errorf("invalid provider ID")
-	}
-	instance := string(k.ProviderInstance)
-	if instance == "" || len(instance) > 128 || strings.TrimSpace(instance) != instance {
-		return fmt.Errorf("invalid provider instance ID")
-	}
-	if k.ProviderResourceID == "" || len(k.ProviderResourceID) > 256 || strings.TrimSpace(k.ProviderResourceID) != k.ProviderResourceID {
-		return fmt.Errorf("invalid provider resource ID")
-	}
-	for _, r := range k.ProviderResourceID {
-		if r < 0x20 || r == 0x7f {
-			return fmt.Errorf("invalid provider resource ID")
-		}
-	}
-	return nil
-}
-
-// ResourceObservation is one provider's normalized view of a resource.
-type ResourceObservation struct {
-	ProviderResourceID string            `json:"provider_resource_id"`
-	Kind               ResourceKind      `json:"kind"`
-	DisplayName        string            `json:"display_name,omitempty"`
-	LifecycleState     string            `json:"lifecycle_state,omitempty"`
-	Attributes         map[string]string `json:"attributes,omitempty"`
-	Endpoints          []Endpoint        `json:"endpoints,omitempty"`
-}
-
-// ProviderSnapshot is one complete observation of a provider instance.
-type ProviderSnapshot struct {
-	ProviderID         ProviderID            `json:"provider"`
-	ProviderInstanceID ProviderInstanceID    `json:"provider_instance"`
-	Complete           bool                  `json:"complete"`
-	ObservedAt         time.Time             `json:"observed_at"`
-	Resources          []ResourceObservation `json:"resources"`
-}
+// ProviderSnapshot is one provider instance's observation.
+type ProviderSnapshot = domain.ProviderSnapshot
 
 // Resource is a persisted inventory record.
-type Resource struct {
-	Key              ResourceKey       `json:"key"`
-	Kind             ResourceKind      `json:"kind"`
-	DisplayName      string            `json:"display_name,omitempty"`
-	LifecycleState   string            `json:"lifecycle_state,omitempty"`
-	Attributes       map[string]string `json:"attributes,omitempty"`
-	Endpoints        []Endpoint        `json:"endpoints,omitempty"`
-	Presence         Presence          `json:"presence"`
-	MissingSnapshots uint32            `json:"missing_snapshots"`
-	FirstSeenAt      time.Time         `json:"first_seen_at"`
-	LastSeenAt       time.Time         `json:"last_seen_at"`
-	MissingSince     *time.Time        `json:"missing_since,omitempty"`
-}
+type Resource = domain.Resource
 
 // ProviderStatus is safe operational evidence for a provider instance.
-type ProviderStatus struct {
-	ProviderID         ProviderID         `json:"provider"`
-	ProviderInstanceID ProviderInstanceID `json:"provider_instance"`
-	Enabled            bool               `json:"enabled"`
-	LastAttemptAt      time.Time          `json:"last_attempt_at,omitempty"`
-	LastSuccessAt      time.Time          `json:"last_success_at,omitempty"`
-	LastErrorCode      string             `json:"last_error_code,omitempty"`
-	ResourceCount      int                `json:"resource_count"`
-}
+type ProviderStatus = domain.ProviderStatus
 
-// InventorySnapshot is a consistent material revision, write token and records.
-type InventorySnapshot struct {
-	Revision      uint64           `json:"inventory_revision"`
-	WriteRevision uint64           `json:"inventory_write_revision"`
-	Resources     []Resource       `json:"resources"`
-	Providers     []ProviderStatus `json:"providers"`
-}
+// InventorySnapshot is a consistent inventory revision and its records.
+type InventorySnapshot = domain.InventorySnapshot
 
-// InventoryRepository persists inventory snapshots independently of desired state.
-type InventoryRepository interface {
-	Snapshot() (InventorySnapshot, error)
-	CommitProviderSnapshot(expectedWriteRevision uint64, snapshot ProviderSnapshot, resources []Resource, materialChange bool) error
-	RecordProviderFailure(status ProviderStatus) error
-}
+// InventoryRepository is the inventory persistence port.
+type InventoryRepository = application.InventoryRepository
+
+// ProviderStatusReader reads bounded provider-status diagnostics.
+type ProviderStatusReader = application.ProviderStatusReader
+
+// DiscoveryProvider returns provider snapshots.
+type DiscoveryProvider = application.DiscoveryProvider
+
+// Policy defines thresholds for materializing successful absence observations.
+type Policy = domain.Policy
+
+const (
+	// ResourceContainer is a container resource kind.
+	ResourceContainer = domain.ResourceContainer
+	// ResourceProcess is a process resource kind.
+	ResourceProcess = domain.ResourceProcess
+	// ResourceService is an operating-system service resource kind.
+	ResourceService = domain.ResourceService
+	// ResourceVM is a virtual-machine resource kind.
+	ResourceVM = domain.ResourceVM
+)
+
+const (
+	// PresencePresent means a complete snapshot contains the resource.
+	PresencePresent = domain.PresencePresent
+	// PresenceMissing means complete snapshots crossed the absence threshold.
+	PresenceMissing = domain.PresenceMissing
+)
+
+const (
+	// EndpointContainer identifies an address scoped to a container network.
+	EndpointContainer = domain.EndpointContainer
+	// EndpointHost identifies an address scoped to the host.
+	EndpointHost = domain.EndpointHost
+)
 
 // MaxProviderStatusReadLimit caps provider-status-only diagnostic reads.
-const MaxProviderStatusReadLimit = 64
+const MaxProviderStatusReadLimit = application.MaxProviderStatusReadLimit
 
-// ProviderStatusReader reads a bounded provider-status projection without
-// materializing inventory resources.
-type ProviderStatusReader interface {
-	// ReadProviderStatuses returns no more than limit rows and reports whether additional rows were omitted.
-	ReadProviderStatuses(ctx context.Context, limit int) ([]ProviderStatus, bool, error)
+// DefaultPolicy returns the current inventory absence and freshness thresholds.
+func DefaultPolicy() Policy { return domain.DefaultPolicy() }
+
+// NormalizeSnapshot validates and deterministically copies provider evidence.
+func NormalizeSnapshot(snapshot ProviderSnapshot) (ProviderSnapshot, error) {
+	return domain.NormalizeSnapshot(snapshot)
 }
 
-// DiscoveryProvider returns one complete snapshot or an explicit error.
-type DiscoveryProvider interface {
-	ID() ProviderID
-	InstanceID() ProviderInstanceID
-	Discover(ctx context.Context) (ProviderSnapshot, error)
+// ReconcileProviderSnapshot applies complete evidence to one provider's records.
+func ReconcileProviderSnapshot(current []Resource, snapshot ProviderSnapshot, policy Policy) ([]Resource, bool, error) {
+	return domain.ReconcileProviderSnapshot(current, snapshot, policy)
 }

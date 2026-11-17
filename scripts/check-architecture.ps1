@@ -117,6 +117,13 @@ try {
     $runtimeContextRoot = "$modulePath/internal/runtime"
     $healthContextRoot = "$modulePath/internal/health"
     $platformPackageRoot = "$modulePath/internal/platform"
+    $inventoryFacade = "$modulePath/internal/inventory"
+    $inventoryObservationDomain = "$modulePath/internal/inventory/observation/domain"
+    $inventoryObservationApplication = "$modulePath/internal/inventory/observation/application"
+    $inventoryAdapters = @(
+        "$modulePath/internal/inventory/docker",
+        "$modulePath/internal/inventory/sqlite"
+    )
 
     $enrollmentFacadeImportPath = "$modulePath/internal/identity/enrollment"
     $enrollmentDomain = "$enrollmentFacadeImportPath/domain"
@@ -708,6 +715,34 @@ try {
                     $violations.Add("forbidden context dependency: $package -> $imported ($($rule.Reason))")
                 }
             }
+        }
+
+        $isInventoryDomain = $package -eq $inventoryObservationDomain -or
+            $package.StartsWith("$inventoryObservationDomain/", [StringComparison]::Ordinal)
+        $isInventoryApplication = $package -eq $inventoryObservationApplication -or
+            $package.StartsWith("$inventoryObservationApplication/", [StringComparison]::Ordinal)
+        $isInventoryAdapter = $false
+        foreach ($adapterRoot in $inventoryAdapters) {
+            if ($package -eq $adapterRoot -or $package.StartsWith("$adapterRoot/", [StringComparison]::Ordinal)) {
+                $isInventoryAdapter = $true
+                break
+            }
+        }
+        if ($isInventoryDomain) {
+            if ($imports -contains $inventoryObservationApplication -or
+                $imports -contains $inventoryFacade -or
+                @($imports | Where-Object { $_.StartsWith("$modulePath/internal/inventory/docker/", [StringComparison]::Ordinal) -or
+                    $_.StartsWith("$modulePath/internal/inventory/sqlite/", [StringComparison]::Ordinal) }).Count -gt 0) {
+                $violations.Add("Inventory observation domain must not depend on application, compatibility, or adapter packages: $package")
+            }
+        }
+        if ($isInventoryApplication -and ($imports -contains $inventoryFacade -or
+            @($imports | Where-Object { $_.StartsWith("$modulePath/internal/inventory/docker/", [StringComparison]::Ordinal) -or
+                $_.StartsWith("$modulePath/internal/inventory/sqlite/", [StringComparison]::Ordinal) }).Count -gt 0)) {
+            $violations.Add("Inventory observation application must use its ports and domain, not the compatibility facade or adapters: $package")
+        }
+        if ($isInventoryAdapter -and $imports -contains $inventoryFacade) {
+            $violations.Add("Inventory adapters must use application/domain contracts instead of the root compatibility facade: $package")
         }
 
         $isPlatformPackage = $package -eq $platformPackageRoot -or

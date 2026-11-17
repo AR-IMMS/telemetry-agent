@@ -1,5 +1,5 @@
-// Package inventory provides provider-neutral observation, reconciliation, and persistence contracts.
-//
-// It owns current resource inventory and provider evidence. Configuration
-// proposal lifecycle and desired-state approval are owned by Configuration.
+// Package inventory is a temporary compatibility facade for the Inventory
+// domain and discovery application packages. It re-exports their contracts for
+// existing callers while migration proceeds; it does not own inventory rules,
+// provider orchestration, or persistence implementations.
 package inventory

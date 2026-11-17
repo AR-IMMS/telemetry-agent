@@ -10,7 +10,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
-	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation"

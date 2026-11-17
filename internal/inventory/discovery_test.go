@@ -131,6 +131,20 @@ func cloneSnapshot(snapshot InventorySnapshot) InventorySnapshot {
 	return result
 }
 
+func cloneResource(resource Resource) Resource {
+	result := resource
+	result.Attributes = make(map[string]string, len(resource.Attributes))
+	for key, value := range resource.Attributes {
+		result.Attributes[key] = value
+	}
+	result.Endpoints = append([]Endpoint(nil), resource.Endpoints...)
+	if resource.MissingSince != nil {
+		value := *resource.MissingSince
+		result.MissingSince = &value
+	}
+	return result
+}
+
 type fakeProvider struct {
 	id       ProviderID
 	instance ProviderInstanceID

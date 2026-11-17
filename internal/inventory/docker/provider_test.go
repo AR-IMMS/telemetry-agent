@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/inventory"
+	"github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	moby "github.com/moby/moby/client"
@@ -241,7 +241,7 @@ func TestEndpointEvidenceDoesNotClaimReachability(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, endpoint := range resource.Endpoints {
-		if endpoint.Scope != inventory.EndpointContainer && endpoint.Scope != inventory.EndpointHost {
+		if endpoint.Scope != domain.EndpointContainer && endpoint.Scope != domain.EndpointHost {
 			t.Fatalf("unexpected endpoint scope %q", endpoint.Scope)
 		}
 	}
