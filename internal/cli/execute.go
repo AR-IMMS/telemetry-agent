@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 
+	monitoringcommands "github.com/ar-imms/telemetry-agent/internal/cli/commands/monitoring"
 	"github.com/spf13/cobra"
 )
 
@@ -69,7 +70,9 @@ func newRootCommand(dispatch Dispatch, stdout, stderr io.Writer, rootHelp func(i
 		"list", "inspect", "status",
 	}, dispatch, exitCode))
 	root.AddCommand(newLegacyCommand("service", true, dispatch, exitCode))
-	root.AddCommand(newMonitoringCommand(dispatch, exitCode))
+	root.AddCommand(monitoringcommands.NewCommand(dispatch, func(code int) {
+		*exitCode = code
+	}))
 	return root
 }
 
@@ -118,61 +121,6 @@ func newLegacyCommand(name string, hidden bool, dispatch Dispatch, exitCode *int
 		Hidden:             hidden,
 		Run: func(command *cobra.Command, args []string) {
 			*exitCode = dispatch(command.Context(), append([]string{name}, args...), command.OutOrStdout(), command.ErrOrStderr())
-		},
-	}
-}
-
-func newMonitoringCommand(dispatch Dispatch, exitCode *int) *cobra.Command {
-	monitoring := &cobra.Command{
-		Use:   "monitoring",
-		Short: "Manage monitoring instances, templates, and proposals",
-		Run: func(command *cobra.Command, _ []string) {
-			_ = command.Help()
-		},
-	}
-	instances := &cobra.Command{Use: "instance", Short: "Manage desired monitoring instances"}
-	templates := &cobra.Command{Use: "template", Short: "Manage local monitoring templates"}
-	proposals := &cobra.Command{Use: "proposal", Short: "Review monitoring proposals"}
-	profiles := &cobra.Command{Use: "profile", Short: "Inspect built-in monitoring profiles"}
-	for _, operation := range []string{
-		"create", "configure", "update", "enable", "disable", "delete", "list", "inspect", "match",
-		"status", "history", "retry",
-	} {
-		legacyOperation := operation
-		if operation == "create" {
-			legacyOperation = "configure"
-		}
-		instances.AddCommand(newAliasCommand(operation, exitCode, func(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-			return dispatch(ctx, append([]string{"integration", legacyOperation}, args...), stdout, stderr)
-		}))
-	}
-	for _, operation := range []string{"create", "update", "list", "inspect", "enable", "disable", "delete"} {
-		templates.AddCommand(newAliasCommand(operation, exitCode, func(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-			return dispatch(ctx, append([]string{"integration", "template", operation}, args...), stdout, stderr)
-		}))
-	}
-	for _, operation := range []string{"list", "inspect", "dismiss", "approve"} {
-		proposals.AddCommand(newAliasCommand(operation, exitCode, func(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-			return dispatch(ctx, append([]string{"discovery", "proposals", operation}, args...), stdout, stderr)
-		}))
-	}
-	for _, operation := range []string{"list", "inspect"} {
-		profiles.AddCommand(newAliasCommand(operation, exitCode, func(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-			return dispatch(ctx, append([]string{"integration", "catalog", operation}, args...), stdout, stderr)
-		}))
-	}
-	monitoring.AddCommand(instances, profiles, templates, proposals)
-	return monitoring
-}
-
-type aliasHandler func(context.Context, []string, io.Writer, io.Writer) int
-
-func newAliasCommand(operation string, exitCode *int, execute aliasHandler) *cobra.Command {
-	return &cobra.Command{
-		Use:                operation,
-		DisableFlagParsing: true,
-		Run: func(command *cobra.Command, args []string) {
-			*exitCode = execute(command.Context(), args, command.OutOrStdout(), command.ErrOrStderr())
 		},
 	}
 }
