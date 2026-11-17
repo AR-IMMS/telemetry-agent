@@ -3,6 +3,7 @@ package agentstate
 import (
 	"encoding/json"
 	"errors"
+	activationapp "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/application"
 	activationdomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/domain"
 	"path/filepath"
 	"testing"
@@ -66,12 +67,12 @@ func TestCandidateAdmissionRejectsStaleDesiredAndM2Revisions(t *testing.T) {
 		t.Fatal(err)
 	}
 	request := candidateAdmissionForTest(1, 8, "baseline-a", "candidate-a")
-	if _, err := store.AdmitCandidate(request); !errors.Is(err, ErrStaleCandidate) {
+	if _, err := store.AdmitCandidate(request); !errors.Is(err, activationapp.ErrStaleCandidate) {
 		t.Fatalf("stale admission error = %v, want ErrStaleCandidate", err)
 	}
 	request.DesiredSetRevision = 0
 	request.Mapping.DesiredSetRevision = 0
-	if _, err := store.AdmitCandidate(request); !errors.Is(err, ErrStaleCandidate) {
+	if _, err := store.AdmitCandidate(request); !errors.Is(err, activationapp.ErrStaleCandidate) {
 		t.Fatalf("stale M2 admission error = %v, want ErrStaleCandidate", err)
 	}
 	state, err := store.Load()
@@ -251,8 +252,8 @@ func TestCandidateAppliedGenerationRequiresAtomicTerminalMapping(t *testing.T) {
 	}
 }
 
-func candidateAdmissionForTest(desiredRevision, generation uint64, baseline, candidate string) CandidateAdmission {
-	return CandidateAdmission{
+func candidateAdmissionForTest(desiredRevision, generation uint64, baseline, candidate string) activationapp.CandidateAdmissionRequest {
+	return activationapp.CandidateAdmissionRequest{
 		DesiredSetRevision:  desiredRevision,
 		ExpectedGeneration:  generation,
 		ExpectedFingerprint: baseline,

@@ -19,6 +19,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation"
+	activationapp "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/application"
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	runtimecontracts "github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
@@ -138,7 +139,7 @@ func classifyRuntimeCandidateError(err error) error {
 
 func (a runtimeCandidateApplier) ApplyCandidate(ctx context.Context, request reconciliation.CandidateApplyRequest) (reconciliation.CandidateActivationOutcome, error) {
 	outcome, err := agentlifecycle.ApplyCollectorCandidate(ctx, a.store, request, a.options)
-	if errors.Is(err, agentstate.ErrStaleCandidate) {
+	if errors.Is(err, activationapp.ErrStaleCandidate) {
 		return outcome, runtimecontracts.ErrStaleCandidate
 	}
 	return outcome, err

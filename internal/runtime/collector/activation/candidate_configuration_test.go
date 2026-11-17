@@ -17,6 +17,7 @@ import (
 	monitoringprofile "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
+	activationapp "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/application"
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
@@ -119,7 +120,7 @@ func TestApplyCollectorCandidateRejectsChangedBaselineBeforeAdmission(t *testing
 		t.Fatal("Collector validation ran for a stale baseline")
 		return bootstrap.CommandResult{}
 	})
-	if _, err := ApplyCollectorCandidate(context.Background(), store, request, options); !errors.Is(err, agentstate.ErrStaleCandidate) {
+	if _, err := ApplyCollectorCandidate(context.Background(), store, request, options); !errors.Is(err, activationapp.ErrStaleCandidate) {
 		t.Fatalf("ApplyCollectorCandidate() error = %v, want stale candidate", err)
 	}
 	state, err := store.Load()

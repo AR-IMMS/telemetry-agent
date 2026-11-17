@@ -12,6 +12,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	activationapp "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/application"
 	activationdomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/domain"
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
@@ -69,9 +70,9 @@ func ApplyCollectorCandidate(
 		}
 		if fresh.Fingerprint != request.BaselineFingerprint || fresh.DesiredGeneration != request.ExpectedGeneration {
 			if fresh.Fingerprint != request.BaselineFingerprint {
-				return candidateActivationPlan{}, agentstate.ErrStaleBaseline
+				return candidateActivationPlan{}, activationapp.ErrStaleBaseline
 			}
-			return candidateActivationPlan{}, agentstate.ErrStaleM2Generation
+			return candidateActivationPlan{}, activationapp.ErrStaleM2Generation
 		}
 		if request.Candidate.Platform() != options.Platform {
 			return candidateActivationPlan{}, fmt.Errorf("candidate platform does not match current baseline platform")

@@ -10,6 +10,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation/contracts"
 	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
+	activationapp "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/application"
 	activationdomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/domain"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
@@ -287,8 +288,8 @@ func newReconciliationRepository(t *testing.T, now *time.Time) (agentstate.SQLit
 	return store, repository
 }
 
-func candidateAdmission(revision, generation uint64, baseline, digest string) agentstate.CandidateAdmission {
-	return agentstate.CandidateAdmission{
+func candidateAdmission(revision, generation uint64, baseline, digest string) activationapp.CandidateAdmissionRequest {
+	return activationapp.CandidateAdmissionRequest{
 		DesiredSetRevision: revision, ExpectedGeneration: generation,
 		ExpectedFingerprint: baseline, VerifiedFingerprint: baseline, RecoveryPath: "recovery.yaml",
 		Mapping: activationdomain.CandidateMapping{

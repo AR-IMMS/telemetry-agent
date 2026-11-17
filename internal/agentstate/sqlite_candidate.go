@@ -8,43 +8,10 @@ import (
 	"time"
 
 	platformsqlite "github.com/ar-imms/telemetry-agent/internal/platform/sqlite"
+	activationapp "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/application"
 	activationdomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/domain"
 	activationsqlite "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/sqlite"
 )
-
-// CandidateAdmission binds one compiled candidate to the current durable
-// Integration and M2 revisions before the lifecycle begins activation.
-type CandidateAdmission struct {
-	DesiredSetRevision  uint64
-	ExpectedGeneration  uint64
-	ExpectedFingerprint string
-	VerifiedFingerprint string
-	Mapping             activationdomain.CandidateMapping
-	RecoveryPath        string
-}
-
-// CandidateAdmissionResult identifies the reserved generation or an existing
-// already-applied generation for an idempotent request.
-type CandidateAdmissionResult struct {
-	Generation     uint64
-	AlreadyApplied bool
-}
-
-// ErrStaleCandidate identifies a desired revision, M2 generation, or baseline
-// fingerprint that changed before the candidate was admitted.
-var ErrStaleCandidate = errors.New("candidate is stale")
-
-// ErrStaleDesiredRevision indicates that the submitted Integration revision is
-// no longer the current durable desired set.
-var ErrStaleDesiredRevision = fmt.Errorf("%w: desired Integration revision changed", ErrStaleCandidate)
-
-// ErrStaleM2Generation indicates that M2 configuration state changed before
-// atomic candidate admission.
-var ErrStaleM2Generation = fmt.Errorf("%w: M2 desired generation changed", ErrStaleCandidate)
-
-// ErrStaleBaseline indicates that ordered baseline inputs changed after the
-// candidate was compiled.
-var ErrStaleBaseline = fmt.Errorf("%w: clean baseline changed", ErrStaleCandidate)
 
 // ErrCandidateTerminalRequired prevents candidate AppliedGeneration from
 // committing without its durable activation mapping in the same transaction.
@@ -52,73 +19,73 @@ var ErrCandidateTerminalRequired = errors.New("candidate terminal mapping is req
 
 // AdmitCandidate atomically verifies desired revisions, reserves or reuses an
 // M2 generation, and persists the existing activationdomain.PendingActivation record.
-func (s SQLiteStore) AdmitCandidate(request CandidateAdmission) (CandidateAdmissionResult, error) {
+func (s SQLiteStore) AdmitCandidate(request activationapp.CandidateAdmissionRequest) (activationapp.AdmissionResult, error) {
 	if request.Mapping.CandidateDigest == "" || request.Mapping.EffectiveConfigDigest == "" || request.Mapping.BaselineFingerprint == "" || request.Mapping.CollectorVersion == "" || request.Mapping.ManifestVersion == "" || request.Mapping.Platform == "" {
-		return CandidateAdmissionResult{}, fmt.Errorf("candidate digests, baseline fingerprint, artifact identity, and platform are required")
+		return activationapp.AdmissionResult{}, fmt.Errorf("candidate digests, baseline fingerprint, artifact identity, and platform are required")
 	}
 	if request.Mapping.DesiredSetRevision != request.DesiredSetRevision || request.Mapping.BaselineFingerprint != request.ExpectedFingerprint {
-		return CandidateAdmissionResult{}, fmt.Errorf("candidate mapping does not match admission revisions")
+		return activationapp.AdmissionResult{}, fmt.Errorf("candidate mapping does not match admission revisions")
 	}
 	if request.ExpectedFingerprint == "" || request.ExpectedFingerprint != request.VerifiedFingerprint || request.Mapping.BaselineFingerprint != request.ExpectedFingerprint {
-		return CandidateAdmissionResult{}, ErrStaleBaseline
+		return activationapp.AdmissionResult{}, activationapp.ErrStaleBaseline
 	}
 	locker := platformsqlite.UpdateLocker()
 	locker.Lock()
 	defer locker.Unlock()
 	db, err := s.open()
 	if err != nil {
-		return CandidateAdmissionResult{}, err
+		return activationapp.AdmissionResult{}, err
 	}
 	defer db.Close()
 	tx, err := db.Begin()
 	if err != nil {
-		return CandidateAdmissionResult{}, fmt.Errorf("begin candidate admission: %w", err)
+		return activationapp.AdmissionResult{}, fmt.Errorf("begin candidate admission: %w", err)
 	}
 	defer tx.Rollback()
 	currentDesired, err := desiredIntegrationRevision(tx)
 	if err != nil {
-		return CandidateAdmissionResult{}, fmt.Errorf("read desired Integration revision: %w", err)
+		return activationapp.AdmissionResult{}, fmt.Errorf("read desired Integration revision: %w", err)
 	}
 	if currentDesired != request.DesiredSetRevision {
-		return CandidateAdmissionResult{}, ErrStaleDesiredRevision
+		return activationapp.AdmissionResult{}, activationapp.ErrStaleDesiredRevision
 	}
 	state, err := loadSQLiteState(tx)
 	if err != nil {
-		return CandidateAdmissionResult{}, err
+		return activationapp.AdmissionResult{}, err
 	}
 	if state.DesiredGeneration != request.ExpectedGeneration || state.PendingActivation != nil {
-		return CandidateAdmissionResult{}, ErrStaleM2Generation
+		return activationapp.AdmissionResult{}, activationapp.ErrStaleM2Generation
 	}
 	if generation, outcome, found, err := findCandidateTarget(tx, request.Mapping); err != nil {
-		return CandidateAdmissionResult{}, err
+		return activationapp.AdmissionResult{}, err
 	} else if found && outcome == "applied" && state.AppliedGeneration >= generation {
 		if err := tx.Commit(); err != nil {
-			return CandidateAdmissionResult{}, fmt.Errorf("finish idempotent candidate admission: %w", err)
+			return activationapp.AdmissionResult{}, fmt.Errorf("finish idempotent candidate admission: %w", err)
 		}
-		return CandidateAdmissionResult{Generation: generation, AlreadyApplied: true}, nil
+		return activationapp.AdmissionResult{Generation: generation, AlreadyApplied: true}, nil
 	} else if found && outcome != "applied" && generation == state.DesiredGeneration {
 		state.PendingActivation = &activationdomain.PendingActivation{Generation: generation, RecoveryPath: request.RecoveryPath, Candidate: &request.Mapping}
 		if err := saveCandidateState(tx, state); err != nil {
-			return CandidateAdmissionResult{}, err
+			return activationapp.AdmissionResult{}, err
 		}
 		if err := tx.Commit(); err != nil {
-			return CandidateAdmissionResult{}, fmt.Errorf("commit candidate retry admission: %w", err)
+			return activationapp.AdmissionResult{}, fmt.Errorf("commit candidate retry admission: %w", err)
 		}
-		return CandidateAdmissionResult{Generation: generation}, nil
+		return activationapp.AdmissionResult{Generation: generation}, nil
 	}
 	if state.DesiredGeneration == ^uint64(0) {
-		return CandidateAdmissionResult{}, fmt.Errorf("M2 desired generation overflow")
+		return activationapp.AdmissionResult{}, fmt.Errorf("M2 desired generation overflow")
 	}
 	generation := state.DesiredGeneration + 1
 	state.DesiredGeneration = generation
 	state.PendingActivation = &activationdomain.PendingActivation{Generation: generation, RecoveryPath: request.RecoveryPath, Candidate: &request.Mapping}
 	if err := saveCandidateState(tx, state); err != nil {
-		return CandidateAdmissionResult{}, err
+		return activationapp.AdmissionResult{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return CandidateAdmissionResult{}, fmt.Errorf("commit candidate admission: %w", err)
+		return activationapp.AdmissionResult{}, fmt.Errorf("commit candidate admission: %w", err)
 	}
-	return CandidateAdmissionResult{Generation: generation}, nil
+	return activationapp.AdmissionResult{Generation: generation}, nil
 }
 
 // MarkCandidateGenerationApplied atomically commits AppliedGeneration and the
