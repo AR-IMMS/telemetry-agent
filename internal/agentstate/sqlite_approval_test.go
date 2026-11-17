@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
+	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	proposals "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
 )
 
 func TestSQLiteApprovalCommitsProposalAndDesiredStateAtomically(t *testing.T) {
@@ -121,7 +121,7 @@ func TestSQLiteApprovalRejectsEquivalentManualIntegration(t *testing.T) {
 	if err := store.ProposalRepository().PutProposal(proposal, 0); err != nil {
 		t.Fatal(err)
 	}
-	manual := integration.IntegrationInstance{ID: "manual-cache", DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true, Configuration: map[string]any{"endpoint": "127.0.0.1:6379"}}
+	manual := desiredstatedomain.Instance{ID: "manual-cache", DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true, Configuration: map[string]any{"endpoint": "127.0.0.1:6379"}}
 	if _, _, err := store.IntegrationRepository().Put(manual, 0); err != nil {
 		t.Fatal(err)
 	}
@@ -168,10 +168,10 @@ func approvalFixture(proposal proposals.Proposal, expectedDesired uint64) propos
 		ProposalID: proposal.ID, ProposalRevision: proposal.Revision, ExpectedDesiredRevision: expectedDesired,
 		ExpectedCandidateDigest: proposal.CandidateDigest, VerifiedCandidateDigest: proposal.CandidateDigest,
 		InventoryWriteRevision: 0,
-		Instance: integration.IntegrationInstance{
+		Instance: desiredstatedomain.Instance{
 			ID: discoveredTestInstanceID(proposal.ID), DefinitionID: proposal.Identity.IntegrationID, DefinitionVersion: proposal.DefinitionVersion,
-			Configuration: map[string]any{"endpoint": "127.0.0.1:6379"}, Source: integration.SourceDiscovery,
-			Binding: &integration.ResourceBinding{Provider: proposal.Identity.Provider, ProviderInstance: proposal.Identity.ProviderInstance, ResourceID: proposal.Identity.ResourceID}, Enabled: true,
+			Configuration: map[string]any{"endpoint": "127.0.0.1:6379"}, Source: desiredstatedomain.SourceDiscovery,
+			Binding: &desiredstatedomain.ResourceBinding{Provider: proposal.Identity.Provider, ProviderInstance: proposal.Identity.ProviderInstance, ResourceID: proposal.Identity.ResourceID}, Enabled: true,
 		},
 	}
 }

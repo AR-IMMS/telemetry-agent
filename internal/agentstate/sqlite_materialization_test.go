@@ -6,8 +6,9 @@ import (
 	"sync"
 	"testing"
 
+	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	materializationdomain "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/domain"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
+	templatesdomain "github.com/ar-imms/telemetry-agent/internal/configuration/templates/domain"
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 )
 
@@ -37,7 +38,7 @@ func TestSQLiteMaterializationPublishesOnlyCommittedDesiredRevision(t *testing.T
 		ExpectedInventoryWriteRevision: 1,
 		ExpectedTemplateSetRevision:    1,
 		ExpectedDesiredSetRevision:     0,
-		Upsert:                         []integration.IntegrationInstance{generatedTestInstance()},
+		Upsert:                         []desiredstatedomain.Instance{generatedTestInstance()},
 	}
 	if revision, err := repository.ApplyTemplateProjection(batch); err != nil || revision != 1 {
 		t.Fatalf("committed materialization revision=%d err=%v", revision, err)
@@ -63,7 +64,7 @@ func TestSQLiteMaterializationQueueFailureDoesNotUndoCommittedWrite(t *testing.T
 	batch := materializationdomain.Batch{
 		ExpectedInventoryWriteRevision: 1,
 		ExpectedTemplateSetRevision:    1,
-		Upsert:                         []integration.IntegrationInstance{generatedTestInstance()},
+		Upsert:                         []desiredstatedomain.Instance{generatedTestInstance()},
 	}
 	if revision, err := repository.ApplyTemplateProjection(batch); err != nil || revision != 1 {
 		t.Fatalf("committed write failed because advisory queue was full: revision=%d err=%v", revision, err)
@@ -83,7 +84,7 @@ func TestSQLiteMaterializationAppliesTemplateProjectionIdempotently(t *testing.T
 		ExpectedInventoryWriteRevision: 1,
 		ExpectedTemplateSetRevision:    1,
 		ExpectedDesiredSetRevision:     0,
-		Upsert:                         []integration.IntegrationInstance{instance},
+		Upsert:                         []desiredstatedomain.Instance{instance},
 	}
 
 	revision, err := repository.ApplyTemplateProjection(batch)
@@ -94,7 +95,7 @@ func TestSQLiteMaterializationAppliesTemplateProjectionIdempotently(t *testing.T
 	if err != nil || snapshot.Revision != 1 || len(snapshot.Instances) != 1 {
 		t.Fatalf("desired snapshot=%+v err=%v", snapshot, err)
 	}
-	if got := snapshot.Instances[0]; got.Revision != 1 || got.Source != integration.SourceTemplate || !got.Enabled {
+	if got := snapshot.Instances[0]; got.Revision != 1 || got.Source != desiredstatedomain.SourceTemplate || !got.Enabled {
 		t.Fatalf("generated instance=%+v", got)
 	}
 
@@ -131,7 +132,7 @@ func TestSQLiteMaterializationRejectsStaleSnapshotTokens(t *testing.T) {
 			execMaterializationSQL(t, store, `UPDATE inventory_meta SET write_revision=2 WHERE id=1`)
 		}, batch: materializationdomain.Batch{ExpectedInventoryWriteRevision: 1, ExpectedTemplateSetRevision: 1}},
 		{name: "templates", mutate: func(t *testing.T, store SQLiteStore) {
-			_, _, err := store.TemplateRepository().Put(sqliteTestTemplate("redis-main", integration.TemplateDisabled), 1)
+			_, _, err := store.TemplateRepository().Put(sqliteTestTemplate("redis-main", templatesdomain.StatusDisabled), 1)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -147,7 +148,7 @@ func TestSQLiteMaterializationRejectsStaleSnapshotTokens(t *testing.T) {
 			prepareMaterializationRevisions(t, store, 1, 0)
 			test.mutate(t, store)
 			test.batch.ExpectedDesiredSetRevision = 0
-			test.batch.Upsert = []integration.IntegrationInstance{generatedTestInstance()}
+			test.batch.Upsert = []desiredstatedomain.Instance{generatedTestInstance()}
 			if _, err := store.MaterializationRepository().ApplyTemplateProjection(test.batch); !errors.Is(err, materializationdomain.ErrMaterializationConflict) {
 				t.Fatalf("stale snapshot error=%v", err)
 			}
@@ -163,7 +164,7 @@ func TestSQLiteMaterializationRollsBackAllProjectionWrites(t *testing.T) {
 		ExpectedInventoryWriteRevision: 1,
 		ExpectedTemplateSetRevision:    1,
 		ExpectedDesiredSetRevision:     0,
-		Upsert:                         []integration.IntegrationInstance{generatedTestInstance()},
+		Upsert:                         []desiredstatedomain.Instance{generatedTestInstance()},
 	})
 	if err == nil {
 		t.Fatal("projection succeeded despite desired revision trigger failure")
@@ -177,20 +178,20 @@ func TestSQLiteMaterializationRollsBackAllProjectionWrites(t *testing.T) {
 func TestSQLiteMaterializationSerializesConcurrentSnapshotWriters(t *testing.T) {
 	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	prepareMaterializationRevisions(t, store, 1, 0)
-	instances := []integration.IntegrationInstance{generatedTestInstance(), generatedTestInstanceForResource("container-b")}
+	instances := []desiredstatedomain.Instance{generatedTestInstance(), generatedTestInstanceForResource("container-b")}
 	start := make(chan struct{})
 	results := make(chan error, len(instances))
 	var workers sync.WaitGroup
 	for _, instance := range instances {
 		workers.Add(1)
-		go func(instance integration.IntegrationInstance) {
+		go func(instance desiredstatedomain.Instance) {
 			defer workers.Done()
 			<-start
 			_, err := store.MaterializationRepository().ApplyTemplateProjection(materializationdomain.Batch{
 				ExpectedInventoryWriteRevision: 1,
 				ExpectedTemplateSetRevision:    1,
 				ExpectedDesiredSetRevision:     0,
-				Upsert:                         []integration.IntegrationInstance{instance},
+				Upsert:                         []desiredstatedomain.Instance{instance},
 			})
 			results <- err
 		}(instance)
@@ -230,7 +231,7 @@ func prepareMaterializationRevisions(t *testing.T, store SQLiteStore, inventory,
 	if _, err := db.Exec(`UPDATE integration_desired_state SET desired_set_revision=? WHERE id=1`, desired); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := store.TemplateRepository().Put(sqliteTestTemplate("redis-main", integration.TemplateEnabled), 0); err != nil {
+	if _, _, err := store.TemplateRepository().Put(sqliteTestTemplate("redis-main", templatesdomain.StatusEnabled), 0); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -247,16 +248,17 @@ func execMaterializationSQL(t *testing.T, store SQLiteStore, query string) {
 	}
 }
 
-func generatedTestInstance() integration.IntegrationInstance {
+func generatedTestInstance() desiredstatedomain.Instance {
 	return generatedTestInstanceForResource("container-a")
 }
 
-func generatedTestInstanceForResource(resourceID string) integration.IntegrationInstance {
-	id, _ := integration.GeneratedInstanceID(integration.TemplateOwnerLocal, "redis-main", integration.ResourceIdentity{Provider: "docker", ProviderInstance: "local", ResourceID: resourceID}, "redis")
-	return integration.IntegrationInstance{
+func generatedTestInstanceForResource(resourceID string) desiredstatedomain.Instance {
+	binding := desiredstatedomain.ResourceBinding{Provider: "docker", ProviderInstance: "local", ResourceID: resourceID}
+	id, _ := materializationdomain.GeneratedInstanceID(desiredstatedomain.TemplateOwnerLocal, "redis-main", binding, "redis")
+	return desiredstatedomain.Instance{
 		ID: id, DefinitionID: "redis", DefinitionVersion: "1.0.0",
-		Configuration: map[string]any{"endpoint": "127.0.0.1:6379"}, Source: integration.SourceTemplate,
-		Binding:       &integration.ResourceBinding{Provider: "docker", ProviderInstance: "local", ResourceID: resourceID},
-		TemplateOwner: integration.TemplateOwnerLocal, TemplateID: "redis-main", TemplateRevision: 1, Enabled: true,
+		Configuration: map[string]any{"endpoint": "127.0.0.1:6379"}, Source: desiredstatedomain.SourceTemplate,
+		Binding:       &binding,
+		TemplateOwner: desiredstatedomain.TemplateOwnerLocal, TemplateID: "redis-main", TemplateRevision: 1, Enabled: true,
 	}
 }

@@ -9,26 +9,27 @@ import (
 	"testing"
 
 	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
+	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	templatesapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
+	templatesdomain "github.com/ar-imms/telemetry-agent/internal/configuration/templates/domain"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
 func TestSQLiteTemplateRepositoryCASNoOpDeleteTombstoneAndRestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
 	repository := newTestSQLiteStore(path).TemplateRepository()
-	created, setRevision, err := repository.Put(sqliteTestTemplate("redis-main", integration.TemplateEnabled), 0)
+	created, setRevision, err := repository.Put(sqliteTestTemplate("redis-main", templatesdomain.StatusEnabled), 0)
 	if err != nil || created.Revision != 1 || setRevision != 1 {
 		t.Fatalf("create template=%+v set revision=%d err=%v", created, setRevision, err)
 	}
-	unchanged, setRevision, err := repository.Put(sqliteTestTemplate("redis-main", integration.TemplateEnabled), 1)
+	unchanged, setRevision, err := repository.Put(sqliteTestTemplate("redis-main", templatesdomain.StatusEnabled), 1)
 	if err != nil || unchanged.Revision != 1 || setRevision != 1 {
 		t.Fatalf("no-op template=%+v set revision=%d err=%v", unchanged, setRevision, err)
 	}
-	if _, _, err := repository.Put(sqliteTestTemplate("redis-main", integration.TemplateDisabled), 0); !errors.Is(err, templatesapp.ErrRevisionConflict) {
+	if _, _, err := repository.Put(sqliteTestTemplate("redis-main", templatesdomain.StatusDisabled), 0); !errors.Is(err, templatesapp.ErrRevisionConflict) {
 		t.Fatalf("stale CAS error=%v", err)
 	}
-	updated, setRevision, err := repository.Put(sqliteTestTemplate("redis-main", integration.TemplateDisabled), 1)
+	updated, setRevision, err := repository.Put(sqliteTestTemplate("redis-main", templatesdomain.StatusDisabled), 1)
 	if err != nil || updated.Revision != 2 || setRevision != 2 {
 		t.Fatalf("update template=%+v set revision=%d err=%v", updated, setRevision, err)
 	}
@@ -37,18 +38,18 @@ func TestSQLiteTemplateRepositoryCASNoOpDeleteTombstoneAndRestart(t *testing.T) 
 	if _, _, err := repository.Put(changedTarget, 2); !errors.Is(err, templatesapp.ErrTemplateTargetImmutable) {
 		t.Fatalf("changing a Template's Integration target error=%v", err)
 	}
-	tombstone := sqliteTestTemplate("redis-main", integration.TemplateDeleted)
+	tombstone := sqliteTestTemplate("redis-main", templatesdomain.StatusDeleted)
 	tombstone.Revision = 2
 	deleted, setRevision, err := repository.Put(tombstone, 2)
 	if err != nil || deleted.Revision != 3 || setRevision != 3 {
 		t.Fatalf("delete template=%+v set revision=%d err=%v", deleted, setRevision, err)
 	}
-	if _, _, err := repository.Put(sqliteTestTemplate("redis-main", integration.TemplateEnabled), 3); !errors.Is(err, templatesapp.ErrTemplateDeleted) {
+	if _, _, err := repository.Put(sqliteTestTemplate("redis-main", templatesdomain.StatusEnabled), 3); !errors.Is(err, templatesapp.ErrTemplateDeleted) {
 		t.Fatalf("tombstone reuse error=%v", err)
 	}
 	restarted := newTestSQLiteStore(path).TemplateRepository()
 	snapshot, err := restarted.Snapshot()
-	if err != nil || snapshot.Revision != 3 || len(snapshot.Templates) != 1 || snapshot.Templates[0].Status != integration.TemplateDeleted {
+	if err != nil || snapshot.Revision != 3 || len(snapshot.Templates) != 1 || snapshot.Templates[0].Status != templatesdomain.StatusDeleted {
 		t.Fatalf("restart snapshot=%+v err=%v", snapshot, err)
 	}
 }
@@ -64,7 +65,7 @@ func TestSQLiteTemplateMutationRollbackAndMigrationCompatibility(t *testing.T) {
 		t.Fatal(err)
 	}
 	repository := store.TemplateRepository()
-	if _, _, err := repository.Put(sqliteTestTemplate("redis-main", integration.TemplateEnabled), 0); err != nil {
+	if _, _, err := repository.Put(sqliteTestTemplate("redis-main", templatesdomain.StatusEnabled), 0); err != nil {
 		t.Fatal(err)
 	}
 	db, err := store.open()
@@ -75,11 +76,11 @@ func TestSQLiteTemplateMutationRollbackAndMigrationCompatibility(t *testing.T) {
 		t.Fatal(err)
 	}
 	db.Close()
-	if _, _, err := repository.Put(sqliteTestTemplate("redis-main", integration.TemplateDisabled), 1); err == nil {
+	if _, _, err := repository.Put(sqliteTestTemplate("redis-main", templatesdomain.StatusDisabled), 1); err == nil {
 		t.Fatal("mutation succeeded despite injected set revision failure")
 	}
 	snapshot, err := repository.Snapshot()
-	if err != nil || snapshot.Revision != 1 || len(snapshot.Templates) != 1 || snapshot.Templates[0].Status != integration.TemplateEnabled || snapshot.Templates[0].Revision != 1 {
+	if err != nil || snapshot.Revision != 1 || len(snapshot.Templates) != 1 || snapshot.Templates[0].Status != templatesdomain.StatusEnabled || snapshot.Templates[0].Revision != 1 {
 		t.Fatalf("rollback snapshot=%+v err=%v", snapshot, err)
 	}
 	loaded, err := store.Load()
@@ -168,7 +169,7 @@ func TestSQLiteTemplateSnapshotsRemainConsistentDuringConcurrentCreates(t *testi
 		go func(index int) {
 			defer wg.Done()
 			<-start
-			_, _, err := repository.Put(sqliteTestTemplate(fmt.Sprintf("redis-%02d", index), integration.TemplateEnabled), 0)
+			_, _, err := repository.Put(sqliteTestTemplate(fmt.Sprintf("redis-%02d", index), templatesdomain.StatusEnabled), 0)
 			errs <- err
 		}(i)
 	}
@@ -198,11 +199,11 @@ func TestSQLiteTemplateSnapshotsRemainConsistentDuringConcurrentCreates(t *testi
 func TestSQLiteIntegrationRepositoryCannotMutateTemplateOwnedInstance(t *testing.T) {
 	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	repository := store.IntegrationRepository()
-	instance := integration.IntegrationInstance{
+	instance := desiredstatedomain.Instance{
 		ID: "template-0123456789abcdef01234567", DefinitionID: "redis", DefinitionVersion: "1.0.0",
-		Configuration: map[string]any{"endpoint": "127.0.0.1:6379"}, Source: integration.SourceTemplate,
-		TemplateOwner: integration.TemplateOwnerLocal, TemplateID: "redis-main", TemplateRevision: 1,
-		Binding: &integration.ResourceBinding{Provider: "docker", ProviderInstance: "local", ResourceID: "container-a"}, Enabled: true,
+		Configuration: map[string]any{"endpoint": "127.0.0.1:6379"}, Source: desiredstatedomain.SourceTemplate,
+		TemplateOwner: desiredstatedomain.TemplateOwnerLocal, TemplateID: "redis-main", TemplateRevision: 1,
+		Binding: &desiredstatedomain.ResourceBinding{Provider: "docker", ProviderInstance: "local", ResourceID: "container-a"}, Enabled: true,
 	}
 	db, err := store.open()
 	if err != nil {
@@ -217,7 +218,7 @@ func TestSQLiteIntegrationRepositoryCannotMutateTemplateOwnedInstance(t *testing
 	}
 	db.Close()
 	localUpdate := instance
-	localUpdate.Source = integration.SourceLocal
+	localUpdate.Source = desiredstatedomain.SourceLocal
 	localUpdate.Binding = nil
 	localUpdate.TemplateOwner, localUpdate.TemplateID, localUpdate.TemplateRevision = "", "", 0
 	if _, _, err := repository.Put(localUpdate, 1); !errors.Is(err, desiredstateapp.ErrTemplateOwnedInstance) {
@@ -228,12 +229,12 @@ func TestSQLiteIntegrationRepositoryCannotMutateTemplateOwnedInstance(t *testing
 	}
 }
 
-func sqliteTestTemplate(id string, status integration.TemplateStatus) integration.IntegrationTemplate {
-	return integration.IntegrationTemplate{
-		ID: id, DefinitionID: "redis", DefinitionVersion: "1.0.0", Owner: integration.TemplateOwnerLocal,
+func sqliteTestTemplate(id string, status templatesdomain.Status) templatesdomain.Template {
+	return templatesdomain.Template{
+		ID: id, DefinitionID: "redis", DefinitionVersion: "1.0.0", Owner: desiredstatedomain.TemplateOwnerLocal,
 		Revision: 1, Status: status, Settings: map[string]any{},
-		Bindings: []integration.TemplateSettingBinding{{Target: "endpoint", Source: integration.TemplateBindingSource{
-			Kind: integration.TemplateSourceEndpoint, EndpointScope: "host", EndpointProtocol: "tcp", EndpointProvenance: "published_port",
+		Bindings: []templatesdomain.SettingBinding{{Target: "endpoint", Source: templatesdomain.BindingSource{
+			Kind: templatesdomain.SourceEndpoint, EndpointScope: "host", EndpointProtocol: "tcp", EndpointProvenance: "published_port",
 		}}},
 	}
 }

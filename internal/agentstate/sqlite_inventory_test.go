@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
+	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/domain"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	inventorysqlite "github.com/ar-imms/telemetry-agent/internal/inventory/sqlite"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
@@ -304,7 +304,7 @@ func TestSQLiteInventoryMigrationFromPopulatedV9PreservesExistingState(t *testin
 	if _, err := newTestIdentityStore(path).EnsureInstallationID(installationID); err != nil {
 		t.Fatal(err)
 	}
-	instance := integration.IntegrationInstance{ID: "redis-main", DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true, Configuration: map[string]any{"endpoint": "127.0.0.1:6379"}}
+	instance := desiredstatedomain.Instance{ID: "redis-main", DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true, Configuration: map[string]any{"endpoint": "127.0.0.1:6379"}}
 	if _, _, err := store.IntegrationRepository().Put(instance, 0); err != nil {
 		t.Fatal(err)
 	}

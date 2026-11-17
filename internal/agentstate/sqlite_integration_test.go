@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
+	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
@@ -100,8 +100,8 @@ func TestIntegrationSnapshotsStayConsistentDuringConcurrentCreates(t *testing.T)
 	}
 }
 
-func integrationInstance(id, endpoint string) integration.IntegrationInstance {
-	return integration.IntegrationInstance{ID: id, DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true, Configuration: map[string]any{"endpoint": endpoint}}
+func integrationInstance(id, endpoint string) desiredstatedomain.Instance {
+	return desiredstatedomain.Instance{ID: id, DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true, Configuration: map[string]any{"endpoint": endpoint}}
 }
 
 func TestSQLiteIntegrationMutationsCASNoOpDeleteRestartAndMigration(t *testing.T) {
@@ -150,11 +150,11 @@ func TestSQLiteIntegrationLegacySourceNormalizesWithoutAdvancingRevision(t *test
 		t.Fatalf("legacy create=%+v desired revision=%d err=%v", created, setRevision, err)
 	}
 	snapshot, err := repository.Snapshot()
-	if err != nil || snapshot.Instances[0].Source != integration.SourceLocal {
+	if err != nil || snapshot.Instances[0].Source != desiredstatedomain.SourceLocal {
 		t.Fatalf("legacy source snapshot=%+v err=%v", snapshot, err)
 	}
 	explicitLocal := legacy
-	explicitLocal.Source = integration.SourceLocal
+	explicitLocal.Source = desiredstatedomain.SourceLocal
 	unchanged, setRevision, err := repository.Put(explicitLocal, 1)
 	if err != nil || unchanged.Revision != 1 || setRevision != 1 {
 		t.Fatalf("normalizing legacy source advanced revision: instance=%+v desired=%d err=%v", unchanged, setRevision, err)
