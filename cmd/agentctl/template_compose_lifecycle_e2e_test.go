@@ -13,7 +13,8 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
+	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
+	templatesconfigdomain "github.com/ar-imms/telemetry-agent/internal/configuration/templates/domain"
 	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
 	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
 	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
@@ -425,7 +426,7 @@ func dockerContextEndpoint() (string, error) {
 	return endpoint, nil
 }
 
-func composeProjectRedisTemplate(id, project string) integration.IntegrationTemplate {
+func composeProjectRedisTemplate(id, project string) templatesconfigdomain.Template {
 	template := redisRuntimeTemplate()
 	template.ID = id
 	template.Selector.ExactAttributes["label.com.docker.compose.project"] = project
@@ -478,7 +479,7 @@ func assertComposeDesired(t *testing.T, store agentstate.SQLiteStore, resourceID
 	}
 	found := make(map[string]bool, len(resourceIDs))
 	for _, instance := range snapshot.Instances {
-		if instance.Source != integration.SourceTemplate || instance.Binding == nil {
+		if instance.Source != desiredstatedomain.SourceTemplate || instance.Binding == nil {
 			continue
 		}
 		if _, ok := wanted[instance.Binding.ResourceID]; ok {
@@ -504,7 +505,7 @@ func assertEnabledComposeTemplateResources(t *testing.T, store agentstate.SQLite
 	}
 	seen := make(map[string]struct{}, len(wanted))
 	for _, instance := range snapshot.Instances {
-		if instance.Source != integration.SourceTemplate || !instance.Enabled || instance.Binding == nil ||
+		if instance.Source != desiredstatedomain.SourceTemplate || !instance.Enabled || instance.Binding == nil ||
 			(instance.TemplateID != "redis-project-a" && instance.TemplateID != "redis-project-b") {
 			continue
 		}
@@ -530,7 +531,7 @@ func composeTemplateEndpoints(t *testing.T, store agentstate.SQLiteStore, resour
 	}
 	endpoints := make(map[string]string, len(resourceIDs))
 	for _, instance := range snapshot.Instances {
-		if instance.Source != integration.SourceTemplate || !instance.Enabled || instance.Binding == nil {
+		if instance.Source != desiredstatedomain.SourceTemplate || !instance.Enabled || instance.Binding == nil {
 			continue
 		}
 		if _, ok := wanted[instance.Binding.ResourceID]; !ok {

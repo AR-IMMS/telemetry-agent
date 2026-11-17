@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
+	matchingdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/domain"
 	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
@@ -21,13 +21,13 @@ func TestCatalogCapabilityAssessorUsesPinnedRuntimeCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load Runtime catalog for %s/%s: %v", platform.OS, platform.Architecture, err)
 	}
-	assessor := integration.NewCatalogCapabilityAssessor(catalog, platform.OS, platform.OS+"/"+platform.Architecture)
+	assessor := matchingdomain.NewCatalogCapabilityAssessor(catalog, platform.OS, platform.OS+"/"+platform.Architecture)
 
 	assessment, err := assessor.Assess([]string{monitoringdomain.RedisCapability})
 	if err != nil {
 		t.Fatalf("assess Redis capability: %v", err)
 	}
-	if assessment.Status != integration.CapabilitySupported || assessment.Platform != platform.OS+"/"+platform.Architecture ||
+	if assessment.Status != matchingdomain.CapabilitySupported || assessment.Platform != platform.OS+"/"+platform.Architecture ||
 		assessment.ArtifactVersion != "0.160.0" || assessment.ManifestVersion == "" {
 		t.Fatalf("Redis assessment lacks exact pinned Runtime evidence: %+v", assessment)
 	}
@@ -36,7 +36,7 @@ func TestCatalogCapabilityAssessorUsesPinnedRuntimeCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("assess unsupported capability: %v", err)
 	}
-	if assessment.Status != integration.CapabilityUnsupported || len(assessment.Unsupported) != 1 ||
+	if assessment.Status != matchingdomain.CapabilityUnsupported || len(assessment.Unsupported) != 1 ||
 		assessment.Unsupported[0] != "otel.receiver.not_in_pinned_catalog.metrics" {
 		t.Fatalf("unsupported capability assessment = %+v", assessment)
 	}

@@ -20,9 +20,9 @@ import (
 	runtimecontracts "github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
-	redisintegration "github.com/ar-imms/telemetry-agent/internal/integration/redis"
+	definitionsapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
 	definitionsdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
+	redisprofile "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/redis"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 	"gopkg.in/yaml.v3"
 )
@@ -172,15 +172,15 @@ func TestPeriodicSQLitePollingDetectsCommittedCrossProcessDesiredChange(t *testi
 	if _, err := reader.IntegrationRepository().Snapshot(); err != nil {
 		t.Fatalf("initialize SQLite snapshot before starting polling worker: %v", err)
 	}
-	definition := integration.IntegrationDefinition{ID: "fixture", Version: "1.0.0", Validate: func(map[string]any) error { return nil }, Contribute: func(map[string]any) (integration.Contribution, error) {
-		return integration.NewContribution(nil), nil
+	definition := definitionsdomain.Definition{ID: "fixture", Version: "1.0.0", Validate: func(map[string]any) error { return nil }, Contribute: func(map[string]any) (definitionsdomain.Contribution, error) {
+		return definitionsdomain.NewContribution(nil), nil
 	}}
-	registry, err := integration.NewRegistry(definition)
+	registry, err := definitionsapp.NewRegistry(definition)
 	if err != nil {
 		t.Fatal(err)
 	}
 	observed := make(chan uint64, 8)
-	controller := Controller{Desired: reader.IntegrationRepository(), Baseline: staticBaseline{}, Resolver: integrationContributionResolverTest{resolver: integration.NewResolver(registry)}, Compiler: &testCompiler{}, Validator: func(context.Context, collectorruntime.Candidate) error { return nil }, Applier: recordingApplier{revisions: observed}, Attempts: &testAttempts{}}
+	controller := Controller{Desired: reader.IntegrationRepository(), Baseline: staticBaseline{}, Resolver: integrationContributionResolverTest{resolver: definitionsapp.NewResolver(registry)}, Compiler: &testCompiler{}, Validator: func(context.Context, collectorruntime.Candidate) error { return nil }, Applier: recordingApplier{revisions: observed}, Attempts: &testAttempts{}}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
@@ -194,8 +194,8 @@ func TestPeriodicSQLitePollingDetectsCommittedCrossProcessDesiredChange(t *testi
 		snapshot, snapshotErr := reader.IntegrationRepository().Snapshot()
 		t.Fatalf("startup reconciliation did not run: current SQLite snapshot=%+v snapshot_error=%v", snapshot, snapshotErr)
 	}
-	service := desiredstateapp.NewService(desiredStateResolver{resolver: integration.NewResolver(registry)}, writer.IntegrationRepository())
-	if _, _, err := service.Put(integration.IntegrationInstance{ID: "cross-process", DefinitionID: "fixture", DefinitionVersion: "1.0.0", Configuration: map[string]any{}, Enabled: true}, 0); err != nil {
+	service := desiredstateapp.NewService(desiredStateResolver{resolver: definitionsapp.NewResolver(registry)}, writer.IntegrationRepository())
+	if _, _, err := service.Put(desiredstatedomain.Instance{ID: "cross-process", DefinitionID: "fixture", DefinitionVersion: "1.0.0", Configuration: map[string]any{}, Enabled: true}, 0); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -282,7 +282,7 @@ service:
 	}); err != nil {
 		t.Fatal(err)
 	}
-	definition := integration.IntegrationDefinition{
+	definition := definitionsdomain.Definition{
 		ID: "fixture-postgres", Version: "1.0.0",
 		Validate: func(settings map[string]any) error {
 			if _, ok := settings["endpoint"].(string); !ok {
@@ -290,27 +290,27 @@ service:
 			}
 			return nil
 		},
-		Contribute: func(settings map[string]any) (integration.Contribution, error) {
-			intent, err := integration.NewComponentIntent("fixture-receiver-metrics", map[string]any{"endpoint": settings["endpoint"]})
+		Contribute: func(settings map[string]any) (definitionsdomain.Contribution, error) {
+			intent, err := definitionsdomain.NewComponentIntent("fixture-receiver-metrics", map[string]any{"endpoint": settings["endpoint"]})
 			if err != nil {
-				return integration.Contribution{}, err
+				return definitionsdomain.Contribution{}, err
 			}
-			return integration.NewContribution([]integration.ComponentIntent{intent}), nil
+			return definitionsdomain.NewContribution([]definitionsdomain.ComponentIntent{intent}), nil
 		},
 	}
-	redisDefinition := redisintegration.Definition()
-	registry, err := integration.NewRegistry(definition, redisDefinition)
+	redisDefinition := redisprofile.Definition()
+	registry, err := definitionsapp.NewRegistry(definition, redisDefinition)
 	if err != nil {
 		t.Fatal(err)
 	}
-	resolver := integration.NewResolver(registry)
+	resolver := definitionsapp.NewResolver(registry)
 	repository := store.IntegrationRepository()
 	service := desiredstateapp.NewService(desiredStateResolver{resolver: resolver}, repository)
-	_, _, err = service.Put(integration.IntegrationInstance{ID: "postgres-a", DefinitionID: definition.ID, DefinitionVersion: definition.Version, Configuration: map[string]any{"endpoint": "127.0.0.1:5432"}, Enabled: true}, 0)
+	_, _, err = service.Put(desiredstatedomain.Instance{ID: "postgres-a", DefinitionID: definition.ID, DefinitionVersion: definition.Version, Configuration: map[string]any{"endpoint": "127.0.0.1:5432"}, Enabled: true}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	redisInstance, _, err := service.Put(integration.IntegrationInstance{ID: "redis-a", DefinitionID: redisDefinition.ID, DefinitionVersion: redisDefinition.Version, Configuration: map[string]any{"endpoint": "127.0.0.1:6379"}, Enabled: true}, 0)
+	redisInstance, _, err := service.Put(desiredstatedomain.Instance{ID: "redis-a", DefinitionID: redisDefinition.ID, DefinitionVersion: redisDefinition.Version, Configuration: map[string]any{"endpoint": "127.0.0.1:6379"}, Enabled: true}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,23 +437,40 @@ func (r *testResolver) Resolve(i desiredstatedomain.Instance) (definitionsdomain
 	if r.err != nil {
 		return definitionsdomain.Contribution{}, r.err
 	}
-	return integration.NewContribution(nil), nil
+	return definitionsdomain.NewContribution(nil), nil
 }
 
-type integrationContributionResolverTest struct{ resolver integration.Resolver }
+type integrationContributionResolverTest struct{ resolver definitionsapp.Resolver }
 
-type desiredStateResolver struct{ resolver integration.Resolver }
+type desiredStateResolver struct{ resolver definitionsapp.Resolver }
 
 func (r desiredStateResolver) Resolve(instance desiredstatedomain.Instance) (desiredstatedomain.Instance, error) {
-	resolved, err := r.resolver.Resolve(instance)
+	if instance.Source == "" {
+		instance.Source = desiredstatedomain.SourceLocal
+	}
+	if err := instance.Validate(); err != nil {
+		return desiredstatedomain.Instance{}, err
+	}
+	resolved, err := r.resolver.Resolve(definitionsapp.ResolveInput{
+		DefinitionID: instance.DefinitionID,
+		Version:      instance.DefinitionVersion,
+		Enabled:      instance.Enabled,
+		Settings:     instance.Configuration,
+	})
 	if err != nil {
 		return desiredstatedomain.Instance{}, err
 	}
-	return resolved.Instance, nil
+	instance.Configuration = resolved.Settings
+	return instance, nil
 }
 
 func (r integrationContributionResolverTest) Resolve(instance desiredstatedomain.Instance) (definitionsdomain.Contribution, error) {
-	resolved, err := r.resolver.Resolve(instance)
+	resolved, err := r.resolver.Resolve(definitionsapp.ResolveInput{
+		DefinitionID: instance.DefinitionID,
+		Version:      instance.DefinitionVersion,
+		Enabled:      instance.Enabled,
+		Settings:     instance.Configuration,
+	})
 	if err != nil {
 		return definitionsdomain.Contribution{}, err
 	}

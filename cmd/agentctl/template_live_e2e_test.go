@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	materializationapp "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/application"
 	templatesapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
 	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
 	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
 	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
@@ -105,15 +105,15 @@ func TestLiveDockerTemplateAutoMaterializesDesiredInstance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var generated *integration.IntegrationInstance
+	var generated *desiredstatedomain.Instance
 	for index := range desired.Instances {
 		instance := &desired.Instances[index]
-		if instance.Source == integration.SourceTemplate && instance.Binding != nil && instance.Binding.ResourceID == fixtureID {
+		if instance.Source == desiredstatedomain.SourceTemplate && instance.Binding != nil && instance.Binding.ResourceID == fixtureID {
 			generated = instance
 			break
 		}
 	}
-	if generated == nil || !generated.Enabled || generated.TemplateID != "redis-auto" || generated.TemplateOwner != integration.TemplateOwnerLocal {
+	if generated == nil || !generated.Enabled || generated.TemplateID != "redis-auto" || generated.TemplateOwner != desiredstatedomain.TemplateOwnerLocal {
 		t.Fatalf("live Docker observation did not create the enabled Template-owned desired instance: %+v", desired)
 	}
 	proposalRefresher, err := newRuntimeProposalRefresher(statePath)

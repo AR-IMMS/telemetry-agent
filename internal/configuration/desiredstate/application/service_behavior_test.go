@@ -5,12 +5,13 @@ import (
 	"testing"
 
 	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
+	definitionsapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
+	definitionsdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
 )
 
 type memoryRepository struct{ writes int }
 
-func (r *memoryRepository) Put(i integration.IntegrationInstance, expected uint64) (integration.IntegrationInstance, uint64, error) {
+func (r *memoryRepository) Put(i desiredstatedomain.Instance, expected uint64) (desiredstatedomain.Instance, uint64, error) {
 	r.writes++
 	i.Revision = 1
 	return i, 1, nil
@@ -19,25 +20,25 @@ func (*memoryRepository) Delete(string, uint64) (uint64, error) { return 0, nil 
 func (*memoryRepository) Snapshot() (Snapshot, error)           { return Snapshot{}, nil }
 
 func TestIntegrationServiceValidatesAndContributesBeforePersistence(t *testing.T) {
-	d := integration.IntegrationDefinition{ID: "redis", Version: "1.0.0", Validate: func(c map[string]any) error {
+	d := definitionsdomain.Definition{ID: "redis", Version: "1.0.0", Validate: func(c map[string]any) error {
 		if _, ok := c["endpoint"].(string); !ok {
 			return errors.New("endpoint required")
 		}
 		return nil
-	}, Contribute: func(map[string]any) (integration.Contribution, error) {
-		return integration.NewContribution(nil), nil
+	}, Contribute: func(map[string]any) (definitionsdomain.Contribution, error) {
+		return definitionsdomain.NewContribution(nil), nil
 	}}
-	registry, err := integration.NewRegistry(d)
+	registry, err := definitionsapp.NewRegistry(d)
 	if err != nil {
 		t.Fatal(err)
 	}
 	repo := &memoryRepository{}
-	service := NewService(integrationResolverAdapter{resolver: integration.NewResolver(registry)}, repo)
-	_, _, err = service.Put(integration.IntegrationInstance{ID: "cache", DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true, Configuration: map[string]any{"endpoint": 5}}, 0)
-	if !errors.Is(err, integration.ErrInvalidInstance) || repo.writes != 0 {
+	service := NewService(definitionResolverAdapter{resolver: definitionsapp.NewResolver(registry)}, repo)
+	_, _, err = service.Put(desiredstatedomain.Instance{ID: "cache", DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true, Configuration: map[string]any{"endpoint": 5}}, 0)
+	if !errors.Is(err, desiredstatedomain.ErrInvalidInstance) || repo.writes != 0 {
 		t.Fatalf("Put err=%v writes=%d", err, repo.writes)
 	}
-	_, _, err = service.Put(integration.IntegrationInstance{ID: "cache", DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true, Configuration: map[string]any{"endpoint": "localhost"}}, 0)
+	_, _, err = service.Put(desiredstatedomain.Instance{ID: "cache", DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true, Configuration: map[string]any{"endpoint": "localhost"}}, 0)
 	if err != nil || repo.writes != 1 {
 		t.Fatalf("valid Put err=%v writes=%d", err, repo.writes)
 	}
@@ -45,12 +46,12 @@ func TestIntegrationServiceValidatesAndContributesBeforePersistence(t *testing.T
 
 type setEnabledRepository struct {
 	snapshot Snapshot
-	stored   integration.IntegrationInstance
+	stored   desiredstatedomain.Instance
 	expected uint64
 	writes   int
 }
 
-func (r *setEnabledRepository) Put(value integration.IntegrationInstance, expected uint64) (integration.IntegrationInstance, uint64, error) {
+func (r *setEnabledRepository) Put(value desiredstatedomain.Instance, expected uint64) (desiredstatedomain.Instance, uint64, error) {
 	r.writes++
 	r.stored = value
 	r.expected = expected
@@ -61,19 +62,19 @@ func (*setEnabledRepository) Delete(string, uint64) (uint64, error) { return 0, 
 func (r *setEnabledRepository) Snapshot() (Snapshot, error)         { return r.snapshot, nil }
 
 func TestIntegrationServiceSetEnabledPreservesInstanceAndUsesExpectedRevision(t *testing.T) {
-	definition := integration.IntegrationDefinition{ID: "redis", Version: "1.0.0", Validate: func(map[string]any) error { return nil }, Contribute: func(map[string]any) (integration.Contribution, error) {
-		return integration.NewContribution(nil), nil
+	definition := definitionsdomain.Definition{ID: "redis", Version: "1.0.0", Validate: func(map[string]any) error { return nil }, Contribute: func(map[string]any) (definitionsdomain.Contribution, error) {
+		return definitionsdomain.NewContribution(nil), nil
 	}}
-	registry, err := integration.NewRegistry(definition)
+	registry, err := definitionsapp.NewRegistry(definition)
 	if err != nil {
 		t.Fatal(err)
 	}
-	existing := integration.IntegrationInstance{
+	existing := desiredstatedomain.Instance{
 		ID: "redis-a", DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true,
 		Configuration: map[string]any{"endpoint": "redis.internal:6379", "namespace": "primary"}, Revision: 4,
 	}
-	repository := &setEnabledRepository{snapshot: Snapshot{Revision: 12, Instances: []integration.IntegrationInstance{existing}}}
-	service := NewService(integrationResolverAdapter{resolver: integration.NewResolver(registry)}, repository)
+	repository := &setEnabledRepository{snapshot: Snapshot{Revision: 12, Instances: []desiredstatedomain.Instance{existing}}}
+	service := NewService(definitionResolverAdapter{resolver: definitionsapp.NewResolver(registry)}, repository)
 
 	stored, desiredRevision, err := service.SetEnabled("redis-a", false, 4)
 	if err != nil {
@@ -91,14 +92,14 @@ func TestIntegrationServiceSetEnabledPreservesInstanceAndUsesExpectedRevision(t 
 }
 
 func TestIntegrationServiceSetEnabledRejectsStaleRevisionWithoutWriting(t *testing.T) {
-	registry, err := integration.NewRegistry(integration.IntegrationDefinition{ID: "redis", Version: "1.0.0", Validate: func(map[string]any) error { return nil }, Contribute: func(map[string]any) (integration.Contribution, error) {
-		return integration.NewContribution(nil), nil
+	registry, err := definitionsapp.NewRegistry(definitionsdomain.Definition{ID: "redis", Version: "1.0.0", Validate: func(map[string]any) error { return nil }, Contribute: func(map[string]any) (definitionsdomain.Contribution, error) {
+		return definitionsdomain.NewContribution(nil), nil
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	repository := &setEnabledRepository{snapshot: Snapshot{Instances: []integration.IntegrationInstance{{ID: "redis-a", Revision: 4}}}}
-	service := NewService(integrationResolverAdapter{resolver: integration.NewResolver(registry)}, repository)
+	repository := &setEnabledRepository{snapshot: Snapshot{Instances: []desiredstatedomain.Instance{{ID: "redis-a", Revision: 4}}}}
+	service := NewService(definitionResolverAdapter{resolver: definitionsapp.NewResolver(registry)}, repository)
 	_, _, err = service.SetEnabled("redis-a", false, 3)
 	if !errors.Is(err, ErrRevisionConflict) || repository.writes != 0 {
 		t.Fatalf("err=%v writes=%d", err, repository.writes)
@@ -106,13 +107,13 @@ func TestIntegrationServiceSetEnabledRejectsStaleRevisionWithoutWriting(t *testi
 }
 
 func TestIntegrationServiceSetEnabledReportsMissingInstance(t *testing.T) {
-	registry, err := integration.NewRegistry(integration.IntegrationDefinition{ID: "redis", Version: "1.0.0", Validate: func(map[string]any) error { return nil }, Contribute: func(map[string]any) (integration.Contribution, error) {
-		return integration.NewContribution(nil), nil
+	registry, err := definitionsapp.NewRegistry(definitionsdomain.Definition{ID: "redis", Version: "1.0.0", Validate: func(map[string]any) error { return nil }, Contribute: func(map[string]any) (definitionsdomain.Contribution, error) {
+		return definitionsdomain.NewContribution(nil), nil
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	service := NewService(integrationResolverAdapter{resolver: integration.NewResolver(registry)}, &setEnabledRepository{})
+	service := NewService(definitionResolverAdapter{resolver: definitionsapp.NewResolver(registry)}, &setEnabledRepository{})
 	_, _, err = service.SetEnabled("missing", true, 0)
 	if !errors.Is(err, ErrInstanceNotFound) {
 		t.Fatalf("err=%v, want ErrIntegrationNotFound", err)
@@ -120,20 +121,20 @@ func TestIntegrationServiceSetEnabledReportsMissingInstance(t *testing.T) {
 }
 
 func TestIntegrationServicePutPreservingEnabledKeepsExistingEnabledValue(t *testing.T) {
-	registry, err := integration.NewRegistry(integration.IntegrationDefinition{ID: "redis", Version: "1.0.0", Validate: func(map[string]any) error { return nil }, Contribute: func(map[string]any) (integration.Contribution, error) {
-		return integration.NewContribution(nil), nil
+	registry, err := definitionsapp.NewRegistry(definitionsdomain.Definition{ID: "redis", Version: "1.0.0", Validate: func(map[string]any) error { return nil }, Contribute: func(map[string]any) (definitionsdomain.Contribution, error) {
+		return definitionsdomain.NewContribution(nil), nil
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	existing := integration.IntegrationInstance{
+	existing := desiredstatedomain.Instance{
 		ID: "redis-a", DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: false,
 		Configuration: map[string]any{"namespace": "primary"}, Revision: 6,
 	}
-	repository := &setEnabledRepository{snapshot: Snapshot{Revision: 20, Instances: []integration.IntegrationInstance{existing}}}
-	service := NewService(integrationResolverAdapter{resolver: integration.NewResolver(registry)}, repository)
+	repository := &setEnabledRepository{snapshot: Snapshot{Revision: 20, Instances: []desiredstatedomain.Instance{existing}}}
+	service := NewService(definitionResolverAdapter{resolver: definitionsapp.NewResolver(registry)}, repository)
 
-	stored, revision, err := service.PutPreservingEnabled(integration.IntegrationInstance{
+	stored, revision, err := service.PutPreservingEnabled(desiredstatedomain.Instance{
 		ID: "redis-a", DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true,
 		Configuration: map[string]any{"namespace": "secondary"},
 	}, 6)
@@ -145,12 +146,27 @@ func TestIntegrationServicePutPreservingEnabledKeepsExistingEnabledValue(t *test
 	}
 }
 
-type integrationResolverAdapter struct{ resolver integration.Resolver }
+type definitionResolverAdapter struct{ resolver definitionsapp.Resolver }
 
-func (a integrationResolverAdapter) Resolve(instance desiredstatedomain.Instance) (desiredstatedomain.Instance, error) {
-	resolved, err := a.resolver.Resolve(instance)
-	if err != nil {
+func (a definitionResolverAdapter) Resolve(instance desiredstatedomain.Instance) (desiredstatedomain.Instance, error) {
+	if instance.Source == "" {
+		instance.Source = desiredstatedomain.SourceLocal
+	}
+	if err := instance.Validate(); err != nil {
 		return desiredstatedomain.Instance{}, err
 	}
-	return resolved.Instance, nil
+	resolved, err := a.resolver.Resolve(definitionsapp.ResolveInput{
+		DefinitionID: instance.DefinitionID,
+		Version:      instance.DefinitionVersion,
+		Enabled:      instance.Enabled,
+		Settings:     instance.Configuration,
+	})
+	if err != nil {
+		if errors.Is(err, definitionsdomain.ErrUnknownDefinition) || errors.Is(err, definitionsdomain.ErrInvalidContribution) {
+			return desiredstatedomain.Instance{}, err
+		}
+		return desiredstatedomain.Instance{}, desiredstatedomain.ErrInvalidInstance
+	}
+	instance.Configuration = resolved.Settings
+	return instance, nil
 }

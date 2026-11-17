@@ -16,11 +16,13 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/app"
+	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	templatesapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
+	templatesconfigdomain "github.com/ar-imms/telemetry-agent/internal/configuration/templates/domain"
 	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
 	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
 	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
+	definitionsapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
@@ -135,7 +137,7 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 	}
 	generated := make(map[string]string, len(containerIDs))
 	for _, instance := range desired.Instances {
-		if instance.Source == integration.SourceTemplate && instance.Binding != nil && instance.Enabled {
+		if instance.Source == desiredstatedomain.SourceTemplate && instance.Binding != nil && instance.Enabled {
 			for _, containerID := range containerIDs {
 				if instance.Binding.ResourceID == containerID {
 					endpoint, ok := instance.Configuration["endpoint"].(string)
@@ -399,7 +401,7 @@ func assertTemplateInstancesEnabled(t *testing.T, store agentstate.SQLiteStore, 
 	}
 	seen := make(map[string]struct{}, len(resourceIDs))
 	for _, instance := range snapshot.Instances {
-		if instance.Source != integration.SourceTemplate || instance.Binding == nil {
+		if instance.Source != desiredstatedomain.SourceTemplate || instance.Binding == nil {
 			continue
 		}
 		if _, isFixture := expected[instance.Binding.ResourceID]; !isFixture {
@@ -603,12 +605,12 @@ service:
 	return ""
 }
 
-func newRuntimeTemplateServiceForTest(t *testing.T, statePath string, registry integration.Registry) templatesapp.Service {
+func newRuntimeTemplateServiceForTest(t *testing.T, statePath string, registry definitionsapp.Registry) templatesapp.Service {
 	t.Helper()
 	return templatesapp.NewService(registry, sqlitefixture.NewSQLiteStore(statePath).TemplateRepository())
 }
 
-func writeRuntimeTemplateFile(t *testing.T, path string, template integration.IntegrationTemplate) {
+func writeRuntimeTemplateFile(t *testing.T, path string, template templatesconfigdomain.Template) {
 	t.Helper()
 	content, err := json.MarshalIndent(template, "", "  ")
 	if err != nil {

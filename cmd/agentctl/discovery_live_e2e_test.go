@@ -12,11 +12,15 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	proposals "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
 	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
 	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
 	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
+	matchingapp "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/application"
+	matchingdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/domain"
+	definitionsapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
+	definitionsdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
@@ -275,7 +279,7 @@ func TestLiveDockerProposalAndExplicitApproval(t *testing.T) {
 	if err != nil || len(desiredAfter.Instances) != len(desiredBefore.Instances)+1 || desiredAfter.Revision != desiredBefore.Revision+1 {
 		t.Fatalf("desired state after approval=%+v err=%v", desiredAfter, err)
 	}
-	var approved *integration.IntegrationInstance
+	var approved *desiredstatedomain.Instance
 	for i := range desiredAfter.Instances {
 		instance := &desiredAfter.Instances[i]
 		if instance.Binding != nil && instance.Binding.ResourceID == fixtureID {
@@ -283,7 +287,7 @@ func TestLiveDockerProposalAndExplicitApproval(t *testing.T) {
 			break
 		}
 	}
-	if approved == nil || approved.Source != integration.SourceDiscovery || approved.Configuration["endpoint"] == nil {
+	if approved == nil || approved.Source != desiredstatedomain.SourceDiscovery || approved.Configuration["endpoint"] == nil {
 		t.Fatalf("approved desired Integration=%+v", approved)
 	}
 	after, err := store.Load()
@@ -322,23 +326,23 @@ func TestLiveDatabaseFixturesMatchIntoNeedsInputProposals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	postgresDefinition := fixtureDatabaseDefinition("postgresql-fixture", "docker.io/library/postgres", []integration.RequiredInput{
+	postgresDefinition := fixtureDatabaseDefinition("postgresql-fixture", "docker.io/library/postgres", []matchingdomain.RequiredInput{
 		{Name: "username", Reason: "database username is required"}, {Name: "authentication_profile", Reason: "an approved authentication profile must be selected"},
 	})
-	mongoDefinition := fixtureDatabaseDefinition("mongodb-fixture", "docker.io/library/mongo", []integration.RequiredInput{
+	mongoDefinition := fixtureDatabaseDefinition("mongodb-fixture", "docker.io/library/mongo", []matchingdomain.RequiredInput{
 		{Name: "username", Reason: "database username is required"}, {Name: "authentication_profile", Reason: "an approved authentication profile must be selected"},
 	})
-	registry, err := integration.NewRegistry(postgresDefinition, mongoDefinition)
+	registry, err := definitionsapp.NewRegistry(postgresDefinition, mongoDefinition)
 	if err != nil {
 		t.Fatal(err)
 	}
-	matcher := integration.NewMatcher(registry, fixtureCapabilityAssessor{})
+	matcher := matchingapp.NewMatcher(registry, fixtureCapabilityAssessor{})
 	report, err := matcher.Match(projectInventory(inventory, time.Now().UTC()))
 	if err != nil {
 		t.Fatal(err)
 	}
 	observations := make([]proposals.ProposalObservation, 0, 2)
-	fixtureResults := make([]integration.MatchResult, 0, 2)
+	fixtureResults := make([]matchingdomain.MatchResult, 0, 2)
 	for _, result := range report.Results {
 		if result.Resource.ResourceID != postgresID && result.Resource.ResourceID != mongoID {
 			continue
@@ -374,8 +378,8 @@ func TestLiveDatabaseFixturesMatchIntoNeedsInputProposals(t *testing.T) {
 	}
 }
 
-func fixtureDatabaseDefinition(id, imageRepository string, inputs []integration.RequiredInput) integration.IntegrationDefinition {
-	return integration.IntegrationDefinition{
+func fixtureDatabaseDefinition(id, imageRepository string, inputs []matchingdomain.RequiredInput) definitionsdomain.Definition {
+	return definitionsdomain.Definition{
 		ID: id, Version: "1.0.0", Validate: func(settings map[string]any) error {
 			endpoint, ok := settings["endpoint"].(string)
 			if !ok || endpoint == "" {
@@ -383,22 +387,22 @@ func fixtureDatabaseDefinition(id, imageRepository string, inputs []integration.
 			}
 			return nil
 		},
-		Contribute: func(map[string]any) (integration.Contribution, error) {
-			return integration.NewContribution(nil), nil
+		Contribute: func(map[string]any) (definitionsdomain.Contribution, error) {
+			return definitionsdomain.NewContribution(nil), nil
 		},
-		Matching: &integration.MatchingDefinition{
-			Selector: &integration.MatchSelector{
+		Matching: &matchingdomain.MatchingDefinition{
+			Selector: &matchingdomain.MatchSelector{
 				ResourceKinds: []string{"container"}, LifecycleStates: []string{"running"},
 				ExactAttributes: map[string]string{"container.image.repository": imageRepository},
 			},
-			BuildCandidate: func(resource integration.MatchResource) (integration.CandidateBuild, error) {
+			BuildCandidate: func(resource matchingdomain.MatchResource) (matchingdomain.CandidateBuild, error) {
 				for _, endpoint := range resource.Endpoints {
 					if endpoint.Scope == "host" && endpoint.Provenance == "published_port" && endpoint.Protocol == "tcp" && endpoint.Port > 0 {
-						return integration.CandidateBuild{RequiredInputs: append([]integration.RequiredInput(nil), inputs...)}, nil
+						return matchingdomain.CandidateBuild{RequiredInputs: append([]matchingdomain.RequiredInput(nil), inputs...)}, nil
 					}
 				}
-				missing := append([]integration.RequiredInput{{Name: "endpoint", Reason: "test fixture has no host-published endpoint"}}, inputs...)
-				return integration.CandidateBuild{RequiredInputs: missing}, nil
+				missing := append([]matchingdomain.RequiredInput{{Name: "endpoint", Reason: "test fixture has no host-published endpoint"}}, inputs...)
+				return matchingdomain.CandidateBuild{RequiredInputs: missing}, nil
 			},
 		},
 	}
@@ -406,8 +410,8 @@ func fixtureDatabaseDefinition(id, imageRepository string, inputs []integration.
 
 type fixtureCapabilityAssessor struct{}
 
-func (fixtureCapabilityAssessor) Assess(required []string) (integration.CapabilityAssessment, error) {
-	return integration.CapabilityAssessment{Status: integration.CapabilitySupported, Platform: "test-fixture", ArtifactVersion: "test-only", ManifestVersion: "test-only", Required: append([]string(nil), required...)}, nil
+func (fixtureCapabilityAssessor) Assess(required []string) (matchingdomain.CapabilityAssessment, error) {
+	return matchingdomain.CapabilityAssessment{Status: matchingdomain.CapabilitySupported, Platform: "test-fixture", ArtifactVersion: "test-only", ManifestVersion: "test-only", Required: append([]string(nil), required...)}, nil
 }
 
 func mustInventory(t *testing.T, repository inventoryapp.InventoryRepository) inventorydomain.InventorySnapshot {
