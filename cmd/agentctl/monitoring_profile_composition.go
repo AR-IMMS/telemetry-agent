@@ -29,6 +29,10 @@ func monitoringEndpointEvidence(endpoints []inventorydomain.Endpoint) []profiles
 	return result
 }
 
+func diagnoseInventoryEndpoint(profile monitoringdomain.Profile, platform string, endpoints []inventorydomain.Endpoint, evidence []profilesapplication.CollectorScrapeEvidence, attributes map[string]string) profilesapplication.EndpointDiagnostic {
+	return profilesapplication.DiagnoseEndpointWithAttributes(profile, platform, monitoringEndpointEvidence(endpoints), evidence, attributes)
+}
+
 // collectorMonitoringProfiles translates Monitoring-owned intent into the
 // narrow Runtime Collector input contract at the composition boundary.
 func collectorMonitoringProfiles(profiles []monitoringdomain.Profile) []contracts.DockerMonitoringProfile {

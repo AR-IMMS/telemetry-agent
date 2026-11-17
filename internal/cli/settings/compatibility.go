@@ -1,4 +1,4 @@
-package cli
+package settings
 
 import (
 	"flag"
@@ -20,8 +20,8 @@ func ParseCompatibilityFlags(flags *flag.FlagSet, args []string) error {
 	boundFlags := pflag.NewFlagSet(flags.Name(), pflag.ContinueOnError)
 	boundFlags.SetOutput(flags.Output())
 	boundFlags.AddGoFlagSet(flags)
-	settings := viper.New()
-	if err := settings.BindPFlags(boundFlags); err != nil {
+	viperSettings := viper.New()
+	if err := viperSettings.BindPFlags(boundFlags); err != nil {
 		return fmt.Errorf("bind existing CLI flags: %w", err)
 	}
 
@@ -36,7 +36,7 @@ func ParseCompatibilityFlags(flags *flag.FlagSet, args []string) error {
 			return
 		}
 		bound.Changed = true
-		got, want := settings.GetString(flag.Name), flag.Value.String()
+		got, want := viperSettings.GetString(flag.Name), flag.Value.String()
 		if got != want {
 			mismatch = fmt.Errorf("CLI setting %q resolved to %q, want parsed flag value %q", flag.Name, got, want)
 			return

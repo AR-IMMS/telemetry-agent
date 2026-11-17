@@ -3,6 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/http"
+	"os"
+	"time"
+
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
@@ -12,13 +17,9 @@ import (
 	librehardwaremonitor "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/libre_hardware_monitor"
 	nodeexporter "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/node_exporter"
 	windowsexporter "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/windows_exporter"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/service"
+	agentinstallation "github.com/ar-imms/telemetry-agent/internal/runtime/service"
 	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"io"
-	"net"
-	"net/http"
-	"os"
-	"time"
 )
 
 const (
