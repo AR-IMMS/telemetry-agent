@@ -66,12 +66,10 @@ agentctl
 │   ├── list | inspect | status      KEEP
 │   └── refresh                     NEW: request fresh observation cycle
 ├── monitoring                      NEW
-│   ├── list | inspect | explain
-│   ├── profile
-│   │   ├── list | inspect
-│   │   ├── validate
-│   │   └── apply
-│   └── reconcile
+│   ├── instance {create | configure | update | enable | disable | delete | list | inspect | status | history | retry | match}
+│   ├── profile {list | inspect}
+│   ├── template {create | update | list | inspect | enable | disable | delete}
+│   └── proposal {list | inspect | dismiss | approve}
 ├── config                          NEW
 │   ├── show | validate | history
 │   └── sync

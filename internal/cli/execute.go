@@ -135,7 +135,7 @@ func newMonitoringCommand(dispatch Dispatch, exitCode *int) *cobra.Command {
 	proposals := &cobra.Command{Use: "proposal", Short: "Review monitoring proposals"}
 	profiles := &cobra.Command{Use: "profile", Short: "Inspect built-in monitoring profiles"}
 	for _, operation := range []string{
-		"create", "configure", "update", "enable", "disable", "delete", "list", "inspect",
+		"create", "configure", "update", "enable", "disable", "delete", "list", "inspect", "match",
 		"status", "history", "retry",
 	} {
 		legacyOperation := operation
