@@ -56,7 +56,7 @@ func (s SQLiteStore) AdmitCandidate(request activationapp.CandidateAdmissionRequ
 	if state.DesiredGeneration != request.ExpectedGeneration || state.PendingActivation != nil {
 		return activationapp.AdmissionResult{}, activationapp.ErrStaleM2Generation
 	}
-	if generation, outcome, found, err := findCandidateTarget(tx, request.Mapping); err != nil {
+	if generation, outcome, found, err := activationsqlite.FindCandidateTarget(tx, request.Mapping); err != nil {
 		return activationapp.AdmissionResult{}, err
 	} else if found && outcome == "applied" && state.AppliedGeneration >= generation {
 		if err := tx.Commit(); err != nil {
@@ -120,7 +120,7 @@ func (s SQLiteStore) MarkCandidateGenerationApplied(generation uint64, gatewayEn
 	if err := saveCandidateState(tx, state); err != nil {
 		return err
 	}
-	if err := writeCandidateJournal(tx, generation, mapping); err != nil {
+	if err := activationsqlite.WriteCandidateJournal(tx, generation, mapping); err != nil {
 		return err
 	}
 	if gatewayEndpoint != "" {
@@ -175,26 +175,13 @@ func (s SQLiteStore) CompleteCandidateFailure(generation uint64, stage, outcome,
 	if err := saveCandidateState(tx, state); err != nil {
 		return err
 	}
-	if err := writeCandidateJournal(tx, generation, mapping); err != nil {
+	if err := activationsqlite.WriteCandidateJournal(tx, generation, mapping); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit candidate failure outcome: %w", err)
 	}
 	return nil
-}
-
-func findCandidateTarget(tx *sql.Tx, mapping activationdomain.CandidateMapping) (uint64, string, bool, error) {
-	var generation uint64
-	var outcome string
-	err := tx.QueryRow(`SELECT generation, outcome FROM activation_journal WHERE desired_set_revision=? AND baseline_fingerprint=? AND candidate_digest=? AND collector_version=? AND manifest_version=? AND platform=? ORDER BY generation DESC LIMIT 1`, mapping.DesiredSetRevision, mapping.BaselineFingerprint, mapping.CandidateDigest, mapping.CollectorVersion, mapping.ManifestVersion, mapping.Platform).Scan(&generation, &outcome)
-	if errors.Is(err, sql.ErrNoRows) {
-		return 0, "", false, nil
-	}
-	if err != nil {
-		return 0, "", false, fmt.Errorf("find candidate lifecycle target: %w", err)
-	}
-	return generation, outcome, true, nil
 }
 
 func saveCandidateState(tx *sql.Tx, state State) error {
@@ -204,18 +191,6 @@ func saveCandidateState(tx *sql.Tx, state State) error {
 	}
 	if _, err := tx.Exec(`UPDATE agent_state SET payload=?, updated_at=? WHERE id=1`, content, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
 		return fmt.Errorf("persist candidate lifecycle state: %w", err)
-	}
-	return nil
-}
-
-func writeCandidateJournal(tx *sql.Tx, generation uint64, mapping activationdomain.CandidateMapping) error {
-	history, err := activationsqlite.CandidateJournalHistory(tx, generation, mapping.Outcome, mapping.Stage, mapping.RecoveryResult)
-	if err != nil {
-		return err
-	}
-	_, err = tx.Exec(`INSERT INTO activation_journal (generation,outcome,updated_at,desired_set_revision,candidate_digest,baseline_fingerprint,effective_config_digest,collector_version,manifest_version,platform,stage,recovery_result,history_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(generation) DO UPDATE SET outcome=excluded.outcome,updated_at=excluded.updated_at,desired_set_revision=excluded.desired_set_revision,candidate_digest=excluded.candidate_digest,baseline_fingerprint=excluded.baseline_fingerprint,effective_config_digest=excluded.effective_config_digest,collector_version=excluded.collector_version,manifest_version=excluded.manifest_version,platform=excluded.platform,stage=excluded.stage,recovery_result=excluded.recovery_result,history_json=excluded.history_json`, generation, mapping.Outcome, time.Now().UTC().Format(time.RFC3339Nano), mapping.DesiredSetRevision, mapping.CandidateDigest, mapping.BaselineFingerprint, mapping.EffectiveConfigDigest, mapping.CollectorVersion, mapping.ManifestVersion, mapping.Platform, mapping.Stage, mapping.RecoveryResult, history)
-	if err != nil {
-		return fmt.Errorf("write candidate activation journal: %w", err)
 	}
 	return nil
 }

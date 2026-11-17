@@ -9,6 +9,7 @@ import (
 	"time"
 
 	activationdomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/domain"
+	activationsqlite "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/sqlite"
 )
 
 // Repository loads and atomically updates Agent-owned state. Update serializes
@@ -77,7 +78,7 @@ func MarkGenerationAppliedInTransaction(tx *sql.Tx, generation uint64) error {
 	if candidate != nil {
 		mapping := *candidate
 		mapping.Outcome, mapping.Stage, mapping.RecoveryResult = "applied", "readiness", "not_needed"
-		if err := writeCandidateJournal(tx, generation, mapping); err != nil {
+		if err := activationsqlite.WriteCandidateJournal(tx, generation, mapping); err != nil {
 			return err
 		}
 	}

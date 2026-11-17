@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"os"
 	"time"
-
-	activationdomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/domain"
 )
 
 // InitializeBaseSQLiteSchema creates the Agent-owned base tables and records
@@ -96,49 +94,3 @@ func (s SQLiteStore) importLegacyState(db *sql.DB) error {
 
 // recordActivationTransition journals only changes to the activated revision.
 // A lower revision represents restoring the previously activated generation.
-func recordActivationTransition(
-	tx *sql.Tx,
-	previous State,
-	current State,
-) error {
-	outcome := ""
-	generation := current.ActivatedGeneration
-	switch {
-	case current.ActivatedGeneration > previous.ActivatedGeneration:
-		outcome = "activated"
-	case current.ActivatedGeneration < previous.ActivatedGeneration:
-		outcome = "rolled_back"
-		generation = previous.ActivatedGeneration
-	}
-	if outcome == "" {
-		return nil
-	}
-	var candidate *activationdomain.CandidateMapping
-	if current.PendingActivation != nil && current.PendingActivation.Generation == generation {
-		candidate = current.PendingActivation.Candidate
-	}
-	if candidate == nil && previous.PendingActivation != nil && previous.PendingActivation.Generation == generation {
-		candidate = previous.PendingActivation.Candidate
-	}
-	if candidate != nil {
-		mapping := *candidate
-		mapping.Outcome = outcome
-		if outcome == "activated" {
-			mapping.Stage = "activation"
-		} else {
-			mapping.Stage = "rollback"
-			mapping.RecoveryResult = "recovered"
-		}
-		return writeCandidateJournal(tx, generation, mapping)
-	}
-	if _, err := tx.Exec(
-		`INSERT INTO activation_journal (generation, outcome, updated_at) VALUES (?, ?, ?)
-		 ON CONFLICT(generation) DO UPDATE SET outcome = excluded.outcome, updated_at = excluded.updated_at`,
-		generation,
-		outcome,
-		time.Now().UTC().Format(time.RFC3339Nano),
-	); err != nil {
-		return fmt.Errorf("record configuration activation: %w", err)
-	}
-	return nil
-}
