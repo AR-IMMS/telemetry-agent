@@ -37,6 +37,7 @@ Commands:
   status      Show live Agent health.
   doctor      Explain available health evidence and unknown dimensions.
   enroll      Bind this Agent installation to an AR-IMMS Core node.
+  service     Run the Windows Service dispatcher (Windows internal entrypoint).
   install     Install and start the Agent as a managed service.
   uninstall   Safely remove the Agent and its managed dependencies.
   help        Show this help.
@@ -94,6 +95,7 @@ Commands:
   status      Show live Agent health.
   doctor      Explain available health evidence and unknown dimensions.
   enroll      Bind this Agent installation to an AR-IMMS Core node.
+  service     Run the Windows Service dispatcher (Windows internal entrypoint).
   install     Install and start the Agent as a managed service.
   uninstall   Safely remove the Agent and its managed dependencies.
   help        Show this help.
@@ -147,6 +149,7 @@ Commands:
   status      Show live Agent health.
   doctor      Explain available health evidence and unknown dimensions.
   enroll      Bind this Agent installation to an AR-IMMS Core node.
+  service     Run the Windows Service dispatcher (Windows internal entrypoint).
   install     Install and start the Agent as a managed service.
   uninstall   Safely remove the Agent and its managed dependencies.
   help        Show this help.

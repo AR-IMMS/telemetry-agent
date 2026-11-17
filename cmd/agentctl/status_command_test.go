@@ -128,4 +128,7 @@ func TestRunDispatchesDoctorCommandAndListsItInHelp(t *testing.T) {
 	if !strings.Contains(help.String(), "doctor      Explain available health evidence") {
 		t.Fatalf("root help does not list doctor: %s", help.String())
 	}
+	if !strings.Contains(help.String(), "service     Run the Windows Service dispatcher (Windows internal entrypoint).") {
+		t.Fatalf("root help does not identify the Windows service entrypoint: %s", help.String())
+	}
 }
