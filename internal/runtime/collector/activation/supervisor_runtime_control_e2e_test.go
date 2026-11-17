@@ -647,11 +647,13 @@ func managedRuntimeEnrollmentHandler(t *testing.T, corePointer *atomic.Pointer[m
 			return
 		}
 		if request.URL.Path != "/api/v1/agent-enrollments" || request.Method != http.MethodPost {
+			t.Logf("delegating enrollment fixture request: method=%s path=%s", request.Method, request.URL.Path)
 			core.ServeHTTP(writer, request)
 			return
 		}
 		input, err := decodeManagedRuntimeEnrollmentRequest(request.Body)
 		if err != nil {
+			t.Logf("enrollment fixture could not decode Core wire request: %v", err)
 			http.Error(writer, "invalid enrollment request", http.StatusUnauthorized)
 			return
 		}
@@ -659,11 +661,13 @@ func managedRuntimeEnrollmentHandler(t *testing.T, corePointer *atomic.Pointer[m
 		switch enrollmentCount {
 		case 0:
 			if input.BootstrapToken != bootstrapToken {
+				t.Log("initial enrollment fixture bootstrap token mismatch")
 				http.Error(writer, "invalid enrollment request", http.StatusUnauthorized)
 				return
 			}
 		case 1:
 			if input.BootstrapToken != replacementBootstrap {
+				t.Log("replacement enrollment fixture bootstrap token mismatch")
 				http.Error(writer, "invalid replacement enrollment request", http.StatusUnauthorized)
 				return
 			}
@@ -717,6 +721,31 @@ func TestDecodeManagedRuntimeEnrollmentRequestUsesCoreWireJSON(t *testing.T) {
 	}
 	if input.AttemptID != "attempt-1" || input.Installation.ID != "installation-1" {
 		t.Fatalf("decoded enrollment payload = %+v", input.EnrollmentPayload)
+	}
+}
+
+func TestManagedRuntimeEnrollmentHandlerAcceptsCoreWireRequest(t *testing.T) {
+	const (
+		bootstrapToken = "fixture-bootstrap-token"
+		nodeID         = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+	)
+	core, err := mockcore.New(mockcore.ProvisionedInstallation{
+		AccessToken: "fixture-agent-token", InstallationID: "11111111-2222-4333-8444-555555555555",
+		NodeID: nodeID, Policy: coreapi.DesiredGatewayPolicy{
+			SchemaVersion: "ar-imms/gateway-policy/v1", Revision: 1, GatewayEndpoint: "127.0.0.1:4317",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	corePointer := &atomic.Pointer[mockcore.Server]{}
+	corePointer.Store(core)
+	handler := managedRuntimeEnrollmentHandler(t, corePointer, "fixture-agent-token", "replacement-agent-token", bootstrapToken, "replacement-bootstrap-token", nodeID)
+	request := httptest.NewRequest(http.MethodPost, "https://core.example/api/v1/agent-enrollments", strings.NewReader(`{"bootstrap_token":"fixture-bootstrap-token","enrollment_attempt_id":"22222222-3333-4444-8555-666666666666","installation":{"id":"11111111-2222-4333-8444-555555555555"},"agent":{"version":"test"},"environment":{"os":"windows","architecture":"amd64"}}`))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("enrollment handler status = %d, body = %q", response.Code, response.Body.String())
 	}
 }
 
