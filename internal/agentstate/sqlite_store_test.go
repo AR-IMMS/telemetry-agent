@@ -1,11 +1,13 @@
 package agentstate
 
 import (
-	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
+
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 func TestSQLiteStorePersistsStateAndUsesWAL(t *testing.T) {
@@ -43,7 +45,7 @@ func TestSQLiteStoreImportsLegacyJSONState(t *testing.T) {
 	legacy := NewFileStore(legacyPath)
 	want := State{
 		DesiredGeneration: 4,
-		Dependencies: map[string]DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {
 				Enabled: true,
 				Ownership: &servicedomain.OwnershipRecord{Resources: []servicedomain.OwnedResource{{

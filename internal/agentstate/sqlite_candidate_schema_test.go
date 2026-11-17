@@ -12,6 +12,7 @@ import (
 	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
 	identityenrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
 	identityinstallationsqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
 func TestCandidateJournalMigrationPreservesVersionSixLifecycleState(t *testing.T) {
@@ -49,7 +50,7 @@ func TestCandidateJournalMigrationPreservesVersionSixLifecycleState(t *testing.T
 			t.Fatalf("build version 6 fixture: %v", err)
 		}
 	}
-	legacyState := State{DesiredGeneration: 8, ActivatedGeneration: 7, AppliedGeneration: 7, Dependencies: map[string]DependencyState{"node-exporter": {Enabled: true}}}
+	legacyState := State{DesiredGeneration: 8, ActivatedGeneration: 7, AppliedGeneration: 7, Dependencies: map[string]dependencydomain.DependencyState{"node-exporter": {Enabled: true}}}
 	encoded, err := json.Marshal(legacyState)
 	if err != nil {
 		t.Fatal(err)

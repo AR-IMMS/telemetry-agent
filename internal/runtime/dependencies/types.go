@@ -2,10 +2,10 @@ package dependency
 
 import (
 	"context"
-	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"strings"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 // Definition describes one built-in external dependency supported by agentctl.
@@ -36,7 +36,7 @@ type Enabler func(
 // Teardown disables or removes only resources recorded as Agent-owned.
 type Teardown func(
 	context.Context,
-	agentstate.TeardownAction,
+	dependencydomain.TeardownAction,
 	[]servicedomain.OwnedResource,
 ) error
 

@@ -9,8 +9,6 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
-	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
-	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"math/big"
 	"net"
 	"os"
@@ -23,9 +21,11 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	installationapp "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
-
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
 const applicationProfilesE2EEnv = "AR_IMMS_PR06_APPLICATION_PROFILE_E2E"
@@ -103,7 +103,7 @@ func TestLiveDockerApplicationProfilesDeliverOTLP(t *testing.T) {
 	store := sqlitefixture.NewSQLiteStore(statePath)
 	testState := agentstate.State{
 		Collector:         agentstate.CollectorContext{ConfigRoot: configRoot, BinaryPath: binary, ConfigPath: configPath, GatewayEndpoint: sinkEndpoint, HealthEndpoint: defaultHealthEndpoint},
-		DesiredGeneration: 1, ActivatedGeneration: 1, AppliedGeneration: 1, Dependencies: map[string]agentstate.DependencyState{},
+		DesiredGeneration: 1, ActivatedGeneration: 1, AppliedGeneration: 1, Dependencies: map[string]dependencydomain.DependencyState{},
 	}
 	if os.Getenv(pr07aSupervisorProfileParityEnv) == "1" {
 		supervisorBinary := strings.TrimSpace(os.Getenv("AR_IMMS_PR07A_SUPERVISOR_BINARY"))
@@ -153,7 +153,7 @@ func TestLiveDockerApplicationProfilesDeliverOTLP(t *testing.T) {
 	collectorLogs := &nativeCollectorLogReporter{health: agenthealth.NewReporter(agenthealth.RuntimeObservation{CollectorState: agenthealth.CollectorStateStarting})}
 	serviceCtx, stopService := context.WithCancel(ctx)
 	serviceDone := startRuntimeE2E(func() error {
-		return runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, agentstate.TeardownAction, []servicedomain.OwnedResource) error {
+		return runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, dependencydomain.TeardownAction, []servicedomain.OwnedResource) error {
 			return nil
 		}, collectorLogs, bootstrap.OSCommandRunner{})
 	})

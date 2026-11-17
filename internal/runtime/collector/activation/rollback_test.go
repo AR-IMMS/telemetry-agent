@@ -2,7 +2,6 @@ package agentlifecycle
 
 import (
 	"context"
-	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,6 +10,8 @@ import (
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
 func TestRollbackUnappliedConfigurationRestoresCommittedArtifact(t *testing.T) {
@@ -29,7 +30,7 @@ func TestRollbackUnappliedConfigurationRestoresCommittedArtifact(t *testing.T) {
 		DesiredGeneration:   2,
 		ActivatedGeneration: 2,
 		AppliedGeneration:   1,
-		Dependencies:        map[string]agentstate.DependencyState{},
+		Dependencies:        map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatalf("save state: %v", err)
 	}
@@ -74,7 +75,7 @@ func TestRollbackRestoresCollectorConfigAndGatewayEndpointPair(t *testing.T) {
 		DesiredGeneration:   4,
 		ActivatedGeneration: 4,
 		AppliedGeneration:   3,
-		Dependencies:        map[string]agentstate.DependencyState{},
+		Dependencies:        map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatal(err)
 	}

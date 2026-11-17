@@ -2,6 +2,7 @@ package agentlifecycle
 
 import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
@@ -18,7 +19,7 @@ func newConfigurationPlan(state agentstate.State) configurationPlan {
 	snapshot := state
 	if state.Dependencies != nil {
 		snapshot.Dependencies = make(
-			map[string]agentstate.DependencyState,
+			map[string]dependencydomain.DependencyState,
 			len(state.Dependencies),
 		)
 		for name, dependency := range state.Dependencies {

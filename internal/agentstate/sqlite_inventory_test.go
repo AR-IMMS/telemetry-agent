@@ -13,6 +13,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	inventorysqlite "github.com/ar-imms/telemetry-agent/internal/inventory/sqlite"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
 func inventoryFixture(at time.Time, ids ...string) (inventoryctx.ProviderSnapshot, []inventoryctx.Resource) {
@@ -292,7 +293,7 @@ func inventoryFixtureForInstance(at time.Time, instance string, ids ...string) (
 func TestSQLiteInventoryMigrationFromPopulatedV9PreservesExistingState(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
 	store := newTestSQLiteStore(path)
-	state := State{DesiredGeneration: 8, ActivatedGeneration: 7, AppliedGeneration: 7, Dependencies: map[string]DependencyState{"host": {Enabled: true}}}
+	state := State{DesiredGeneration: 8, ActivatedGeneration: 7, AppliedGeneration: 7, Dependencies: map[string]dependencydomain.DependencyState{"host": {Enabled: true}}}
 	if err := store.Save(state); err != nil {
 		t.Fatal(err)
 	}

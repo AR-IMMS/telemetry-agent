@@ -5,12 +5,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
+	"os"
+
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
-	"io"
-	"os"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
 func runBootstrap(
@@ -109,7 +111,7 @@ func runBootstrap(
 		}
 
 		state = agentstate.State{
-			Dependencies: make(map[string]agentstate.DependencyState),
+			Dependencies: make(map[string]dependencydomain.DependencyState),
 		}
 	}
 

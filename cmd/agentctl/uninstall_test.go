@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
-	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -14,7 +12,10 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/service"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
 func TestRunUninstallPassesStatePathAndTimeoutToAgentUninstaller(
@@ -99,7 +100,7 @@ func TestManagedAgentUninstallerRemovesAgentAfterDependenciesAreGone(
 	store := sqlitefixture.NewStore(statePath)
 	saveTestState(t, store, agentstate.State{
 		Installation: &installation,
-		Dependencies: map[string]agentstate.DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {
 				Enabled: false,
 			},
@@ -156,7 +157,7 @@ func TestManagedAgentUninstallerRemovesAgentAfterDependenciesAreGone(
 
 			return agentstate.State{
 				Installation: &installation,
-				Dependencies: map[string]agentstate.DependencyState{},
+				Dependencies: map[string]dependencydomain.DependencyState{},
 			}, nil
 		},
 		newRemover: func(
@@ -242,7 +243,7 @@ func TestManagedAgentUninstallerRejectsInstalledBinaryBeforeRequestingTeardown(
 			Platform:   "linux",
 			BinaryPath: installedBinary,
 		},
-		Dependencies: map[string]agentstate.DependencyState{},
+		Dependencies: map[string]dependencydomain.DependencyState{},
 	})
 
 	requested := false
@@ -313,7 +314,7 @@ func TestManagedAgentUninstallerDoesNotRemoveAgentWhenTeardownWaitFails(
 			Platform:   "linux",
 			BinaryPath: "/opt/ar-imms/telemetry-agent/agentctl",
 		},
-		Dependencies: map[string]agentstate.DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {Enabled: false},
 		},
 	})

@@ -2,11 +2,11 @@ package windowsexporter
 
 import (
 	"context"
-	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"strings"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 func TestWindowsExporterTeardownDisablesOwnedService(
@@ -31,7 +31,7 @@ func TestWindowsExporterTeardownDisablesOwnedService(
 
 	err := teardown.Teardown(
 		context.Background(),
-		agentstate.TeardownActionDisable,
+		dependencydomain.TeardownActionDisable,
 		[]servicedomain.OwnedResource{
 			{
 				Kind:       "windows-service",
@@ -134,7 +134,7 @@ func TestWindowsExporterTeardownUninstallsOwnedResources(
 
 	err := teardown.Teardown(
 		context.Background(),
-		agentstate.TeardownActionUninstall,
+		dependencydomain.TeardownActionUninstall,
 		[]servicedomain.OwnedResource{
 			{
 				Kind:       "windows-service",
@@ -246,7 +246,7 @@ func TestWindowsExporterTeardownUninstallPreservesAndRemovesOwnedInstallDirector
 
 	err := teardown.Teardown(
 		context.Background(),
-		agentstate.TeardownActionUninstall,
+		dependencydomain.TeardownActionUninstall,
 		[]servicedomain.OwnedResource{
 			{
 				Kind:       "windows-service",

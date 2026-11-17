@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
 func TestConfigurationCoordinatorMarksSnapshotGenerationActivated(
@@ -184,7 +185,7 @@ func TestConfigurationCoordinatorSkipsAlreadyActivatedGeneration(
 	if err := store.Save(agentstate.State{
 		DesiredGeneration:   4,
 		ActivatedGeneration: 4,
-		Dependencies:        map[string]agentstate.DependencyState{},
+		Dependencies:        map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatalf("initialize state: %v", err)
 	}
@@ -209,17 +210,17 @@ func TestConfigurationCoordinatorSkipsAlreadyActivatedGeneration(
 func TestConfigurationPlanIsAnImmutableSnapshot(t *testing.T) {
 	original := agentstate.State{
 		DesiredGeneration: 2,
-		Dependencies: map[string]agentstate.DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"redis": {
 				Enabled: true,
-				PendingTeardown: &agentstate.PendingTeardown{
-					Action: agentstate.TeardownActionDisable, Generation: 1,
+				PendingTeardown: &dependencydomain.PendingTeardown{
+					Action: dependencydomain.TeardownActionDisable, Generation: 1,
 				},
 			},
 		},
 	}
 	plan := newConfigurationPlan(original)
-	original.Dependencies["redis"] = agentstate.DependencyState{Enabled: false}
+	original.Dependencies["redis"] = dependencydomain.DependencyState{Enabled: false}
 
 	planned := plan.snapshot.Dependencies["redis"]
 	if !planned.Enabled || planned.PendingTeardown == nil {

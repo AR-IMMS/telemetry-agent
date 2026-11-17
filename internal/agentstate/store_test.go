@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
 var _ Repository = FileStore{}
@@ -21,7 +23,7 @@ func TestFileStorePersistsDesiredState(t *testing.T) {
 			HealthEndpoint:  "http://127.0.0.1:13133",
 		},
 		DesiredGeneration: 3,
-		Dependencies: map[string]DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {
 				Enabled: true,
 			},
@@ -125,7 +127,7 @@ func TestLoadWaitsForUpdateToReleaseStateLock(t *testing.T) {
 	if err := store.Save(State{
 		DesiredGeneration:   1,
 		ActivatedGeneration: 1,
-		Dependencies:        map[string]DependencyState{},
+		Dependencies:        map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}

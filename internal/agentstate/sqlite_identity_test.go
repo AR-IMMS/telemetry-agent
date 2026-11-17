@@ -3,7 +3,6 @@ package agentstate
 import (
 	"database/sql"
 	"errors"
-	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -12,6 +11,8 @@ import (
 
 	installationapp "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/domain"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 func TestSQLiteIdentityRepositoryInitializesAndReusesCommittedID(t *testing.T) {
@@ -27,7 +28,7 @@ func TestSQLiteIdentityRepositoryInitializesAndReusesCommittedID(t *testing.T) {
 		DesiredGeneration:   4,
 		ActivatedGeneration: 4,
 		AppliedGeneration:   3,
-		Dependencies: map[string]DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {
 				Enabled: true,
 				Ownership: &servicedomain.OwnershipRecord{Resources: []servicedomain.OwnedResource{{

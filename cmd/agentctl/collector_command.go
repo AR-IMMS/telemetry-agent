@@ -4,16 +4,18 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
+	"net"
+	"path/filepath"
+	"strings"
+
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
-	"io"
-	"net"
-	"path/filepath"
-	"strings"
 )
 
 func runCollector(
@@ -210,7 +212,7 @@ func dependencyMetricsReceiverLayer(
 func defaultDependencyTeardown(
 	ctx context.Context,
 	name string,
-	action agentstate.TeardownAction,
+	action dependencydomain.TeardownAction,
 	resources []servicedomain.OwnedResource,
 ) error {
 	platform, err := identity.CollectPlatformInfo()

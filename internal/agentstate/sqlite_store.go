@@ -13,6 +13,7 @@ import (
 	"time"
 
 	platformsqlite "github.com/ar-imms/telemetry-agent/internal/platform/sqlite"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
 // sqliteUpdateMutex serializes in-process mutations across store values.
@@ -98,7 +99,7 @@ func (s SQLiteStore) Update(mutate StateMutation) (State, error) {
 		if !errors.Is(err, os.ErrNotExist) {
 			return State{}, err
 		}
-		state = State{Dependencies: make(map[string]DependencyState)}
+		state = State{Dependencies: make(map[string]dependencydomain.DependencyState)}
 	}
 	previous := state
 	if err := mutate(&state); err != nil {

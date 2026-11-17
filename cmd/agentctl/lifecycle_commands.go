@@ -5,13 +5,15 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/identity/host"
-	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/service"
 	"io"
 	"os"
 	"strings"
+
+	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/service"
 )
 
 func runInstall(
@@ -133,7 +135,7 @@ func runInstall(
 		}
 
 		state = agentstate.State{
-			Dependencies: make(map[string]agentstate.DependencyState),
+			Dependencies: make(map[string]dependencydomain.DependencyState),
 		}
 	}
 

@@ -2,7 +2,6 @@ package sqlite_test
 
 import (
 	"errors"
-	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -11,6 +10,8 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation/contracts"
 	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
 func TestReconciliationRepositoryPersistsBudgetBackoffAndExplicitRetry(t *testing.T) {
@@ -216,7 +217,7 @@ func TestReconciliationRepositoryPersistsLKGRecoveryFailure(t *testing.T) {
 func TestReconciliationDiagnosticsMigrationPreservesRuntimeAndCandidateHistory(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
 	store := sqlitefixture.NewSQLiteStore(path)
-	want := agentstate.State{DesiredGeneration: 37, ActivatedGeneration: 36, AppliedGeneration: 35, Dependencies: map[string]agentstate.DependencyState{"node-exporter": {Enabled: true}}}
+	want := agentstate.State{DesiredGeneration: 37, ActivatedGeneration: 36, AppliedGeneration: 35, Dependencies: map[string]dependencydomain.DependencyState{"node-exporter": {Enabled: true}}}
 	if err := store.Save(want); err != nil {
 		t.Fatal(err)
 	}

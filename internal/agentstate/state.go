@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
@@ -28,31 +29,6 @@ type SupervisorContext struct {
 	Enabled           bool   `json:"enabled,omitempty"`
 }
 
-// TeardownAction identifies the host-resource operation permitted after the
-// Collector has acknowledged a configuration generation.
-type TeardownAction string
-
-const (
-	// TeardownActionDisable stops a dependency after its receiver is removed.
-	TeardownActionDisable TeardownAction = "disable"
-	// TeardownActionUninstall removes a dependency after its receiver is removed.
-	TeardownActionUninstall TeardownAction = "uninstall"
-)
-
-// PendingTeardown delays host-resource changes until the Collector has applied
-// the configuration generation that removes its scrape receiver.
-type PendingTeardown struct {
-	Action     TeardownAction `json:"action"`
-	Generation uint64         `json:"generation"`
-}
-
-// DependencyState is the desired lifecycle state of one managed dependency.
-type DependencyState struct {
-	Enabled         bool                           `json:"enabled"`
-	Ownership       *servicedomain.OwnershipRecord `json:"ownership,omitempty"`
-	PendingTeardown *PendingTeardown               `json:"pendingTeardown,omitempty"`
-}
-
 // State is the Agent-owned desired state persisted on the local machine.
 type State struct {
 	Collector           CollectorContext  `json:"collector"`
@@ -61,9 +37,9 @@ type State struct {
 	ActivatedGeneration uint64            `json:"activatedGeneration"`
 	AppliedGeneration   uint64            `json:"appliedGeneration"`
 	// PendingActivation supports recovery between config promotion and commit.
-	PendingActivation *PendingActivation               `json:"pendingActivation,omitempty"`
-	Dependencies      map[string]DependencyState       `json:"dependencies"`
-	Installation      *servicedomain.AgentInstallation `json:"installation,omitempty"`
+	PendingActivation *PendingActivation                          `json:"pendingActivation,omitempty"`
+	Dependencies      map[string]dependencydomain.DependencyState `json:"dependencies"`
+	Installation      *servicedomain.AgentInstallation            `json:"installation,omitempty"`
 }
 
 // RequiresApply reports whether the Collector must reload an activated
@@ -107,7 +83,7 @@ func (s *State) EnableDependency(name string) (bool, error) {
 	}
 
 	if s.Dependencies == nil {
-		s.Dependencies = make(map[string]DependencyState)
+		s.Dependencies = make(map[string]dependencydomain.DependencyState)
 	}
 
 	dependency := s.Dependencies[normalizedName]
@@ -139,8 +115,8 @@ func (s *State) DisableDependency(name string) (bool, error) {
 
 	dependency.Enabled = false
 	s.DesiredGeneration++
-	dependency.PendingTeardown = &PendingTeardown{
-		Action:     TeardownActionDisable,
+	dependency.PendingTeardown = &dependencydomain.PendingTeardown{
+		Action:     dependencydomain.TeardownActionDisable,
 		Generation: s.DesiredGeneration,
 	}
 	s.Dependencies[normalizedName] = dependency
@@ -165,7 +141,7 @@ func (s *State) RequestUninstall(name string) (bool, error) {
 	}
 
 	if dependency.PendingTeardown != nil &&
-		dependency.PendingTeardown.Action == TeardownActionUninstall {
+		dependency.PendingTeardown.Action == dependencydomain.TeardownActionUninstall {
 		return false, nil
 	}
 
@@ -175,8 +151,8 @@ func (s *State) RequestUninstall(name string) (bool, error) {
 
 	s.DesiredGeneration++
 
-	dependency.PendingTeardown = &PendingTeardown{
-		Action:     TeardownActionUninstall,
+	dependency.PendingTeardown = &dependencydomain.PendingTeardown{
+		Action:     dependencydomain.TeardownActionUninstall,
 		Generation: s.DesiredGeneration,
 	}
 	s.Dependencies[normalizedName] = dependency
@@ -222,11 +198,11 @@ func (s *State) CompleteTeardown(name string, generation uint64) error {
 	}
 
 	switch dependency.PendingTeardown.Action {
-	case TeardownActionDisable:
+	case dependencydomain.TeardownActionDisable:
 		dependency.PendingTeardown = nil
 		s.Dependencies[normalizedName] = dependency
 
-	case TeardownActionUninstall:
+	case dependencydomain.TeardownActionUninstall:
 		delete(s.Dependencies, normalizedName)
 
 	default:
@@ -399,7 +375,7 @@ func (s *State) RequestUninstalls(
 
 		if dependency.PendingTeardown != nil &&
 			dependency.PendingTeardown.Action ==
-				TeardownActionUninstall {
+				dependencydomain.TeardownActionUninstall {
 			continue
 		}
 
@@ -416,8 +392,8 @@ func (s *State) RequestUninstalls(
 	for _, name := range changedNames {
 		dependency := s.Dependencies[name]
 		dependency.Enabled = false
-		dependency.PendingTeardown = &PendingTeardown{
-			Action:     TeardownActionUninstall,
+		dependency.PendingTeardown = &dependencydomain.PendingTeardown{
+			Action:     dependencydomain.TeardownActionUninstall,
 			Generation: s.DesiredGeneration,
 		}
 		s.Dependencies[name] = dependency

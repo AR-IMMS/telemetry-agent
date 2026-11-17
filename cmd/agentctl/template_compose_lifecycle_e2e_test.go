@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
-	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"net"
 	"os"
 	"os/exec"
@@ -20,6 +18,9 @@ import (
 	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
 const composeLifecycleE2EEnv = "AR_IMMS_S4_COMPOSE_LIFECYCLE_E2E"
@@ -80,7 +81,7 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 			GatewayEndpoint: "127.0.0.1:4317", HealthEndpoint: defaultHealthEndpoint,
 		},
 		DesiredGeneration: 1, ActivatedGeneration: 1, AppliedGeneration: 1,
-		Dependencies: map[string]agentstate.DependencyState{},
+		Dependencies: map[string]dependencydomain.DependencyState{},
 	}
 	if err := store.Save(initial); err != nil {
 		t.Fatal(err)
@@ -171,7 +172,7 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 	startService := func(runtimeCtx context.Context) chan error {
 		done := make(chan error, 1)
 		go func(done chan<- error, serviceCtx context.Context) {
-			done <- runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, agentstate.TeardownAction, []servicedomain.OwnedResource) error {
+			done <- runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, dependencydomain.TeardownAction, []servicedomain.OwnedResource) error {
 				return nil
 			}, nil, bootstrap.OSCommandRunner{})
 		}(done, runtimeCtx)

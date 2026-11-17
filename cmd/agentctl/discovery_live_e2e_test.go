@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +16,8 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
 // TestLiveDockerInventoryWhenExplicitlyEnabled runs only in the documented local E2E.
@@ -40,7 +41,7 @@ func TestLiveDockerInventoryWhenExplicitlyEnabled(t *testing.T) {
 	}
 
 	store := sqlitefixture.NewSQLiteStore(statePath)
-	if err := store.Save(agentstate.State{DesiredGeneration: 3, ActivatedGeneration: 2, AppliedGeneration: 2, Dependencies: map[string]agentstate.DependencyState{"host": {Enabled: true}}}); err != nil {
+	if err := store.Save(agentstate.State{DesiredGeneration: 3, ActivatedGeneration: 2, AppliedGeneration: 2, Dependencies: map[string]dependencydomain.DependencyState{"host": {Enabled: true}}}); err != nil {
 		t.Fatal(err)
 	}
 	initial, err := store.Load()

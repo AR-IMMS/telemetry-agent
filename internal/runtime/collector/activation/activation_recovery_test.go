@@ -9,6 +9,7 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
 type failActivatedCommit struct {
@@ -46,7 +47,7 @@ func TestConfigurationCommitFailureRestoresRecoveryArtifact(t *testing.T) {
 	}
 	if err := store.Save(agentstate.State{
 		DesiredGeneration: 1,
-		Dependencies:      map[string]agentstate.DependencyState{},
+		Dependencies:      map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +84,7 @@ func TestRecoverPendingActivationBeforeRuntime(t *testing.T) {
 	if err := store.Save(agentstate.State{
 		DesiredGeneration: 2,
 		PendingActivation: &agentstate.PendingActivation{Generation: 2, RecoveryPath: recoveryPath},
-		Dependencies:      map[string]agentstate.DependencyState{},
+		Dependencies:      map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +128,7 @@ func TestRecoverInterruptedReadinessRestoresAppliedConfigAndKeepsDesiredState(t 
 		ActivatedGeneration: 2,
 		AppliedGeneration:   1,
 		PendingActivation:   &agentstate.PendingActivation{Generation: 2, RecoveryPath: recoveryPath},
-		Dependencies:        map[string]agentstate.DependencyState{},
+		Dependencies:        map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatal(err)
 	}

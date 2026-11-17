@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 	"io"
 	"os"
 	"sort"
 	"strings"
+
+	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
 func runDependencyStatus(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, deps dependencies) int {
@@ -42,7 +44,7 @@ func runDependencyStatus(ctx context.Context, args []string, stdout io.Writer, s
 	}
 
 	state := agentstate.State{
-		Dependencies: make(map[string]agentstate.DependencyState),
+		Dependencies: make(map[string]dependencydomain.DependencyState),
 	}
 
 	loadedState, err := newAgentStateStore(statePath).Load()

@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
 const maxStateBytes = 1 << 20
@@ -175,7 +177,7 @@ func (s FileStore) Update(mutate StateMutation) (State, error) {
 		}
 
 		state = State{
-			Dependencies: make(map[string]DependencyState),
+			Dependencies: make(map[string]dependencydomain.DependencyState),
 		}
 	}
 

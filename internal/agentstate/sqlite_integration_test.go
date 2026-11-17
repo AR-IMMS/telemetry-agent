@@ -8,6 +8,7 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
 func TestIntegrationMigrationV5PreservesExistingAgentData(t *testing.T) {
@@ -17,7 +18,7 @@ func TestIntegrationMigrationV5PreservesExistingAgentData(t *testing.T) {
 	if _, err := newTestIdentityStore(path).EnsureInstallationID(id); err != nil {
 		t.Fatal(err)
 	}
-	want := State{DesiredGeneration: 7, ActivatedGeneration: 6, AppliedGeneration: 5, Dependencies: map[string]DependencyState{"node-exporter": {Enabled: true}}}
+	want := State{DesiredGeneration: 7, ActivatedGeneration: 6, AppliedGeneration: 5, Dependencies: map[string]dependencydomain.DependencyState{"node-exporter": {Enabled: true}}}
 	if err := store.Save(want); err != nil {
 		t.Fatal(err)
 	}

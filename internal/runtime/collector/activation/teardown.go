@@ -3,11 +3,12 @@ package agentlifecycle
 import (
 	"context"
 	"fmt"
-	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"sort"
 	"strings"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 // DependencyTeardownFunc routes one safe dependency teardown action to the
@@ -15,7 +16,7 @@ import (
 type DependencyTeardownFunc func(
 	context.Context,
 	string,
-	agentstate.TeardownAction,
+	dependencydomain.TeardownAction,
 	[]servicedomain.OwnedResource,
 ) error
 

@@ -3,7 +3,6 @@ package agentinstallation
 import (
 	"context"
 	"fmt"
-	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"os"
 	"reflect"
 	"testing"
@@ -13,6 +12,8 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 func TestInstallerStagesAgentPersistsStateThenStartsService(
@@ -28,7 +29,7 @@ func TestInstallerStagesAgentPersistsStateThenStartsService(
 
 	store := &recordingStateStore{
 		state: agentstate.State{
-			Dependencies: map[string]agentstate.DependencyState{},
+			Dependencies: map[string]dependencydomain.DependencyState{},
 		},
 	}
 
@@ -216,7 +217,7 @@ func TestInstallerExplicitLegacyRollbackDisablesManagedSupervisor(t *testing.T) 
 			OpAMPServerURL: endpoint,
 			Enabled:        true,
 		},
-		Dependencies: map[string]agentstate.DependencyState{},
+		Dependencies: map[string]dependencydomain.DependencyState{},
 	}}
 	serviceRunning := true
 	var serviceSteps []string

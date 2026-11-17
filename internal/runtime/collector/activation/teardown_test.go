@@ -2,12 +2,13 @@ package agentlifecycle
 
 import (
 	"context"
-	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 func TestTeardownCoordinatorExecutesAppliedOwnedDisable(
@@ -21,7 +22,7 @@ func TestTeardownCoordinatorExecutesAppliedOwnedDisable(
 		DesiredGeneration:   4,
 		ActivatedGeneration: 4,
 		AppliedGeneration:   4,
-		Dependencies: map[string]agentstate.DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {
 				Enabled: false,
 				Ownership: &servicedomain.OwnershipRecord{
@@ -32,8 +33,8 @@ func TestTeardownCoordinatorExecutesAppliedOwnedDisable(
 						},
 					},
 				},
-				PendingTeardown: &agentstate.PendingTeardown{
-					Action:     agentstate.TeardownActionDisable,
+				PendingTeardown: &dependencydomain.PendingTeardown{
+					Action:     dependencydomain.TeardownActionDisable,
 					Generation: 4,
 				},
 			},
@@ -43,7 +44,7 @@ func TestTeardownCoordinatorExecutesAppliedOwnedDisable(
 	}
 
 	var gotName string
-	var gotAction agentstate.TeardownAction
+	var gotAction dependencydomain.TeardownAction
 	var gotResources []servicedomain.OwnedResource
 
 	coordinator := teardownCoordinator{
@@ -51,7 +52,7 @@ func TestTeardownCoordinatorExecutesAppliedOwnedDisable(
 		teardown: func(
 			ctx context.Context,
 			name string,
-			action agentstate.TeardownAction,
+			action dependencydomain.TeardownAction,
 			resources []servicedomain.OwnedResource,
 		) error {
 			gotName = name
@@ -69,7 +70,7 @@ func TestTeardownCoordinatorExecutesAppliedOwnedDisable(
 	if gotName != "node-exporter" {
 		t.Fatalf("teardown name = %q, want node-exporter", gotName)
 	}
-	if gotAction != agentstate.TeardownActionDisable {
+	if gotAction != dependencydomain.TeardownActionDisable {
 		t.Fatalf(
 			"teardown action = %q, want disable",
 			gotAction,
@@ -105,13 +106,13 @@ func TestTeardownCoordinatorDoesNotHoldStateLockDuringExternalTeardown(
 	if err := store.Save(agentstate.State{
 		DesiredGeneration: 1,
 		AppliedGeneration: 1,
-		Dependencies: map[string]agentstate.DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {
 				Ownership: &servicedomain.OwnershipRecord{Resources: []servicedomain.OwnedResource{{
 					Kind: "service", Identifier: "node-exporter",
 				}}},
-				PendingTeardown: &agentstate.PendingTeardown{
-					Action: agentstate.TeardownActionDisable, Generation: 1,
+				PendingTeardown: &dependencydomain.PendingTeardown{
+					Action: dependencydomain.TeardownActionDisable, Generation: 1,
 				},
 			},
 		},
@@ -130,7 +131,7 @@ func TestTeardownCoordinatorDoesNotHoldStateLockDuringExternalTeardown(
 	applyDone := make(chan error, 1)
 	coordinator := teardownCoordinator{
 		store: store,
-		teardown: func(context.Context, string, agentstate.TeardownAction, []servicedomain.OwnedResource) error {
+		teardown: func(context.Context, string, dependencydomain.TeardownAction, []servicedomain.OwnedResource) error {
 			close(teardownStarted)
 			<-releaseTeardown
 			return nil
@@ -175,12 +176,12 @@ func TestTeardownSerializesWithDependencyReenable(t *testing.T) {
 		Collector:         agentstate.CollectorContext{ConfigPath: configPath},
 		DesiredGeneration: 1,
 		AppliedGeneration: 1,
-		Dependencies: map[string]agentstate.DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {
 				Ownership: &servicedomain.OwnershipRecord{Resources: []servicedomain.OwnedResource{{
 					Kind: "service", Identifier: "node-exporter",
 				}}},
-				PendingTeardown: &agentstate.PendingTeardown{Action: agentstate.TeardownActionDisable, Generation: 1},
+				PendingTeardown: &dependencydomain.PendingTeardown{Action: dependencydomain.TeardownActionDisable, Generation: 1},
 			},
 		},
 	}); err != nil {
@@ -191,7 +192,7 @@ func TestTeardownSerializesWithDependencyReenable(t *testing.T) {
 	coordinator := teardownCoordinator{
 		store:    store,
 		lockPath: configPath + ".lifecycle",
-		teardown: func(context.Context, string, agentstate.TeardownAction, []servicedomain.OwnedResource) error {
+		teardown: func(context.Context, string, dependencydomain.TeardownAction, []servicedomain.OwnedResource) error {
 			close(started)
 			<-release
 			return nil

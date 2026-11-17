@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
 func TestSQLiteEnrollmentAttemptSurvivesRestartWithoutSecrets(t *testing.T) {
@@ -45,7 +46,7 @@ func TestSQLiteEnrollmentAttemptChangesAreScopedAndConcurrentCreateIsSerialized(
 	if _, err := newTestIdentityStore(path).EnsureInstallationID(identityID); err != nil {
 		t.Fatal(err)
 	}
-	state := State{DesiredGeneration: 4, Dependencies: map[string]DependencyState{
+	state := State{DesiredGeneration: 4, Dependencies: map[string]dependencydomain.DependencyState{
 		"redis": {Enabled: true},
 	}}
 	if err := newTestSQLiteStore(path).Save(state); err != nil {

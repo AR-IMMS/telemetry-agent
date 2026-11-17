@@ -9,6 +9,7 @@ import (
 	"time"
 
 	proposals "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
 func TestSQLiteProposalRepositoryCASDismissAndRestart(t *testing.T) {
@@ -105,7 +106,7 @@ func TestSQLiteNeedsInputProposalPersistsWithoutCandidateConfiguration(t *testin
 func TestMonitoringProposalMigrationFromV11PreservesExistingState(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
 	store := newTestSQLiteStore(path)
-	want := State{DesiredGeneration: 8, ActivatedGeneration: 7, AppliedGeneration: 7, Dependencies: map[string]DependencyState{"host": {Enabled: true}}}
+	want := State{DesiredGeneration: 8, ActivatedGeneration: 7, AppliedGeneration: 7, Dependencies: map[string]dependencydomain.DependencyState{"host": {Enabled: true}}}
 	if err := store.Save(want); err != nil {
 		t.Fatal(err)
 	}

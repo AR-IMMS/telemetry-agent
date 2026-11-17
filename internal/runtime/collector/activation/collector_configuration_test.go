@@ -13,6 +13,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
 func TestCollectorConfigurationActivatorActivatesEnabledReceivers(
@@ -114,7 +115,7 @@ service:
 	err = activator.Activate(
 		context.Background(),
 		agentstate.State{
-			Dependencies: map[string]agentstate.DependencyState{
+			Dependencies: map[string]dependencydomain.DependencyState{
 				"windows-exporter": {
 					Enabled: true,
 				},
@@ -305,7 +306,7 @@ service:
 
 	_, err = store.Update(func(state *agentstate.State) error {
 		state.DesiredGeneration = 6
-		state.Dependencies = map[string]agentstate.DependencyState{
+		state.Dependencies = map[string]dependencydomain.DependencyState{
 			"windows-exporter": {
 				Enabled: true,
 			},

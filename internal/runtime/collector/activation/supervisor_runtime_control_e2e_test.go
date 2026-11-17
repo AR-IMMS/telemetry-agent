@@ -12,8 +12,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
-	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"math/big"
 	"net"
 	"net/http"
@@ -34,10 +32,12 @@ import (
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	installationapp "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
-
 	"github.com/ar-imms/telemetry-agent/internal/mockcore"
 	"github.com/ar-imms/telemetry-agent/internal/opampserver"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
 // TestManagedSupervisorEnrollmentAndRemoteGatewayE2E is the managed-runtime
@@ -283,7 +283,7 @@ service:
 			t.Errorf("Agent-managed runtime process tree did not stop during cleanup")
 		}
 	})
-	noOpTeardown := func(context.Context, string, agentstate.TeardownAction, []servicedomain.OwnedResource) error {
+	noOpTeardown := func(context.Context, string, dependencydomain.TeardownAction, []servicedomain.OwnedResource) error {
 		return nil
 	}
 	go func() {

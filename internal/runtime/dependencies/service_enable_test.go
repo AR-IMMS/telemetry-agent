@@ -2,11 +2,11 @@ package dependency
 
 import (
 	"context"
-	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"reflect"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 func TestServiceEnableRoutesOwnedResources(
@@ -36,7 +36,7 @@ func TestServiceEnableRoutesOwnedResources(
 			},
 			Teardown: func(
 				context.Context,
-				agentstate.TeardownAction,
+				dependencydomain.TeardownAction,
 				[]servicedomain.OwnedResource,
 			) error {
 				return nil
@@ -96,7 +96,7 @@ func TestServiceEnableRejectsMissingEnabler(
 			},
 			Teardown: func(
 				context.Context,
-				agentstate.TeardownAction,
+				dependencydomain.TeardownAction,
 				[]servicedomain.OwnedResource,
 			) error {
 				return nil

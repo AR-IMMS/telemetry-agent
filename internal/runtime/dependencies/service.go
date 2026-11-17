@@ -3,10 +3,10 @@ package dependency
 import (
 	"context"
 	"fmt"
-	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"strings"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 // Service coordinates dependency lookup, platform checks, and installation.
@@ -192,7 +192,7 @@ func (s Service) Enable(
 func (s Service) Teardown(
 	ctx context.Context,
 	name string,
-	action agentstate.TeardownAction,
+	action dependencydomain.TeardownAction,
 	resources []servicedomain.OwnedResource,
 ) error {
 	normalizedName := strings.ToLower(strings.TrimSpace(name))

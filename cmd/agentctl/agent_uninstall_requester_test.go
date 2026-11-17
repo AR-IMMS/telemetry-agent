@@ -2,11 +2,12 @@ package main
 
 import (
 	"context"
-	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"path/filepath"
 	"testing"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
 func saveTestState(t *testing.T, store agentstate.Repository, state agentstate.State) {
@@ -29,7 +30,7 @@ func TestManagedAgentUninstallRequesterUsesPersistedStateWithoutRuntimeRebuild(t
 			ConfigPath:      "/var/lib/ar-imms/telemetry-agent/collector.yaml",
 			GatewayEndpoint: "gateway.example:4317",
 		},
-		Dependencies: map[string]agentstate.DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {Enabled: true},
 		},
 	})

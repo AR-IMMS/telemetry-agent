@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"strings"
 	"testing"
 	"time"
@@ -10,12 +9,14 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	proposals "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
 func TestPersistedInventoryToProposalAndExplicitApproval(t *testing.T) {
 	statePath := t.TempDir() + "/state.db"
 	store := sqlitefixture.NewSQLiteStore(statePath)
-	before := agentstate.State{DesiredGeneration: 4, ActivatedGeneration: 3, AppliedGeneration: 3, Dependencies: map[string]agentstate.DependencyState{"host": {Enabled: true}}}
+	before := agentstate.State{DesiredGeneration: 4, ActivatedGeneration: 3, AppliedGeneration: 3, Dependencies: map[string]dependencydomain.DependencyState{"host": {Enabled: true}}}
 	if err := store.Save(before); err != nil {
 		t.Fatal(err)
 	}

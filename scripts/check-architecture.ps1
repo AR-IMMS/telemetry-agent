@@ -28,7 +28,9 @@ try {
         "$modulePath/internal/inventory",
         "$modulePath/internal/health",
         "$modulePath/internal/operations/command",
-        "$modulePath/internal/operations/handlers"
+        "$modulePath/internal/operations/handlers",
+        "$modulePath/internal/runtime/service/domain",
+        "$modulePath/internal/runtime/dependencies/domain"
     )
     $adapterRoots = @(
         "$modulePath/internal/runtime/service",
@@ -151,6 +153,32 @@ try {
                 ($sourceFile.FullName.StartsWith((Join-Path $repoRoot 'internal/agentstate') + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase) -and
                     $source -match '(?<![\w.])\b(AgentInstallation|OwnedResource|OwnershipRecord)\b')) {
                 $violations.Add("$($sourceFile.FullName) must reference Runtime service ownership types through their owner package")
+            }
+        }
+    }
+    $runtimeDependencyDomain = Join-Path $repoRoot 'internal/runtime/dependencies/domain'
+    if (-not (Test-Path -LiteralPath $runtimeDependencyDomain -PathType Container)) {
+        $violations.Add('Runtime dependency lifecycle contracts require an explicit internal/runtime/dependencies/domain package')
+    } else {
+        $runtimeDependencyModels = Get-Content -LiteralPath (Join-Path $runtimeDependencyDomain 'state.go') -Raw
+        if ($runtimeDependencyModels -notmatch '(?m)^type\s+DependencyState\s+struct\b' -or
+            $runtimeDependencyModels -notmatch '(?m)^type\s+PendingTeardown\s+struct\b' -or
+            $runtimeDependencyModels -notmatch '(?m)^type\s+TeardownAction\s+string\b') {
+            $violations.Add('Runtime dependency domain must own DependencyState, PendingTeardown, and TeardownAction')
+        }
+    }
+    $agentStateSource = Join-Path $repoRoot 'internal/agentstate/state.go'
+    if (Test-Path -LiteralPath $agentStateSource -PathType Leaf) {
+        $source = Get-Content -LiteralPath $agentStateSource -Raw
+        if ($source -match '(?m)^type\s+(DependencyState|PendingTeardown|TeardownAction)\b') {
+            $violations.Add('Runtime dependency lifecycle models must be owned by internal/runtime/dependencies/domain')
+        }
+    }
+    foreach ($sourceRoot in @((Join-Path $repoRoot 'internal'), (Join-Path $repoRoot 'cmd'))) {
+        foreach ($sourceFile in (Get-ChildItem -LiteralPath $sourceRoot -Recurse -File -Filter '*.go')) {
+            $source = Get-Content -LiteralPath $sourceFile.FullName -Raw
+            if ($source -match 'agentstate\.(DependencyState|PendingTeardown|TeardownAction(?:Disable|Uninstall)?)\b') {
+                $violations.Add("$($sourceFile.FullName) must use Runtime dependency lifecycle models from their owning package")
             }
         }
     }
@@ -555,6 +583,11 @@ try {
                 break
             }
         }
+        $isExplicitRuntimeDomain = $package -eq "$modulePath/internal/runtime/service/domain" -or
+            $package.StartsWith("$modulePath/internal/runtime/service/domain/", [StringComparison]::Ordinal) -or
+            $package -eq "$modulePath/internal/runtime/dependencies/domain" -or
+            $package.StartsWith("$modulePath/internal/runtime/dependencies/domain/", [StringComparison]::Ordinal)
+        if ($isExplicitRuntimeDomain) { $isContextAdapter = $false }
         if ($isContextAdapter) { continue }
         $isDomain = $false
         foreach ($root in $domainRoots) {
@@ -568,6 +601,12 @@ try {
         foreach ($imported in $imports) {
             $edge = "$package|$imported"
             if ($transitionalImportAllowlist.ContainsKey($edge)) { continue }
+
+            $isExplicitRuntimeDomainImport = $imported -eq "$modulePath/internal/runtime/service/domain" -or
+                $imported.StartsWith("$modulePath/internal/runtime/service/domain/", [StringComparison]::Ordinal) -or
+                $imported -eq "$modulePath/internal/runtime/dependencies/domain" -or
+                $imported.StartsWith("$modulePath/internal/runtime/dependencies/domain/", [StringComparison]::Ordinal)
+            if ($isExplicitRuntimeDomainImport) { continue }
 
             foreach ($platformAdapter in $platformAdapterRoots) {
                 if ($imported -eq $platformAdapter -or $imported.StartsWith("$platformAdapter/", [StringComparison]::Ordinal)) {

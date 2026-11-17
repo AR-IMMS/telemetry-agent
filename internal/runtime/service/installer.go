@@ -12,9 +12,10 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
 // Options contains the caller-provided inputs for one packaged Agent
@@ -215,7 +216,7 @@ func (i Installer) Install(
 	_, err = store.Update(func(state *agentstate.State) error {
 		if state.Dependencies == nil {
 			state.Dependencies = make(
-				map[string]agentstate.DependencyState,
+				map[string]dependencydomain.DependencyState,
 			)
 		}
 

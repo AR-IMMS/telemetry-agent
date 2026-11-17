@@ -5,8 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
-	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"net"
 	"os"
 	"os/exec"
@@ -24,6 +22,9 @@ import (
 	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
 const templateRuntimeE2EEnv = "AR_IMMS_S4_TEMPLATE_RUNTIME_E2E"
@@ -62,7 +63,7 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 			GatewayEndpoint: sinkEndpoint, HealthEndpoint: defaultHealthEndpoint,
 		},
 		DesiredGeneration: 1, ActivatedGeneration: 1, AppliedGeneration: 1,
-		Dependencies: map[string]agentstate.DependencyState{},
+		Dependencies: map[string]dependencydomain.DependencyState{},
 	}
 	if err := store.Save(initial); err != nil {
 		t.Fatal(err)
@@ -152,7 +153,7 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 	serviceCtx, stopService := context.WithCancel(ctx)
 	serviceDone := make(chan error, 1)
 	go func() {
-		serviceDone <- runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, agentstate.TeardownAction, []servicedomain.OwnedResource) error {
+		serviceDone <- runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, dependencydomain.TeardownAction, []servicedomain.OwnedResource) error {
 			return nil
 		}, nil, bootstrap.OSCommandRunner{})
 	}()
@@ -324,7 +325,7 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 	serviceCtx, stopService = context.WithCancel(ctx)
 	serviceDone = make(chan error, 1)
 	go func() {
-		serviceDone <- runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, agentstate.TeardownAction, []servicedomain.OwnedResource) error {
+		serviceDone <- runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, dependencydomain.TeardownAction, []servicedomain.OwnedResource) error {
 			return nil
 		}, nil, bootstrap.OSCommandRunner{})
 	}()

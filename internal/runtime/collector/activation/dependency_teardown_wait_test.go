@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
 func TestWaitForDependenciesRemovedWaitsUntilTeardownsComplete(
@@ -21,11 +22,11 @@ func TestWaitForDependenciesRemovedWaitsUntilTeardownsComplete(
 		DesiredGeneration:   8,
 		ActivatedGeneration: 8,
 		AppliedGeneration:   8,
-		Dependencies: map[string]agentstate.DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {
 				Enabled: false,
-				PendingTeardown: &agentstate.PendingTeardown{
-					Action:     agentstate.TeardownActionUninstall,
+				PendingTeardown: &dependencydomain.PendingTeardown{
+					Action:     dependencydomain.TeardownActionUninstall,
 					Generation: 8,
 				},
 			},
@@ -104,7 +105,7 @@ func TestWaitForDependenciesRemovedDoesNotTreatDisabledDependencyAsRemoved(
 	)
 
 	if err := store.Save(agentstate.State{
-		Dependencies: map[string]agentstate.DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {
 				Enabled: false,
 			},

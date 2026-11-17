@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
 func TestRequestAllDependencyUninstallsUsesOneGenerationForAllPersistedDependencies(t *testing.T) {
@@ -15,7 +16,7 @@ func TestRequestAllDependencyUninstallsUsesOneGenerationForAllPersistedDependenc
 		DesiredGeneration:   7,
 		ActivatedGeneration: 7,
 		AppliedGeneration:   7,
-		Dependencies: map[string]agentstate.DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"windows-exporter":       {Enabled: true},
 			"libre-hardware-monitor": {Enabled: true},
 		},
@@ -40,7 +41,7 @@ func TestRequestAllDependencyUninstallsUsesOneGenerationForAllPersistedDependenc
 	}
 	for _, name := range changed {
 		dependency := state.Dependencies[name]
-		if dependency.Enabled || dependency.PendingTeardown == nil || dependency.PendingTeardown.Action != agentstate.TeardownActionUninstall || dependency.PendingTeardown.Generation != 8 {
+		if dependency.Enabled || dependency.PendingTeardown == nil || dependency.PendingTeardown.Action != dependencydomain.TeardownActionUninstall || dependency.PendingTeardown.Generation != 8 {
 			t.Fatalf("dependency %q teardown state = %+v", name, dependency)
 		}
 	}

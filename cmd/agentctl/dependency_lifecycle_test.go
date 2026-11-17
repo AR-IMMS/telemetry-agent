@@ -3,8 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
-	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -15,6 +13,9 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
 func TestManagedDependencyInstallerRequiresBootstrapBeforePhysicalInstall(
@@ -410,7 +411,7 @@ service:
 		state.DesiredGeneration = 1
 		state.ActivatedGeneration = 1
 		state.AppliedGeneration = 1
-		state.Dependencies = map[string]agentstate.DependencyState{
+		state.Dependencies = map[string]dependencydomain.DependencyState{
 			"windows-exporter": {
 				Enabled: true,
 			},
@@ -453,7 +454,7 @@ service:
 	if dependency.PendingTeardown == nil {
 		t.Fatal("PendingTeardown = nil, want disable teardown")
 	}
-	if dependency.PendingTeardown.Action != agentstate.TeardownActionDisable {
+	if dependency.PendingTeardown.Action != dependencydomain.TeardownActionDisable {
 		t.Fatalf(
 			"PendingTeardown.Action = %q, want %q",
 			dependency.PendingTeardown.Action,
@@ -544,7 +545,7 @@ service:
 		state.DesiredGeneration = 1
 		state.ActivatedGeneration = 1
 		state.AppliedGeneration = 1
-		state.Dependencies = map[string]agentstate.DependencyState{
+		state.Dependencies = map[string]dependencydomain.DependencyState{
 			"windows-exporter": {
 				Enabled:   false,
 				Ownership: &servicedomain.OwnershipRecord{Resources: ownership},
@@ -664,7 +665,7 @@ func TestManagedDependencyLifecycleRejectsEnableWithoutOwnership(
 		state.DesiredGeneration = 1
 		state.ActivatedGeneration = 1
 		state.AppliedGeneration = 1
-		state.Dependencies = map[string]agentstate.DependencyState{
+		state.Dependencies = map[string]dependencydomain.DependencyState{
 			"windows-exporter": {
 				Enabled: false,
 			},

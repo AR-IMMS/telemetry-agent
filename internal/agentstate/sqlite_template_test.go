@@ -10,6 +10,7 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
 func TestSQLiteTemplateRepositoryCASNoOpDeleteTombstoneAndRestart(t *testing.T) {
@@ -57,7 +58,7 @@ func TestSQLiteTemplateMutationRollbackAndMigrationCompatibility(t *testing.T) {
 	if _, err := newTestIdentityStore(path).EnsureInstallationID(mustInstallationID(t, "21111111-2222-4333-8444-555555555555")); err != nil {
 		t.Fatal(err)
 	}
-	state := State{DesiredGeneration: 6, ActivatedGeneration: 5, AppliedGeneration: 4, Dependencies: map[string]DependencyState{"node-exporter": {Enabled: true}}}
+	state := State{DesiredGeneration: 6, ActivatedGeneration: 5, AppliedGeneration: 4, Dependencies: map[string]dependencydomain.DependencyState{"node-exporter": {Enabled: true}}}
 	if err := store.Save(state); err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +105,7 @@ func TestSQLiteTemplateMigrationFromV12PreservesPopulatedOperationalTables(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	state := State{DesiredGeneration: 9, ActivatedGeneration: 8, AppliedGeneration: 7, Dependencies: map[string]DependencyState{"node-exporter": {Enabled: true}}}
+	state := State{DesiredGeneration: 9, ActivatedGeneration: 8, AppliedGeneration: 7, Dependencies: map[string]dependencydomain.DependencyState{"node-exporter": {Enabled: true}}}
 	encodedState, err := json.Marshal(state)
 	if err != nil {
 		t.Fatal(err)

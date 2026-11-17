@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"net"
 	"os"
 	"path/filepath"
@@ -21,6 +20,8 @@ import (
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
 func TestBootstrapPassesOrderedLinuxLayersAndValidationOptions(t *testing.T) {
@@ -671,7 +672,7 @@ func TestDependencyMetricsReceiverLayerIncludesOnlyEnabledCurrentPlatform(
 		catalog,
 		"windows",
 		agentstate.State{
-			Dependencies: map[string]agentstate.DependencyState{
+			Dependencies: map[string]dependencydomain.DependencyState{
 				"windows-exporter": {
 					Enabled: true,
 				},

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +16,8 @@ import (
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 func TestRuntimeWatcherMarksLaunchGenerationAppliedAfterCollectorReady(
@@ -186,7 +187,7 @@ func TestRuntimeLaunchSnapshotWaitsForConfigActivationLock(t *testing.T) {
 	if err := store.Save(agentstate.State{
 		Collector:           agentstate.CollectorContext{ConfigPath: configPath},
 		ActivatedGeneration: 1,
-		Dependencies:        map[string]agentstate.DependencyState{},
+		Dependencies:        map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -263,7 +264,7 @@ func TestRuntimeLaunchSnapshotWaitsForConfigActivationLock(t *testing.T) {
 
 func TestRuntimeLaunchUsesGatewayForActivatedGeneration(t *testing.T) {
 	store := agentstate.NewFileStore(filepath.Join(t.TempDir(), "state.json"))
-	if err := store.Save(agentstate.State{ActivatedGeneration: 8, Dependencies: map[string]agentstate.DependencyState{}}); err != nil {
+	if err := store.Save(agentstate.State{ActivatedGeneration: 8, Dependencies: map[string]dependencydomain.DependencyState{}}); err != nil {
 		t.Fatal(err)
 	}
 	watcher := runtimeWatcher{
@@ -292,7 +293,7 @@ func TestRuntimeLaunchAddsGenerationReadinessToLegacyConfigSnapshot(t *testing.T
 		t.Fatal(err)
 	}
 	store := agentstate.NewFileStore(filepath.Join(root, "state.json"))
-	if err := store.Save(agentstate.State{ActivatedGeneration: 2, Dependencies: map[string]agentstate.DependencyState{}}); err != nil {
+	if err := store.Save(agentstate.State{ActivatedGeneration: 2, Dependencies: map[string]dependencydomain.DependencyState{}}); err != nil {
 		t.Fatal(err)
 	}
 	watcher := runtimeWatcher{
@@ -364,7 +365,7 @@ func TestRuntimeWatcherConfirmsUnchangedGatewayRevisionWithoutRestart(t *testing
 		Collector:           agentstate.CollectorContext{ConfigPath: configPath},
 		DesiredGeneration:   1,
 		ActivatedGeneration: 1,
-		Dependencies:        map[string]agentstate.DependencyState{},
+		Dependencies:        map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -660,7 +661,7 @@ func TestRuntimeWatcherRestartsCollectorForNewActivatedGeneration(
 	if err := store.Save(agentstate.State{
 		DesiredGeneration:   1,
 		ActivatedGeneration: 1,
-		Dependencies:        map[string]agentstate.DependencyState{},
+		Dependencies:        map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
@@ -786,7 +787,7 @@ func TestRuntimeWatcherAppliesTeardownsAfterLaunchGenerationIsApplied(
 		DesiredGeneration:   3,
 		ActivatedGeneration: 3,
 		AppliedGeneration:   2,
-		Dependencies:        map[string]agentstate.DependencyState{},
+		Dependencies:        map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
@@ -848,7 +849,7 @@ func TestRuntimeWatcherCancelsLaunchBeforeReturningReadinessError(
 	if err := store.Save(agentstate.State{
 		DesiredGeneration:   1,
 		ActivatedGeneration: 1,
-		Dependencies:        map[string]agentstate.DependencyState{},
+		Dependencies:        map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
@@ -905,7 +906,7 @@ func TestRuntimeWatcherCompletesPendingUninstallAfterCollectorReady(
 		DesiredGeneration:   3,
 		ActivatedGeneration: 3,
 		AppliedGeneration:   2,
-		Dependencies: map[string]agentstate.DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"windows-exporter": {
 				Enabled: false,
 				Ownership: &servicedomain.OwnershipRecord{
@@ -916,8 +917,8 @@ func TestRuntimeWatcherCompletesPendingUninstallAfterCollectorReady(
 						},
 					},
 				},
-				PendingTeardown: &agentstate.PendingTeardown{
-					Action:     agentstate.TeardownActionUninstall,
+				PendingTeardown: &dependencydomain.PendingTeardown{
+					Action:     dependencydomain.TeardownActionUninstall,
 					Generation: 3,
 				},
 			},
@@ -933,7 +934,7 @@ func TestRuntimeWatcherCompletesPendingUninstallAfterCollectorReady(
 		teardown: func(
 			ctx context.Context,
 			name string,
-			action agentstate.TeardownAction,
+			action dependencydomain.TeardownAction,
 			resources []servicedomain.OwnedResource,
 		) error {
 			teardownCalls++
@@ -941,11 +942,11 @@ func TestRuntimeWatcherCompletesPendingUninstallAfterCollectorReady(
 			if name != "windows-exporter" {
 				t.Fatalf("teardown name = %q, want windows-exporter", name)
 			}
-			if action != agentstate.TeardownActionUninstall {
+			if action != dependencydomain.TeardownActionUninstall {
 				t.Fatalf(
 					"teardown action = %q, want %q",
 					action,
-					agentstate.TeardownActionUninstall,
+					dependencydomain.TeardownActionUninstall,
 				)
 			}
 			if len(resources) != 1 ||
@@ -1012,7 +1013,7 @@ func TestRuntimeWatcherReportsHealthySnapshotAfterCollectorReady(
 		ActivatedGeneration: 3,
 		AppliedGeneration:   2,
 		Supervisor:          agentstate.SupervisorContext{Enabled: true},
-		Dependencies:        map[string]agentstate.DependencyState{},
+		Dependencies:        map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
@@ -1090,7 +1091,7 @@ func TestRuntimeWatcherReportsFailedSnapshotWhenCollectorExitsWithError(
 		DesiredGeneration:   3,
 		ActivatedGeneration: 3,
 		AppliedGeneration:   3,
-		Dependencies:        map[string]agentstate.DependencyState{},
+		Dependencies:        map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
@@ -1157,7 +1158,7 @@ func TestRuntimeWatcherRestartsWhenCollectorStopsCleanlyAfterNewGenerationActiva
 	if err := store.Save(agentstate.State{
 		DesiredGeneration:   1,
 		ActivatedGeneration: 1,
-		Dependencies:        map[string]agentstate.DependencyState{},
+		Dependencies:        map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}

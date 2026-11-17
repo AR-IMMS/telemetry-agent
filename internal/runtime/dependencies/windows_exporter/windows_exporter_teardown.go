@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"os"
 	"strings"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 // windowsExporterTeardown disables or uninstalls Agent-owned Windows Exporter
@@ -24,7 +24,7 @@ type windowsExporterTeardown struct {
 // Teardown applies one safe lifecycle action to resources recorded in state.
 func (t windowsExporterTeardown) Teardown(
 	ctx context.Context,
-	action agentstate.TeardownAction,
+	action dependencydomain.TeardownAction,
 	resources []servicedomain.OwnedResource,
 ) error {
 	if ctx == nil {
@@ -44,10 +44,10 @@ func (t windowsExporterTeardown) Teardown(
 	}
 
 	switch action {
-	case agentstate.TeardownActionDisable:
+	case dependencydomain.TeardownActionDisable:
 		return t.disableOwnedService(ctx, resources)
 
-	case agentstate.TeardownActionUninstall:
+	case dependencydomain.TeardownActionUninstall:
 		return t.uninstallOwnedResources(ctx, resources)
 
 	default:
