@@ -3,7 +3,7 @@ package sqlite_test
 import (
 	"encoding/json"
 	"errors"
-	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals"
+	proposals "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"path/filepath"

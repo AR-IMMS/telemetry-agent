@@ -12,7 +12,7 @@ func (s SQLiteStore) InventoryRepository() inventoryctx.InventoryRepository {
 	return inventorysqlite.NewInventoryRepository(s.OpenDatabase, &sqliteUpdateMutex)
 }
 
-// ProposalRepository returns the transitional proposal SQLite adapter over this store.
+// ProposalRepository returns the Configuration-owned proposal adapter over this store.
 func (s SQLiteStore) ProposalRepository() application.ProposalRepository {
 	return configurationsqlite.NewProposalRepository(s.OpenDatabase, &sqliteUpdateMutex)
 }

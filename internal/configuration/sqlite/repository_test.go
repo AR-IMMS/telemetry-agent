@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
-	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals"
+	proposals "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"

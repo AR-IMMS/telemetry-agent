@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals"
+	proposals "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 )
 
 func TestSQLiteProposalRepositoryCASDismissAndRestart(t *testing.T) {

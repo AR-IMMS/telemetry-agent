@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
-	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals"
+	proposals "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 )
 
