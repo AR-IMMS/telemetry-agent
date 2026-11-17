@@ -13,7 +13,8 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
-	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
+	installationapp "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
+
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	definitionsdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
@@ -172,7 +173,7 @@ func TestNativeMonitoringInputsAcceptPinnedPostgreSQLProfileCapability(t *testin
 	t.Setenv("AR_IMMS_PG_USER", "metrics_reader")
 	t.Setenv("AR_IMMS_PG_PASSWORD", "test-only-secret")
 	statePath := filepath.Join(t.TempDir(), "state.db")
-	installationID, err := installationid.EnsureInstallationIdentity(sqlitefixture.NewIdentityStore(statePath), rand.Reader)
+	installationID, err := installationapp.EnsureInstallationIdentity(sqlitefixture.NewIdentityStore(statePath), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}

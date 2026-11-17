@@ -6,7 +6,7 @@ import (
 	"errors"
 	credentialstore "github.com/ar-imms/telemetry-agent/internal/identity/credentials"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
-	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/domain"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"os"
 	"path/filepath"

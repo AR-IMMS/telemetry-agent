@@ -7,7 +7,7 @@ import (
 	"fmt"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	credentialstore "github.com/ar-imms/telemetry-agent/internal/identity/credentials"
-	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/domain"
 	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
 	operations "github.com/ar-imms/telemetry-agent/internal/operations/command"
 	operationsdocker "github.com/ar-imms/telemetry-agent/internal/operations/dockeradapter"

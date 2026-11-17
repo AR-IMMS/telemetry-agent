@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/domain"
 )
 
 var (

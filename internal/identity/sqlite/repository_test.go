@@ -1,7 +1,7 @@
 package sqlite_test
 
 import (
-	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/domain"
 	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"testing"

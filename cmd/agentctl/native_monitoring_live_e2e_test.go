@@ -20,7 +20,8 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
-	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
+	installationapp "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
+
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	profilesapplication "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/application"
 	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
@@ -76,7 +77,7 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	installationID, err := installationid.EnsureInstallationIdentity(sqlitefixture.NewIdentityStore(statePath), rand.Reader)
+	installationID, err := installationapp.EnsureInstallationIdentity(sqlitefixture.NewIdentityStore(statePath), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}

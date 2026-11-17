@@ -1,13 +1,15 @@
-package installation
+package application
 
 import (
 	"bytes"
 	"errors"
 	"testing"
+
+	"github.com/ar-imms/telemetry-agent/internal/identity/installation/domain"
 )
 
 func TestNewInstallationIDGeneratesUUIDv4(t *testing.T) {
-	id, err := NewInstallationID(bytes.NewReader(make([]byte, 16)))
+	id, err := domain.NewInstallationID(bytes.NewReader(make([]byte, 16)))
 	if err != nil {
 		t.Fatalf("NewInstallationID() error = %v", err)
 	}
@@ -18,20 +20,20 @@ func TestNewInstallationIDGeneratesUUIDv4(t *testing.T) {
 
 func TestNewInstallationIDReturnsEntropyError(t *testing.T) {
 	wantErr := errors.New("entropy unavailable")
-	_, err := NewInstallationID(errorReader{err: wantErr})
+	_, err := domain.NewInstallationID(errorReader{err: wantErr})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("NewInstallationID() error = %v, want %v", err, wantErr)
 	}
 }
 
 func TestParseInstallationIDRejectsMalformedValue(t *testing.T) {
-	if _, err := ParseInstallationID("not-a-uuid"); err == nil {
+	if _, err := domain.ParseInstallationID("not-a-uuid"); err == nil {
 		t.Fatal("ParseInstallationID() error = nil, want malformed UUID error")
 	}
 }
 
 func TestEnsureInstallationIdentityReturnsCommittedRepositoryID(t *testing.T) {
-	committed, err := ParseInstallationID("11111111-2222-4333-8444-555555555555")
+	committed, err := domain.ParseInstallationID("11111111-2222-4333-8444-555555555555")
 	if err != nil {
 		t.Fatalf("ParseInstallationID() error = %v", err)
 	}
@@ -53,7 +55,7 @@ func TestEnsureInstallationIdentityReturnsCommittedRepositoryID(t *testing.T) {
 }
 
 func TestEnsureInstallationIdentityRejectsInvalidCommittedValue(t *testing.T) {
-	repository := &committedIdentityRepository{committed: InstallationID{value: "invalid"}}
+	repository := &committedIdentityRepository{committed: domain.InstallationID{}}
 	_, err := EnsureInstallationIdentity(
 		repository,
 		bytes.NewReader(make([]byte, 16)),
@@ -72,13 +74,13 @@ func (r errorReader) Read([]byte) (int, error) {
 }
 
 type committedIdentityRepository struct {
-	committed InstallationID
+	committed domain.InstallationID
 	calls     int
 }
 
 func (r *committedIdentityRepository) EnsureInstallationID(
-	InstallationID,
-) (InstallationID, error) {
+	domain.InstallationID,
+) (domain.InstallationID, error) {
 	r.calls++
 	return r.committed, nil
 }

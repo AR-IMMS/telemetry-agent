@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/domain"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	inventorysqlite "github.com/ar-imms/telemetry-agent/internal/inventory/sqlite"

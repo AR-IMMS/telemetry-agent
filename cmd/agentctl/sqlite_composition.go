@@ -7,7 +7,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/app"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
-	"github.com/ar-imms/telemetry-agent/internal/identity/installation"
+	installation "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
 	agentlifecycle "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation"
 )
 

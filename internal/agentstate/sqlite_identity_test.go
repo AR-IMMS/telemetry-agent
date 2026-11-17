@@ -9,7 +9,8 @@ import (
 	"sync"
 	"testing"
 
-	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
+	installationapp "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/domain"
 )
 
 func TestSQLiteIdentityRepositoryInitializesAndReusesCommittedID(t *testing.T) {
@@ -137,9 +138,9 @@ func TestSQLiteIdentityConcurrentInitializationReturnsCommittedID(t *testing.T) 
 	results := make(chan installationid.InstallationID, len(candidates))
 	errorsFound := make(chan error, len(candidates))
 	var wait sync.WaitGroup
-	for index, repository := range []installationid.InstallationIdentityRepository{first, second} {
+	for index, repository := range []installationapp.InstallationIdentityRepository{first, second} {
 		wait.Add(1)
-		go func(index int, repository installationid.InstallationIdentityRepository) {
+		go func(index int, repository installationapp.InstallationIdentityRepository) {
 			defer wait.Done()
 			id, err := repository.EnsureInstallationID(candidates[index])
 			if err != nil {

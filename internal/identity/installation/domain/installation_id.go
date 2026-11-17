@@ -1,4 +1,4 @@
-package installation
+package domain
 
 import (
 	"encoding/hex"

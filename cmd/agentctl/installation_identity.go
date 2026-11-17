@@ -3,7 +3,8 @@ package main
 import (
 	"crypto/rand"
 	"fmt"
-	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
+	installationapp "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
+
 	"strings"
 )
 
@@ -21,7 +22,7 @@ func prepareAgentInstallationIdentity(statePath string) error {
 		strings.TrimSpace(collector.HealthEndpoint) == "" {
 		return fmt.Errorf("Agent operational state has incomplete Collector context")
 	}
-	if _, err := installationid.EnsureInstallationIdentity(
+	if _, err := installationapp.EnsureInstallationIdentity(
 		newAgentIdentityStore(statePath),
 		rand.Reader,
 	); err != nil {

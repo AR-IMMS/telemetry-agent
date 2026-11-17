@@ -100,10 +100,16 @@ try {
     $enrollmentFacadeImportPath = "$modulePath/internal/identity/enrollment"
     $enrollmentDomain = "$enrollmentFacadeImportPath/domain"
     $enrollmentApplication = "$enrollmentFacadeImportPath/application"
+    $installationFacadeImportPath = "$modulePath/internal/identity/installation"
+    $installationDomain = "$installationFacadeImportPath/domain"
+    $installationApplication = "$installationFacadeImportPath/application"
     $violations = [System.Collections.Generic.List[string]]::new()
-    foreach ($layerPath in @('internal/identity/enrollment/domain', 'internal/identity/enrollment/application')) {
+    foreach ($layerPath in @(
+        'internal/identity/enrollment/domain', 'internal/identity/enrollment/application',
+        'internal/identity/installation/domain', 'internal/identity/installation/application'
+    )) {
         if (-not (Test-Path -LiteralPath (Join-Path $repoRoot $layerPath) -PathType Container)) {
-            $violations.Add("Identity enrollment requires a real domain and application layer: $layerPath")
+            $violations.Add("Identity enrollment/installation requires real domain and application layers: $layerPath")
         }
     }
 
@@ -302,6 +308,26 @@ try {
         }
         if ($imports -contains $enrollmentFacadeImportPath) {
             $violations.Add("Package $package imports the retired Identity enrollment facade; use domain/application owner packages")
+        }
+        if ($package -eq $installationDomain) {
+            foreach ($imported in $imports) {
+                if ($imported.StartsWith("$modulePath/internal/", [StringComparison]::Ordinal)) {
+                    $violations.Add("Identity installation domain imports an outer layer or adapter: $package -> $imported")
+                }
+            }
+        }
+        if ($package -eq $installationApplication) {
+            foreach ($imported in $imports) {
+                if ($imported -eq $installationFacadeImportPath -or
+                    $imported.StartsWith("$modulePath/internal/identity/sqlite", [StringComparison]::Ordinal) -or
+                    $imported.StartsWith("$modulePath/internal/coreapi", [StringComparison]::Ordinal) -or
+                    $imported.StartsWith("$modulePath/internal/identity/credentials", [StringComparison]::Ordinal)) {
+                    $violations.Add("Identity installation application imports an adapter or compatibility facade: $package -> $imported")
+                }
+            }
+        }
+        if ($imports -contains $installationFacadeImportPath) {
+            $violations.Add("Package $package imports the retired Identity installation facade; use domain/application owner packages")
         }
         if ($package -eq $monitoringDefinitionDomain) {
             foreach ($imported in $imports) {
