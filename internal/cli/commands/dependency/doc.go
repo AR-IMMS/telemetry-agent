@@ -1,5 +1,5 @@
-// Package dependency presents existing Runtime dependency catalog and status
-// operations.
+// Package dependency presents existing Runtime dependency catalog, status, and
+// pending-teardown operations.
 //
 // It receives Runtime results through narrow callbacks and writes legacy text
 // and exit-code contracts. It does not own dependency policy, installation,

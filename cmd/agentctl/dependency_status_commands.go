@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sort"
 	"strings"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
@@ -102,35 +101,17 @@ func runDependencyPending(ctx context.Context, args []string, stdout io.Writer, 
 		return 1
 	}
 
-	names = make([]string, 0, len(state.Dependencies))
+	pendingTeardowns := make([]dependencycommands.PendingTeardown, 0, len(state.Dependencies))
 	for name, dependency := range state.Dependencies {
 		if dependency.PendingTeardown != nil {
-			names = append(names, name)
+			pendingTeardowns = append(pendingTeardowns, dependencycommands.PendingTeardown{
+				Name:       name,
+				Action:     string(dependency.PendingTeardown.Action),
+				Generation: dependency.PendingTeardown.Generation,
+			})
 		}
 	}
 
-	if len(names) == 0 {
-		fmt.Fprintln(stdout, "No pending dependency teardowns.")
-
-		return 0
-	}
-
-	sort.Strings(names)
-
-	fmt.Fprintln(stdout, "Pending dependency teardowns:")
-	for _, name := range names {
-		pending := state.Dependencies[name].PendingTeardown
-
-		fmt.Fprintf(
-			stdout,
-			"- %s: %s, generation %d (applied generation: %d)\n",
-			name,
-			pending.Action,
-			pending.Generation,
-			state.AppliedGeneration,
-		)
-	}
-
-	return 0
+	return dependencycommands.PendingTeardowns(stdout, pendingTeardowns, state.AppliedGeneration)
 
 }

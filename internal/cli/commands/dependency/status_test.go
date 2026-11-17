@@ -81,3 +81,29 @@ func TestStatusReportsReaderErrorsAndMissingReader(t *testing.T) {
 		t.Fatalf("Status() stderr = %q, want %q", got, want)
 	}
 }
+
+func TestPendingTeardownsPreservesLegacySortingAndPresentation(t *testing.T) {
+	var stdout bytes.Buffer
+	exitCode := PendingTeardowns(&stdout, []PendingTeardown{
+		{Name: "windows-exporter", Action: "uninstall", Generation: 7},
+		{Name: "node-exporter", Action: "disable", Generation: 5},
+	}, 6)
+
+	if exitCode != 0 {
+		t.Fatalf("PendingTeardowns() exit code = %d, want 0", exitCode)
+	}
+	if got, want := stdout.String(), "Pending dependency teardowns:\n- node-exporter: disable, generation 5 (applied generation: 6)\n- windows-exporter: uninstall, generation 7 (applied generation: 6)\n"; got != want {
+		t.Fatalf("PendingTeardowns() output = %q, want %q", got, want)
+	}
+}
+
+func TestPendingTeardownsReportsEmptyResult(t *testing.T) {
+	var stdout bytes.Buffer
+	exitCode := PendingTeardowns(&stdout, nil, 0)
+	if exitCode != 0 {
+		t.Fatalf("PendingTeardowns() exit code = %d, want 0", exitCode)
+	}
+	if got, want := stdout.String(), "No pending dependency teardowns.\n"; got != want {
+		t.Fatalf("PendingTeardowns() output = %q, want %q", got, want)
+	}
+}
