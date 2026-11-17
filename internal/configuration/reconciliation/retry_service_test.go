@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/configuration"
+	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
 	reconciliationcontracts "github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation/contracts"
 )
 
-type retryServiceDesired struct{ snapshot configuration.DesiredSnapshot }
+type retryServiceDesired struct{ snapshot desiredstateapp.Snapshot }
 
-func (r retryServiceDesired) Snapshot() (configuration.DesiredSnapshot, error) {
+func (r retryServiceDesired) Snapshot() (desiredstateapp.Snapshot, error) {
 	return r.snapshot, nil
 }
 
@@ -47,7 +47,7 @@ func TestRetryServiceRejectsStaleDesiredAndBaselineTarget(t *testing.T) {
 		Target: reconciliationcontracts.Target{DesiredRevision: 9, DesiredGeneration: 4, BaselineFingerprint: "old"}, TargetKey: "target-old",
 	}}
 	service := NewRetryService(
-		retryServiceDesired{snapshot: configuration.DesiredSnapshot{Revision: 10}},
+		retryServiceDesired{snapshot: desiredstateapp.Snapshot{Revision: 10}},
 		retryServiceBaseline{snapshot: BaselineSnapshot{DesiredGeneration: 4, Fingerprint: "current"}},
 		diagnostics,
 	)
@@ -65,7 +65,7 @@ func TestRetryServiceSchedulesOnlyCurrentTarget(t *testing.T) {
 		Target: reconciliationcontracts.Target{DesiredRevision: 10, DesiredGeneration: 4, BaselineFingerprint: "current"}, TargetKey: "target-current",
 	}}
 	service := NewRetryService(
-		retryServiceDesired{snapshot: configuration.DesiredSnapshot{Revision: 10}},
+		retryServiceDesired{snapshot: desiredstateapp.Snapshot{Revision: 10}},
 		retryServiceBaseline{snapshot: BaselineSnapshot{DesiredGeneration: 4, Fingerprint: "current"}},
 		diagnostics,
 	)

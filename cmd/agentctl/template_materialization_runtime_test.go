@@ -2,8 +2,9 @@ package main
 
 import (
 	"context"
-	"github.com/ar-imms/telemetry-agent/internal/configuration"
+	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
 	materializationapp "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/application"
+	templatesapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
@@ -37,7 +38,7 @@ func TestRuntimeTemplateMaterializerProjectsStableInstancesAndNoOps(t *testing.T
 		t.Fatal(err)
 	}
 	templates := store.TemplateRepository()
-	service := configuration.NewTemplateService(registry, templates)
+	service := templatesapp.NewService(registry, templates)
 	if _, _, err := service.Put(redisRuntimeTemplate(), 0); err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +133,7 @@ func TestNativeRedisProfileDoesNotCreateAgentInstancesDuringContainerChurn(t *te
 		t.Fatal(err)
 	}
 	templates := store.TemplateRepository()
-	service := configuration.NewTemplateService(registry, templates)
+	service := templatesapp.NewService(registry, templates)
 	if _, _, err := service.Put(redisRuntimeTemplate(), 0); err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +190,7 @@ func TestRuntimeTemplateUpdateChangesGeneratedInstancesButPreservesManualState(t
 		t.Fatal(err)
 	}
 	templates := store.TemplateRepository()
-	templateService := configuration.NewTemplateService(registry, templates)
+	templateService := templatesapp.NewService(registry, templates)
 	template := redisRuntimeTemplate()
 	if _, _, err := templateService.Put(template, 0); err != nil {
 		t.Fatal(err)
@@ -269,7 +270,7 @@ func TestRuntimeTemplateMaterializerPreservesFailureAndTracksResourceLifecycle(t
 		t.Fatal(err)
 	}
 	templates := store.TemplateRepository()
-	templateService := configuration.NewTemplateService(registry, templates)
+	templateService := templatesapp.NewService(registry, templates)
 	if _, _, err := templateService.Put(redisRuntimeTemplate(), 0); err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +297,7 @@ func TestRuntimeTemplateMaterializerPreservesFailureAndTracksResourceLifecycle(t
 			}
 		}
 	}
-	readDesired := func() configuration.DesiredSnapshot {
+	readDesired := func() desiredstateapp.Snapshot {
 		t.Helper()
 		snapshot, err := desiredRepository.Snapshot()
 		if err != nil {

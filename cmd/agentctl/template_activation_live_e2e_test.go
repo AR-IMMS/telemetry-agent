@@ -16,7 +16,7 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/app"
-	"github.com/ar-imms/telemetry-agent/internal/configuration"
+	templatesapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
@@ -602,9 +602,9 @@ service:
 	return ""
 }
 
-func newRuntimeTemplateServiceForTest(t *testing.T, statePath string, registry integration.Registry) configuration.TemplateService {
+func newRuntimeTemplateServiceForTest(t *testing.T, statePath string, registry integration.Registry) templatesapp.Service {
 	t.Helper()
-	return configuration.NewTemplateService(registry, sqlitefixture.NewSQLiteStore(statePath).TemplateRepository())
+	return templatesapp.NewService(registry, sqlitefixture.NewSQLiteStore(statePath).TemplateRepository())
 }
 
 func writeRuntimeTemplateFile(t *testing.T, path string, template integration.IntegrationTemplate) {

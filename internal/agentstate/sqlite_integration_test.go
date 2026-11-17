@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/configuration"
+	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
@@ -116,7 +116,7 @@ func TestSQLiteIntegrationMutationsCASNoOpDeleteRestartAndMigration(t *testing.T
 	if err != nil || noop.Revision != 1 || setRev != 1 {
 		t.Fatalf("no-op = rev %d set %d err %v", noop.Revision, setRev, err)
 	}
-	if _, _, err := repo.Put(integrationInstance("cache", "other:6379"), 0); !errors.Is(err, configuration.ErrRevisionConflict) {
+	if _, _, err := repo.Put(integrationInstance("cache", "other:6379"), 0); !errors.Is(err, desiredstateapp.ErrRevisionConflict) {
 		t.Fatalf("stale CAS error = %v", err)
 	}
 	updated, setRev, err := repo.Put(integrationInstance("cache", "other:6379"), 1)

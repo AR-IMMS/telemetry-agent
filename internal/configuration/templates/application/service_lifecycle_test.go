@@ -1,4 +1,4 @@
-package configuration
+package application
 
 import (
 	"errors"
@@ -13,7 +13,7 @@ func TestTemplateServiceRejectsCoreOwnedOrUnknownDefinitionBeforePersistence(t *
 		t.Fatal(err)
 	}
 	repository := &templateMemoryRepository{}
-	service := NewTemplateService(registry, repository)
+	service := NewService(registry, repository)
 
 	tests := []struct {
 		name   string
@@ -45,7 +45,7 @@ func TestTemplateServiceStoresLocalEnabledTemplate(t *testing.T) {
 		t.Fatal(err)
 	}
 	repository := &templateMemoryRepository{}
-	service := NewTemplateService(registry, repository)
+	service := NewService(registry, repository)
 	stored, revision, err := service.Put(templateTestValue(), 0)
 	if err != nil {
 		t.Fatalf("Put() error = %v", err)
@@ -61,7 +61,7 @@ func TestTemplateServiceEnableDisableDeleteUsesCASAndPermanentTombstone(t *testi
 		t.Fatal(err)
 	}
 	repository := &templateLifecycleMemoryRepository{templates: make(map[string]integration.IntegrationTemplate)}
-	service := NewTemplateService(registry, repository)
+	service := NewService(registry, repository)
 	created, _, err := service.Put(templateTestValue(), 0)
 	if err != nil {
 		t.Fatal(err)
@@ -101,8 +101,8 @@ func (r *templateMemoryRepository) Put(value integration.IntegrationTemplate, ex
 	return value, 1, nil
 }
 
-func (*templateMemoryRepository) Snapshot() (TemplateSnapshot, error) {
-	return TemplateSnapshot{}, errors.New("not implemented")
+func (*templateMemoryRepository) Snapshot() (Snapshot, error) {
+	return Snapshot{}, errors.New("not implemented")
 }
 
 type templateLifecycleMemoryRepository struct {
@@ -124,12 +124,12 @@ func (r *templateLifecycleMemoryRepository) Put(value integration.IntegrationTem
 	return value, r.revision, nil
 }
 
-func (r *templateLifecycleMemoryRepository) Snapshot() (TemplateSnapshot, error) {
+func (r *templateLifecycleMemoryRepository) Snapshot() (Snapshot, error) {
 	values := make([]integration.IntegrationTemplate, 0, len(r.templates))
 	for _, value := range r.templates {
 		values = append(values, value)
 	}
-	return TemplateSnapshot{Revision: r.revision, Templates: values}, nil
+	return Snapshot{Revision: r.revision, Templates: values}, nil
 }
 
 func templateTestDefinition() integration.IntegrationDefinition {

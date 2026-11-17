@@ -8,7 +8,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/configuration"
+	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
+	templatesapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
@@ -24,7 +25,7 @@ func TestSQLiteTemplateRepositoryCASNoOpDeleteTombstoneAndRestart(t *testing.T) 
 	if err != nil || unchanged.Revision != 1 || setRevision != 1 {
 		t.Fatalf("no-op template=%+v set revision=%d err=%v", unchanged, setRevision, err)
 	}
-	if _, _, err := repository.Put(sqliteTestTemplate("redis-main", integration.TemplateDisabled), 0); !errors.Is(err, configuration.ErrRevisionConflict) {
+	if _, _, err := repository.Put(sqliteTestTemplate("redis-main", integration.TemplateDisabled), 0); !errors.Is(err, templatesapp.ErrRevisionConflict) {
 		t.Fatalf("stale CAS error=%v", err)
 	}
 	updated, setRevision, err := repository.Put(sqliteTestTemplate("redis-main", integration.TemplateDisabled), 1)
@@ -33,7 +34,7 @@ func TestSQLiteTemplateRepositoryCASNoOpDeleteTombstoneAndRestart(t *testing.T) 
 	}
 	changedTarget := updated
 	changedTarget.DefinitionID = "postgres"
-	if _, _, err := repository.Put(changedTarget, 2); !errors.Is(err, configuration.ErrTemplateTargetImmutable) {
+	if _, _, err := repository.Put(changedTarget, 2); !errors.Is(err, templatesapp.ErrTemplateTargetImmutable) {
 		t.Fatalf("changing a Template's Integration target error=%v", err)
 	}
 	tombstone := sqliteTestTemplate("redis-main", integration.TemplateDeleted)
@@ -42,7 +43,7 @@ func TestSQLiteTemplateRepositoryCASNoOpDeleteTombstoneAndRestart(t *testing.T) 
 	if err != nil || deleted.Revision != 3 || setRevision != 3 {
 		t.Fatalf("delete template=%+v set revision=%d err=%v", deleted, setRevision, err)
 	}
-	if _, _, err := repository.Put(sqliteTestTemplate("redis-main", integration.TemplateEnabled), 3); !errors.Is(err, configuration.ErrTemplateDeleted) {
+	if _, _, err := repository.Put(sqliteTestTemplate("redis-main", integration.TemplateEnabled), 3); !errors.Is(err, templatesapp.ErrTemplateDeleted) {
 		t.Fatalf("tombstone reuse error=%v", err)
 	}
 	restarted := newTestSQLiteStore(path).TemplateRepository()
@@ -219,10 +220,10 @@ func TestSQLiteIntegrationRepositoryCannotMutateTemplateOwnedInstance(t *testing
 	localUpdate.Source = integration.SourceLocal
 	localUpdate.Binding = nil
 	localUpdate.TemplateOwner, localUpdate.TemplateID, localUpdate.TemplateRevision = "", "", 0
-	if _, _, err := repository.Put(localUpdate, 1); !errors.Is(err, configuration.ErrTemplateOwnedInstance) {
+	if _, _, err := repository.Put(localUpdate, 1); !errors.Is(err, desiredstateapp.ErrTemplateOwnedInstance) {
 		t.Fatalf("overwrite template instance error=%v", err)
 	}
-	if _, err := repository.Delete(instance.ID, 1); !errors.Is(err, configuration.ErrTemplateOwnedInstance) {
+	if _, err := repository.Delete(instance.ID, 1); !errors.Is(err, desiredstateapp.ErrTemplateOwnedInstance) {
 		t.Fatalf("delete template instance error=%v", err)
 	}
 }

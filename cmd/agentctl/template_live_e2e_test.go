@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/configuration"
 	materializationapp "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/application"
+	templatesapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
@@ -46,7 +46,7 @@ func TestLiveDockerTemplateAutoMaterializesDesiredInstance(t *testing.T) {
 		t.Fatal(err)
 	}
 	templateRepository := store.TemplateRepository()
-	templateService := configuration.NewTemplateService(registry, templateRepository)
+	templateService := templatesapp.NewService(registry, templateRepository)
 	if _, _, err := templateService.Put(redisRuntimeTemplate(), 0); err != nil {
 		t.Fatal(err)
 	}

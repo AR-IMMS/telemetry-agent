@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/configuration"
+	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
 	proposals "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 )
@@ -72,7 +72,7 @@ func TestSQLiteApprovalRejectsStaleDesiredAndInventorySnapshots(t *testing.T) {
 		mutate func(*proposals.ApprovalCommit)
 		want   error
 	}{
-		{name: "desired revision", mutate: func(commit *proposals.ApprovalCommit) { commit.ExpectedDesiredRevision = 1 }, want: configuration.ErrRevisionConflict},
+		{name: "desired revision", mutate: func(commit *proposals.ApprovalCommit) { commit.ExpectedDesiredRevision = 1 }, want: desiredstateapp.ErrRevisionConflict},
 		{name: "inventory write revision", mutate: func(commit *proposals.ApprovalCommit) { commit.InventoryWriteRevision = 1 }, want: proposals.ErrApprovalStale},
 	} {
 		t.Run(test.name, func(t *testing.T) {

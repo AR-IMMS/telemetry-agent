@@ -19,7 +19,6 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation"
 	runtimecontracts "github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 
-	"github.com/ar-imms/telemetry-agent/internal/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	redisintegration "github.com/ar-imms/telemetry-agent/internal/integration/redis"
@@ -195,7 +194,7 @@ func TestPeriodicSQLitePollingDetectsCommittedCrossProcessDesiredChange(t *testi
 		snapshot, snapshotErr := reader.IntegrationRepository().Snapshot()
 		t.Fatalf("startup reconciliation did not run: current SQLite snapshot=%+v snapshot_error=%v", snapshot, snapshotErr)
 	}
-	service := configuration.NewIntegrationService(integration.NewResolver(registry), writer.IntegrationRepository())
+	service := desiredstateapp.NewService(desiredStateResolver{resolver: integration.NewResolver(registry)}, writer.IntegrationRepository())
 	if _, _, err := service.Put(integration.IntegrationInstance{ID: "cross-process", DefinitionID: "fixture", DefinitionVersion: "1.0.0", Configuration: map[string]any{}, Enabled: true}, 0); err != nil {
 		t.Fatal(err)
 	}
@@ -306,7 +305,7 @@ service:
 	}
 	resolver := integration.NewResolver(registry)
 	repository := store.IntegrationRepository()
-	service := configuration.NewIntegrationService(resolver, repository)
+	service := desiredstateapp.NewService(desiredStateResolver{resolver: resolver}, repository)
 	_, _, err = service.Put(integration.IntegrationInstance{ID: "postgres-a", DefinitionID: definition.ID, DefinitionVersion: definition.Version, Configuration: map[string]any{"endpoint": "127.0.0.1:5432"}, Enabled: true}, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -442,6 +441,16 @@ func (r *testResolver) Resolve(i desiredstatedomain.Instance) (definitionsdomain
 }
 
 type integrationContributionResolverTest struct{ resolver integration.Resolver }
+
+type desiredStateResolver struct{ resolver integration.Resolver }
+
+func (r desiredStateResolver) Resolve(instance desiredstatedomain.Instance) (desiredstatedomain.Instance, error) {
+	resolved, err := r.resolver.Resolve(instance)
+	if err != nil {
+		return desiredstatedomain.Instance{}, err
+	}
+	return resolved.Instance, nil
+}
 
 func (r integrationContributionResolverTest) Resolve(instance desiredstatedomain.Instance) (definitionsdomain.Contribution, error) {
 	resolved, err := r.resolver.Resolve(instance)

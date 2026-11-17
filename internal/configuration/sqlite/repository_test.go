@@ -3,10 +3,11 @@ package sqlite_test
 import (
 	"encoding/json"
 	"errors"
-	"github.com/ar-imms/telemetry-agent/internal/configuration"
+	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
 	materializationdomain "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/domain"
 	proposals "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
+	templatesapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
@@ -36,7 +37,7 @@ func TestRepositoriesUseSharedStateDatabaseAndRetainCASContracts(t *testing.T) {
 	if err != nil || unchanged.Revision != 1 || revision != 1 {
 		t.Fatalf("no-op desired instance=%+v set revision=%d err=%v", unchanged, revision, err)
 	}
-	if _, _, err := desired.Put(integrationInstance("cache", "127.0.0.1:6379"), 0); !errors.Is(err, configuration.ErrRevisionConflict) {
+	if _, _, err := desired.Put(integrationInstance("cache", "127.0.0.1:6379"), 0); !errors.Is(err, desiredstateapp.ErrRevisionConflict) {
 		t.Fatalf("stale desired CAS error=%v", err)
 	}
 
@@ -49,7 +50,7 @@ func TestRepositoriesUseSharedStateDatabaseAndRetainCASContracts(t *testing.T) {
 	if err != nil || unchangedTemplate.Revision != 1 || revision != 1 {
 		t.Fatalf("no-op Template=%+v set revision=%d err=%v", unchangedTemplate, revision, err)
 	}
-	if _, _, err := templates.Put(localTemplate("redis-main", integration.TemplateDisabled), 0); !errors.Is(err, configuration.ErrRevisionConflict) {
+	if _, _, err := templates.Put(localTemplate("redis-main", integration.TemplateDisabled), 0); !errors.Is(err, templatesapp.ErrRevisionConflict) {
 		t.Fatalf("stale Template CAS error=%v", err)
 	}
 

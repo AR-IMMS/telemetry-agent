@@ -1,9 +1,10 @@
-package configuration
+package application
 
 import (
 	"errors"
 	"testing"
 
+	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 )
 
@@ -15,7 +16,7 @@ func (r *memoryRepository) Put(i integration.IntegrationInstance, expected uint6
 	return i, 1, nil
 }
 func (*memoryRepository) Delete(string, uint64) (uint64, error) { return 0, nil }
-func (*memoryRepository) Snapshot() (DesiredSnapshot, error)    { return DesiredSnapshot{}, nil }
+func (*memoryRepository) Snapshot() (Snapshot, error)           { return Snapshot{}, nil }
 
 func TestIntegrationServiceValidatesAndContributesBeforePersistence(t *testing.T) {
 	d := integration.IntegrationDefinition{ID: "redis", Version: "1.0.0", Validate: func(c map[string]any) error {
@@ -31,7 +32,7 @@ func TestIntegrationServiceValidatesAndContributesBeforePersistence(t *testing.T
 		t.Fatal(err)
 	}
 	repo := &memoryRepository{}
-	service := NewIntegrationService(integration.NewResolver(registry), repo)
+	service := NewService(integrationResolverAdapter{resolver: integration.NewResolver(registry)}, repo)
 	_, _, err = service.Put(integration.IntegrationInstance{ID: "cache", DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true, Configuration: map[string]any{"endpoint": 5}}, 0)
 	if !errors.Is(err, integration.ErrInvalidInstance) || repo.writes != 0 {
 		t.Fatalf("Put err=%v writes=%d", err, repo.writes)
@@ -43,7 +44,7 @@ func TestIntegrationServiceValidatesAndContributesBeforePersistence(t *testing.T
 }
 
 type setEnabledRepository struct {
-	snapshot DesiredSnapshot
+	snapshot Snapshot
 	stored   integration.IntegrationInstance
 	expected uint64
 	writes   int
@@ -57,7 +58,7 @@ func (r *setEnabledRepository) Put(value integration.IntegrationInstance, expect
 	return r.stored, r.snapshot.Revision + 1, nil
 }
 func (*setEnabledRepository) Delete(string, uint64) (uint64, error) { return 0, nil }
-func (r *setEnabledRepository) Snapshot() (DesiredSnapshot, error)  { return r.snapshot, nil }
+func (r *setEnabledRepository) Snapshot() (Snapshot, error)         { return r.snapshot, nil }
 
 func TestIntegrationServiceSetEnabledPreservesInstanceAndUsesExpectedRevision(t *testing.T) {
 	definition := integration.IntegrationDefinition{ID: "redis", Version: "1.0.0", Validate: func(map[string]any) error { return nil }, Contribute: func(map[string]any) (integration.Contribution, error) {
@@ -71,8 +72,8 @@ func TestIntegrationServiceSetEnabledPreservesInstanceAndUsesExpectedRevision(t 
 		ID: "redis-a", DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true,
 		Configuration: map[string]any{"endpoint": "redis.internal:6379", "namespace": "primary"}, Revision: 4,
 	}
-	repository := &setEnabledRepository{snapshot: DesiredSnapshot{Revision: 12, Instances: []integration.IntegrationInstance{existing}}}
-	service := NewIntegrationService(integration.NewResolver(registry), repository)
+	repository := &setEnabledRepository{snapshot: Snapshot{Revision: 12, Instances: []integration.IntegrationInstance{existing}}}
+	service := NewService(integrationResolverAdapter{resolver: integration.NewResolver(registry)}, repository)
 
 	stored, desiredRevision, err := service.SetEnabled("redis-a", false, 4)
 	if err != nil {
@@ -96,8 +97,8 @@ func TestIntegrationServiceSetEnabledRejectsStaleRevisionWithoutWriting(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	repository := &setEnabledRepository{snapshot: DesiredSnapshot{Instances: []integration.IntegrationInstance{{ID: "redis-a", Revision: 4}}}}
-	service := NewIntegrationService(integration.NewResolver(registry), repository)
+	repository := &setEnabledRepository{snapshot: Snapshot{Instances: []integration.IntegrationInstance{{ID: "redis-a", Revision: 4}}}}
+	service := NewService(integrationResolverAdapter{resolver: integration.NewResolver(registry)}, repository)
 	_, _, err = service.SetEnabled("redis-a", false, 3)
 	if !errors.Is(err, ErrRevisionConflict) || repository.writes != 0 {
 		t.Fatalf("err=%v writes=%d", err, repository.writes)
@@ -111,9 +112,9 @@ func TestIntegrationServiceSetEnabledReportsMissingInstance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service := NewIntegrationService(integration.NewResolver(registry), &setEnabledRepository{})
+	service := NewService(integrationResolverAdapter{resolver: integration.NewResolver(registry)}, &setEnabledRepository{})
 	_, _, err = service.SetEnabled("missing", true, 0)
-	if !errors.Is(err, ErrIntegrationNotFound) {
+	if !errors.Is(err, ErrInstanceNotFound) {
 		t.Fatalf("err=%v, want ErrIntegrationNotFound", err)
 	}
 }
@@ -129,8 +130,8 @@ func TestIntegrationServicePutPreservingEnabledKeepsExistingEnabledValue(t *test
 		ID: "redis-a", DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: false,
 		Configuration: map[string]any{"namespace": "primary"}, Revision: 6,
 	}
-	repository := &setEnabledRepository{snapshot: DesiredSnapshot{Revision: 20, Instances: []integration.IntegrationInstance{existing}}}
-	service := NewIntegrationService(integration.NewResolver(registry), repository)
+	repository := &setEnabledRepository{snapshot: Snapshot{Revision: 20, Instances: []integration.IntegrationInstance{existing}}}
+	service := NewService(integrationResolverAdapter{resolver: integration.NewResolver(registry)}, repository)
 
 	stored, revision, err := service.PutPreservingEnabled(integration.IntegrationInstance{
 		ID: "redis-a", DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true,
@@ -142,4 +143,14 @@ func TestIntegrationServicePutPreservingEnabledKeepsExistingEnabledValue(t *test
 	if stored.Enabled || stored.Configuration["namespace"] != "secondary" || repository.writes != 1 || repository.expected != 6 || revision != 21 {
 		t.Fatalf("stored=%+v writes=%d expected=%d revision=%d", stored, repository.writes, repository.expected, revision)
 	}
+}
+
+type integrationResolverAdapter struct{ resolver integration.Resolver }
+
+func (a integrationResolverAdapter) Resolve(instance desiredstatedomain.Instance) (desiredstatedomain.Instance, error) {
+	resolved, err := a.resolver.Resolve(instance)
+	if err != nil {
+		return desiredstatedomain.Instance{}, err
+	}
+	return resolved.Instance, nil
 }
