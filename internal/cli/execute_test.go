@@ -42,6 +42,7 @@ func TestExecuteMonitoringAliasesMatchLegacyDispatch(t *testing.T) {
 		legacyArgs []string
 		aliasArgs  []string
 	}{
+		{name: "instance create alias", legacyArgs: []string{"integration", "configure", "--id", "cache"}, aliasArgs: []string{"monitoring", "instance", "create", "--id", "cache"}},
 		{name: "instance configure", legacyArgs: []string{"integration", "configure", "--id", "cache"}, aliasArgs: []string{"monitoring", "instance", "configure", "--id", "cache"}},
 		{name: "instance update", legacyArgs: []string{"integration", "update", "--id", "cache"}, aliasArgs: []string{"monitoring", "instance", "update", "--id", "cache"}},
 		{name: "instance enable", legacyArgs: []string{"integration", "enable", "--id", "cache"}, aliasArgs: []string{"monitoring", "instance", "enable", "--id", "cache"}},

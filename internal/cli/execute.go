@@ -135,11 +135,15 @@ func newMonitoringCommand(dispatch Dispatch, exitCode *int) *cobra.Command {
 	proposals := &cobra.Command{Use: "proposal", Short: "Review monitoring proposals"}
 	profiles := &cobra.Command{Use: "profile", Short: "Inspect built-in monitoring profiles"}
 	for _, operation := range []string{
-		"configure", "update", "enable", "disable", "delete", "list", "inspect",
+		"create", "configure", "update", "enable", "disable", "delete", "list", "inspect",
 		"status", "history", "retry",
 	} {
+		legacyOperation := operation
+		if operation == "create" {
+			legacyOperation = "configure"
+		}
 		instances.AddCommand(newAliasCommand(operation, exitCode, func(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-			return dispatch(ctx, append([]string{"integration", operation}, args...), stdout, stderr)
+			return dispatch(ctx, append([]string{"integration", legacyOperation}, args...), stdout, stderr)
 		}))
 	}
 	for _, operation := range []string{"create", "update", "list", "inspect", "enable", "disable", "delete"} {
