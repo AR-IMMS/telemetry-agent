@@ -8,23 +8,14 @@ import (
 	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 	dependencyapplication "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/application"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	opampdomain "github.com/ar-imms/telemetry-agent/internal/runtime/opamp/domain"
 	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
-
-// SupervisorContext records the pinned OpAMP Supervisor runtime owned by the Agent.
-type SupervisorContext struct {
-	BinaryPath        string `json:"binaryPath,omitempty"`
-	ConfigurationPath string `json:"configurationPath,omitempty"`
-	StateDirectory    string `json:"stateDirectory,omitempty"`
-	OpAMPServerURL    string `json:"opampServerUrl,omitempty"`
-	ServerCAFile      string `json:"serverCaFile,omitempty"`
-	Enabled           bool   `json:"enabled,omitempty"`
-}
 
 // State is the Agent-owned desired state persisted on the local machine.
 type State struct {
 	Collector           collectordomain.CollectorContext `json:"collector"`
-	Supervisor          SupervisorContext                `json:"supervisor,omitempty"`
+	Supervisor          opampdomain.SupervisorContext    `json:"supervisor,omitempty"`
 	DesiredGeneration   uint64                           `json:"desiredGeneration"`
 	ActivatedGeneration uint64                           `json:"activatedGeneration"`
 	AppliedGeneration   uint64                           `json:"appliedGeneration"`

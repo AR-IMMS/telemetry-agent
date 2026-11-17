@@ -8,6 +8,7 @@ import (
 
 	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	opampdomain "github.com/ar-imms/telemetry-agent/internal/runtime/opamp/domain"
 )
 
 var _ Repository = FileStore{}
@@ -49,7 +50,7 @@ func TestFileStorePersistsDesiredState(t *testing.T) {
 
 func TestFileStorePersistsSupervisorRuntimeContext(t *testing.T) {
 	store := NewFileStore(filepath.Join(t.TempDir(), "state.json"))
-	want := State{Supervisor: SupervisorContext{
+	want := State{Supervisor: opampdomain.SupervisorContext{
 		BinaryPath:        "supervisor",
 		ConfigurationPath: "supervisor.yaml",
 		StateDirectory:    "supervisor-state",

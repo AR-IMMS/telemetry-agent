@@ -18,6 +18,7 @@ import (
 	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	opampdomain "github.com/ar-imms/telemetry-agent/internal/runtime/opamp/domain"
 	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
@@ -1013,7 +1014,7 @@ func TestRuntimeWatcherReportsHealthySnapshotAfterCollectorReady(
 		DesiredGeneration:   3,
 		ActivatedGeneration: 3,
 		AppliedGeneration:   2,
-		Supervisor:          agentstate.SupervisorContext{Enabled: true},
+		Supervisor:          opampdomain.SupervisorContext{Enabled: true},
 		Dependencies:        map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatalf("Save() error = %v", err)

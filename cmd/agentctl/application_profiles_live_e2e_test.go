@@ -25,6 +25,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	opampdomain "github.com/ar-imms/telemetry-agent/internal/runtime/opamp/domain"
 	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
@@ -112,7 +113,7 @@ func TestLiveDockerApplicationProfilesDeliverOTLP(t *testing.T) {
 			t.Fatal("AR_IMMS_PR07A_SUPERVISOR_BINARY is required for Agent-managed profile parity")
 		}
 		credentialsDir := filepath.Join(filepath.Dir(statePath), "credentials")
-		testState.Supervisor = agentstate.SupervisorContext{
+		testState.Supervisor = opampdomain.SupervisorContext{
 			BinaryPath:        supervisorBinary,
 			ConfigurationPath: filepath.Join(credentialsDir, "opamp-supervisor.yaml"),
 			StateDirectory:    filepath.Join(credentialsDir, "opamp-supervisor-state"),

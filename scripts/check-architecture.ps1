@@ -33,7 +33,8 @@ try {
         "$modulePath/internal/runtime/dependencies/domain",
         "$modulePath/internal/runtime/dependencies/application",
         "$modulePath/internal/runtime/collector/activation/domain",
-        "$modulePath/internal/runtime/collector/domain"
+        "$modulePath/internal/runtime/collector/domain",
+        "$modulePath/internal/runtime/opamp/domain"
     )
     $adapterRoots = @(
         "$modulePath/internal/runtime/service",
@@ -228,6 +229,26 @@ try {
                 ($sourceFile.FullName.StartsWith((Join-Path $repoRoot 'internal/agentstate') + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase) -and
                     $source -match '(?m)^type\s+CollectorContext\s+struct\b')) {
                 $violations.Add("$($sourceFile.FullName) must reference CollectorContext through its Runtime owner package")
+            }
+        }
+    }
+
+    $runtimeOpampDomain = Join-Path $repoRoot 'internal/runtime/opamp/domain'
+    if (-not (Test-Path -LiteralPath $runtimeOpampDomain -PathType Container)) {
+        $violations.Add('Managed Supervisor state requires an explicit internal/runtime/opamp/domain package')
+    } else {
+        $runtimeOpampModels = Get-Content -LiteralPath (Join-Path $runtimeOpampDomain 'supervisor.go') -Raw
+        if ($runtimeOpampModels -notmatch '(?m)^type\s+SupervisorContext\s+struct\b') {
+            $violations.Add('Runtime OpAMP domain must own SupervisorContext')
+        }
+    }
+    foreach ($sourceRoot in @((Join-Path $repoRoot 'internal'), (Join-Path $repoRoot 'cmd'))) {
+        foreach ($sourceFile in (Get-ChildItem -LiteralPath $sourceRoot -Recurse -File -Filter '*.go')) {
+            $source = Get-Content -LiteralPath $sourceFile.FullName -Raw
+            if ($source -match 'agentstate\.SupervisorContext\b' -or
+                ($sourceFile.FullName.StartsWith((Join-Path $repoRoot 'internal/agentstate') + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase) -and
+                    $source -match '(?m)^type\s+SupervisorContext\s+struct\b')) {
+                $violations.Add("$($sourceFile.FullName) must reference SupervisorContext through its Runtime owner package")
             }
         }
     }
@@ -641,7 +662,9 @@ try {
             $package -eq "$modulePath/internal/runtime/collector/activation/domain" -or
             $package.StartsWith("$modulePath/internal/runtime/collector/activation/domain/", [StringComparison]::Ordinal) -or
             $package -eq "$modulePath/internal/runtime/collector/domain" -or
-            $package.StartsWith("$modulePath/internal/runtime/collector/domain/", [StringComparison]::Ordinal)
+            $package.StartsWith("$modulePath/internal/runtime/collector/domain/", [StringComparison]::Ordinal) -or
+            $package -eq "$modulePath/internal/runtime/opamp/domain" -or
+            $package.StartsWith("$modulePath/internal/runtime/opamp/domain/", [StringComparison]::Ordinal)
         if ($isExplicitRuntimeDomain) { $isContextAdapter = $false }
         if ($isContextAdapter) { continue }
         $isDomain = $false
@@ -664,7 +687,9 @@ try {
                 $imported -eq "$modulePath/internal/runtime/collector/activation/domain" -or
                 $imported.StartsWith("$modulePath/internal/runtime/collector/activation/domain/", [StringComparison]::Ordinal) -or
                 $imported -eq "$modulePath/internal/runtime/collector/domain" -or
-                $imported.StartsWith("$modulePath/internal/runtime/collector/domain/", [StringComparison]::Ordinal)
+                $imported.StartsWith("$modulePath/internal/runtime/collector/domain/", [StringComparison]::Ordinal) -or
+                $imported -eq "$modulePath/internal/runtime/opamp/domain" -or
+                $imported.StartsWith("$modulePath/internal/runtime/opamp/domain/", [StringComparison]::Ordinal)
             if ($isExplicitRuntimeDomainImport) { continue }
 
             foreach ($platformAdapter in $platformAdapterRoots) {

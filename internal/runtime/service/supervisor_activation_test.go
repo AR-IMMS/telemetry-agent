@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	opampdomain "github.com/ar-imms/telemetry-agent/internal/runtime/opamp/domain"
 )
 
 func TestSupervisorActivationDefaultsNewInstallsToSupervisor(t *testing.T) {
@@ -15,7 +16,7 @@ func TestSupervisorActivationDefaultsNewInstallsToSupervisor(t *testing.T) {
 	if gotURL, enabled, err := supervisorActivationForInstall(endpoint, agentstate.State{}, false); gotURL != endpoint || !enabled || err != nil {
 		t.Fatalf("fresh default install = (%q, %t), error %v; want Supervisor enabled", gotURL, enabled, err)
 	}
-	managed := agentstate.State{Installation: &servicedomain.AgentInstallation{}, Supervisor: agentstate.SupervisorContext{OpAMPServerURL: endpoint, Enabled: true}}
+	managed := agentstate.State{Installation: &servicedomain.AgentInstallation{}, Supervisor: opampdomain.SupervisorContext{OpAMPServerURL: endpoint, Enabled: true}}
 	if gotURL, enabled, err := supervisorActivationForInstall("", managed, false); gotURL != endpoint || !enabled || err != nil {
 		t.Fatalf("managed upgrade without endpoint = (%q, %t), error %v; want existing owner preserved", gotURL, enabled, err)
 	}

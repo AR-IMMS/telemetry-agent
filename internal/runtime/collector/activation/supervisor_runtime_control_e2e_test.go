@@ -37,6 +37,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	opampdomain "github.com/ar-imms/telemetry-agent/internal/runtime/opamp/domain"
 	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
@@ -251,7 +252,7 @@ service:
 		t.Fatalf("validate Collector config: %v\n%s\nconfig:\n%s", err, output, collectorYAML)
 	}
 	endpoint := "wss://" + opampListenEndpoint + "/v1/opamp"
-	managed := agentstate.SupervisorContext{
+	managed := opampdomain.SupervisorContext{
 		BinaryPath:        supervisorPath,
 		ConfigurationPath: filepath.Join(root, "credentials", "opamp-supervisor.yaml"),
 		StateDirectory:    filepath.Join(root, "credentials", "opamp-supervisor-state"),

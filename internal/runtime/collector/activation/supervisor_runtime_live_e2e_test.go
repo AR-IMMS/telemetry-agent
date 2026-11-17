@@ -17,10 +17,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
+	opampdomain "github.com/ar-imms/telemetry-agent/internal/runtime/opamp/domain"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
@@ -95,7 +95,7 @@ service:
 	}
 
 	statePath := filepath.Join(root, "state.db")
-	managed := agentstate.SupervisorContext{
+	managed := opampdomain.SupervisorContext{
 		BinaryPath:        supervisorPath,
 		ConfigurationPath: filepath.Join(root, "credentials", "opamp-supervisor.yaml"),
 		StateDirectory:    filepath.Join(root, "credentials", "opamp-supervisor-state"),

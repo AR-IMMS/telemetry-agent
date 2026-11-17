@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	credentialstore "github.com/ar-imms/telemetry-agent/internal/identity/credentials"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/opamp"
+	opampdomain "github.com/ar-imms/telemetry-agent/internal/runtime/opamp/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/process"
 )
 
@@ -24,7 +24,7 @@ var errSupervisorCredentialChanged = errors.New("Supervisor credential changed")
 
 // runManagedSupervisor starts the sole Collector owner for one activated
 // configuration snapshot and binds readiness to that exact snapshot.
-func runManagedSupervisor(ctx context.Context, statePath string, managed agentstate.SupervisorContext, collector supervisor.Options, attemptRepository enrollment.AttemptRepository) error {
+func runManagedSupervisor(ctx context.Context, statePath string, managed opampdomain.SupervisorContext, collector supervisor.Options, attemptRepository enrollment.AttemptRepository) error {
 	if attemptRepository == nil {
 		return fmt.Errorf("Supervisor enrollment repository is required")
 	}
@@ -40,7 +40,7 @@ func runManagedSupervisor(ctx context.Context, statePath string, managed agentst
 	}
 }
 
-func runManagedSupervisorOnce(ctx context.Context, statePath, credentialReference string, managed agentstate.SupervisorContext, collector supervisor.Options, attemptRepository enrollment.AttemptRepository) error {
+func runManagedSupervisorOnce(ctx context.Context, statePath, credentialReference string, managed opampdomain.SupervisorContext, collector supervisor.Options, attemptRepository enrollment.AttemptRepository) error {
 	if !managed.Enabled || strings.TrimSpace(managed.BinaryPath) == "" || strings.TrimSpace(managed.OpAMPServerURL) == "" || strings.TrimSpace(managed.StateDirectory) == "" {
 		return fmt.Errorf("enabled OpAMP Supervisor runtime context is incomplete")
 	}

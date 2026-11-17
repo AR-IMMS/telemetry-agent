@@ -17,6 +17,7 @@ import (
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	opampdomain "github.com/ar-imms/telemetry-agent/internal/runtime/opamp/domain"
 )
 
 // Options contains the caller-provided inputs for one packaged Agent
@@ -228,7 +229,7 @@ func (i Installer) Install(
 			GatewayEndpoint: options.GatewayEndpoint,
 			HealthEndpoint:  options.HealthEndpoint,
 		}
-		state.Supervisor = agentstate.SupervisorContext{
+		state.Supervisor = opampdomain.SupervisorContext{
 			BinaryPath: supervisorBinaryPath, ConfigurationPath: layout.SupervisorConfigurationPath,
 			StateDirectory: layout.SupervisorStateDirectory, OpAMPServerURL: opampServerURL,
 			Enabled: enabled,

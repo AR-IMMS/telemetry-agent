@@ -14,6 +14,7 @@ import (
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	opampdomain "github.com/ar-imms/telemetry-agent/internal/runtime/opamp/domain"
 	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
@@ -213,7 +214,7 @@ func TestInstallerExplicitLegacyRollbackDisablesManagedSupervisor(t *testing.T) 
 	endpoint := "wss://opamp.example.test/v1/opamp"
 	store := &recordingStateStore{state: agentstate.State{
 		Installation: &servicedomain.AgentInstallation{},
-		Supervisor: agentstate.SupervisorContext{
+		Supervisor: opampdomain.SupervisorContext{
 			BinaryPath:     "/opt/ar-imms/telemetry-agent/opampsupervisor/supervisor",
 			OpAMPServerURL: endpoint,
 			Enabled:        true,
