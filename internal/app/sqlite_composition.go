@@ -153,7 +153,7 @@ func NewCoreGatewayRuntimeStore(path string) coreconfig.GatewayRuntimeRepository
 
 func initializeAgentSQLiteSchema(db *sql.DB) error {
 	registry, err := migrations.BuildAgentRegistry(migrations.Hooks{
-		InitializeAgentState: agentstate.InitializeBaseSQLiteSchema,
+		InitializeAgentState: agentstate.InitializeAgentStateBaseSchema,
 		ReadAgentState: func(tx *sql.Tx) (remoteconfigsqlite.AgentState, error) {
 			state, err := agentstate.LoadStateForMigration(tx)
 			if err != nil {

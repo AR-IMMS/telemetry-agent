@@ -49,7 +49,22 @@ func BuildAgentRegistry(hooks Hooks) ([]migrate.Migration, error) {
 		return nil, err
 	}
 
-	registry := []migrate.Migration{{Version: 1, Name: "Agent state and activation journal", Apply: hooks.InitializeAgentState}}
+	registry := []migrate.Migration{{
+		Version: 1,
+		Name:    "Agent state and activation journal",
+		Apply: func(db *sql.DB) error {
+			if err := migrate.InitializeLedger(db); err != nil {
+				return err
+			}
+			if err := hooks.InitializeAgentState(db); err != nil {
+				return fmt.Errorf("initialize Agent State base schema: %w", err)
+			}
+			if err := activationsqlite.InitializeBaseJournalSchema(db); err != nil {
+				return err
+			}
+			return migrate.RecordApplied(db, 1)
+		},
+	}}
 	registry = append(registry, identityinstallationsqlite.Migrations()...)
 	registry = append(registry, remoteconfigsqlite.Migrations(hooks.ReadAgentState)...)
 	registry = append(registry, identityenrollmentsqlite.Migrations()...)

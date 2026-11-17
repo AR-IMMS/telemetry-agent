@@ -9,26 +9,16 @@ import (
 	"time"
 )
 
-// InitializeBaseSQLiteSchema creates the Agent-owned base tables and records
-// schema version 1. Application migration composition supplies this callback
-// as the first ordered migration.
-func InitializeBaseSQLiteSchema(db *sql.DB) error {
+// InitializeAgentStateBaseSchema creates the legacy Agent State payload table.
+// Application migration composition creates the technical ledger, Runtime's
+// activation journal, and records historical version 1 around this callback.
+func InitializeAgentStateBaseSchema(db *sql.DB) error {
 	statements := []string{
-		`CREATE TABLE IF NOT EXISTS schema_migrations (
-			version INTEGER PRIMARY KEY,
-			applied_at TEXT NOT NULL
-		)`,
 		`CREATE TABLE IF NOT EXISTS agent_state (
 			id INTEGER PRIMARY KEY CHECK (id = 1),
 			payload BLOB NOT NULL,
 			updated_at TEXT NOT NULL
 		)`,
-		`CREATE TABLE IF NOT EXISTS activation_journal (
-			generation INTEGER PRIMARY KEY,
-			outcome TEXT NOT NULL,
-			updated_at TEXT NOT NULL
-		)`,
-		`INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (1, CURRENT_TIMESTAMP)`,
 	}
 	for _, statement := range statements {
 		if _, err := db.Exec(statement); err != nil {
