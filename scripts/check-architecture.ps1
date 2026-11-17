@@ -445,9 +445,9 @@ try {
             }
         }
     }
-    # The root Configuration package was a transitional facade. Production
-    # callers must use the desiredstate, templates, or materialization owner
-    # packages directly; keep it retired rather than recreating a god facade.
+    # The root Configuration package remains only as a compatibility facade
+    # during migration. Production callers must use the desiredstate,
+    # templates, or materialization owner packages directly.
     foreach ($sourcePath in Get-ChildItem -LiteralPath (Join-Path $repoRoot 'internal'), (Join-Path $repoRoot 'cmd') -Recurse -Filter '*.go' -File | Where-Object { $_.Name -notlike '*_test.go' }) {
         $source = Get-Content -LiteralPath $sourcePath.FullName -Raw
         if ($source -match '"github\.com/ar-imms/telemetry-agent/internal/configuration"') {
