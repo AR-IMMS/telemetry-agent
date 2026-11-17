@@ -3,25 +3,11 @@ package agentstate
 import (
 	"database/sql"
 
-	materializationapp "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/application"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 	reconciliationcontracts "github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation/contracts"
 	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
-	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 	platformsqlite "github.com/ar-imms/telemetry-agent/internal/platform/sqlite"
 )
-
-// MaterializationRepository returns the Configuration-owned projection adapter.
-func (s SQLiteStore) MaterializationRepository() materializationapp.Repository {
-	return configurationsqlite.NewMaterializationRepository(s.OpenDatabase, platformsqlite.UpdateLocker())
-}
-
-// MaterializationRepositoryWithEvents adds an optional post-commit advisory wakeup.
-func (s SQLiteStore) MaterializationRepositoryWithEvents(publisher interface {
-	Publish(events.DesiredConfigurationChanged) error
-}) materializationapp.Repository {
-	return configurationsqlite.NewMaterializationRepositoryWithEvents(s.OpenDatabase, platformsqlite.UpdateLocker(), publisher)
-}
 
 // ApprovalRepository returns the Configuration-owned atomic approval adapter.
 func (s SQLiteStore) ApprovalRepository() application.ApprovalRepository {

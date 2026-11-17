@@ -6,6 +6,7 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/app/migrations"
 	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
+	materializationapp "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/application"
 	proposalapp "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	remoteconfigsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig/sqlite"
@@ -17,6 +18,7 @@ import (
 	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
 	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
 	inventorysqlite "github.com/ar-imms/telemetry-agent/internal/inventory/sqlite"
+	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 	platformsqlite "github.com/ar-imms/telemetry-agent/internal/platform/sqlite"
 	sqlitemigrate "github.com/ar-imms/telemetry-agent/internal/platform/sqlite/migrate"
 )
@@ -53,6 +55,14 @@ func newTestDesiredStateRepository(store SQLiteStore) desiredstateapp.Repository
 
 func newTestTemplateRepository(store SQLiteStore) templatesapp.Repository {
 	return configurationsqlite.NewTemplateRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
+}
+
+func newTestMaterializationRepository(store SQLiteStore) materializationapp.Repository {
+	return configurationsqlite.NewMaterializationRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
+}
+
+func newTestMaterializationRepositoryWithEvents(store SQLiteStore, publisher events.Publisher) materializationapp.Repository {
+	return configurationsqlite.NewMaterializationRepositoryWithEvents(store.OpenDatabase, platformsqlite.UpdateLocker(), publisher)
 }
 
 func newTestCoreGatewayStore(path string) coreconfig.GatewayRuntimeRepository {

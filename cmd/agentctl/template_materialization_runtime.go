@@ -36,7 +36,6 @@ type runtimeTemplateMaterializer struct {
 }
 
 func newRuntimeTemplateMaterializer(statePath string, publisher ...events.Publisher) (runtimeTemplateMaterializer, error) {
-	store := newAgentSQLiteStore(statePath)
 	state, err := newAgentStateStore(statePath).Load()
 	if err != nil {
 		return runtimeTemplateMaterializer{}, fmt.Errorf("load Agent config root for template materialization: %w", err)
@@ -54,9 +53,9 @@ func newRuntimeTemplateMaterializer(statePath string, publisher ...events.Publis
 	if catalog, catalogErr := collectorruntime.StaticCatalog(platform); catalogErr == nil {
 		assessor = matchingdomain.NewCatalogCapabilityAssessor(catalog, platform.OS, platform.OS+"/"+platform.Architecture)
 	}
-	materializationRepository := store.MaterializationRepository()
+	materializationRepository := app.NewMaterializationRepository(statePath)
 	if len(publisher) > 0 && publisher[0] != nil {
-		materializationRepository = store.MaterializationRepositoryWithEvents(publisher[0])
+		materializationRepository = app.NewMaterializationRepositoryWithEvents(statePath, publisher[0])
 	}
 	nativeLayers, _, err := nativeDockerMonitoringInputs(statePath, platform.OS)
 	if err != nil {

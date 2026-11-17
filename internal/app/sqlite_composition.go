@@ -8,6 +8,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/app/migrations"
 	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
+	materializationapp "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/application"
 	proposalapp "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	remoteconfigsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig/sqlite"
@@ -19,6 +20,7 @@ import (
 	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
 	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
 	inventorysqlite "github.com/ar-imms/telemetry-agent/internal/inventory/sqlite"
+	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 	platformsqlite "github.com/ar-imms/telemetry-agent/internal/platform/sqlite"
 	sqlitemigrate "github.com/ar-imms/telemetry-agent/internal/platform/sqlite/migrate"
 )
@@ -75,6 +77,20 @@ func NewDesiredStateRepository(path string) desiredstateapp.Repository {
 func NewTemplateRepository(path string) templatesapp.Repository {
 	store := agentstate.NewSQLiteStoreForPath(path, initializeAgentSQLiteSchema)
 	return configurationsqlite.NewTemplateRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
+}
+
+// NewMaterializationRepository constructs the Configuration-owned projection
+// adapter using the Application's ordered migration registry and shared lock.
+func NewMaterializationRepository(path string) materializationapp.Repository {
+	store := agentstate.NewSQLiteStoreForPath(path, initializeAgentSQLiteSchema)
+	return configurationsqlite.NewMaterializationRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
+}
+
+// NewMaterializationRepositoryWithEvents composes the same adapter with its
+// post-commit advisory wakeup publisher.
+func NewMaterializationRepositoryWithEvents(path string, publisher events.Publisher) materializationapp.Repository {
+	store := agentstate.NewSQLiteStoreForPath(path, initializeAgentSQLiteSchema)
+	return configurationsqlite.NewMaterializationRepositoryWithEvents(store.OpenDatabase, platformsqlite.UpdateLocker(), publisher)
 }
 
 // NewCoreGatewayRuntimeStore constructs the Core Gateway adapter using the

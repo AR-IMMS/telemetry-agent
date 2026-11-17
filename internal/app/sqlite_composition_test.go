@@ -6,9 +6,12 @@ import (
 	"testing"
 
 	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
+	materializationapp "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/application"
+	materializationdomain "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/domain"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/domain"
 	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
+	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 )
 
 func TestAgentSQLiteStoreRunsComposedMigrationsInOneDatabase(t *testing.T) {
@@ -79,6 +82,32 @@ func TestTemplateRepositoryUsesComposedSQLiteDatabase(t *testing.T) {
 	if snapshot.Revision != 0 || len(snapshot.Templates) != 0 {
 		t.Fatalf("initial Templates=%+v, want empty revision 0", snapshot)
 	}
+}
+
+func TestMaterializationRepositoriesUseConfigurationAdapter(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	var published int
+	publisher := materializationPublisherFunc(func(events.DesiredConfigurationChanged) error {
+		published++
+		return nil
+	})
+	for name, repository := range map[string]materializationapp.Repository{
+		"without event publisher": NewMaterializationRepository(path),
+		"with event publisher":    NewMaterializationRepositoryWithEvents(path, publisher),
+	} {
+		if _, err := repository.ApplyTemplateProjection(materializationdomain.Batch{}); !errors.Is(err, materializationdomain.ErrInvalidMaterialization) {
+			t.Errorf("%s invalid batch error=%v, want ErrInvalidMaterialization", name, err)
+		}
+	}
+	if published != 0 {
+		t.Fatalf("publisher called %d times for invalid batches", published)
+	}
+}
+
+type materializationPublisherFunc func(events.DesiredConfigurationChanged) error
+
+func (f materializationPublisherFunc) Publish(event events.DesiredConfigurationChanged) error {
+	return f(event)
 }
 
 func TestIdentityRepositoriesUseComposedSQLiteDatabase(t *testing.T) {

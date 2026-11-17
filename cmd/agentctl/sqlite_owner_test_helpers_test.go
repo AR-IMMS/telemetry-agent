@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
+	materializationapp "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/application"
 	templatesapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
@@ -13,4 +14,8 @@ func newTestDesiredStateRepository(store agentstate.SQLiteStore) desiredstateapp
 
 func newTestTemplateRepository(store agentstate.SQLiteStore) templatesapp.Repository {
 	return sqlitefixture.NewTemplateRepositoryFromStore(store)
+}
+
+func newTestMaterializationRepository(store agentstate.SQLiteStore) materializationapp.Repository {
+	return sqlitefixture.NewMaterializationRepositoryFromStore(store)
 }

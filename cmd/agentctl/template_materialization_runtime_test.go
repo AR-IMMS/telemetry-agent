@@ -58,7 +58,7 @@ func TestRuntimeTemplateMaterializerProjectsStableInstancesAndNoOps(t *testing.T
 	}
 	materializer := runtimeTemplateMaterializer{
 		inventory: sqlitefixture.NewInventoryRepositoryFromStore(store), templates: templates, desired: newTestDesiredStateRepository(store),
-		service: materializationapp.NewService(store.MaterializationRepository()),
+		service: materializationapp.NewService(newTestMaterializationRepository(store)),
 		matcher: templatesmonitoringapp.NewEvaluator(registry, supportedTemplateCapability{}),
 	}
 	if err := materializer.Refresh(context.Background()); err != nil {
@@ -150,7 +150,7 @@ func TestNativeRedisProfileDoesNotCreateAgentInstancesDuringContainerChurn(t *te
 	}
 	materializer := runtimeTemplateMaterializer{
 		inventory: sqlitefixture.NewInventoryRepositoryFromStore(store), templates: templates, desired: newTestDesiredStateRepository(store),
-		service:          materializationapp.NewService(store.MaterializationRepository()),
+		service:          materializationapp.NewService(newTestMaterializationRepository(store)),
 		matcher:          templatesmonitoringapp.NewEvaluator(registry, supportedTemplateCapability{}),
 		nativeMonitoring: true, nativeProfiles: monitoringdomain.DefaultRegistry(),
 	}
@@ -212,7 +212,7 @@ func TestRuntimeTemplateUpdateChangesGeneratedInstancesButPreservesManualState(t
 	desiredRepository := newTestDesiredStateRepository(store)
 	materializer := runtimeTemplateMaterializer{
 		inventory: sqlitefixture.NewInventoryRepositoryFromStore(store), templates: templates, desired: desiredRepository,
-		service: materializationapp.NewService(store.MaterializationRepository()),
+		service: materializationapp.NewService(newTestMaterializationRepository(store)),
 		matcher: templatesmonitoringapp.NewEvaluator(registry, supportedTemplateCapability{}),
 	}
 	if err := materializer.Refresh(context.Background()); err != nil {
@@ -288,7 +288,7 @@ func TestRuntimeTemplateMaterializerPreservesFailureAndTracksResourceLifecycle(t
 	desiredRepository := newTestDesiredStateRepository(store)
 	materializer := runtimeTemplateMaterializer{
 		inventory: sqlitefixture.NewInventoryRepositoryFromStore(store), templates: templates, desired: desiredRepository,
-		service: materializationapp.NewService(store.MaterializationRepository()),
+		service: materializationapp.NewService(newTestMaterializationRepository(store)),
 		matcher: templatesmonitoringapp.NewEvaluator(registry, supportedTemplateCapability{}),
 	}
 	refreshAfterSuccessfulCycle := func() {
