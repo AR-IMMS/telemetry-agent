@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 // DefaultAgentServiceName is the OS service identity used by default layouts.
@@ -72,13 +72,13 @@ func DefaultLayout(platform identity.PlatformInfo) (Layout, error) {
 
 // Installation returns the concrete Agent-owned resources represented by this
 // resolved installation layout.
-func (l Layout) Installation() agentstate.AgentInstallation {
+func (l Layout) Installation() servicedomain.AgentInstallation {
 	serviceKind := "systemd-service"
 	if strings.EqualFold(l.Platform, "windows") {
 		serviceKind = "windows-service"
 	}
 
-	resources := []agentstate.OwnedResource{
+	resources := []servicedomain.OwnedResource{
 		{
 			Kind:       serviceKind,
 			Identifier: l.ServiceName,
@@ -98,17 +98,17 @@ func (l Layout) Installation() agentstate.AgentInstallation {
 	}
 
 	if strings.EqualFold(l.Platform, "linux") {
-		resources = append(resources, agentstate.OwnedResource{
+		resources = append(resources, servicedomain.OwnedResource{
 			Kind:       "file",
 			Identifier: "/etc/systemd/system/" + l.ServiceName + ".service",
 		})
 	}
 
-	return agentstate.AgentInstallation{
+	return servicedomain.AgentInstallation{
 		Platform:    l.Platform,
 		ServiceName: l.ServiceName,
 		BinaryPath:  l.AgentBinaryPath,
-		Ownership: agentstate.OwnershipRecord{
+		Ownership: servicedomain.OwnershipRecord{
 			Resources: resources,
 		},
 	}

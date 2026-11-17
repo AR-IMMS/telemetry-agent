@@ -112,6 +112,34 @@ try {
             $violations.Add("Identity enrollment/installation requires real domain and application layers: $layerPath")
         }
     }
+    $runtimeServiceDomain = "$modulePath/internal/runtime/service/domain"
+    if (-not (Test-Path -LiteralPath (Join-Path $repoRoot 'internal/runtime/service/domain') -PathType Container)) {
+        $violations.Add('Runtime service ownership models require an explicit internal/runtime/service/domain package')
+    }
+    $agentStateModelsPath = Join-Path $repoRoot 'internal/agentstate/state.go'
+    if (Test-Path -LiteralPath $agentStateModelsPath -PathType Leaf) {
+        $agentStateModels = Get-Content -LiteralPath $agentStateModelsPath -Raw
+        if ($agentStateModels -match '(?m)^type\s+(AgentInstallation|OwnedResource|OwnershipRecord)\s+struct\b') {
+            $violations.Add('internal/agentstate/state.go must persist Runtime service ownership models from their owning package')
+        }
+    }
+    $serviceDomainPackages = & go list -f '{{.ImportPath}}|{{range .Imports}}{{.}},{{end}}' ./internal/runtime/service/domain 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        foreach ($line in $serviceDomainPackages) {
+            $parts = $line -split '\|', 2
+            if ($parts.Count -eq 2 -and $parts[1] -match [regex]::Escape("$modulePath/internal/agentstate")) {
+                $violations.Add('Runtime service domain must not import the agentstate persistence adapter')
+            }
+        }
+    }
+    $runtimeServiceLayoutPath = Join-Path $repoRoot 'internal/runtime/service/layout.go'
+    if (Test-Path -LiteralPath $runtimeServiceLayoutPath -PathType Leaf) {
+        $source = Get-Content -LiteralPath $runtimeServiceLayoutPath -Raw
+        if ($source -match 'agentstate\.(AgentInstallation|OwnedResource|OwnershipRecord)' -or
+            $source -notmatch 'internal/runtime/service/domain') {
+            $violations.Add('internal/runtime/service/layout.go must construct Runtime service domain ownership models')
+        }
+    }
 
     $packageLines = & go list -f '{{.ImportPath}}|{{range .Imports}}{{.}},{{end}}' ./internal/... ./cmd/agentctl
     if ($LASTEXITCODE -ne 0) {

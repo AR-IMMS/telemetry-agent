@@ -3,15 +3,15 @@ package agentinstallation
 import (
 	"context"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 // Remover removes the persisted, Agent-owned installation resources.
 type Remover interface {
 	Remove(
 		context.Context,
-		agentstate.AgentInstallation,
+		servicedomain.AgentInstallation,
 		string,
 	) error
 }

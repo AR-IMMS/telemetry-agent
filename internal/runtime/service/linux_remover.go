@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 // linuxAgentRemover removes only Agent-owned Linux service and file resources.
@@ -20,7 +20,7 @@ type linuxAgentRemover struct {
 // Remove stops the Agent service and deletes only paths recorded as Agent-owned.
 func (r linuxAgentRemover) Remove(
 	ctx context.Context,
-	installation agentstate.AgentInstallation,
+	installation servicedomain.AgentInstallation,
 	statePath string,
 ) error {
 	if ctx == nil {

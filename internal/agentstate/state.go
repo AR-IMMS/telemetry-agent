@@ -4,20 +4,9 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-)
 
-// AgentInstallation records the service, binary, and owned resources created
-// by one Agent installation so removal never has to infer ownership.
-type AgentInstallation struct {
-	// Platform identifies the operating system on which this installation runs.
-	Platform string `json:"platform"`
-	// ServiceName is the OS service registered for the Agent process.
-	ServiceName string `json:"serviceName"`
-	// BinaryPath is the durable Agent executable path.
-	BinaryPath string `json:"binaryPath"`
-	// Ownership lists resources this installation may safely remove.
-	Ownership OwnershipRecord `json:"ownership"`
-}
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
+)
 
 // CollectorContext is the persisted runtime context required to render and
 // supervise the local OpenTelemetry Collector.
@@ -72,20 +61,9 @@ type State struct {
 	ActivatedGeneration uint64            `json:"activatedGeneration"`
 	AppliedGeneration   uint64            `json:"appliedGeneration"`
 	// PendingActivation supports recovery between config promotion and commit.
-	PendingActivation *PendingActivation         `json:"pendingActivation,omitempty"`
-	Dependencies      map[string]DependencyState `json:"dependencies"`
-	Installation      *AgentInstallation         `json:"installation,omitempty"`
-}
-
-// OwnedResource identifies one host resource created and managed by the Agent.
-type OwnedResource struct {
-	Kind       string `json:"kind"`
-	Identifier string `json:"identifier"`
-}
-
-// OwnershipRecord records resources that an Agent-managed installation owns.
-type OwnershipRecord struct {
-	Resources []OwnedResource `json:"resources"`
+	PendingActivation *PendingActivation               `json:"pendingActivation,omitempty"`
+	Dependencies      map[string]DependencyState       `json:"dependencies"`
+	Installation      *servicedomain.AgentInstallation `json:"installation,omitempty"`
 }
 
 // RequiresApply reports whether the Collector must reload an activated
