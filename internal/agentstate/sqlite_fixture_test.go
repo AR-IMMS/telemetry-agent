@@ -49,6 +49,10 @@ func newTestProposalRepository(store SQLiteStore) proposalapp.ProposalRepository
 	return configurationsqlite.NewProposalRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
 }
 
+func newTestApprovalRepository(store SQLiteStore) proposalapp.ApprovalRepository {
+	return configurationsqlite.NewApprovalRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
+}
+
 func newTestDesiredStateRepository(store SQLiteStore) desiredstateapp.Repository {
 	return configurationsqlite.NewIntegrationRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
 }

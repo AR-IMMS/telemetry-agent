@@ -175,7 +175,6 @@ type runtimeApprovalVerifier struct {
 }
 
 func newRuntimeApprovalService(statePath string) (application.ApprovalService, error) {
-	store := newAgentSQLiteStore(statePath)
 	registry, err := productionIntegrationRegistry()
 	if err != nil {
 		return application.ApprovalService{}, err
@@ -189,7 +188,7 @@ func newRuntimeApprovalService(statePath string) (application.ApprovalService, e
 	verifier := runtimeApprovalVerifier{
 		inventory: app.NewInventoryRepository(statePath), matcher: matcher, resolver: definitionapp.NewResolver(registry),
 	}
-	return application.NewApprovalService(app.NewProposalRepository(statePath), verifier, store.ApprovalRepository()), nil
+	return application.NewApprovalService(app.NewProposalRepository(statePath), verifier, app.NewApprovalRepository(statePath)), nil
 }
 
 func (v runtimeApprovalVerifier) Verify(ctx context.Context, proposal application.Proposal, inputs map[string]any) (application.VerifiedCandidate, error) {

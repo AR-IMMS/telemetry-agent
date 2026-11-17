@@ -8,6 +8,7 @@ import (
 	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	materializationapp "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/application"
 	materializationdomain "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/domain"
+	proposalapp "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/domain"
 	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
@@ -101,6 +102,13 @@ func TestMaterializationRepositoriesUseConfigurationAdapter(t *testing.T) {
 	}
 	if published != 0 {
 		t.Fatalf("publisher called %d times for invalid batches", published)
+	}
+}
+
+func TestApprovalRepositoryUsesConfigurationAdapter(t *testing.T) {
+	repository := NewApprovalRepository(filepath.Join(t.TempDir(), "state.db"))
+	if _, _, err := repository.CommitApproval(proposalapp.ApprovalCommit{}); !errors.Is(err, proposalapp.ErrInvalidProposal) {
+		t.Fatalf("invalid approval commit error=%v, want ErrInvalidProposal", err)
 	}
 }
 

@@ -20,7 +20,7 @@ func TestSQLiteApprovalCommitsProposalAndDesiredStateAtomically(t *testing.T) {
 		t.Fatal(err)
 	}
 	commit := approvalFixture(proposal, 0)
-	instance, revision, err := store.ApprovalRepository().CommitApproval(commit)
+	instance, revision, err := newTestApprovalRepository(store).CommitApproval(commit)
 	if err != nil || instance.Revision != 1 || revision != 1 {
 		t.Fatalf("approval instance=%+v desired revision=%d err=%v", instance, revision, err)
 	}
@@ -29,7 +29,7 @@ func TestSQLiteApprovalCommitsProposalAndDesiredStateAtomically(t *testing.T) {
 		t.Fatalf("proposal after approval=%+v err=%v", proposalList, err)
 	}
 	commit.Instance = instance
-	if got, desired, err := store.ApprovalRepository().CommitApproval(commit); err != nil || got.Revision != 1 || desired != 1 {
+	if got, desired, err := newTestApprovalRepository(store).CommitApproval(commit); err != nil || got.Revision != 1 || desired != 1 {
 		t.Fatalf("idempotent approval=%+v desired=%d err=%v", got, desired, err)
 	}
 	snapshot, err := newTestDesiredStateRepository(store).Snapshot()
@@ -53,7 +53,7 @@ func TestSQLiteApprovalRollsBackEveryWriteWhenTerminalProposalUpdateFails(t *tes
 		t.Fatal(err)
 	}
 	db.Close()
-	if _, _, err := store.ApprovalRepository().CommitApproval(approvalFixture(proposal, 0)); err == nil {
+	if _, _, err := newTestApprovalRepository(store).CommitApproval(approvalFixture(proposal, 0)); err == nil {
 		t.Fatal("approval succeeded despite injected proposal write failure")
 	}
 	snapshot, err := newTestDesiredStateRepository(store).Snapshot()
@@ -83,7 +83,7 @@ func TestSQLiteApprovalRejectsStaleDesiredAndInventorySnapshots(t *testing.T) {
 			}
 			commit := approvalFixture(proposal, 0)
 			test.mutate(&commit)
-			if _, _, err := store.ApprovalRepository().CommitApproval(commit); !errors.Is(err, test.want) {
+			if _, _, err := newTestApprovalRepository(store).CommitApproval(commit); !errors.Is(err, test.want) {
 				t.Fatalf("stale admission error=%v, want %v", err, test.want)
 			}
 		})
@@ -96,7 +96,7 @@ func TestSQLiteApprovalRejectsDuplicateResourceBinding(t *testing.T) {
 	if err := newTestProposalRepository(store).PutProposal(first, 0); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := store.ApprovalRepository().CommitApproval(approvalFixture(first, 0)); err != nil {
+	if _, _, err := newTestApprovalRepository(store).CommitApproval(approvalFixture(first, 0)); err != nil {
 		t.Fatal(err)
 	}
 	second := sqliteProposalFixture(t)
@@ -110,7 +110,7 @@ func TestSQLiteApprovalRejectsDuplicateResourceBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 	commit := approvalFixture(second, 1)
-	if _, _, err := store.ApprovalRepository().CommitApproval(commit); !errors.Is(err, proposals.ErrApprovalBindingConflict) {
+	if _, _, err := newTestApprovalRepository(store).CommitApproval(commit); !errors.Is(err, proposals.ErrApprovalBindingConflict) {
 		t.Fatalf("duplicate binding error=%v", err)
 	}
 }
@@ -125,7 +125,7 @@ func TestSQLiteApprovalRejectsEquivalentManualIntegration(t *testing.T) {
 	if _, _, err := newTestDesiredStateRepository(store).Put(manual, 0); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := store.ApprovalRepository().CommitApproval(approvalFixture(proposal, 1)); !errors.Is(err, proposals.ErrApprovalDuplicate) {
+	if _, _, err := newTestApprovalRepository(store).CommitApproval(approvalFixture(proposal, 1)); !errors.Is(err, proposals.ErrApprovalDuplicate) {
 		t.Fatalf("duplicate manual configuration error=%v", err)
 	}
 }
@@ -145,7 +145,7 @@ func TestSQLiteApprovalConcurrentRepeatAdvancesDesiredSetOnce(t *testing.T) {
 		go func() {
 			defer wait.Done()
 			<-start
-			_, _, err := store.ApprovalRepository().CommitApproval(commit)
+			_, _, err := newTestApprovalRepository(store).CommitApproval(commit)
 			results <- err
 		}()
 	}

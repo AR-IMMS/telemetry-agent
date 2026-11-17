@@ -3,16 +3,10 @@ package agentstate
 import (
 	"database/sql"
 
-	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 	reconciliationcontracts "github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation/contracts"
 	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
 	platformsqlite "github.com/ar-imms/telemetry-agent/internal/platform/sqlite"
 )
-
-// ApprovalRepository returns the Configuration-owned atomic approval adapter.
-func (s SQLiteStore) ApprovalRepository() application.ApprovalRepository {
-	return configurationsqlite.NewApprovalRepository(s.OpenDatabase, platformsqlite.UpdateLocker())
-}
 
 // ReconciliationRepository returns Configuration-owned reconciliation persistence.
 func (s SQLiteStore) ReconciliationRepository() reconciliationcontracts.Repository {

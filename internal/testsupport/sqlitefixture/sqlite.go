@@ -42,6 +42,12 @@ func NewProposalRepositoryFromStore(store agentstate.SQLiteStore) proposalapp.Pr
 	return configurationsqlite.NewProposalRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
 }
 
+// NewApprovalRepositoryFromStore constructs the atomic Configuration approval
+// adapter over a test store with the shared production SQLite lock.
+func NewApprovalRepositoryFromStore(store agentstate.SQLiteStore) proposalapp.ApprovalRepository {
+	return configurationsqlite.NewApprovalRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
+}
+
 // NewDesiredStateRepositoryFromStore constructs a Configuration adapter over a
 // test store while sharing the production SQLite transaction lock.
 func NewDesiredStateRepositoryFromStore(store agentstate.SQLiteStore) desiredstateapp.Repository {

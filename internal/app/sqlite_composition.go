@@ -93,6 +93,13 @@ func NewMaterializationRepositoryWithEvents(path string, publisher events.Publis
 	return configurationsqlite.NewMaterializationRepositoryWithEvents(store.OpenDatabase, platformsqlite.UpdateLocker(), publisher)
 }
 
+// NewApprovalRepository constructs the Configuration-owned atomic approval
+// adapter using the Application's ordered migration registry and shared lock.
+func NewApprovalRepository(path string) proposalapp.ApprovalRepository {
+	store := agentstate.NewSQLiteStoreForPath(path, initializeAgentSQLiteSchema)
+	return configurationsqlite.NewApprovalRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
+}
+
 // NewCoreGatewayRuntimeStore constructs the Core Gateway adapter using the
 // Application's ordered migration registry.
 func NewCoreGatewayRuntimeStore(path string) coreconfig.GatewayRuntimeRepository {
