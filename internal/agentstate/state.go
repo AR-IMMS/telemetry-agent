@@ -2,9 +2,9 @@ package agentstate
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
+	dependencyapplication "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/application"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
@@ -77,142 +77,44 @@ func (s *State) MarkGenerationApplied(generation uint64) error {
 // EnableDependency enables one dependency in desired state. It advances the
 // generation only when the requested state actually changes.
 func (s *State) EnableDependency(name string) (bool, error) {
-	normalizedName := strings.ToLower(strings.TrimSpace(name))
-	if normalizedName == "" {
-		return false, fmt.Errorf("dependency name is required")
+	next, changed, err := dependencyapplication.EnableDependency(s.dependencySnapshot(), name)
+	if err != nil || !changed {
+		return changed, err
 	}
-
-	if s.Dependencies == nil {
-		s.Dependencies = make(map[string]dependencydomain.DependencyState)
-	}
-
-	dependency := s.Dependencies[normalizedName]
-	if dependency.Enabled {
-		return false, nil
-	}
-
-	dependency.Enabled = true
-	dependency.PendingTeardown = nil
-
-	s.Dependencies[normalizedName] = dependency
-	s.DesiredGeneration++
-
+	s.applyDependencySnapshot(next)
 	return true, nil
 }
 
 // DisableDependency disables one dependency in desired state. It advances the
 // generation only when the requested state actually changes.
 func (s *State) DisableDependency(name string) (bool, error) {
-	normalizedName := strings.ToLower(strings.TrimSpace(name))
-	if normalizedName == "" {
-		return false, fmt.Errorf("dependency name is required")
+	next, changed, err := dependencyapplication.DisableDependency(s.dependencySnapshot(), name)
+	if err != nil || !changed {
+		return changed, err
 	}
-
-	dependency, exists := s.Dependencies[normalizedName]
-	if !exists || !dependency.Enabled {
-		return false, nil
-	}
-
-	dependency.Enabled = false
-	s.DesiredGeneration++
-	dependency.PendingTeardown = &dependencydomain.PendingTeardown{
-		Action:     dependencydomain.TeardownActionDisable,
-		Generation: s.DesiredGeneration,
-	}
-	s.Dependencies[normalizedName] = dependency
-
+	s.applyDependencySnapshot(next)
 	return true, nil
 }
 
 // RequestUninstall removes one dependency from desired configuration and delays
 // host-resource deletion until the Collector has acknowledged that generation.
 func (s *State) RequestUninstall(name string) (bool, error) {
-	normalizedName := strings.ToLower(strings.TrimSpace(name))
-	if normalizedName == "" {
-		return false, fmt.Errorf("dependency name is required")
+	next, changed, err := dependencyapplication.RequestUninstall(s.dependencySnapshot(), name)
+	if err != nil || !changed {
+		return changed, err
 	}
-
-	dependency, exists := s.Dependencies[normalizedName]
-	if !exists {
-		return false, fmt.Errorf(
-			"dependency %q has no persisted Agent state",
-			normalizedName,
-		)
-	}
-
-	if dependency.PendingTeardown != nil &&
-		dependency.PendingTeardown.Action == dependencydomain.TeardownActionUninstall {
-		return false, nil
-	}
-
-	if dependency.Enabled {
-		dependency.Enabled = false
-	}
-
-	s.DesiredGeneration++
-
-	dependency.PendingTeardown = &dependencydomain.PendingTeardown{
-		Action:     dependencydomain.TeardownActionUninstall,
-		Generation: s.DesiredGeneration,
-	}
-	s.Dependencies[normalizedName] = dependency
-
+	s.applyDependencySnapshot(next)
 	return true, nil
 }
 
 // CompleteTeardown records successful platform teardown after the Collector has
 // acknowledged the generation that removed the dependency receiver.
 func (s *State) CompleteTeardown(name string, generation uint64) error {
-	normalizedName := strings.ToLower(strings.TrimSpace(name))
-	if normalizedName == "" {
-		return fmt.Errorf("dependency name is required")
+	next, err := dependencyapplication.CompleteTeardown(s.dependencySnapshot(), name, generation)
+	if err != nil {
+		return err
 	}
-
-	dependency, exists := s.Dependencies[normalizedName]
-	if !exists {
-		return fmt.Errorf(
-			"dependency %q has no persisted Agent state",
-			normalizedName,
-		)
-	}
-	if dependency.PendingTeardown == nil {
-		return fmt.Errorf(
-			"dependency %q has no pending teardown",
-			normalizedName,
-		)
-	}
-	if dependency.PendingTeardown.Generation != generation {
-		return fmt.Errorf(
-			"dependency %q pending teardown generation is %d, not %d",
-			normalizedName,
-			dependency.PendingTeardown.Generation,
-			generation,
-		)
-	}
-	if s.AppliedGeneration < generation {
-		return fmt.Errorf(
-			"dependency %q teardown generation %d is not applied",
-			normalizedName,
-			generation,
-		)
-	}
-
-	switch dependency.PendingTeardown.Action {
-	case dependencydomain.TeardownActionDisable:
-		dependency.PendingTeardown = nil
-		s.Dependencies[normalizedName] = dependency
-
-	case dependencydomain.TeardownActionUninstall:
-		delete(s.Dependencies, normalizedName)
-
-	default:
-		return fmt.Errorf(
-			"dependency %q has unsupported teardown action %q",
-			normalizedName,
-			dependency.PendingTeardown.Action,
-		)
-	}
-
+	s.applyDependencySnapshot(next)
 	return nil
 }
 
@@ -336,68 +238,23 @@ func (s *State) RecordAgentInstallation(
 func (s *State) RequestUninstalls(
 	names []string,
 ) ([]string, error) {
-	if len(names) == 0 {
-		return nil, fmt.Errorf("at least one dependency is required")
+	next, changedNames, err := dependencyapplication.RequestUninstalls(s.dependencySnapshot(), names)
+	if err != nil || len(changedNames) == 0 {
+		return changedNames, err
 	}
-
-	normalizedNames := make([]string, 0, len(names))
-	seen := make(map[string]struct{}, len(names))
-
-	for _, name := range names {
-		normalizedName := strings.ToLower(strings.TrimSpace(name))
-		if normalizedName == "" {
-			return nil, fmt.Errorf("dependency name is required")
-		}
-		if _, exists := seen[normalizedName]; exists {
-			continue
-		}
-
-		seen[normalizedName] = struct{}{}
-		normalizedNames = append(normalizedNames, normalizedName)
-	}
-
-	sort.Strings(normalizedNames)
-
-	// Validate all requested dependencies before changing any desired state.
-	for _, name := range normalizedNames {
-		if _, exists := s.Dependencies[name]; !exists {
-			return nil, fmt.Errorf(
-				"dependency %q has no persisted Agent state",
-				name,
-			)
-		}
-	}
-
-	changedNames := make([]string, 0, len(normalizedNames))
-
-	for _, name := range normalizedNames {
-		dependency := s.Dependencies[name]
-
-		if dependency.PendingTeardown != nil &&
-			dependency.PendingTeardown.Action ==
-				dependencydomain.TeardownActionUninstall {
-			continue
-		}
-
-		changedNames = append(changedNames, name)
-	}
-
-	if len(changedNames) == 0 {
-		return nil, nil
-	}
-
-	// Every changed dependency shares this one desired configuration generation.
-	s.DesiredGeneration++
-
-	for _, name := range changedNames {
-		dependency := s.Dependencies[name]
-		dependency.Enabled = false
-		dependency.PendingTeardown = &dependencydomain.PendingTeardown{
-			Action:     dependencydomain.TeardownActionUninstall,
-			Generation: s.DesiredGeneration,
-		}
-		s.Dependencies[name] = dependency
-	}
-
+	s.applyDependencySnapshot(next)
 	return changedNames, nil
+}
+
+func (s State) dependencySnapshot() dependencyapplication.Snapshot {
+	return dependencyapplication.Snapshot{
+		DesiredGeneration: s.DesiredGeneration,
+		AppliedGeneration: s.AppliedGeneration,
+		Dependencies:      s.Dependencies,
+	}
+}
+
+func (s *State) applyDependencySnapshot(snapshot dependencyapplication.Snapshot) {
+	s.DesiredGeneration = snapshot.DesiredGeneration
+	s.Dependencies = snapshot.Dependencies
 }

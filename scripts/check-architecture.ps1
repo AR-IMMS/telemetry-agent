@@ -30,7 +30,8 @@ try {
         "$modulePath/internal/operations/command",
         "$modulePath/internal/operations/handlers",
         "$modulePath/internal/runtime/service/domain",
-        "$modulePath/internal/runtime/dependencies/domain"
+        "$modulePath/internal/runtime/dependencies/domain",
+        "$modulePath/internal/runtime/dependencies/application"
     )
     $adapterRoots = @(
         "$modulePath/internal/runtime/service",
@@ -172,6 +173,11 @@ try {
         $source = Get-Content -LiteralPath $agentStateSource -Raw
         if ($source -match '(?m)^type\s+(DependencyState|PendingTeardown|TeardownAction)\b') {
             $violations.Add('Runtime dependency lifecycle models must be owned by internal/runtime/dependencies/domain')
+        }
+        foreach ($useCase in @('EnableDependency', 'DisableDependency', 'RequestUninstall', 'CompleteTeardown', 'RequestUninstalls')) {
+            if ($source -notmatch "dependencyapplication\.$useCase\(") {
+                $violations.Add("agentstate.State must delegate $useCase to Runtime dependencies/application")
+            }
         }
     }
     foreach ($sourceRoot in @((Join-Path $repoRoot 'internal'), (Join-Path $repoRoot 'cmd'))) {
@@ -586,7 +592,9 @@ try {
         $isExplicitRuntimeDomain = $package -eq "$modulePath/internal/runtime/service/domain" -or
             $package.StartsWith("$modulePath/internal/runtime/service/domain/", [StringComparison]::Ordinal) -or
             $package -eq "$modulePath/internal/runtime/dependencies/domain" -or
-            $package.StartsWith("$modulePath/internal/runtime/dependencies/domain/", [StringComparison]::Ordinal)
+            $package.StartsWith("$modulePath/internal/runtime/dependencies/domain/", [StringComparison]::Ordinal) -or
+            $package -eq "$modulePath/internal/runtime/dependencies/application" -or
+            $package.StartsWith("$modulePath/internal/runtime/dependencies/application/", [StringComparison]::Ordinal)
         if ($isExplicitRuntimeDomain) { $isContextAdapter = $false }
         if ($isContextAdapter) { continue }
         $isDomain = $false
