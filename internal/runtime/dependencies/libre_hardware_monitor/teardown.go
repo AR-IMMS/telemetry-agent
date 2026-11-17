@@ -3,6 +3,7 @@ package librehardwaremonitor
 import (
 	"context"
 	"fmt"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"os"
 	"strings"
 
@@ -22,7 +23,7 @@ type lhmTeardown struct {
 func (t lhmTeardown) Teardown(
 	ctx context.Context,
 	action agentstate.TeardownAction,
-	resources []agentstate.OwnedResource,
+	resources []servicedomain.OwnedResource,
 ) error {
 	if ctx == nil {
 		return fmt.Errorf(
@@ -61,7 +62,7 @@ func (t lhmTeardown) Teardown(
 
 func (t lhmTeardown) disableOwnedTask(
 	ctx context.Context,
-	resources []agentstate.OwnedResource,
+	resources []servicedomain.OwnedResource,
 ) error {
 	if !ownsLHMResource(
 		resources,
@@ -111,7 +112,7 @@ func (t lhmTeardown) disableOwnedTask(
 
 func (t lhmTeardown) uninstallOwnedResources(
 	ctx context.Context,
-	resources []agentstate.OwnedResource,
+	resources []servicedomain.OwnedResource,
 ) error {
 	if t.removeDirectory == nil {
 		return fmt.Errorf(
@@ -189,7 +190,7 @@ func (t lhmTeardown) uninstallOwnedResources(
 }
 
 func ownsLHMResource(
-	resources []agentstate.OwnedResource,
+	resources []servicedomain.OwnedResource,
 	kind string,
 	identifier string,
 ) bool {

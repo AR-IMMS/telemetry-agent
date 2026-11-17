@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,7 +27,7 @@ type nodeExporterTeardown struct {
 func (t nodeExporterTeardown) Teardown(
 	ctx context.Context,
 	action agentstate.TeardownAction,
-	resources []agentstate.OwnedResource,
+	resources []servicedomain.OwnedResource,
 ) error {
 	if ctx == nil {
 		return fmt.Errorf(
@@ -63,7 +64,7 @@ func (t nodeExporterTeardown) Teardown(
 
 func (t nodeExporterTeardown) disable(
 	ctx context.Context,
-	resources []agentstate.OwnedResource,
+	resources []servicedomain.OwnedResource,
 ) error {
 	if !ownsSystemdUnit(resources, t.options.ServicePath) {
 		return fmt.Errorf(
@@ -95,7 +96,7 @@ func (t nodeExporterTeardown) disable(
 
 func (t nodeExporterTeardown) uninstall(
 	ctx context.Context,
-	resources []agentstate.OwnedResource,
+	resources []servicedomain.OwnedResource,
 ) error {
 	if t.removeUnit == nil {
 		return fmt.Errorf(
@@ -146,7 +147,7 @@ func (t nodeExporterTeardown) uninstall(
 }
 
 func ownsSystemdUnit(
-	resources []agentstate.OwnedResource,
+	resources []servicedomain.OwnedResource,
 	servicePath string,
 ) bool {
 	servicePath = strings.TrimSpace(servicePath)
@@ -162,7 +163,7 @@ func ownsSystemdUnit(
 }
 
 func ownsDirectory(
-	resources []agentstate.OwnedResource,
+	resources []servicedomain.OwnedResource,
 	directory string,
 ) bool {
 	directory = strings.TrimSpace(directory)

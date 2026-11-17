@@ -3,8 +3,7 @@ package windowsexporter
 import (
 	"context"
 	"fmt"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 // windowsExporterEnabler starts only the Agent-owned Windows Exporter service.
@@ -18,7 +17,7 @@ type windowsExporterEnabler struct {
 // service startup.
 func (e windowsExporterEnabler) Enable(
 	ctx context.Context,
-	resources []agentstate.OwnedResource,
+	resources []servicedomain.OwnedResource,
 ) error {
 	if ctx == nil {
 		return fmt.Errorf("Windows Exporter enable context is required")

@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"os"
 	"os/exec"
@@ -171,7 +172,9 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 	serviceDone := make(chan error, 1)
 	collectorLogs := &nativeCollectorLogReporter{health: agenthealth.NewReporter(agenthealth.RuntimeObservation{CollectorState: agenthealth.CollectorStateStarting})}
 	go func() {
-		serviceDone <- runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, agentstate.TeardownAction, []agentstate.OwnedResource) error { return nil }, collectorLogs, bootstrap.OSCommandRunner{})
+		serviceDone <- runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, agentstate.TeardownAction, []servicedomain.OwnedResource) error {
+			return nil
+		}, collectorLogs, bootstrap.OSCommandRunner{})
 	}()
 	t.Cleanup(func() {
 		stopService()

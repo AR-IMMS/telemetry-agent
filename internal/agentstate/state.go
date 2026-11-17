@@ -48,9 +48,9 @@ type PendingTeardown struct {
 
 // DependencyState is the desired lifecycle state of one managed dependency.
 type DependencyState struct {
-	Enabled         bool             `json:"enabled"`
-	Ownership       *OwnershipRecord `json:"ownership,omitempty"`
-	PendingTeardown *PendingTeardown `json:"pendingTeardown,omitempty"`
+	Enabled         bool                           `json:"enabled"`
+	Ownership       *servicedomain.OwnershipRecord `json:"ownership,omitempty"`
+	PendingTeardown *PendingTeardown               `json:"pendingTeardown,omitempty"`
 }
 
 // State is the Agent-owned desired state persisted on the local machine.
@@ -244,7 +244,7 @@ func (s *State) CompleteTeardown(name string, generation uint64) error {
 // installation. It does not change desired Collector configuration.
 func (s *State) RecordOwnership(
 	name string,
-	resources []OwnedResource,
+	resources []servicedomain.OwnedResource,
 ) error {
 	normalizedName := strings.ToLower(strings.TrimSpace(name))
 	if normalizedName == "" {
@@ -281,8 +281,8 @@ func (s *State) RecordOwnership(
 		)
 	}
 
-	dependency.Ownership = &OwnershipRecord{
-		Resources: append([]OwnedResource(nil), resources...),
+	dependency.Ownership = &servicedomain.OwnershipRecord{
+		Resources: append([]servicedomain.OwnedResource(nil), resources...),
 	}
 	s.Dependencies[normalizedName] = dependency
 
@@ -303,7 +303,7 @@ func (s State) OwnsDependency(name string) bool {
 
 // RecordAgentInstallation persists validated platform and ownership metadata.
 func (s *State) RecordAgentInstallation(
-	installation AgentInstallation,
+	installation servicedomain.AgentInstallation,
 ) error {
 	platform := strings.ToLower(strings.TrimSpace(installation.Platform))
 	if platform == "" {
@@ -320,7 +320,7 @@ func (s *State) RecordAgentInstallation(
 	}
 
 	resources := make(
-		[]OwnedResource,
+		[]servicedomain.OwnedResource,
 		0,
 		len(installation.Ownership.Resources),
 	)
@@ -343,11 +343,11 @@ func (s *State) RecordAgentInstallation(
 		resources = append(resources, resource)
 	}
 
-	s.Installation = &AgentInstallation{
+	s.Installation = &servicedomain.AgentInstallation{
 		Platform:    platform,
 		ServiceName: serviceName,
 		BinaryPath:  installation.BinaryPath,
-		Ownership: OwnershipRecord{
+		Ownership: servicedomain.OwnershipRecord{
 			Resources: resources,
 		},
 	}

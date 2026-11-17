@@ -3,10 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation"
 )
 
 func TestRunCollectorUsesDefaultStatePath(t *testing.T) {
@@ -68,7 +69,7 @@ func TestRunCollectorPassesDependencyTeardownToRuntime(t *testing.T) {
 		ctx context.Context,
 		name string,
 		action agentstate.TeardownAction,
-		resources []agentstate.OwnedResource,
+		resources []servicedomain.OwnedResource,
 	) error {
 		teardownCalled = true
 

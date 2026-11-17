@@ -2,6 +2,7 @@ package librehardwaremonitor
 
 import (
 	"context"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"strings"
 	"testing"
 
@@ -29,7 +30,7 @@ func TestLHMTeardownDisablesOwnedScheduledTask(t *testing.T) {
 	err := teardown.Teardown(
 		context.Background(),
 		agentstate.TeardownActionDisable,
-		[]agentstate.OwnedResource{
+		[]servicedomain.OwnedResource{
 			{
 				Kind:       "scheduled-task",
 				Identifier: options.TaskName,
@@ -116,7 +117,7 @@ func TestLHMTeardownUninstallsOwnedResources(t *testing.T) {
 	err := teardown.Teardown(
 		context.Background(),
 		agentstate.TeardownActionUninstall,
-		[]agentstate.OwnedResource{
+		[]servicedomain.OwnedResource{
 			{
 				Kind:       "scheduled-task",
 				Identifier: options.TaskName,

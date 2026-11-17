@@ -2,6 +2,7 @@ package dependency
 
 import (
 	"context"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"testing"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
@@ -9,7 +10,7 @@ import (
 
 func TestServiceTeardownRoutesSupportedDependency(t *testing.T) {
 	var gotAction agentstate.TeardownAction
-	var gotResources []agentstate.OwnedResource
+	var gotResources []servicedomain.OwnedResource
 
 	catalog, err := NewCatalog([]Integration{
 		{
@@ -31,7 +32,7 @@ func TestServiceTeardownRoutesSupportedDependency(t *testing.T) {
 			Teardown: func(
 				ctx context.Context,
 				action agentstate.TeardownAction,
-				resources []agentstate.OwnedResource,
+				resources []servicedomain.OwnedResource,
 			) error {
 				gotAction = action
 				gotResources = resources
@@ -49,7 +50,7 @@ func TestServiceTeardownRoutesSupportedDependency(t *testing.T) {
 		OS:      "linux",
 	}
 
-	resources := []agentstate.OwnedResource{
+	resources := []servicedomain.OwnedResource{
 		{
 			Kind:       "systemd-service",
 			Identifier: "ar-imms-node-exporter.service",

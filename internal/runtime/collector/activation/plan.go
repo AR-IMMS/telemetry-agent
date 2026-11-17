@@ -1,6 +1,9 @@
 package agentlifecycle
 
-import "github.com/ar-imms/telemetry-agent/internal/agentstate"
+import (
+	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
+)
 
 // configurationPlan is an immutable desired-state snapshot bound to one
 // generation. Its fields stay private so compilers cannot change plan identity.
@@ -26,7 +29,7 @@ func newConfigurationPlan(state agentstate.State) configurationPlan {
 			if dependency.Ownership != nil {
 				ownership := *dependency.Ownership
 				ownership.Resources = append(
-					[]agentstate.OwnedResource(nil),
+					[]servicedomain.OwnedResource(nil),
 					ownership.Resources...,
 				)
 				dependency.Ownership = &ownership
@@ -37,7 +40,7 @@ func newConfigurationPlan(state agentstate.State) configurationPlan {
 	if state.Installation != nil {
 		installation := *state.Installation
 		installation.Ownership.Resources = append(
-			[]agentstate.OwnedResource(nil),
+			[]servicedomain.OwnedResource(nil),
 			installation.Ownership.Resources...,
 		)
 		snapshot.Installation = &installation

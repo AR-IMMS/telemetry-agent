@@ -2,9 +2,8 @@ package agentinstallation
 
 import (
 	"errors"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"testing"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 )
 
 func TestValidateExternalUninstallerRejectsInstalledAgentBinary(
@@ -34,7 +33,7 @@ func TestValidateExternalUninstallerRejectsInstalledAgentBinary(
 		t.Run(test.name, func(t *testing.T) {
 			err := ValidateExternalUninstaller(
 				test.current,
-				agentstate.AgentInstallation{
+				servicedomain.AgentInstallation{
 					Platform:   test.platform,
 					BinaryPath: test.installed,
 				},
@@ -56,7 +55,7 @@ func TestValidateExternalUninstallerAllowsExternalBinary(
 ) {
 	err := ValidateExternalUninstaller(
 		"/tmp/release/agentctl",
-		agentstate.AgentInstallation{
+		servicedomain.AgentInstallation{
 			Platform:   "linux",
 			BinaryPath: "/opt/ar-imms/telemetry-agent/agentctl",
 		},

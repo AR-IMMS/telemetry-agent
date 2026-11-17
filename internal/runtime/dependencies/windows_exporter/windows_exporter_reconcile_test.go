@@ -2,9 +2,8 @@ package windowsexporter
 
 import (
 	"context"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"testing"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 )
 
 func TestWindowsExporterReconcilerReusesHealthyExistingService(
@@ -213,7 +212,7 @@ func TestWindowsExporterReconcilerDoesNotClaimOwnershipWhenRepairingExistingServ
 
 			return InstallResult{
 				Name: "windows-exporter",
-				OwnedResources: []agentstate.OwnedResource{
+				OwnedResources: []servicedomain.OwnedResource{
 					{
 						Kind:       "windows-service",
 						Identifier: windowsExporterServiceName,

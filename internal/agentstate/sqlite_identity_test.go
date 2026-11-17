@@ -3,6 +3,7 @@ package agentstate
 import (
 	"database/sql"
 	"errors"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -29,7 +30,7 @@ func TestSQLiteIdentityRepositoryInitializesAndReusesCommittedID(t *testing.T) {
 		Dependencies: map[string]DependencyState{
 			"node-exporter": {
 				Enabled: true,
-				Ownership: &OwnershipRecord{Resources: []OwnedResource{{
+				Ownership: &servicedomain.OwnershipRecord{Resources: []servicedomain.OwnedResource{{
 					Kind:       "systemd-service",
 					Identifier: "node-exporter",
 				}}},

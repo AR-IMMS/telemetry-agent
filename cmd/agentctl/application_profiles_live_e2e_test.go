@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"math/big"
 	"net"
@@ -152,7 +153,9 @@ func TestLiveDockerApplicationProfilesDeliverOTLP(t *testing.T) {
 	collectorLogs := &nativeCollectorLogReporter{health: agenthealth.NewReporter(agenthealth.RuntimeObservation{CollectorState: agenthealth.CollectorStateStarting})}
 	serviceCtx, stopService := context.WithCancel(ctx)
 	serviceDone := startRuntimeE2E(func() error {
-		return runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, agentstate.TeardownAction, []agentstate.OwnedResource) error { return nil }, collectorLogs, bootstrap.OSCommandRunner{})
+		return runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, agentstate.TeardownAction, []servicedomain.OwnedResource) error {
+			return nil
+		}, collectorLogs, bootstrap.OSCommandRunner{})
 	})
 	runtimeStopped := false
 	t.Cleanup(func() {

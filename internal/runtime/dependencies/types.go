@@ -2,6 +2,7 @@ package dependency
 
 import (
 	"context"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"strings"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
@@ -20,7 +21,7 @@ type Definition struct {
 type InstallResult struct {
 	Name           string
 	Reused         bool
-	OwnedResources []agentstate.OwnedResource
+	OwnedResources []servicedomain.OwnedResource
 }
 
 // Installer installs or reconciles one dependency.
@@ -29,14 +30,14 @@ type Installer func(context.Context) (InstallResult, error)
 // Enabler starts resources that are already recorded as Agent-owned.
 type Enabler func(
 	context.Context,
-	[]agentstate.OwnedResource,
+	[]servicedomain.OwnedResource,
 ) error
 
 // Teardown disables or removes only resources recorded as Agent-owned.
 type Teardown func(
 	context.Context,
 	agentstate.TeardownAction,
-	[]agentstate.OwnedResource,
+	[]servicedomain.OwnedResource,
 ) error
 
 // Integration binds one dependency definition to its concrete behavior.

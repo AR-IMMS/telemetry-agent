@@ -2,6 +2,7 @@ package dependency
 
 import (
 	"context"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"reflect"
 	"testing"
 
@@ -12,7 +13,7 @@ func TestServiceEnableRoutesOwnedResources(
 	t *testing.T,
 ) {
 	ctx := context.Background()
-	resources := []agentstate.OwnedResource{
+	resources := []servicedomain.OwnedResource{
 		{
 			Kind:       "systemd-unit",
 			Identifier: "/etc/systemd/system/ar-imms-node-exporter.service",
@@ -36,13 +37,13 @@ func TestServiceEnableRoutesOwnedResources(
 			Teardown: func(
 				context.Context,
 				agentstate.TeardownAction,
-				[]agentstate.OwnedResource,
+				[]servicedomain.OwnedResource,
 			) error {
 				return nil
 			},
 			Enable: func(
 				gotContext context.Context,
-				gotResources []agentstate.OwnedResource,
+				gotResources []servicedomain.OwnedResource,
 			) error {
 				calls++
 
@@ -96,7 +97,7 @@ func TestServiceEnableRejectsMissingEnabler(
 			Teardown: func(
 				context.Context,
 				agentstate.TeardownAction,
-				[]agentstate.OwnedResource,
+				[]servicedomain.OwnedResource,
 			) error {
 				return nil
 			},
@@ -112,7 +113,7 @@ func TestServiceEnableRejectsMissingEnabler(
 	}).Enable(
 		context.Background(),
 		"node-exporter",
-		[]agentstate.OwnedResource{
+		[]servicedomain.OwnedResource{
 			{
 				Kind:       "systemd-unit",
 				Identifier: "/etc/systemd/system/ar-imms-node-exporter.service",

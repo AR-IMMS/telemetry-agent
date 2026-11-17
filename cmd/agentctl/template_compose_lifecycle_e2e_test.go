@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"net"
 	"os"
@@ -170,7 +171,7 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 	startService := func(runtimeCtx context.Context) chan error {
 		done := make(chan error, 1)
 		go func(done chan<- error, serviceCtx context.Context) {
-			done <- runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, agentstate.TeardownAction, []agentstate.OwnedResource) error {
+			done <- runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, agentstate.TeardownAction, []servicedomain.OwnedResource) error {
 				return nil
 			}, nil, bootstrap.OSCommandRunner{})
 		}(done, runtimeCtx)

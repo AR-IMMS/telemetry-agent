@@ -2,13 +2,14 @@ package agentstate
 
 import (
 	"encoding/json"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"testing"
 )
 
 func TestAgentInstallationOwnershipJSONRemainsCompatible(t *testing.T) {
-	installation := AgentInstallation{
+	installation := servicedomain.AgentInstallation{
 		Platform: "windows", ServiceName: "agent-service", BinaryPath: `C:\Agent\agent.exe`,
-		Ownership: OwnershipRecord{Resources: []OwnedResource{{Kind: "file", Identifier: `C:\Agent\agent.exe`}}},
+		Ownership: servicedomain.OwnershipRecord{Resources: []servicedomain.OwnedResource{{Kind: "file", Identifier: `C:\Agent\agent.exe`}}},
 	}
 	encoded, err := json.Marshal(installation)
 	if err != nil {

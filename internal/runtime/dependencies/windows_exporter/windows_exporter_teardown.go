@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"os"
 	"strings"
 
@@ -24,7 +25,7 @@ type windowsExporterTeardown struct {
 func (t windowsExporterTeardown) Teardown(
 	ctx context.Context,
 	action agentstate.TeardownAction,
-	resources []agentstate.OwnedResource,
+	resources []servicedomain.OwnedResource,
 ) error {
 	if ctx == nil {
 		return fmt.Errorf("Windows Exporter teardown context is required")
@@ -59,7 +60,7 @@ func (t windowsExporterTeardown) Teardown(
 
 func (t windowsExporterTeardown) disableOwnedService(
 	ctx context.Context,
-	resources []agentstate.OwnedResource,
+	resources []servicedomain.OwnedResource,
 ) error {
 	if !ownsWindowsExporterResource(
 		resources,
@@ -97,7 +98,7 @@ Set-Service -Name 'windows_exporter' -StartupType Disabled -ErrorAction Stop`,
 }
 
 func ownsWindowsExporterResource(
-	resources []agentstate.OwnedResource,
+	resources []servicedomain.OwnedResource,
 	kind string,
 	identifier string,
 ) bool {
@@ -112,7 +113,7 @@ func ownsWindowsExporterResource(
 
 func (t windowsExporterTeardown) uninstallOwnedResources(
 	ctx context.Context,
-	resources []agentstate.OwnedResource,
+	resources []servicedomain.OwnedResource,
 ) error {
 	if t.removeFile == nil {
 		return fmt.Errorf("Windows Exporter teardown file remover is required")

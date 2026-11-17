@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"os"
 	"path/filepath"
 	"strings"
@@ -907,8 +908,8 @@ func TestRuntimeWatcherCompletesPendingUninstallAfterCollectorReady(
 		Dependencies: map[string]agentstate.DependencyState{
 			"windows-exporter": {
 				Enabled: false,
-				Ownership: &agentstate.OwnershipRecord{
-					Resources: []agentstate.OwnedResource{
+				Ownership: &servicedomain.OwnershipRecord{
+					Resources: []servicedomain.OwnedResource{
 						{
 							Kind:       "windows-service",
 							Identifier: "windows_exporter",
@@ -933,7 +934,7 @@ func TestRuntimeWatcherCompletesPendingUninstallAfterCollectorReady(
 			ctx context.Context,
 			name string,
 			action agentstate.TeardownAction,
-			resources []agentstate.OwnedResource,
+			resources []servicedomain.OwnedResource,
 		) error {
 			teardownCalls++
 

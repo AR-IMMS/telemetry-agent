@@ -2,10 +2,9 @@ package windowsexporter
 
 import (
 	"context"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"strings"
 	"testing"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 )
 
 func TestWindowsExporterEnablerStartsOwnedService(
@@ -30,7 +29,7 @@ func TestWindowsExporterEnablerStartsOwnedService(
 
 	err := enabler.Enable(
 		context.Background(),
-		[]agentstate.OwnedResource{
+		[]servicedomain.OwnedResource{
 			{
 				Kind:       "windows-service",
 				Identifier: windowsExporterServiceName,
@@ -87,7 +86,7 @@ func TestWindowsExporterEnablerRejectsMissingOwnedService(
 
 	err := enabler.Enable(
 		context.Background(),
-		[]agentstate.OwnedResource{
+		[]servicedomain.OwnedResource{
 			{
 				Kind:       "config-file",
 				Identifier: enabler.options.ConfigPath,
@@ -125,7 +124,7 @@ func TestWindowsExporterEnablerRejectsNilContext(
 
 	err := enabler.Enable(
 		nil,
-		[]agentstate.OwnedResource{
+		[]servicedomain.OwnedResource{
 			{
 				Kind:       "windows-service",
 				Identifier: windowsExporterServiceName,

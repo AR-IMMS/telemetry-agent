@@ -2,10 +2,9 @@ package librehardwaremonitor
 
 import (
 	"context"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"strings"
 	"testing"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 )
 
 func TestLHMEnablerStartsOwnedScheduledTask(
@@ -31,7 +30,7 @@ func TestLHMEnablerStartsOwnedScheduledTask(
 
 	err := enabler.Enable(
 		context.Background(),
-		[]agentstate.OwnedResource{
+		[]servicedomain.OwnedResource{
 			{
 				Kind:       "scheduled-task",
 				Identifier: options.TaskName,
@@ -89,7 +88,7 @@ func TestLHMEnablerRejectsMissingOwnedScheduledTask(
 
 	err := enabler.Enable(
 		context.Background(),
-		[]agentstate.OwnedResource{
+		[]servicedomain.OwnedResource{
 			{
 				Kind:       "directory",
 				Identifier: options.InstallDir,
@@ -128,7 +127,7 @@ func TestLHMEnablerRejectsNilContext(
 
 	err := enabler.Enable(
 		nil,
-		[]agentstate.OwnedResource{
+		[]servicedomain.OwnedResource{
 			{
 				Kind:       "scheduled-task",
 				Identifier: options.TaskName,

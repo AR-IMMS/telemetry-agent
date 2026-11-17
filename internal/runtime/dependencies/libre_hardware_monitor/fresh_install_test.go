@@ -2,12 +2,11 @@ package librehardwaremonitor
 
 import (
 	"context"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"reflect"
 	"testing"
 	"time"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 )
 
 func TestFreshInstallerStagesConfiguresStartsAndChecksLHM(t *testing.T) {
@@ -71,7 +70,7 @@ func TestFreshInstallerStagesConfiguresStartsAndChecksLHM(t *testing.T) {
 	wantResult := dependency.InstallResult{
 		Name:   "libre-hardware-monitor",
 		Reused: false,
-		OwnedResources: []agentstate.OwnedResource{
+		OwnedResources: []servicedomain.OwnedResource{
 			{
 				Kind:       "scheduled-task",
 				Identifier: installer.options.TaskName,

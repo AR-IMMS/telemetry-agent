@@ -3,6 +3,7 @@ package agentlifecycle
 import (
 	"context"
 	"fmt"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"sort"
 	"strings"
 
@@ -15,7 +16,7 @@ type DependencyTeardownFunc func(
 	context.Context,
 	string,
 	agentstate.TeardownAction,
-	[]agentstate.OwnedResource,
+	[]servicedomain.OwnedResource,
 ) error
 
 // teardownCoordinator executes teardown actions only after the Collector has
@@ -93,7 +94,7 @@ func (c teardownCoordinator) applyDependency(
 
 	if state.OwnsDependency(name) {
 		resources := append(
-			[]agentstate.OwnedResource(nil),
+			[]servicedomain.OwnedResource(nil),
 			dependency.Ownership.Resources...,
 		)
 		if err := c.teardown(ctx, name, pending.Action, resources); err != nil {

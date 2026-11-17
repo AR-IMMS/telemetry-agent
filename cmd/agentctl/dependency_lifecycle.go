@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"os"
 	"strings"
 
@@ -32,7 +33,7 @@ const (
 type dependencyEnableFunc func(
 	context.Context,
 	string,
-	[]agentstate.OwnedResource,
+	[]servicedomain.OwnedResource,
 ) error
 
 type managedDependencyLifecycleFunc func(

@@ -3,10 +3,9 @@ package librehardwaremonitor
 import (
 	"context"
 	"fmt"
-	"strings"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
+	"strings"
 )
 
 // lhmEnabler starts the Agent-owned Libre Hardware Monitor scheduled task.
@@ -19,7 +18,7 @@ type lhmEnabler struct {
 // Enable restores scheduled-task enablement and starts the owned LHM task.
 func (e lhmEnabler) Enable(
 	ctx context.Context,
-	resources []agentstate.OwnedResource,
+	resources []servicedomain.OwnedResource,
 ) error {
 	if ctx == nil {
 		return fmt.Errorf(

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"path/filepath"
 	"reflect"
@@ -89,7 +90,7 @@ func TestManagedAgentUninstallerRemovesAgentAfterDependenciesAreGone(
 ) {
 	statePath := filepath.Join(t.TempDir(), "state.json")
 
-	installation := agentstate.AgentInstallation{
+	installation := servicedomain.AgentInstallation{
 		Platform:    "linux",
 		ServiceName: "ar-imms-telemetry-agent",
 		BinaryPath:  "/opt/ar-imms/telemetry-agent/agentctl",
@@ -169,7 +170,7 @@ func TestManagedAgentUninstallerRemovesAgentAfterDependenciesAreGone(
 
 			return agentRemovalFunc(func(
 				_ context.Context,
-				gotInstallation agentstate.AgentInstallation,
+				gotInstallation servicedomain.AgentInstallation,
 				gotStatePath string,
 			) error {
 				steps = append(steps, "remove-agent")
@@ -217,13 +218,13 @@ func TestManagedAgentUninstallerRemovesAgentAfterDependenciesAreGone(
 
 type agentRemovalFunc func(
 	context.Context,
-	agentstate.AgentInstallation,
+	servicedomain.AgentInstallation,
 	string,
 ) error
 
 func (f agentRemovalFunc) Remove(
 	ctx context.Context,
-	installation agentstate.AgentInstallation,
+	installation servicedomain.AgentInstallation,
 	statePath string,
 ) error {
 	return f(ctx, installation, statePath)
@@ -237,7 +238,7 @@ func TestManagedAgentUninstallerRejectsInstalledBinaryBeforeRequestingTeardown(
 
 	store := sqlitefixture.NewStore(statePath)
 	saveTestState(t, store, agentstate.State{
-		Installation: &agentstate.AgentInstallation{
+		Installation: &servicedomain.AgentInstallation{
 			Platform:   "linux",
 			BinaryPath: installedBinary,
 		},
@@ -308,7 +309,7 @@ func TestManagedAgentUninstallerDoesNotRemoveAgentWhenTeardownWaitFails(
 
 	store := sqlitefixture.NewStore(statePath)
 	saveTestState(t, store, agentstate.State{
-		Installation: &agentstate.AgentInstallation{
+		Installation: &servicedomain.AgentInstallation{
 			Platform:   "linux",
 			BinaryPath: "/opt/ar-imms/telemetry-agent/agentctl",
 		},

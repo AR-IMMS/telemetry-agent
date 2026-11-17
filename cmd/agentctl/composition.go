@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
@@ -14,6 +13,7 @@ import (
 	nodeexporter "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/node_exporter"
 	windowsexporter "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/windows_exporter"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/service"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"io"
 	"net"
 	"net/http"
@@ -396,7 +396,7 @@ func defaultInstallDependency(
 func defaultEnableDependency(
 	ctx context.Context,
 	name string,
-	resources []agentstate.OwnedResource,
+	resources []servicedomain.OwnedResource,
 ) error {
 	platform, err := identity.CollectPlatformInfo()
 	if err != nil {

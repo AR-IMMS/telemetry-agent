@@ -2,12 +2,11 @@ package nodeexporter
 
 import (
 	"context"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"reflect"
 	"testing"
 	"time"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 )
 
 func TestNewInstallerComposesRootReconciliationAndFreshInstall(
@@ -74,7 +73,7 @@ func TestNewInstallerComposesRootReconciliationAndFreshInstall(
 
 	wantResult := dependency.InstallResult{
 		Name: "node-exporter",
-		OwnedResources: []agentstate.OwnedResource{
+		OwnedResources: []servicedomain.OwnedResource{
 			{
 				Kind:       "systemd-unit",
 				Identifier: "/etc/systemd/system/ar-imms-node-exporter.service",

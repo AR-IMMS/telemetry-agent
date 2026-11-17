@@ -12,6 +12,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"math/big"
 	"net"
@@ -282,7 +283,9 @@ service:
 			t.Errorf("Agent-managed runtime process tree did not stop during cleanup")
 		}
 	})
-	noOpTeardown := func(context.Context, string, agentstate.TeardownAction, []agentstate.OwnedResource) error { return nil }
+	noOpTeardown := func(context.Context, string, agentstate.TeardownAction, []servicedomain.OwnedResource) error {
+		return nil
+	}
 	go func() {
 		runtimeDone <- RunCollectorRuntimeWithReconciliation(runContext, statePath, noOpTeardown, nil, nil, nil, testRuntimeStoreFactory)
 	}()

@@ -140,6 +140,20 @@ try {
             $violations.Add('internal/runtime/service/layout.go must construct Runtime service domain ownership models')
         }
     }
+    $runtimeOwnershipFacadePath = Join-Path $repoRoot 'internal/agentstate/runtime_compat.go'
+    if (Test-Path -LiteralPath $runtimeOwnershipFacadePath -PathType Leaf) {
+        $violations.Add('Remove the temporary agentstate Runtime ownership compatibility aliases after migrating callers')
+    }
+    foreach ($sourceRoot in @((Join-Path $repoRoot 'internal'), (Join-Path $repoRoot 'cmd'))) {
+        foreach ($sourceFile in (Get-ChildItem -LiteralPath $sourceRoot -Recurse -File -Filter '*.go')) {
+            $source = Get-Content -LiteralPath $sourceFile.FullName -Raw
+            if ($source -match 'agentstate\.(AgentInstallation|OwnedResource|OwnershipRecord)\b' -or
+                ($sourceFile.FullName.StartsWith((Join-Path $repoRoot 'internal/agentstate') + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase) -and
+                    $source -match '(?<![\w.])\b(AgentInstallation|OwnedResource|OwnershipRecord)\b')) {
+                $violations.Add("$($sourceFile.FullName) must reference Runtime service ownership types through their owner package")
+            }
+        }
+    }
 
     $packageLines = & go list -f '{{.ImportPath}}|{{range .Imports}}{{.}},{{end}}' ./internal/... ./cmd/agentctl
     if ($LASTEXITCODE -ne 0) {

@@ -2,6 +2,7 @@ package nodeexporter
 
 import (
 	"context"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"reflect"
 	"strings"
 	"testing"
@@ -30,7 +31,7 @@ func TestNodeExporterTeardownDisablesOwnedSystemdUnit(
 	err := teardown.Teardown(
 		context.Background(),
 		agentstate.TeardownActionDisable,
-		[]agentstate.OwnedResource{
+		[]servicedomain.OwnedResource{
 			{
 				Kind:       "systemd-unit",
 				Identifier: options.ServicePath,
@@ -111,7 +112,7 @@ func TestNodeExporterTeardownUninstallsOwnedResources(
 	err := teardown.Teardown(
 		context.Background(),
 		agentstate.TeardownActionUninstall,
-		[]agentstate.OwnedResource{
+		[]servicedomain.OwnedResource{
 			{
 				Kind:       "systemd-unit",
 				Identifier: options.ServicePath,
@@ -159,7 +160,7 @@ func TestNodeExporterTeardownRejectsNilContext(
 	err := teardown.Teardown(
 		nil,
 		agentstate.TeardownActionDisable,
-		[]agentstate.OwnedResource{
+		[]servicedomain.OwnedResource{
 			{
 				Kind:       "systemd-unit",
 				Identifier: options.ServicePath,

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"os"
 	"path/filepath"
@@ -162,7 +163,7 @@ service:
 
 			return dependency.InstallResult{
 				Name: "windows-exporter",
-				OwnedResources: []agentstate.OwnedResource{
+				OwnedResources: []servicedomain.OwnedResource{
 					{
 						Kind:       "windows-service",
 						Identifier: "windows_exporter",
@@ -526,7 +527,7 @@ service:
 	statePath := filepath.Join(t.TempDir(), "state.json")
 	store := sqlitefixture.NewStore(statePath)
 
-	ownership := []agentstate.OwnedResource{
+	ownership := []servicedomain.OwnedResource{
 		{
 			Kind:       "windows-service",
 			Identifier: "windows_exporter",
@@ -546,7 +547,7 @@ service:
 		state.Dependencies = map[string]agentstate.DependencyState{
 			"windows-exporter": {
 				Enabled:   false,
-				Ownership: &agentstate.OwnershipRecord{Resources: ownership},
+				Ownership: &servicedomain.OwnershipRecord{Resources: ownership},
 			},
 		}
 
@@ -566,7 +567,7 @@ service:
 		func(
 			ctx context.Context,
 			name string,
-			resources []agentstate.OwnedResource,
+			resources []servicedomain.OwnedResource,
 		) error {
 			enableCalls++
 
@@ -683,7 +684,7 @@ func TestManagedDependencyLifecycleRejectsEnableWithoutOwnership(
 		func(
 			context.Context,
 			string,
-			[]agentstate.OwnedResource,
+			[]servicedomain.OwnedResource,
 		) error {
 			enableCalls++
 

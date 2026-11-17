@@ -1,6 +1,7 @@
 package agentstate
 
 import (
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"reflect"
 	"testing"
 )
@@ -234,7 +235,7 @@ func TestStateRecordsOwnedResourcesWithoutChangingGeneration(
 		},
 	}
 
-	resources := []OwnedResource{
+	resources := []servicedomain.OwnedResource{
 		{
 			Kind:       "systemd-unit",
 			Identifier: "/etc/systemd/system/ar-imms-node-exporter.service",
@@ -274,8 +275,8 @@ func TestStateReportsDependencyOwnedOnlyWithRecordedResources(
 	state := State{
 		Dependencies: map[string]DependencyState{
 			"windows-exporter": {
-				Ownership: &OwnershipRecord{
-					Resources: []OwnedResource{
+				Ownership: &servicedomain.OwnershipRecord{
+					Resources: []servicedomain.OwnedResource{
 						{
 							Kind:       "windows-service",
 							Identifier: "windows_exporter",
@@ -501,11 +502,11 @@ func TestRecordAgentInstallationStoresConcreteOwnership(
 ) {
 	state := State{}
 
-	installation := AgentInstallation{
+	installation := servicedomain.AgentInstallation{
 		Platform:    "windows",
 		ServiceName: "ar-imms-telemetry-agent",
-		Ownership: OwnershipRecord{
-			Resources: []OwnedResource{
+		Ownership: servicedomain.OwnershipRecord{
+			Resources: []servicedomain.OwnedResource{
 				{
 					Kind:       "windows-service",
 					Identifier: "ar-imms-telemetry-agent",

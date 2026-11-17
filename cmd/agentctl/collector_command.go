@@ -9,6 +9,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"io"
 	"net"
 	"path/filepath"
@@ -210,7 +211,7 @@ func defaultDependencyTeardown(
 	ctx context.Context,
 	name string,
 	action agentstate.TeardownAction,
-	resources []agentstate.OwnedResource,
+	resources []servicedomain.OwnedResource,
 ) error {
 	platform, err := identity.CollectPlatformInfo()
 	if err != nil {

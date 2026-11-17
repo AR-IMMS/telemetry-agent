@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"io"
 	"os"
 	"path/filepath"
@@ -13,8 +14,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 )
 
 func TestWindowsExporterOptionsValidateRejectsMissingRequiredValues(
@@ -445,7 +444,7 @@ func TestWindowsExporterInstallerStagesAndRunsVerifiedMSI(
 		t.Fatal("result Reused = true, want false")
 	}
 
-	wantOwnedResources := []agentstate.OwnedResource{
+	wantOwnedResources := []servicedomain.OwnedResource{
 		{
 			Kind:       "windows-service",
 			Identifier: windowsExporterServiceName,

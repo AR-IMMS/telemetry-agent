@@ -1,11 +1,10 @@
 package agentinstallation
 
 import (
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"reflect"
 	"testing"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 )
 
 func TestDefaultLayoutReturnsOwnedPlatformPaths(t *testing.T) {
@@ -78,12 +77,12 @@ func TestLayoutInstallationReturnsConcreteOwnedResources(t *testing.T) {
 
 	got := layout.Installation()
 
-	want := agentstate.AgentInstallation{
+	want := servicedomain.AgentInstallation{
 		Platform:    "linux",
 		ServiceName: "ar-imms-telemetry-agent",
 		BinaryPath:  "/opt/ar-imms/telemetry-agent/agentctl",
-		Ownership: agentstate.OwnershipRecord{
-			Resources: []agentstate.OwnedResource{
+		Ownership: servicedomain.OwnershipRecord{
+			Resources: []servicedomain.OwnedResource{
 				{
 					Kind:       "systemd-service",
 					Identifier: "ar-imms-telemetry-agent",

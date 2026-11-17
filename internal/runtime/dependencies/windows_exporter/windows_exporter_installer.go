@@ -3,10 +3,9 @@ package windowsexporter
 import (
 	"context"
 	"fmt"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"strings"
 	"time"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 )
 
 // windowsExporterHealthWaiter waits until the local exporter is ready.
@@ -92,7 +91,7 @@ func (i windowsExporterInstaller) Install(
 
 	return InstallResult{
 		Name: windowsExporterDefinition.Name,
-		OwnedResources: []agentstate.OwnedResource{
+		OwnedResources: []servicedomain.OwnedResource{
 			{
 				Kind:       "windows-service",
 				Identifier: windowsExporterServiceName,

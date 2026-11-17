@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"net"
 	"os"
@@ -151,7 +152,7 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 	serviceCtx, stopService := context.WithCancel(ctx)
 	serviceDone := make(chan error, 1)
 	go func() {
-		serviceDone <- runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, agentstate.TeardownAction, []agentstate.OwnedResource) error {
+		serviceDone <- runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, agentstate.TeardownAction, []servicedomain.OwnedResource) error {
 			return nil
 		}, nil, bootstrap.OSCommandRunner{})
 	}()
@@ -323,7 +324,7 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 	serviceCtx, stopService = context.WithCancel(ctx)
 	serviceDone = make(chan error, 1)
 	go func() {
-		serviceDone <- runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, agentstate.TeardownAction, []agentstate.OwnedResource) error {
+		serviceDone <- runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, agentstate.TeardownAction, []servicedomain.OwnedResource) error {
 			return nil
 		}, nil, bootstrap.OSCommandRunner{})
 	}()

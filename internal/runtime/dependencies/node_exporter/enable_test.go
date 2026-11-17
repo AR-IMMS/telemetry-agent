@@ -2,11 +2,10 @@ package nodeexporter
 
 import (
 	"context"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"path/filepath"
 	"reflect"
 	"testing"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 )
 
 func TestNodeExporterEnablerStartsOwnedSystemdUnit(
@@ -29,7 +28,7 @@ func TestNodeExporterEnablerStartsOwnedSystemdUnit(
 
 	err := enabler.Enable(
 		context.Background(),
-		[]agentstate.OwnedResource{
+		[]servicedomain.OwnedResource{
 			{
 				Kind:       "systemd-unit",
 				Identifier: options.ServicePath,
@@ -75,7 +74,7 @@ func TestNodeExporterEnablerRejectsMissingOwnedSystemdUnit(
 
 	err := enabler.Enable(
 		context.Background(),
-		[]agentstate.OwnedResource{
+		[]servicedomain.OwnedResource{
 			{
 				Kind:       "directory",
 				Identifier: enabler.options.InstallDir,
@@ -111,7 +110,7 @@ func TestNodeExporterEnablerRejectsNilContext(
 
 	err := enabler.Enable(
 		nil,
-		[]agentstate.OwnedResource{
+		[]servicedomain.OwnedResource{
 			{
 				Kind:       "systemd-unit",
 				Identifier: options.ServicePath,

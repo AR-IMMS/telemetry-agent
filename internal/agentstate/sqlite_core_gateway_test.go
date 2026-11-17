@@ -3,6 +3,7 @@ package agentstate
 import (
 	"context"
 	"errors"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -325,7 +326,7 @@ func TestCoreGatewayLegacyImportAndRestart(t *testing.T) {
 func seededGatewayStore(t *testing.T) (SQLiteStore, string) {
 	t.Helper()
 	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
-	want := State{Collector: CollectorContext{GatewayEndpoint: "bootstrap:4317"}, DesiredGeneration: 4, ActivatedGeneration: 4, AppliedGeneration: 3, Dependencies: map[string]DependencyState{"redis": {Enabled: true, Ownership: &OwnershipRecord{Resources: []OwnedResource{{Kind: "service", Identifier: "redis-service"}}}}}}
+	want := State{Collector: CollectorContext{GatewayEndpoint: "bootstrap:4317"}, DesiredGeneration: 4, ActivatedGeneration: 4, AppliedGeneration: 3, Dependencies: map[string]DependencyState{"redis": {Enabled: true, Ownership: &servicedomain.OwnershipRecord{Resources: []servicedomain.OwnedResource{{Kind: "service", Identifier: "redis-service"}}}}}}
 	if err := store.Save(want); err != nil {
 		t.Fatalf("seed M1 state: %v", err)
 	}

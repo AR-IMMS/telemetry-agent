@@ -3,11 +3,10 @@ package librehardwaremonitor
 import (
 	"context"
 	"fmt"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"strconv"
 	"time"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 )
 
 // archiveStager creates a verified archive and returns its cleanup function.
@@ -122,7 +121,7 @@ func (i freshInstaller) Install(
 
 	return dependency.InstallResult{
 		Name: "libre-hardware-monitor",
-		OwnedResources: []agentstate.OwnedResource{
+		OwnedResources: []servicedomain.OwnedResource{
 			{
 				Kind:       "scheduled-task",
 				Identifier: i.options.TaskName,

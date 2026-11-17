@@ -2,11 +2,10 @@ package librehardwaremonitor
 
 import (
 	"context"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"net/http"
 	"time"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 )
 
 // installerDependencies groups runtime adapters for one LHM installer.
@@ -76,8 +75,8 @@ const (
 	defaultHealthPoll     = 500 * time.Millisecond
 )
 
-func ownedResources(options Options) []agentstate.OwnedResource {
-	return []agentstate.OwnedResource{
+func ownedResources(options Options) []servicedomain.OwnedResource {
+	return []servicedomain.OwnedResource{
 		{
 			Kind:       "scheduled-task",
 			Identifier: options.TaskName,
