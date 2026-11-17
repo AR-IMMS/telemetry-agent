@@ -137,11 +137,15 @@ try {
             }
         }
     }
-    # SQLite is a Configuration adapter and must consume proposal capabilities
+    # Configuration adapters and CLI handlers consume proposal capabilities
     # directly, rather than depending on the retained legacy import facade.
     foreach ($file in @(
         'internal/configuration/sqlite/proposal.go',
-        'internal/configuration/sqlite/approval.go'
+        'internal/configuration/sqlite/approval.go',
+        'internal/agentstate/sqlite_discovery.go',
+        'internal/agentstate/sqlite_configuration.go',
+        'cmd/agentctl/discovery_proposals_command.go',
+        'cmd/agentctl/proposal_approval_runtime.go'
     )) {
         $sourcePath = Join-Path $repoRoot $file
         if (Test-Path -LiteralPath $sourcePath -PathType Leaf) {

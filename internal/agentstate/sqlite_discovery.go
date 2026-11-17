@@ -1,7 +1,7 @@
 package agentstate
 
 import (
-	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals"
+	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	inventorysqlite "github.com/ar-imms/telemetry-agent/internal/inventory/sqlite"
@@ -13,6 +13,6 @@ func (s SQLiteStore) InventoryRepository() inventoryctx.InventoryRepository {
 }
 
 // ProposalRepository returns the transitional proposal SQLite adapter over this store.
-func (s SQLiteStore) ProposalRepository() proposals.ProposalRepository {
+func (s SQLiteStore) ProposalRepository() application.ProposalRepository {
 	return configurationsqlite.NewProposalRepository(s.OpenDatabase, &sqliteUpdateMutex)
 }

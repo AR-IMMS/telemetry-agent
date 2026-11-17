@@ -11,7 +11,7 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
-	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals"
+	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 )
 
 func runDiscovery(ctx context.Context, args []string, stdout, stderr io.Writer) int {
@@ -81,12 +81,12 @@ func runDiscoveryProposals(ctx context.Context, args []string, stdout, stderr io
 				return 0
 			}
 		}
-		return integrationCommandError(stderr, command, proposals.ErrUnknownProposal)
+		return integrationCommandError(stderr, command, application.ErrUnknownProposal)
 	case "dismiss":
 		if *id == "" || *revision == 0 {
 			return usageDiscovery(stderr, "dismiss requires --id and --revision")
 		}
-		manager := proposals.NewProposalManager(proposalRepo)
+		manager := application.NewProposalManager(proposalRepo)
 		if err := manager.Dismiss(*id, *revision, time.Now().UTC()); err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
@@ -106,7 +106,7 @@ func runDiscoveryProposals(ctx context.Context, args []string, stdout, stderr io
 		if err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
-		instance, nextRevision, err := service.Approve(ctx, proposals.ApprovalRequest{
+		instance, nextRevision, err := service.Approve(ctx, application.ApprovalRequest{
 			ProposalID: *id, ProposalRevision: *revision, ExpectedDesiredRevision: *desiredRevision, Inputs: values,
 		})
 		if err != nil {
