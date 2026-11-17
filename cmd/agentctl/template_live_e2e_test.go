@@ -94,14 +94,14 @@ func TestLiveDockerTemplateAutoMaterializesDesiredInstance(t *testing.T) {
 		t.Fatal(err)
 	}
 	materializer := runtimeTemplateMaterializer{
-		inventory: sqlitefixture.NewInventoryRepositoryFromStore(store), templates: templateRepository, desired: store.IntegrationRepository(),
+		inventory: sqlitefixture.NewInventoryRepositoryFromStore(store), templates: templateRepository, desired: newTestDesiredStateRepository(store),
 		service: materializationapp.NewService(store.MaterializationRepository()),
 		matcher: templatesmonitoringapp.NewEvaluator(registry, matchingdomain.NewCatalogCapabilityAssessor(catalog, runtime.GOOS, runtime.GOOS+"/"+runtime.GOARCH)),
 	}
 	if err := materializer.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	desired, err := store.IntegrationRepository().Snapshot()
+	desired, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}

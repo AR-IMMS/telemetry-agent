@@ -63,7 +63,7 @@ func newRuntimeTemplateMaterializer(statePath string, publisher ...events.Publis
 		return runtimeTemplateMaterializer{}, fmt.Errorf("resolve native monitoring for template materialization: %w", err)
 	}
 	return runtimeTemplateMaterializer{
-		inventory: app.NewInventoryRepository(statePath), templates: store.TemplateRepository(), desired: store.IntegrationRepository(),
+		inventory: app.NewInventoryRepository(statePath), templates: store.TemplateRepository(), desired: app.NewDesiredStateRepository(statePath),
 		service:          materializationapp.NewService(materializationRepository),
 		matcher:          templatesmonitoringapp.NewEvaluator(registry, assessor),
 		nativeMonitoring: len(nativeLayers) > 0, nativeProfiles: profiles,

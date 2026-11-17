@@ -205,7 +205,7 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 	}
 
 	// A normal restart keeps Docker's container identity and the generated instance.
-	beforeRestart, err := store.IntegrationRepository().Snapshot()
+	beforeRestart, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +215,7 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 	}
 	restartInventory := runDiscoveryCycle()
 	_ = restartInventory
-	afterRestart, err := store.IntegrationRepository().Snapshot()
+	afterRestart, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil || afterRestart.Revision != beforeRestart.Revision {
 		t.Fatalf("unchanged container restart changed generated desired state: before=%d after=%d before_instances=%+v after_instances=%+v err=%v", beforeRestart.Revision, afterRestart.Revision, beforeRestart.Instances, afterRestart.Instances, err)
 	}
@@ -469,7 +469,7 @@ func assertComposePresence(t *testing.T, snapshot inventorydomain.InventorySnaps
 
 func assertComposeDesired(t *testing.T, store agentstate.SQLiteStore, resourceIDs []string, enabled bool) {
 	t.Helper()
-	snapshot, err := store.IntegrationRepository().Snapshot()
+	snapshot, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -499,7 +499,7 @@ func assertEnabledComposeTemplateResources(t *testing.T, store agentstate.SQLite
 	for _, id := range resourceIDs {
 		wanted[id] = struct{}{}
 	}
-	snapshot, err := store.IntegrationRepository().Snapshot()
+	snapshot, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -521,7 +521,7 @@ func assertEnabledComposeTemplateResources(t *testing.T, store agentstate.SQLite
 
 func composeTemplateEndpoints(t *testing.T, store agentstate.SQLiteStore, resourceIDs []string) map[string]string {
 	t.Helper()
-	snapshot, err := store.IntegrationRepository().Snapshot()
+	snapshot, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}

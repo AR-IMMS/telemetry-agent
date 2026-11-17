@@ -169,7 +169,7 @@ func TestPeriodicSQLitePollingDetectsCommittedCrossProcessDesiredChange(t *testi
 	path := filepath.Join(t.TempDir(), "state.db")
 	writer := sqlitefixture.NewSQLiteStore(path)
 	reader := sqlitefixture.NewSQLiteStore(path)
-	if _, err := reader.IntegrationRepository().Snapshot(); err != nil {
+	if _, err := sqlitefixture.NewDesiredStateRepositoryFromStore(reader).Snapshot(); err != nil {
 		t.Fatalf("initialize SQLite snapshot before starting polling worker: %v", err)
 	}
 	definition := definitionsdomain.Definition{ID: "fixture", Version: "1.0.0", Validate: func(map[string]any) error { return nil }, Contribute: func(map[string]any) (definitionsdomain.Contribution, error) {
@@ -180,7 +180,7 @@ func TestPeriodicSQLitePollingDetectsCommittedCrossProcessDesiredChange(t *testi
 		t.Fatal(err)
 	}
 	observed := make(chan uint64, 8)
-	controller := Controller{Desired: reader.IntegrationRepository(), Baseline: staticBaseline{}, Resolver: integrationContributionResolverTest{resolver: definitionsapp.NewResolver(registry)}, Compiler: &testCompiler{}, Validator: func(context.Context, collectorruntime.Candidate) error { return nil }, Applier: recordingApplier{revisions: observed}, Attempts: &testAttempts{}}
+	controller := Controller{Desired: sqlitefixture.NewDesiredStateRepositoryFromStore(reader), Baseline: staticBaseline{}, Resolver: integrationContributionResolverTest{resolver: definitionsapp.NewResolver(registry)}, Compiler: &testCompiler{}, Validator: func(context.Context, collectorruntime.Candidate) error { return nil }, Applier: recordingApplier{revisions: observed}, Attempts: &testAttempts{}}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
@@ -191,10 +191,10 @@ func TestPeriodicSQLitePollingDetectsCommittedCrossProcessDesiredChange(t *testi
 			t.Fatalf("startup revision=%d want 0", revision)
 		}
 	case <-time.After(10 * time.Second):
-		snapshot, snapshotErr := reader.IntegrationRepository().Snapshot()
+		snapshot, snapshotErr := sqlitefixture.NewDesiredStateRepositoryFromStore(reader).Snapshot()
 		t.Fatalf("startup reconciliation did not run: current SQLite snapshot=%+v snapshot_error=%v", snapshot, snapshotErr)
 	}
-	service := desiredstateapp.NewService(desiredStateResolver{resolver: definitionsapp.NewResolver(registry)}, writer.IntegrationRepository())
+	service := desiredstateapp.NewService(desiredStateResolver{resolver: definitionsapp.NewResolver(registry)}, sqlitefixture.NewDesiredStateRepositoryFromStore(writer))
 	if _, _, err := service.Put(desiredstatedomain.Instance{ID: "cross-process", DefinitionID: "fixture", DefinitionVersion: "1.0.0", Configuration: map[string]any{}, Enabled: true}, 0); err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +304,7 @@ service:
 		t.Fatal(err)
 	}
 	resolver := definitionsapp.NewResolver(registry)
-	repository := store.IntegrationRepository()
+	repository := sqlitefixture.NewDesiredStateRepositoryFromStore(store)
 	service := desiredstateapp.NewService(desiredStateResolver{resolver: resolver}, repository)
 	_, _, err = service.Put(desiredstatedomain.Instance{ID: "postgres-a", DefinitionID: definition.ID, DefinitionVersion: definition.Version, Configuration: map[string]any{"endpoint": "127.0.0.1:5432"}, Enabled: true}, 0)
 	if err != nil {

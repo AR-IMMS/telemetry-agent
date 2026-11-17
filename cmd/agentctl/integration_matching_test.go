@@ -65,7 +65,7 @@ func TestIntegrationMatchReadsPersistedInventoryWithoutDesiredStateMutation(t *t
 	if err := repository.CommitProviderSnapshot(0, snapshot, []inventorydomain.Resource{resource}, true); err != nil {
 		t.Fatal(err)
 	}
-	desired := store.IntegrationRepository()
+	desired := newTestDesiredStateRepository(store)
 	before, err := desired.Snapshot()
 	if err != nil {
 		t.Fatal(err)

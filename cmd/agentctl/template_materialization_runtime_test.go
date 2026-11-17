@@ -57,14 +57,14 @@ func TestRuntimeTemplateMaterializerProjectsStableInstancesAndNoOps(t *testing.T
 		t.Fatal(err)
 	}
 	materializer := runtimeTemplateMaterializer{
-		inventory: sqlitefixture.NewInventoryRepositoryFromStore(store), templates: templates, desired: store.IntegrationRepository(),
+		inventory: sqlitefixture.NewInventoryRepositoryFromStore(store), templates: templates, desired: newTestDesiredStateRepository(store),
 		service: materializationapp.NewService(store.MaterializationRepository()),
 		matcher: templatesmonitoringapp.NewEvaluator(registry, supportedTemplateCapability{}),
 	}
 	if err := materializer.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	first, err := store.IntegrationRepository().Snapshot()
+	first, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil || first.Revision != 1 || len(first.Instances) != 1 || !first.Instances[0].Enabled {
 		t.Fatalf("first desired snapshot=%+v err=%v", first, err)
 	}
@@ -72,7 +72,7 @@ func TestRuntimeTemplateMaterializerProjectsStableInstancesAndNoOps(t *testing.T
 	if err := materializer.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	unchanged, err := store.IntegrationRepository().Snapshot()
+	unchanged, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil || unchanged.Revision != first.Revision || unchanged.Instances[0].Revision != first.Instances[0].Revision {
 		t.Fatalf("identical projection changed desired state: %+v err=%v", unchanged, err)
 	}
@@ -84,7 +84,7 @@ func TestRuntimeTemplateMaterializerProjectsStableInstancesAndNoOps(t *testing.T
 	if err := materializer.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	multiple, err := store.IntegrationRepository().Snapshot()
+	multiple, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil || multiple.Revision != 2 || len(multiple.Instances) != 2 {
 		t.Fatalf("multi-resource desired snapshot=%+v err=%v", multiple, err)
 	}
@@ -103,7 +103,7 @@ func TestRuntimeTemplateMaterializerProjectsStableInstancesAndNoOps(t *testing.T
 	if err := materializer.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	disabled, err := store.IntegrationRepository().Snapshot()
+	disabled, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil || disabled.Revision != 3 || len(disabled.Instances) != 2 {
 		t.Fatalf("disabled desired snapshot=%+v err=%v", disabled, err)
 	}
@@ -121,7 +121,7 @@ func TestRuntimeTemplateMaterializerProjectsStableInstancesAndNoOps(t *testing.T
 	if err := materializer.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	reenabled, err := store.IntegrationRepository().Snapshot()
+	reenabled, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil || reenabled.Revision != 4 || len(reenabled.Instances) != 2 {
 		t.Fatalf("re-enabled desired snapshot=%+v err=%v", reenabled, err)
 	}
@@ -149,7 +149,7 @@ func TestNativeRedisProfileDoesNotCreateAgentInstancesDuringContainerChurn(t *te
 		t.Fatal(err)
 	}
 	materializer := runtimeTemplateMaterializer{
-		inventory: sqlitefixture.NewInventoryRepositoryFromStore(store), templates: templates, desired: store.IntegrationRepository(),
+		inventory: sqlitefixture.NewInventoryRepositoryFromStore(store), templates: templates, desired: newTestDesiredStateRepository(store),
 		service:          materializationapp.NewService(store.MaterializationRepository()),
 		matcher:          templatesmonitoringapp.NewEvaluator(registry, supportedTemplateCapability{}),
 		nativeMonitoring: true, nativeProfiles: monitoringdomain.DefaultRegistry(),
@@ -163,7 +163,7 @@ func TestNativeRedisProfileDoesNotCreateAgentInstancesDuringContainerChurn(t *te
 			t.Fatal(err)
 		}
 	}
-	desired, err := store.IntegrationRepository().Snapshot()
+	desired, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +209,7 @@ func TestRuntimeTemplateUpdateChangesGeneratedInstancesButPreservesManualState(t
 	if _, err := coordinator.DiscoverOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	desiredRepository := store.IntegrationRepository()
+	desiredRepository := newTestDesiredStateRepository(store)
 	materializer := runtimeTemplateMaterializer{
 		inventory: sqlitefixture.NewInventoryRepositoryFromStore(store), templates: templates, desired: desiredRepository,
 		service: materializationapp.NewService(store.MaterializationRepository()),
@@ -285,7 +285,7 @@ func TestRuntimeTemplateMaterializerPreservesFailureAndTracksResourceLifecycle(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	desiredRepository := store.IntegrationRepository()
+	desiredRepository := newTestDesiredStateRepository(store)
 	materializer := runtimeTemplateMaterializer{
 		inventory: sqlitefixture.NewInventoryRepositoryFromStore(store), templates: templates, desired: desiredRepository,
 		service: materializationapp.NewService(store.MaterializationRepository()),

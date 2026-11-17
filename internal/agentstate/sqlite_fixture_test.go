@@ -5,10 +5,11 @@ import (
 	"fmt"
 
 	"github.com/ar-imms/telemetry-agent/internal/app/migrations"
+	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
 	proposalapp "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	remoteconfigsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig/sqlite"
-	proposalsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
+	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	enrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
@@ -42,7 +43,11 @@ func newTestInventoryRepository(store SQLiteStore) inventoryapp.InventoryReposit
 }
 
 func newTestProposalRepository(store SQLiteStore) proposalapp.ProposalRepository {
-	return proposalsqlite.NewProposalRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
+	return configurationsqlite.NewProposalRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
+}
+
+func newTestDesiredStateRepository(store SQLiteStore) desiredstateapp.Repository {
+	return configurationsqlite.NewIntegrationRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
 }
 
 func newTestCoreGatewayStore(path string) coreconfig.GatewayRuntimeRepository {

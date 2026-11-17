@@ -306,7 +306,7 @@ func TestSQLiteInventoryMigrationFromPopulatedV9PreservesExistingState(t *testin
 		t.Fatal(err)
 	}
 	instance := desiredstatedomain.Instance{ID: "redis-main", DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true, Configuration: map[string]any{"endpoint": "127.0.0.1:6379"}}
-	if _, _, err := store.IntegrationRepository().Put(instance, 0); err != nil {
+	if _, _, err := newTestDesiredStateRepository(store).Put(instance, 0); err != nil {
 		t.Fatal(err)
 	}
 	db, err := store.open()
@@ -337,7 +337,7 @@ func TestSQLiteInventoryMigrationFromPopulatedV9PreservesExistingState(t *testin
 	if loaded.DesiredGeneration != 8 || loaded.ActivatedGeneration != 7 || loaded.AppliedGeneration != 7 || !loaded.Dependencies["host"].Enabled {
 		t.Fatalf("M1/M2 state changed: %+v", loaded)
 	}
-	desired, err := restarted.IntegrationRepository().Snapshot()
+	desired, err := newTestDesiredStateRepository(restarted).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}

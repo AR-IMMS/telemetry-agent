@@ -24,7 +24,7 @@ func TestSQLiteMaterializationPublishesOnlyCommittedDesiredRevision(t *testing.T
 	var published []uint64
 	publisher := desiredEventPublisherFunc(func(event events.DesiredConfigurationChanged) error {
 		published = append(published, event.Revision)
-		snapshot, err := store.IntegrationRepository().Snapshot()
+		snapshot, err := newTestDesiredStateRepository(store).Snapshot()
 		if err != nil {
 			return err
 		}
@@ -69,7 +69,7 @@ func TestSQLiteMaterializationQueueFailureDoesNotUndoCommittedWrite(t *testing.T
 	if revision, err := repository.ApplyTemplateProjection(batch); err != nil || revision != 1 {
 		t.Fatalf("committed write failed because advisory queue was full: revision=%d err=%v", revision, err)
 	}
-	snapshot, err := store.IntegrationRepository().Snapshot()
+	snapshot, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil || snapshot.Revision != 1 || len(snapshot.Instances) != 1 {
 		t.Fatalf("durable desired state snapshot=%+v err=%v", snapshot, err)
 	}
@@ -91,7 +91,7 @@ func TestSQLiteMaterializationAppliesTemplateProjectionIdempotently(t *testing.T
 	if err != nil || revision != 1 {
 		t.Fatalf("ApplyTemplateProjection() revision=%d err=%v", revision, err)
 	}
-	snapshot, err := store.IntegrationRepository().Snapshot()
+	snapshot, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil || snapshot.Revision != 1 || len(snapshot.Instances) != 1 {
 		t.Fatalf("desired snapshot=%+v err=%v", snapshot, err)
 	}
@@ -104,7 +104,7 @@ func TestSQLiteMaterializationAppliesTemplateProjectionIdempotently(t *testing.T
 	if err != nil || revision != 1 {
 		t.Fatalf("idempotent projection revision=%d err=%v", revision, err)
 	}
-	snapshot, err = store.IntegrationRepository().Snapshot()
+	snapshot, err = newTestDesiredStateRepository(store).Snapshot()
 	if err != nil || snapshot.Revision != 1 || snapshot.Instances[0].Revision != 1 {
 		t.Fatalf("no-op advanced desired state: snapshot=%+v err=%v", snapshot, err)
 	}
@@ -116,7 +116,7 @@ func TestSQLiteMaterializationAppliesTemplateProjectionIdempotently(t *testing.T
 	if err != nil || revision != 2 {
 		t.Fatalf("suspend revision=%d err=%v", revision, err)
 	}
-	snapshot, err = store.IntegrationRepository().Snapshot()
+	snapshot, err = newTestDesiredStateRepository(store).Snapshot()
 	if err != nil || snapshot.Revision != 2 || len(snapshot.Instances) != 1 || snapshot.Instances[0].Enabled || snapshot.Instances[0].Revision != 2 {
 		t.Fatalf("suspended snapshot=%+v err=%v", snapshot, err)
 	}
@@ -138,7 +138,7 @@ func TestSQLiteMaterializationRejectsStaleSnapshotTokens(t *testing.T) {
 			}
 		}, batch: materializationdomain.Batch{ExpectedInventoryWriteRevision: 1, ExpectedTemplateSetRevision: 1}},
 		{name: "desired", mutate: func(t *testing.T, store SQLiteStore) {
-			if _, _, err := store.IntegrationRepository().Put(integrationInstance("local-cache", "localhost:6380"), 0); err != nil {
+			if _, _, err := newTestDesiredStateRepository(store).Put(integrationInstance("local-cache", "localhost:6380"), 0); err != nil {
 				t.Fatal(err)
 			}
 		}, batch: materializationdomain.Batch{ExpectedInventoryWriteRevision: 1, ExpectedTemplateSetRevision: 1}},
@@ -169,7 +169,7 @@ func TestSQLiteMaterializationRollsBackAllProjectionWrites(t *testing.T) {
 	if err == nil {
 		t.Fatal("projection succeeded despite desired revision trigger failure")
 	}
-	snapshot, snapshotErr := store.IntegrationRepository().Snapshot()
+	snapshot, snapshotErr := newTestDesiredStateRepository(store).Snapshot()
 	if snapshotErr != nil || snapshot.Revision != 0 || len(snapshot.Instances) != 0 {
 		t.Fatalf("partial projection survived rollback: snapshot=%+v err=%v", snapshot, snapshotErr)
 	}
@@ -212,7 +212,7 @@ func TestSQLiteMaterializationSerializesConcurrentSnapshotWriters(t *testing.T) 
 	if succeeded != 1 || conflicted != 1 {
 		t.Fatalf("successful projections=%d conflicts=%d, want 1 each", succeeded, conflicted)
 	}
-	snapshot, err := store.IntegrationRepository().Snapshot()
+	snapshot, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil || snapshot.Revision != 1 || len(snapshot.Instances) != 1 {
 		t.Fatalf("concurrent writer snapshot=%+v err=%v", snapshot, err)
 	}

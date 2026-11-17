@@ -7,10 +7,11 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/app/migrations"
+	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
 	proposalapp "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	remoteconfigsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig/sqlite"
-	proposalsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
+	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	enrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
 	installation "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
@@ -35,7 +36,13 @@ func NewInventoryRepositoryFromStore(store agentstate.SQLiteStore) inventoryapp.
 // NewProposalRepositoryFromStore constructs a Configuration adapter over a
 // test store while sharing the production SQLite transaction lock.
 func NewProposalRepositoryFromStore(store agentstate.SQLiteStore) proposalapp.ProposalRepository {
-	return proposalsqlite.NewProposalRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
+	return configurationsqlite.NewProposalRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
+}
+
+// NewDesiredStateRepositoryFromStore constructs a Configuration adapter over a
+// test store while sharing the production SQLite transaction lock.
+func NewDesiredStateRepositoryFromStore(store agentstate.SQLiteStore) desiredstateapp.Repository {
+	return configurationsqlite.NewIntegrationRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
 }
 
 // NewStore returns a fixture Agent state repository.

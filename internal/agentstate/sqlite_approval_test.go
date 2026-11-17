@@ -32,7 +32,7 @@ func TestSQLiteApprovalCommitsProposalAndDesiredStateAtomically(t *testing.T) {
 	if got, desired, err := store.ApprovalRepository().CommitApproval(commit); err != nil || got.Revision != 1 || desired != 1 {
 		t.Fatalf("idempotent approval=%+v desired=%d err=%v", got, desired, err)
 	}
-	snapshot, err := store.IntegrationRepository().Snapshot()
+	snapshot, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil || snapshot.Revision != 1 || len(snapshot.Instances) != 1 {
 		t.Fatalf("desired snapshot=%+v err=%v", snapshot, err)
 	}
@@ -56,7 +56,7 @@ func TestSQLiteApprovalRollsBackEveryWriteWhenTerminalProposalUpdateFails(t *tes
 	if _, _, err := store.ApprovalRepository().CommitApproval(approvalFixture(proposal, 0)); err == nil {
 		t.Fatal("approval succeeded despite injected proposal write failure")
 	}
-	snapshot, err := store.IntegrationRepository().Snapshot()
+	snapshot, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil || snapshot.Revision != 0 || len(snapshot.Instances) != 0 {
 		t.Fatalf("partial desired mutation survived rollback: %+v err=%v", snapshot, err)
 	}
@@ -122,7 +122,7 @@ func TestSQLiteApprovalRejectsEquivalentManualIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	manual := desiredstatedomain.Instance{ID: "manual-cache", DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true, Configuration: map[string]any{"endpoint": "127.0.0.1:6379"}}
-	if _, _, err := store.IntegrationRepository().Put(manual, 0); err != nil {
+	if _, _, err := newTestDesiredStateRepository(store).Put(manual, 0); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := store.ApprovalRepository().CommitApproval(approvalFixture(proposal, 1)); !errors.Is(err, proposals.ErrApprovalDuplicate) {
@@ -157,7 +157,7 @@ func TestSQLiteApprovalConcurrentRepeatAdvancesDesiredSetOnce(t *testing.T) {
 			t.Fatalf("concurrent idempotent approval error=%v", err)
 		}
 	}
-	snapshot, err := newTestSQLiteStore(store.path).IntegrationRepository().Snapshot()
+	snapshot, err := newTestDesiredStateRepository(newTestSQLiteStore(store.path)).Snapshot()
 	if err != nil || snapshot.Revision != 1 || len(snapshot.Instances) != 1 || snapshot.Instances[0].Revision != 1 {
 		t.Fatalf("concurrent approval desired snapshot=%+v err=%v", snapshot, err)
 	}

@@ -235,7 +235,7 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	desiredBeforeChurn, err := store.IntegrationRepository().Snapshot()
+	desiredBeforeChurn, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}

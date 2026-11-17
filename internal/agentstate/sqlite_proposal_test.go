@@ -110,7 +110,7 @@ func TestMonitoringProposalMigrationFromV11PreservesExistingState(t *testing.T) 
 	if err := store.Save(want); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := store.IntegrationRepository().Put(integrationInstance("cache", "localhost:6379"), 0); err != nil {
+	if _, _, err := newTestDesiredStateRepository(store).Put(integrationInstance("cache", "localhost:6379"), 0); err != nil {
 		t.Fatal(err)
 	}
 	providerSnapshot, resources := inventoryFixture(time.Now().UTC(), "container-a")
@@ -134,7 +134,7 @@ func TestMonitoringProposalMigrationFromV11PreservesExistingState(t *testing.T) 
 	if err != nil || state.DesiredGeneration != want.DesiredGeneration || state.ActivatedGeneration != want.ActivatedGeneration || state.AppliedGeneration != want.AppliedGeneration || !state.Dependencies["host"].Enabled {
 		t.Fatalf("M2 state after migration=%+v err=%v", state, err)
 	}
-	snapshot, err := restarted.IntegrationRepository().Snapshot()
+	snapshot, err := newTestDesiredStateRepository(restarted).Snapshot()
 	if err != nil || snapshot.Revision != 1 || len(snapshot.Instances) != 1 {
 		t.Fatalf("Integration state after migration=%+v err=%v", snapshot, err)
 	}

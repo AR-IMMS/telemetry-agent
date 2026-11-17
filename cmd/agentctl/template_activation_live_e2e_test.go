@@ -131,7 +131,7 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 	if err := materializer.Refresh(ctx); err != nil {
 		t.Fatal(err)
 	}
-	desired, err := store.IntegrationRepository().Snapshot()
+	desired, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +245,7 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 		stopService()
 		t.Fatalf("updated Template candidate lost host or Gateway components: %s", updatedConfig)
 	}
-	desiredBeforeNoOp, err := store.IntegrationRepository().Snapshot()
+	desiredBeforeNoOp, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil {
 		stopService()
 		t.Fatalf("read desired snapshot before no-op materialization: %v", err)
@@ -254,7 +254,7 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 		stopService()
 		t.Fatalf("repeat unchanged Template materialization: %v", err)
 	}
-	desiredAfterNoOp, err := store.IntegrationRepository().Snapshot()
+	desiredAfterNoOp, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil || desiredAfterNoOp.Revision != desiredBeforeNoOp.Revision {
 		stopService()
 		t.Fatalf("unchanged materialization advanced desired revision: before=%d after=%d err=%v", desiredBeforeNoOp.Revision, desiredAfterNoOp.Revision, err)
@@ -391,7 +391,7 @@ func waitForTemplateActivation(t *testing.T, ctx context.Context, store agentsta
 
 func assertTemplateInstancesEnabled(t *testing.T, store agentstate.SQLiteStore, enabled bool, resourceIDs []string) {
 	t.Helper()
-	snapshot, err := store.IntegrationRepository().Snapshot()
+	snapshot, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil {
 		t.Fatalf("read generated Integration instances: %v", err)
 	}

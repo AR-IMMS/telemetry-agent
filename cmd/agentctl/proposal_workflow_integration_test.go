@@ -48,7 +48,7 @@ func TestPersistedInventoryToProposalAndExplicitApproval(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("approval command code=%d stderr=%s", code, stderr.String())
 	}
-	desired, err := store.IntegrationRepository().Snapshot()
+	desired, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil || desired.Revision != 1 || len(desired.Instances) != 1 {
 		t.Fatalf("desired snapshot=%+v err=%v", desired, err)
 	}

@@ -53,7 +53,7 @@ func TestLiveDockerInventoryWhenExplicitlyEnabled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	desiredBefore, err := store.IntegrationRepository().Snapshot()
+	desiredBefore, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestLiveDockerInventoryWhenExplicitlyEnabled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	desiredAfter, err := store.IntegrationRepository().Snapshot()
+	desiredAfter, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +215,7 @@ func TestLiveDockerProposalAndExplicitApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	desiredBefore, err := store.IntegrationRepository().Snapshot()
+	desiredBefore, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +239,7 @@ func TestLiveDockerProposalAndExplicitApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	matchDesired, err := store.IntegrationRepository().Snapshot()
+	matchDesired, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +275,7 @@ func TestLiveDockerProposalAndExplicitApproval(t *testing.T) {
 	}, &approvalOutput, &stderr); code != 0 {
 		t.Fatalf("proposal approval code=%d stderr=%s", code, stderr.String())
 	}
-	desiredAfter, err := store.IntegrationRepository().Snapshot()
+	desiredAfter, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil || len(desiredAfter.Instances) != len(desiredBefore.Instances)+1 || desiredAfter.Revision != desiredBefore.Revision+1 {
 		t.Fatalf("desired state after approval=%+v err=%v", desiredAfter, err)
 	}

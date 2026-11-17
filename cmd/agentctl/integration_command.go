@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/app"
 	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
 	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation"
@@ -74,7 +75,7 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 	if !ok {
 		return integrationCommandError(stderr, command, fmt.Errorf("SQLite state store is required"))
 	}
-	repository := store.IntegrationRepository()
+	repository := app.NewDesiredStateRepository(*statePath)
 	diagnostics := store.ReconciliationRepository()
 	switch command {
 	case "configure", "update":

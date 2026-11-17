@@ -7,10 +7,11 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/app/migrations"
+	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
 	proposalapp "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	remoteconfigsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig/sqlite"
-	proposalsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
+	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	enrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
@@ -58,7 +59,14 @@ func NewInventoryRepository(path string) inventoryapp.InventoryRepository {
 // using the Application's ordered migration registry and shared SQLite lock.
 func NewProposalRepository(path string) proposalapp.ProposalRepository {
 	store := agentstate.NewSQLiteStoreForPath(path, initializeAgentSQLiteSchema)
-	return proposalsqlite.NewProposalRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
+	return configurationsqlite.NewProposalRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
+}
+
+// NewDesiredStateRepository constructs the Configuration-owned desired-state
+// adapter using the Application's ordered migration registry and shared lock.
+func NewDesiredStateRepository(path string) desiredstateapp.Repository {
+	store := agentstate.NewSQLiteStoreForPath(path, initializeAgentSQLiteSchema)
+	return configurationsqlite.NewIntegrationRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
 }
 
 // NewCoreGatewayRuntimeStore constructs the Core Gateway adapter using the

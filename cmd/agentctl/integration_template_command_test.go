@@ -22,7 +22,7 @@ func TestIntegrationTemplateCommandsUseConfigurationWithoutReconciling(t *testin
 	if !strings.Contains(stdout.String(), "revision=1") || !strings.Contains(stdout.String(), "template_set_revision=1") {
 		t.Fatalf("create output=%q", stdout.String())
 	}
-	desired, err := sqlitefixture.NewSQLiteStore(path).IntegrationRepository().Snapshot()
+	desired, err := newTestDesiredStateRepository(sqlitefixture.NewSQLiteStore(path)).Snapshot()
 	if err != nil || desired.Revision != 0 || len(desired.Instances) != 0 {
 		t.Fatalf("template command mutated active desired state: %+v err=%v", desired, err)
 	}

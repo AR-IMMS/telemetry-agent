@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/domain"
 	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
@@ -44,6 +45,28 @@ func TestProposalRepositoryUsesComposedSQLiteDatabase(t *testing.T) {
 	}
 	if len(proposals) != 0 {
 		t.Fatalf("initial Configuration proposals=%d, want 0", len(proposals))
+	}
+}
+
+func TestDesiredStateRepositoryUsesComposedSQLiteDatabase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	repository := NewDesiredStateRepository(path)
+	snapshot, err := repository.Snapshot()
+	if err != nil {
+		t.Fatalf("read initial Configuration desired state: %v", err)
+	}
+	if snapshot.Revision != 0 || len(snapshot.Instances) != 0 {
+		t.Fatalf("initial desired state=%+v, want empty revision 0", snapshot)
+	}
+	if _, revision, err := repository.Put(desiredstatedomain.Instance{
+		ID: "cache", DefinitionID: "redis", DefinitionVersion: "1.0.0",
+		Configuration: map[string]any{"endpoint": "127.0.0.1:6379"}, Enabled: true,
+	}, 0); err != nil || revision != 1 {
+		t.Fatalf("persist desired instance revision=%d err=%v", revision, err)
+	}
+	reopened, err := NewDesiredStateRepository(path).Snapshot()
+	if err != nil || reopened.Revision != 1 || len(reopened.Instances) != 1 || reopened.Instances[0].ID != "cache" {
+		t.Fatalf("reopened desired state=%+v err=%v", reopened, err)
 	}
 }
 

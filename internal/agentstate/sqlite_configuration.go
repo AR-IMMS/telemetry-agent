@@ -3,7 +3,6 @@ package agentstate
 import (
 	"database/sql"
 
-	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
 	materializationapp "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/application"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 	reconciliationcontracts "github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation/contracts"
@@ -12,11 +11,6 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 	platformsqlite "github.com/ar-imms/telemetry-agent/internal/platform/sqlite"
 )
-
-// IntegrationRepository returns the Configuration-owned desired-state adapter.
-func (s SQLiteStore) IntegrationRepository() desiredstateapp.Repository {
-	return configurationsqlite.NewIntegrationRepository(s.OpenDatabase, platformsqlite.UpdateLocker())
-}
 
 // TemplateRepository returns the Configuration-owned Template adapter.
 func (s SQLiteStore) TemplateRepository() templatesapp.Repository {

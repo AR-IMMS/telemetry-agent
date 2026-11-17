@@ -100,7 +100,7 @@ func TestSQLiteTemplateMigrationFromV12PreservesPopulatedOperationalTables(t *te
 	if _, err := newTestIdentityStore(path).EnsureInstallationID(installationID); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := store.IntegrationRepository().Put(integrationInstance("legacy-cache", "localhost:6379"), 0); err != nil {
+	if _, _, err := newTestDesiredStateRepository(store).Put(integrationInstance("legacy-cache", "localhost:6379"), 0); err != nil {
 		t.Fatal(err)
 	}
 	db, err := store.open()
@@ -198,7 +198,7 @@ func TestSQLiteTemplateSnapshotsRemainConsistentDuringConcurrentCreates(t *testi
 
 func TestSQLiteIntegrationRepositoryCannotMutateTemplateOwnedInstance(t *testing.T) {
 	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
-	repository := store.IntegrationRepository()
+	repository := newTestDesiredStateRepository(store)
 	instance := desiredstatedomain.Instance{
 		ID: "template-0123456789abcdef01234567", DefinitionID: "redis", DefinitionVersion: "1.0.0",
 		Configuration: map[string]any{"endpoint": "127.0.0.1:6379"}, Source: desiredstatedomain.SourceTemplate,

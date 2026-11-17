@@ -182,7 +182,7 @@ func TestLiveDockerApplicationProfilesDeliverOTLP(t *testing.T) {
 		t.Logf("PR06_OTLP_DELIVERED metric=%s resource_id=%s node_id=%s", metric, resourceID, nodeID)
 	}
 	assertNativeReceiverUniqueness(t, collectorLogs.output())
-	desired, err := store.IntegrationRepository().Snapshot()
+	desired, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}

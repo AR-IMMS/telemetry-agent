@@ -49,7 +49,7 @@ func TestPreMovePopulatedDatabaseSurvivesOpenAndReopen(t *testing.T) {
 		if attempt.Payload.AttemptID != "10000000-0000-4000-8000-000000000001" || attempt.Payload.Installation.ID != installationID.String() || attempt.Status != "pending" {
 			t.Fatalf("open %d enrollment attempt changed: %+v", open, attempt)
 		}
-		desired, err := store.IntegrationRepository().Snapshot()
+		desired, err := newTestDesiredStateRepository(store).Snapshot()
 		if err != nil || desired.Revision != 1 || len(desired.Instances) != 1 || desired.Instances[0].ID != "redis-main" {
 			t.Fatalf("open %d desired state=%+v err=%v", open, desired, err)
 		}
