@@ -43,9 +43,27 @@ func TestExecuteMonitoringAliasesMatchLegacyDispatch(t *testing.T) {
 		aliasArgs  []string
 	}{
 		{name: "instance configure", legacyArgs: []string{"integration", "configure", "--id", "cache"}, aliasArgs: []string{"monitoring", "instance", "configure", "--id", "cache"}},
+		{name: "instance update", legacyArgs: []string{"integration", "update", "--id", "cache"}, aliasArgs: []string{"monitoring", "instance", "update", "--id", "cache"}},
+		{name: "instance enable", legacyArgs: []string{"integration", "enable", "--id", "cache"}, aliasArgs: []string{"monitoring", "instance", "enable", "--id", "cache"}},
+		{name: "instance disable", legacyArgs: []string{"integration", "disable", "--id", "cache"}, aliasArgs: []string{"monitoring", "instance", "disable", "--id", "cache"}},
+		{name: "instance delete", legacyArgs: []string{"integration", "delete", "--id", "cache"}, aliasArgs: []string{"monitoring", "instance", "delete", "--id", "cache"}},
+		{name: "instance list", legacyArgs: []string{"integration", "list", "--output", "json"}, aliasArgs: []string{"monitoring", "instance", "list", "--output", "json"}},
+		{name: "instance inspect", legacyArgs: []string{"integration", "inspect", "--id", "cache"}, aliasArgs: []string{"monitoring", "instance", "inspect", "--id", "cache"}},
 		{name: "instance status", legacyArgs: []string{"integration", "status", "--state-path", "agent.db"}, aliasArgs: []string{"monitoring", "instance", "status", "--state-path", "agent.db"}},
+		{name: "instance history", legacyArgs: []string{"integration", "history", "--id", "cache"}, aliasArgs: []string{"monitoring", "instance", "history", "--id", "cache"}},
+		{name: "instance retry", legacyArgs: []string{"integration", "retry", "--id", "cache"}, aliasArgs: []string{"monitoring", "instance", "retry", "--id", "cache"}},
+		{name: "profile list", legacyArgs: []string{"integration", "catalog", "list"}, aliasArgs: []string{"monitoring", "profile", "list"}},
 		{name: "profile inspect", legacyArgs: []string{"integration", "catalog", "inspect", "--id", "redis"}, aliasArgs: []string{"monitoring", "profile", "inspect", "--id", "redis"}},
+		{name: "template create", legacyArgs: []string{"integration", "template", "create", "--file", "template.json"}, aliasArgs: []string{"monitoring", "template", "create", "--file", "template.json"}},
 		{name: "template update", legacyArgs: []string{"integration", "template", "update", "--id", "local"}, aliasArgs: []string{"monitoring", "template", "update", "--id", "local"}},
+		{name: "template list", legacyArgs: []string{"integration", "template", "list"}, aliasArgs: []string{"monitoring", "template", "list"}},
+		{name: "template inspect", legacyArgs: []string{"integration", "template", "inspect", "--id", "local", "--output", "summary"}, aliasArgs: []string{"monitoring", "template", "inspect", "--id", "local", "--output", "summary"}},
+		{name: "template enable", legacyArgs: []string{"integration", "template", "enable", "--id", "local"}, aliasArgs: []string{"monitoring", "template", "enable", "--id", "local"}},
+		{name: "template disable", legacyArgs: []string{"integration", "template", "disable", "--id", "local"}, aliasArgs: []string{"monitoring", "template", "disable", "--id", "local"}},
+		{name: "template delete", legacyArgs: []string{"integration", "template", "delete", "--id", "local"}, aliasArgs: []string{"monitoring", "template", "delete", "--id", "local"}},
+		{name: "proposal list", legacyArgs: []string{"discovery", "proposals", "list"}, aliasArgs: []string{"monitoring", "proposal", "list"}},
+		{name: "proposal inspect", legacyArgs: []string{"discovery", "proposals", "inspect", "--id", "proposal-1"}, aliasArgs: []string{"monitoring", "proposal", "inspect", "--id", "proposal-1"}},
+		{name: "proposal dismiss", legacyArgs: []string{"discovery", "proposals", "dismiss", "--id", "proposal-1", "--revision", "3"}, aliasArgs: []string{"monitoring", "proposal", "dismiss", "--id", "proposal-1", "--revision", "3"}},
 		{name: "proposal approve", legacyArgs: []string{"discovery", "proposals", "approve", "--id", "proposal-1", "--revision", "2"}, aliasArgs: []string{"monitoring", "proposal", "approve", "--id", "proposal-1", "--revision", "2"}},
 	}
 
