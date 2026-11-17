@@ -10,7 +10,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation"
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
-	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
+	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"

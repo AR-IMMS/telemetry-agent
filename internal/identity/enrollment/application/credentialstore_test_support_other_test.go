@@ -1,5 +1,5 @@
 //go:build !windows
 
-package enrollment_test
+package application_test
 
 func canPersistPlatformCredentialForTest() bool { return true }

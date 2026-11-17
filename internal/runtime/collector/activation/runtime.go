@@ -9,7 +9,7 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
-	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
+	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	runtimecontracts "github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"

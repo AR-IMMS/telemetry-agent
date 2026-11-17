@@ -19,7 +19,7 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
-	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
+	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	profilesapplication "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/application"

@@ -4,7 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
+	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	"io"
 	"os"
 	"os/signal"

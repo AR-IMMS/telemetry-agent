@@ -9,7 +9,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/app/migrations"
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	remoteconfigsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig/sqlite"
-	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
+	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
 	sqlitemigrate "github.com/ar-imms/telemetry-agent/internal/platform/sqlite/migrate"

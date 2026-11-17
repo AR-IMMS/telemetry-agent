@@ -1,6 +1,6 @@
 //go:build windows
 
-package enrollment_test
+package application_test
 
 import "golang.org/x/sys/windows"
 

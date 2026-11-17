@@ -1,4 +1,4 @@
-package enrollment
+package domain
 
 import (
 	"encoding/json"
@@ -80,33 +80,11 @@ type Environment struct {
 	Hostname     string `json:"hostname,omitempty"`
 }
 
-// EnrollmentRequest is the wire request. BootstrapToken is secret and must
-// never be persisted in SQLite or included in logs.
-type EnrollmentRequest struct {
-	BootstrapToken string `json:"bootstrap_token"`
-	EnrollmentPayload
-}
-
-// EnrollmentResponse is the validated data returned by Core on success.
-type EnrollmentResponse struct {
-	EnrollmentID   string       `json:"enrollment_id"`
-	InstallationID string       `json:"installation_id"`
-	Binding        Binding      `json:"binding"`
-	Credential     Credential   `json:"credential"`
-	ControlPlane   ControlPlane `json:"control_plane"`
-}
-
 // Binding records the active Core node binding created by enrollment.
 type Binding struct {
 	ID     string `json:"id"`
 	NodeID string `json:"node_id"`
 	Status string `json:"status"`
-}
-
-// Credential contains the issued Agent credential and is secret-bearing.
-type Credential struct {
-	Type        string `json:"type"`
-	AccessToken string `json:"access_token"`
 }
 
 // ControlPlane identifies the Core endpoint and polling interval returned by
@@ -116,29 +94,30 @@ type ControlPlane struct {
 	PollIntervalSeconds int    `json:"poll_interval_seconds"`
 }
 
-// Validate checks the Core response against the installation and trusted
-// origin before any binding or credential is persisted.
-func (r EnrollmentResponse) Validate(installationID string, trusted CoreOrigin) error {
+// ValidateBinding checks Core-issued identity against the local installation.
+func ValidateBinding(enrollmentID, installationID string, binding Binding, expectedInstallationID string) error {
 	for name, value := range map[string]string{
-		"enrollment ID":   r.EnrollmentID,
-		"installation ID": r.InstallationID,
-		"binding ID":      r.Binding.ID,
-		"binding Node ID": r.Binding.NodeID,
+		"enrollment ID":   enrollmentID,
+		"installation ID": installationID,
+		"binding ID":      binding.ID,
+		"binding Node ID": binding.NodeID,
 	} {
 		if _, err := installationid.ParseInstallationID(value); err != nil {
 			return fmt.Errorf("Core enrollment response %s is invalid: %w", name, err)
 		}
 	}
-	if r.InstallationID != installationID {
+	if installationID != expectedInstallationID {
 		return fmt.Errorf("Core enrollment response installation ID does not match this Agent")
 	}
-	if r.Binding.Status != "active" {
+	if binding.Status != "active" {
 		return fmt.Errorf("Core enrollment response binding is not active")
 	}
-	if r.Credential.Type != "bearer" || strings.TrimSpace(r.Credential.AccessToken) == "" {
-		return fmt.Errorf("Core enrollment response has an invalid Agent credential")
-	}
-	controlPlane, err := url.Parse(strings.TrimSpace(r.ControlPlane.BaseURL))
+	return nil
+}
+
+// ValidateControlPlane ensures Core's endpoint remains under the trusted origin.
+func ValidateControlPlane(value ControlPlane, trusted CoreOrigin) error {
+	controlPlane, err := url.Parse(strings.TrimSpace(value.BaseURL))
 	if err != nil || !strings.EqualFold(controlPlane.Scheme, "https") || controlPlane.Hostname() == "" ||
 		controlPlane.User != nil || controlPlane.RawQuery != "" || controlPlane.Fragment != "" {
 		return fmt.Errorf("Core enrollment response has an invalid control-plane URL")
@@ -146,7 +125,7 @@ func (r EnrollmentResponse) Validate(installationID string, trusted CoreOrigin) 
 	if !sameOrigin(trusted.value, controlPlane) {
 		return ErrUntrustedCoreOrigin
 	}
-	if r.ControlPlane.PollIntervalSeconds <= 0 {
+	if value.PollIntervalSeconds <= 0 {
 		return fmt.Errorf("Core enrollment response poll interval must be positive")
 	}
 	return nil

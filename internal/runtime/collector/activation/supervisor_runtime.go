@@ -11,7 +11,7 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	credentialstore "github.com/ar-imms/telemetry-agent/internal/identity/credentials"
-	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
+	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/opamp"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/process"

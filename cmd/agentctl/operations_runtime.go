@@ -13,7 +13,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	credentialstore "github.com/ar-imms/telemetry-agent/internal/identity/credentials"
-	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
+	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
 	"github.com/ar-imms/telemetry-agent/internal/inventory/docker"

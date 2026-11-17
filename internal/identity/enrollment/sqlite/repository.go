@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
+	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
 )

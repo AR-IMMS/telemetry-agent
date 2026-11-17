@@ -97,11 +97,14 @@ try {
     $healthContextRoot = "$modulePath/internal/health"
     $platformPackageRoot = "$modulePath/internal/platform"
 
-    # This pre-existing file is 454 lines. Avoid a mechanical split in the
-    # foundation checkpoint; it may not grow and should be reduced in a
-    # behavior-preserving context migration.
-    $transitionalSizeAllowlist = @{
-        'internal/identity/enrollment/service.go' = @{ MaxLines = 454; Reason = 'Pre-existing enrollment service; split only with a meaningful ownership boundary.' }
+    $enrollmentFacadeImportPath = "$modulePath/internal/identity/enrollment"
+    $enrollmentDomain = "$enrollmentFacadeImportPath/domain"
+    $enrollmentApplication = "$enrollmentFacadeImportPath/application"
+    $violations = [System.Collections.Generic.List[string]]::new()
+    foreach ($layerPath in @('internal/identity/enrollment/domain', 'internal/identity/enrollment/application')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $repoRoot $layerPath) -PathType Container)) {
+            $violations.Add("Identity enrollment requires a real domain and application layer: $layerPath")
+        }
     }
 
     $packageLines = & go list -f '{{.ImportPath}}|{{range .Imports}}{{.}},{{end}}' ./internal/... ./cmd/agentctl
@@ -109,7 +112,6 @@ try {
         throw 'go list failed while checking architecture imports.'
     }
 
-    $violations = [System.Collections.Generic.List[string]]::new()
     # Runtime dependency catalog selection consumes only the enabled-name
     # snapshot it needs; it must not depend on the persisted multi-context state.
     $dependencyCatalog = Join-Path $repoRoot 'internal/runtime/dependencies/catalog.go'
@@ -276,6 +278,30 @@ try {
         $imports = @()
         if (-not [string]::IsNullOrWhiteSpace($parts[1])) {
             $imports = @($parts[1] -split ',' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        }
+        if ($package -eq $enrollmentDomain) {
+            foreach ($imported in $imports) {
+                if ($imported.StartsWith("$enrollmentApplication", [StringComparison]::Ordinal) -or
+                    $imported -eq $enrollmentFacadeImportPath -or
+                    $imported.StartsWith("$enrollmentFacadeImportPath/sqlite", [StringComparison]::Ordinal) -or
+                    $imported.StartsWith("$modulePath/internal/coreapi", [StringComparison]::Ordinal) -or
+                    $imported.StartsWith("$modulePath/internal/identity/credentials", [StringComparison]::Ordinal)) {
+                    $violations.Add("Identity enrollment domain imports an outer layer or adapter: $package -> $imported")
+                }
+            }
+        }
+        if ($package -eq $enrollmentApplication) {
+            foreach ($imported in $imports) {
+                if ($imported -eq $enrollmentFacadeImportPath -or
+                    $imported.StartsWith("$enrollmentFacadeImportPath/sqlite", [StringComparison]::Ordinal) -or
+                    $imported.StartsWith("$modulePath/internal/coreapi", [StringComparison]::Ordinal) -or
+                    $imported.StartsWith("$modulePath/internal/identity/credentials", [StringComparison]::Ordinal)) {
+                    $violations.Add("Identity enrollment application imports a compatibility facade or adapter: $package -> $imported")
+                }
+            }
+        }
+        if ($imports -contains $enrollmentFacadeImportPath) {
+            $violations.Add("Package $package imports the retired Identity enrollment facade; use domain/application owner packages")
         }
         if ($package -eq $monitoringDefinitionDomain) {
             foreach ($imported in $imports) {

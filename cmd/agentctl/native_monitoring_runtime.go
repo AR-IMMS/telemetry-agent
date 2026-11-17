@@ -3,7 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
-	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
+	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
