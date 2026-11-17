@@ -1,10 +1,11 @@
 $ErrorActionPreference = 'Stop'
 $repoRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $fixturePath = Join-Path $repoRoot 'internal/inventory/docker/architecture_guard_fixture.go'
+$facadePackageFixturePath = Join-Path $repoRoot 'internal/inventory/doc.go'
 $guardPath = Join-Path $PSScriptRoot 'check-architecture.ps1'
 
-if (Test-Path -LiteralPath $fixturePath) {
-    throw "Refusing to overwrite existing architecture fixture: $fixturePath"
+if ((Test-Path -LiteralPath $fixturePath) -or (Test-Path -LiteralPath $facadePackageFixturePath)) {
+    throw 'Refusing to overwrite an existing Inventory architecture fixture.'
 }
 
 $modulePath = (& go list -m).Trim()
@@ -14,6 +15,11 @@ if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($modulePath)) {
 
 try {
     @"
+// Package inventory is a temporary package used to exercise the architecture guard.
+package inventory
+"@ | Set-Content -LiteralPath $facadePackageFixturePath -Encoding utf8
+
+    @"
 package docker
 
 import _ "$modulePath/internal/inventory"
@@ -21,7 +27,7 @@ import _ "$modulePath/internal/inventory"
 
     $output = & pwsh -NoProfile -File $guardPath 2>&1 | Out-String
     $guardExit = $LASTEXITCODE
-    if ($guardExit -eq 0 -or $output -notmatch '(Inventory adapters must use application/domain contracts|Production package must use Inventory observation owner contracts)') {
+    if ($guardExit -eq 0 -or $output -notmatch 'Production package must use Inventory observation owner contracts instead of the root compatibility facade') {
         throw "The architecture guard did not reject the compatibility-facade fixture. Output:`n$output"
     }
     Write-Output 'Negative fixture rejected: Inventory adapters cannot import the root compatibility facade.'
@@ -29,6 +35,9 @@ import _ "$modulePath/internal/inventory"
 finally {
     if (Test-Path -LiteralPath $fixturePath) {
         Remove-Item -LiteralPath $fixturePath
+    }
+    if (Test-Path -LiteralPath $facadePackageFixturePath) {
+        Remove-Item -LiteralPath $facadePackageFixturePath
     }
 }
 

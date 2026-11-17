@@ -20,7 +20,7 @@ import (
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	installationapp "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
-	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
 	profilesapplication "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/application"
 	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
@@ -198,7 +198,7 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 	for _, resourceID := range []string{firstID, secondID, fourthID} {
 		found := false
 		for _, resource := range inventory.Resources {
-			if resource.Key.ProviderResourceID == resourceID && resource.Presence == inventoryctx.PresencePresent && resource.Attributes["label.ar-imms.monitoring.enabled"] == "true" {
+			if resource.Key.ProviderResourceID == resourceID && resource.Presence == inventorydomain.PresencePresent && resource.Attributes["label.ar-imms.monitoring.enabled"] == "true" {
 				found = true
 				break
 			}
@@ -207,9 +207,9 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 			t.Fatalf("Agent inventory did not retain discovered opted-in Docker resource %q", resourceID)
 		}
 	}
-	var unpublished inventoryctx.Resource
+	var unpublished inventorydomain.Resource
 	for _, resource := range inventory.Resources {
-		if resource.Key.ProviderResourceID == thirdID && resource.Presence == inventoryctx.PresencePresent {
+		if resource.Key.ProviderResourceID == thirdID && resource.Presence == inventorydomain.PresencePresent {
 			unpublished = resource
 			break
 		}
@@ -300,9 +300,9 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 	}
 }
 
-func inventoryHasResource(snapshot inventoryctx.InventorySnapshot, resourceID string) bool {
+func inventoryHasResource(snapshot inventorydomain.InventorySnapshot, resourceID string) bool {
 	for _, resource := range snapshot.Resources {
-		if resource.Key.ProviderResourceID == resourceID && resource.Presence == inventoryctx.PresencePresent {
+		if resource.Key.ProviderResourceID == resourceID && resource.Presence == inventorydomain.PresencePresent {
 			return true
 		}
 	}
@@ -393,7 +393,7 @@ func restoreNativeDockerSocketAccess(ctx context.Context, manager string) error 
 }
 
 func waitForNativeProviderOutage(t *testing.T, ctx context.Context, repository interface {
-	Snapshot() (inventoryctx.InventorySnapshot, error)
+	Snapshot() (inventorydomain.InventorySnapshot, error)
 }) time.Time {
 	t.Helper()
 	deadline := time.NewTimer(70 * time.Second)
@@ -421,7 +421,7 @@ func waitForNativeProviderOutage(t *testing.T, ctx context.Context, repository i
 }
 
 func waitForNativeProviderRecovery(t *testing.T, ctx context.Context, repository interface {
-	Snapshot() (inventoryctx.InventorySnapshot, error)
+	Snapshot() (inventorydomain.InventorySnapshot, error)
 }, outageAt time.Time) {
 	t.Helper()
 	deadline := time.NewTimer(70 * time.Second)
@@ -526,7 +526,7 @@ func nativeInventoryMissingResources(store agentstate.SQLiteStore, resourceIDs .
 	if err != nil {
 		return []string{"inventory_snapshot_error=" + err.Error()}
 	}
-	presence := make(map[string]inventoryctx.Presence, len(resourceIDs))
+	presence := make(map[string]inventorydomain.Presence, len(resourceIDs))
 	for _, resourceID := range resourceIDs {
 		presence[resourceID] = "absent"
 	}
@@ -537,7 +537,7 @@ func nativeInventoryMissingResources(store agentstate.SQLiteStore, resourceIDs .
 	}
 	var missing []string
 	for resourceID, state := range presence {
-		if state != inventoryctx.PresencePresent {
+		if state != inventorydomain.PresencePresent {
 			missing = append(missing, fmt.Sprintf("%s=%s", resourceID, state))
 		}
 	}
@@ -658,10 +658,10 @@ func nativeRedisPublishedPort(t *testing.T, ctx context.Context, name string, pr
 	return port
 }
 
-func expectedNativeNetworkEndpoint(endpoints []inventoryctx.Endpoint) inventoryctx.Endpoint {
-	candidates := make([]inventoryctx.Endpoint, 0)
+func expectedNativeNetworkEndpoint(endpoints []inventorydomain.Endpoint) inventorydomain.Endpoint {
+	candidates := make([]inventorydomain.Endpoint, 0)
 	for _, endpoint := range endpoints {
-		if endpoint.Scope == inventoryctx.EndpointContainer && endpoint.Provenance == "container_network" && endpoint.ContainerPort == 6379 {
+		if endpoint.Scope == inventorydomain.EndpointContainer && endpoint.Provenance == "container_network" && endpoint.ContainerPort == 6379 {
 			candidates = append(candidates, endpoint)
 		}
 	}
@@ -672,7 +672,7 @@ func expectedNativeNetworkEndpoint(endpoints []inventoryctx.Endpoint) inventoryc
 		return candidates[i].NetworkName < candidates[j].NetworkName
 	})
 	if len(candidates) == 0 {
-		return inventoryctx.Endpoint{}
+		return inventorydomain.Endpoint{}
 	}
 	return candidates[0]
 }

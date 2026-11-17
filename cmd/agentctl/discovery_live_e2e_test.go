@@ -14,8 +14,9 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	proposals "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
-	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
+	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
+	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
@@ -31,7 +32,7 @@ func TestLiveDockerInventoryWhenExplicitlyEnabled(t *testing.T) {
 	expectedPresence := os.Getenv("AR_IMMS_S4_E2E_EXPECT_PRESENCE")
 	expectedLifecycle := os.Getenv("AR_IMMS_S4_E2E_EXPECT_LIFECYCLE")
 	if expectedPresence == "" {
-		expectedPresence = string(inventoryctx.PresencePresent)
+		expectedPresence = string(inventorydomain.PresencePresent)
 	}
 	if statePath == "" || fixtureID == "" || endpoint == "" {
 		t.Fatal("E2E state path, fixture ID, and explicit Docker endpoint are required")
@@ -58,15 +59,15 @@ func TestLiveDockerInventoryWhenExplicitlyEnabled(t *testing.T) {
 		t.Fatal(err)
 	}
 	repository := store.InventoryRepository()
-	coordinator, err := inventoryctx.NewCoordinator(repository, []inventoryctx.DiscoveryProvider{provider}, inventoryctx.DefaultPolicy(), 5*time.Second)
+	coordinator, err := inventoryapp.NewCoordinator(repository, []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), 5*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
 	cycles := 1
-	if expectedPresence == string(inventoryctx.PresenceMissing) {
+	if expectedPresence == string(inventorydomain.PresenceMissing) {
 		cycles = 2
 	}
-	var result inventoryctx.CycleResult
+	var result inventoryapp.CycleResult
 	for cycle := 0; cycle < cycles; cycle++ {
 		result, err = coordinator.DiscoverOnce(context.Background())
 		if err != nil {
@@ -108,7 +109,7 @@ func TestLiveDockerInventoryWhenExplicitlyEnabled(t *testing.T) {
 		t.Fatalf("provider status=%s", status.String())
 	}
 
-	if expectedPresence == string(inventoryctx.PresencePresent) {
+	if expectedPresence == string(inventorydomain.PresencePresent) {
 		stable := false
 		revision := result.InventoryRevision
 		for attempt := 0; attempt < 6; attempt++ {
@@ -160,7 +161,7 @@ func TestLiveDockerUnavailableRetainsInventory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	coordinator, err := inventoryctx.NewCoordinator(repository, []inventoryctx.DiscoveryProvider{provider}, inventoryctx.DefaultPolicy(), time.Second)
+	coordinator, err := inventoryapp.NewCoordinator(repository, []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -310,7 +311,7 @@ func TestLiveDatabaseFixturesMatchIntoNeedsInputProposals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	coordinator, err := inventoryctx.NewCoordinator(store.InventoryRepository(), []inventoryctx.DiscoveryProvider{provider}, inventoryctx.DefaultPolicy(), 5*time.Second)
+	coordinator, err := inventoryapp.NewCoordinator(store.InventoryRepository(), []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), 5*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -409,7 +410,7 @@ func (fixtureCapabilityAssessor) Assess(required []string) (integration.Capabili
 	return integration.CapabilityAssessment{Status: integration.CapabilitySupported, Platform: "test-fixture", ArtifactVersion: "test-only", ManifestVersion: "test-only", Required: append([]string(nil), required...)}, nil
 }
 
-func mustInventory(t *testing.T, repository inventoryctx.InventoryRepository) inventoryctx.InventorySnapshot {
+func mustInventory(t *testing.T, repository inventoryapp.InventoryRepository) inventorydomain.InventorySnapshot {
 	t.Helper()
 	snapshot, err := repository.Snapshot()
 	if err != nil {

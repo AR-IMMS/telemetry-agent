@@ -10,7 +10,7 @@ import (
 	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
 	templatesapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
 	templatesdomain "github.com/ar-imms/telemetry-agent/internal/configuration/templates/domain"
-	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"path/filepath"
@@ -68,15 +68,15 @@ func TestMaterializationRepositoryCommitsProjectionBeforePublishingWakeup(t *tes
 	locker := &sync.Mutex{}
 	inventory := store.InventoryRepository()
 	at := time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)
-	providerSnapshot := inventoryctx.ProviderSnapshot{
+	providerSnapshot := inventorydomain.ProviderSnapshot{
 		ProviderID: "docker", ProviderInstanceID: "local", Complete: true, ObservedAt: at,
-		Resources: []inventoryctx.ResourceObservation{{ProviderResourceID: "container-a", Kind: inventoryctx.ResourceContainer}},
+		Resources: []inventorydomain.ResourceObservation{{ProviderResourceID: "container-a", Kind: inventorydomain.ResourceContainer}},
 	}
-	resource := inventoryctx.Resource{
-		Key:  inventoryctx.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-a"},
-		Kind: inventoryctx.ResourceContainer, Presence: inventoryctx.PresencePresent, FirstSeenAt: at, LastSeenAt: at,
+	resource := inventorydomain.Resource{
+		Key:  inventorydomain.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-a"},
+		Kind: inventorydomain.ResourceContainer, Presence: inventorydomain.PresencePresent, FirstSeenAt: at, LastSeenAt: at,
 	}
-	if err := inventory.CommitProviderSnapshot(0, providerSnapshot, []inventoryctx.Resource{resource}, true); err != nil {
+	if err := inventory.CommitProviderSnapshot(0, providerSnapshot, []inventorydomain.Resource{resource}, true); err != nil {
 		t.Fatalf("commit inventory: %v", err)
 	}
 	template, _, err := configurationsqlite.NewTemplateRepository(store.OpenDatabase, locker).Put(localTemplate("redis-main", templatesdomain.StatusEnabled), 0)
@@ -121,15 +121,15 @@ func TestApprovalRepositoryCommitsProposalAndDesiredStateTogether(t *testing.T) 
 	store := sqlitefixture.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	locker := &sync.Mutex{}
 	at := time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)
-	providerSnapshot := inventoryctx.ProviderSnapshot{
+	providerSnapshot := inventorydomain.ProviderSnapshot{
 		ProviderID: "docker", ProviderInstanceID: "local", Complete: true, ObservedAt: at,
-		Resources: []inventoryctx.ResourceObservation{{ProviderResourceID: "container-a", Kind: inventoryctx.ResourceContainer}},
+		Resources: []inventorydomain.ResourceObservation{{ProviderResourceID: "container-a", Kind: inventorydomain.ResourceContainer}},
 	}
-	resource := inventoryctx.Resource{
-		Key:  inventoryctx.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-a"},
-		Kind: inventoryctx.ResourceContainer, Presence: inventoryctx.PresencePresent, FirstSeenAt: at, LastSeenAt: at,
+	resource := inventorydomain.Resource{
+		Key:  inventorydomain.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-a"},
+		Kind: inventorydomain.ResourceContainer, Presence: inventorydomain.PresencePresent, FirstSeenAt: at, LastSeenAt: at,
 	}
-	if err := store.InventoryRepository().CommitProviderSnapshot(0, providerSnapshot, []inventoryctx.Resource{resource}, true); err != nil {
+	if err := store.InventoryRepository().CommitProviderSnapshot(0, providerSnapshot, []inventorydomain.Resource{resource}, true); err != nil {
 		t.Fatalf("commit inventory: %v", err)
 	}
 	proposal := pendingProposal(t, at)

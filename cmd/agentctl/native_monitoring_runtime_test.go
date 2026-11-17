@@ -16,7 +16,7 @@ import (
 	installationapp "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
 
 	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
-	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
 	definitionsdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
 	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
@@ -203,11 +203,11 @@ func TestNativeMonitoringInputsAcceptPinnedPostgreSQLProfileCapability(t *testin
 }
 
 type nativeOwnershipInventory struct {
-	snapshot inventoryctx.InventorySnapshot
+	snapshot inventorydomain.InventorySnapshot
 	err      error
 }
 
-func (i nativeOwnershipInventory) Snapshot() (inventoryctx.InventorySnapshot, error) {
+func (i nativeOwnershipInventory) Snapshot() (inventorydomain.InventorySnapshot, error) {
 	return i.snapshot, i.err
 }
 
@@ -227,14 +227,14 @@ func TestNativeOwnershipResolverDelegatesExactlyOneReceiverOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	delegate := &nativeOwnershipDelegate{contribution: definitionsdomain.NewContribution([]definitionsdomain.ComponentIntent{intent})}
-	resource := inventoryctx.Resource{
-		Key: inventoryctx.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-a"},
+	resource := inventorydomain.Resource{
+		Key: inventorydomain.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-a"},
 		Attributes: map[string]string{
 			"label.ar-imms.monitoring.enabled": "true", "label.ar-imms.monitoring.profile": "redis",
 		},
 	}
 	resolver := nativeOwnershipResolver{
-		delegate: delegate, inventory: nativeOwnershipInventory{snapshot: inventoryctx.InventorySnapshot{Resources: []inventoryctx.Resource{resource}}},
+		delegate: delegate, inventory: nativeOwnershipInventory{snapshot: inventorydomain.InventorySnapshot{Resources: []inventorydomain.Resource{resource}}},
 		profiles: monitoringdomain.DefaultRegistry(), enabled: true,
 	}
 	resolved, err := resolver.Resolve(nativeBoundRedisInstance("container-a"))
@@ -251,14 +251,14 @@ func TestNativeOwnershipResolverKeepsLegacyAndUnmatchedTargetsAgentOwned(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, resource := range map[string]inventoryctx.Resource{
-		"unlabelled":       {Key: inventoryctx.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-a"}},
-		"different target": {Key: inventoryctx.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-b"}, Attributes: map[string]string{"label.ar-imms.monitoring.enabled": "true", "label.ar-imms.monitoring.profile": "redis"}},
+	for name, resource := range map[string]inventorydomain.Resource{
+		"unlabelled":       {Key: inventorydomain.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-a"}},
+		"different target": {Key: inventorydomain.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-b"}, Attributes: map[string]string{"label.ar-imms.monitoring.enabled": "true", "label.ar-imms.monitoring.profile": "redis"}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			delegate := &nativeOwnershipDelegate{contribution: definitionsdomain.NewContribution([]definitionsdomain.ComponentIntent{intent})}
 			resolver := nativeOwnershipResolver{
-				delegate: delegate, inventory: nativeOwnershipInventory{snapshot: inventoryctx.InventorySnapshot{Resources: []inventoryctx.Resource{resource}}},
+				delegate: delegate, inventory: nativeOwnershipInventory{snapshot: inventorydomain.InventorySnapshot{Resources: []inventorydomain.Resource{resource}}},
 				profiles: monitoringdomain.DefaultRegistry(), enabled: true,
 			}
 			resolved, err := resolver.Resolve(nativeBoundRedisInstance("container-a"))

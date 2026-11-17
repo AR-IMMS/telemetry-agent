@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
-	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
 	profilesapplication "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/application"
 	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
@@ -19,19 +19,19 @@ func TestInventoryCommandsReadPersistedSnapshot(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "state.db")
 	repository := sqlitefixture.NewSQLiteStore(statePath).InventoryRepository()
 	at := time.Now().UTC()
-	snapshot := inventoryctx.ProviderSnapshot{
+	snapshot := inventorydomain.ProviderSnapshot{
 		ProviderID: "docker", ProviderInstanceID: "local", Complete: true, ObservedAt: at,
-		Resources: []inventoryctx.ResourceObservation{{
-			ProviderResourceID: "container-1", Kind: inventoryctx.ResourceContainer,
+		Resources: []inventorydomain.ResourceObservation{{
+			ProviderResourceID: "container-1", Kind: inventorydomain.ResourceContainer,
 			DisplayName: "redis-test", LifecycleState: "running",
 			Attributes: map[string]string{"label.safe": "value", "label.ar-imms.monitoring.enabled": "true", "label.ar-imms.monitoring.profile": "redis"},
-			Endpoints: []inventoryctx.Endpoint{
-				{Address: "172.18.0.2", Port: 6379, ContainerPort: 6379, Protocol: "tcp", Scope: inventoryctx.EndpointContainer, Provenance: "container_network"},
-				{Address: "127.0.0.1", Port: 16379, ContainerPort: 6379, Protocol: "tcp", Scope: inventoryctx.EndpointHost, Provenance: "published_port"},
+			Endpoints: []inventorydomain.Endpoint{
+				{Address: "172.18.0.2", Port: 6379, ContainerPort: 6379, Protocol: "tcp", Scope: inventorydomain.EndpointContainer, Provenance: "container_network"},
+				{Address: "127.0.0.1", Port: 16379, ContainerPort: 6379, Protocol: "tcp", Scope: inventorydomain.EndpointHost, Provenance: "published_port"},
 			},
 		}},
 	}
-	resources, changed, err := inventoryctx.ReconcileProviderSnapshot(nil, snapshot, inventoryctx.DefaultPolicy())
+	resources, changed, err := inventorydomain.ReconcileProviderSnapshot(nil, snapshot, inventorydomain.DefaultPolicy())
 	if err != nil || !changed {
 		t.Fatalf("reconcile changed=%v err=%v", changed, err)
 	}
@@ -69,14 +69,14 @@ func TestInventoryListActiveOnlyExcludesMissingHistory(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "state.db")
 	repository := sqlitefixture.NewSQLiteStore(statePath).InventoryRepository()
 	at := time.Now().UTC()
-	first := inventoryctx.ProviderSnapshot{
+	first := inventorydomain.ProviderSnapshot{
 		ProviderID: "docker", ProviderInstanceID: "local", Complete: true, ObservedAt: at,
-		Resources: []inventoryctx.ResourceObservation{
-			{ProviderResourceID: "redis-v1", Kind: inventoryctx.ResourceContainer, DisplayName: "redis-old", LifecycleState: "running"},
-			{ProviderResourceID: "redis-v2", Kind: inventoryctx.ResourceContainer, DisplayName: "redis-new", LifecycleState: "running"},
+		Resources: []inventorydomain.ResourceObservation{
+			{ProviderResourceID: "redis-v1", Kind: inventorydomain.ResourceContainer, DisplayName: "redis-old", LifecycleState: "running"},
+			{ProviderResourceID: "redis-v2", Kind: inventorydomain.ResourceContainer, DisplayName: "redis-new", LifecycleState: "running"},
 		},
 	}
-	resources, changed, err := inventoryctx.ReconcileProviderSnapshot(nil, first, inventoryctx.DefaultPolicy())
+	resources, changed, err := inventorydomain.ReconcileProviderSnapshot(nil, first, inventorydomain.DefaultPolicy())
 	if err != nil || !changed {
 		t.Fatalf("first snapshot changed=%v err=%v", changed, err)
 	}
@@ -84,15 +84,15 @@ func TestInventoryListActiveOnlyExcludesMissingHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	for miss := 1; miss <= 2; miss++ {
-		snapshot := inventoryctx.ProviderSnapshot{
+		snapshot := inventorydomain.ProviderSnapshot{
 			ProviderID: "docker", ProviderInstanceID: "local", Complete: true, ObservedAt: at.Add(time.Duration(miss) * time.Second),
-			Resources: []inventoryctx.ResourceObservation{{ProviderResourceID: "redis-v2", Kind: inventoryctx.ResourceContainer, DisplayName: "redis-new", LifecycleState: "running"}},
+			Resources: []inventorydomain.ResourceObservation{{ProviderResourceID: "redis-v2", Kind: inventorydomain.ResourceContainer, DisplayName: "redis-new", LifecycleState: "running"}},
 		}
 		current, err := repository.Snapshot()
 		if err != nil {
 			t.Fatal(err)
 		}
-		resources, changed, err = inventoryctx.ReconcileProviderSnapshot(current.Resources, snapshot, inventoryctx.DefaultPolicy())
+		resources, changed, err = inventorydomain.ReconcileProviderSnapshot(current.Resources, snapshot, inventorydomain.DefaultPolicy())
 		if err != nil {
 			t.Fatalf("miss %d changed=%v err=%v", miss, changed, err)
 		}
@@ -151,7 +151,7 @@ func TestInventoryEvidenceClassifiesMatchingCollectorEndpointAsUnreachable(t *te
 		Receiver: "redis/alternate_port", Endpoint: "127.0.0.1:16379", Code: "connection_failed", ObservedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	}}}
 	evidence := collectorScrapeEvidenceFromSnapshot(snapshot)
-	endpoint := profilesapplication.DiagnoseEndpoint(monitoringdomain.RedisProfile(), "windows", monitoringEndpointEvidence([]inventoryctx.Endpoint{{Address: "127.0.0.1", Port: 16379, ContainerPort: 6379, Protocol: "tcp", Scope: inventoryctx.EndpointHost, Provenance: "published_port"}}), evidence)
+	endpoint := profilesapplication.DiagnoseEndpoint(monitoringdomain.RedisProfile(), "windows", monitoringEndpointEvidence([]inventorydomain.Endpoint{{Address: "127.0.0.1", Port: 16379, ContainerPort: 6379, Protocol: "tcp", Scope: inventorydomain.EndpointHost, Provenance: "published_port"}}), evidence)
 	if endpoint.State != profilesapplication.EndpointUnreachable || endpoint.EvidenceCode != "connection_failed" {
 		t.Fatalf("diagnostic with matching OTel scrape failure=%+v, want unreachable with connection_failed evidence", endpoint)
 	}

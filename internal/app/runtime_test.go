@@ -8,7 +8,8 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation"
-	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
+	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
 )
 
 type runtimeReconciler struct {
@@ -28,13 +29,13 @@ type runtimeInventoryRepository struct {
 	writes   atomic.Uint64
 }
 
-func (r *runtimeInventoryRepository) Snapshot() (inventoryctx.InventorySnapshot, error) {
-	return inventoryctx.InventorySnapshot{Revision: r.revision.Load(), WriteRevision: r.writes.Load()}, nil
+func (r *runtimeInventoryRepository) Snapshot() (inventorydomain.InventorySnapshot, error) {
+	return inventorydomain.InventorySnapshot{Revision: r.revision.Load(), WriteRevision: r.writes.Load()}, nil
 }
 
-func (r *runtimeInventoryRepository) CommitProviderSnapshot(expectedWriteRevision uint64, _ inventoryctx.ProviderSnapshot, _ []inventoryctx.Resource, changed bool) error {
+func (r *runtimeInventoryRepository) CommitProviderSnapshot(expectedWriteRevision uint64, _ inventorydomain.ProviderSnapshot, _ []inventorydomain.Resource, changed bool) error {
 	if r.writes.Load() != expectedWriteRevision {
-		return inventoryctx.ErrSnapshotConflict
+		return inventoryapp.ErrSnapshotConflict
 	}
 	if changed {
 		r.revision.Add(1)
@@ -43,7 +44,7 @@ func (r *runtimeInventoryRepository) CommitProviderSnapshot(expectedWriteRevisio
 	return nil
 }
 
-func (r *runtimeInventoryRepository) RecordProviderFailure(inventoryctx.ProviderStatus) error {
+func (r *runtimeInventoryRepository) RecordProviderFailure(inventorydomain.ProviderStatus) error {
 	return nil
 }
 
@@ -53,23 +54,23 @@ type runtimeDiscoveryProvider struct {
 	err   error
 }
 
-func (p *runtimeDiscoveryProvider) ID() inventoryctx.ProviderID                 { return "docker" }
-func (p *runtimeDiscoveryProvider) InstanceID() inventoryctx.ProviderInstanceID { return "local" }
-func (p *runtimeDiscoveryProvider) Discover(context.Context) (inventoryctx.ProviderSnapshot, error) {
+func (p *runtimeDiscoveryProvider) ID() inventorydomain.ProviderID                 { return "docker" }
+func (p *runtimeDiscoveryProvider) InstanceID() inventorydomain.ProviderInstanceID { return "local" }
+func (p *runtimeDiscoveryProvider) Discover(context.Context) (inventorydomain.ProviderSnapshot, error) {
 	p.calls.Add(1)
 	select {
 	case p.seen <- struct{}{}:
 	default:
 	}
 	if p.err != nil {
-		return inventoryctx.ProviderSnapshot{}, p.err
+		return inventorydomain.ProviderSnapshot{}, p.err
 	}
-	return inventoryctx.ProviderSnapshot{ProviderID: "docker", ProviderInstanceID: "local", Complete: true}, nil
+	return inventorydomain.ProviderSnapshot{ProviderID: "docker", ProviderInstanceID: "local", Complete: true}, nil
 }
 
 func TestRunControlLoopsRunsDiscoveryAndStopsWithReconciliation(t *testing.T) {
 	provider := &runtimeDiscoveryProvider{seen: make(chan struct{}, 1)}
-	coordinator, err := inventoryctx.NewCoordinator(&runtimeInventoryRepository{}, []inventoryctx.DiscoveryProvider{provider}, inventoryctx.DefaultPolicy(), time.Second)
+	coordinator, err := inventoryapp.NewCoordinator(&runtimeInventoryRepository{}, []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +115,7 @@ func TestRunControlLoopsWithoutDiscoveryPreservesReconciliation(t *testing.T) {
 
 func TestRunControlLoopsSkipsTemplateProjectionAfterProviderFailure(t *testing.T) {
 	provider := &runtimeDiscoveryProvider{seen: make(chan struct{}, 1), err: errors.New("Docker unavailable")}
-	coordinator, err := inventoryctx.NewCoordinator(&runtimeInventoryRepository{}, []inventoryctx.DiscoveryProvider{provider}, inventoryctx.DefaultPolicy(), time.Second)
+	coordinator, err := inventoryapp.NewCoordinator(&runtimeInventoryRepository{}, []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}

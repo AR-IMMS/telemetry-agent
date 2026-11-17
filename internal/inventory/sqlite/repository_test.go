@@ -4,7 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/ar-imms/telemetry-agent/internal/inventory"
+	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
+	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
 	inventorysqlite "github.com/ar-imms/telemetry-agent/internal/inventory/sqlite"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"path/filepath"
@@ -17,13 +18,13 @@ func TestInventoryRepositoryKeepsFailureEvidenceAndWriteCAS(t *testing.T) {
 	store := sqlitefixture.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	repository := inventorysqlite.NewInventoryRepository(store.OpenDatabase, &sync.Mutex{})
 	at := time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)
-	snapshot := inventory.ProviderSnapshot{
+	snapshot := inventorydomain.ProviderSnapshot{
 		ProviderID: "docker", ProviderInstanceID: "local", Complete: true, ObservedAt: at,
-		Resources: []inventory.ResourceObservation{{ProviderResourceID: "container-a", Kind: inventory.ResourceContainer}},
+		Resources: []inventorydomain.ResourceObservation{{ProviderResourceID: "container-a", Kind: inventorydomain.ResourceContainer}},
 	}
-	resources := []inventory.Resource{{
-		Key:  inventory.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-a"},
-		Kind: inventory.ResourceContainer, Presence: inventory.PresencePresent, FirstSeenAt: at, LastSeenAt: at,
+	resources := []inventorydomain.Resource{{
+		Key:  inventorydomain.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-a"},
+		Kind: inventorydomain.ResourceContainer, Presence: inventorydomain.PresencePresent, FirstSeenAt: at, LastSeenAt: at,
 	}}
 	if err := repository.CommitProviderSnapshot(0, snapshot, resources, true); err != nil {
 		t.Fatalf("commit complete provider snapshot: %v", err)
@@ -35,13 +36,13 @@ func TestInventoryRepositoryKeepsFailureEvidenceAndWriteCAS(t *testing.T) {
 	if before.Revision != 1 || before.WriteRevision != 1 || len(before.Resources) != 1 {
 		t.Fatalf("initial snapshot = %+v", before)
 	}
-	if err := repository.RecordProviderFailure(inventory.ProviderStatus{
+	if err := repository.RecordProviderFailure(inventorydomain.ProviderStatus{
 		ProviderID: "docker", ProviderInstanceID: "local", Enabled: true,
 		LastAttemptAt: at.Add(time.Minute), LastErrorCode: "daemon_unavailable",
 	}); err != nil {
 		t.Fatalf("record provider failure: %v", err)
 	}
-	if err := repository.CommitProviderSnapshot(before.WriteRevision, snapshot, resources, false); !errors.Is(err, inventory.ErrSnapshotConflict) {
+	if err := repository.CommitProviderSnapshot(before.WriteRevision, snapshot, resources, false); !errors.Is(err, inventoryapp.ErrSnapshotConflict) {
 		t.Fatalf("commit with stale write revision = %v, want snapshot conflict", err)
 	}
 	after, err := repository.Snapshot()
@@ -59,22 +60,22 @@ func TestInventoryRepositoryReadsBoundedProviderStatusesWithoutResources(t *test
 	repository := inventorysqlite.NewInventoryRepository(store.OpenDatabase, &sync.Mutex{})
 	at := time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)
 	for index := 0; index < 3; index++ {
-		instance := inventory.ProviderInstanceID(fmt.Sprintf("instance-%d", index))
+		instance := inventorydomain.ProviderInstanceID(fmt.Sprintf("instance-%d", index))
 		resourceID := fmt.Sprintf("container-%d", index)
-		providerSnapshot := inventory.ProviderSnapshot{
+		providerSnapshot := inventorydomain.ProviderSnapshot{
 			ProviderID: "docker", ProviderInstanceID: instance, Complete: true, ObservedAt: at,
-			Resources: []inventory.ResourceObservation{{ProviderResourceID: resourceID, Kind: inventory.ResourceContainer}},
+			Resources: []inventorydomain.ResourceObservation{{ProviderResourceID: resourceID, Kind: inventorydomain.ResourceContainer}},
 		}
-		resource := inventory.Resource{
-			Key:  inventory.ResourceKey{Provider: "docker", ProviderInstance: instance, ProviderResourceID: resourceID},
-			Kind: inventory.ResourceContainer, Presence: inventory.PresencePresent, FirstSeenAt: at, LastSeenAt: at,
+		resource := inventorydomain.Resource{
+			Key:  inventorydomain.ResourceKey{Provider: "docker", ProviderInstance: instance, ProviderResourceID: resourceID},
+			Kind: inventorydomain.ResourceContainer, Presence: inventorydomain.PresencePresent, FirstSeenAt: at, LastSeenAt: at,
 		}
-		if err := repository.CommitProviderSnapshot(uint64(index), providerSnapshot, []inventory.Resource{resource}, true); err != nil {
+		if err := repository.CommitProviderSnapshot(uint64(index), providerSnapshot, []inventorydomain.Resource{resource}, true); err != nil {
 			t.Fatalf("commit provider snapshot %d: %v", index, err)
 		}
 	}
 
-	reader, ok := repository.(inventory.ProviderStatusReader)
+	reader, ok := repository.(inventoryapp.ProviderStatusReader)
 	if !ok {
 		t.Fatal("inventory repository does not expose bounded provider status reader")
 	}
@@ -85,14 +86,14 @@ func TestInventoryRepositoryReadsBoundedProviderStatusesWithoutResources(t *test
 	if len(statuses) != 2 || !truncated {
 		t.Fatalf("limited statuses=(%d, truncated=%t), want (2, true)", len(statuses), truncated)
 	}
-	statuses, truncated, err = reader.ReadProviderStatuses(context.Background(), inventory.MaxProviderStatusReadLimit)
+	statuses, truncated, err = reader.ReadProviderStatuses(context.Background(), inventoryapp.MaxProviderStatusReadLimit)
 	if err != nil {
 		t.Fatalf("read provider statuses: %v", err)
 	}
 	if len(statuses) != 3 || truncated {
 		t.Fatalf("all statuses=(%d, truncated=%t), want (3, false)", len(statuses), truncated)
 	}
-	for _, limit := range []int{0, inventory.MaxProviderStatusReadLimit + 1} {
+	for _, limit := range []int{0, inventoryapp.MaxProviderStatusReadLimit + 1} {
 		if _, _, err := reader.ReadProviderStatuses(context.Background(), limit); err == nil {
 			t.Fatalf("ReadProviderStatuses(%d) error=nil, want invalid limit error", limit)
 		}
@@ -102,11 +103,11 @@ func TestInventoryRepositoryReadsBoundedProviderStatusesWithoutResources(t *test
 func TestInventoryRepositoryProviderStatusReadHonorsCancellation(t *testing.T) {
 	store := sqlitefixture.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	repository := inventorysqlite.NewInventoryRepository(store.OpenDatabase, &sync.Mutex{})
-	reader := repository.(inventory.ProviderStatusReader)
+	reader := repository.(inventoryapp.ProviderStatusReader)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, _, err := reader.ReadProviderStatuses(ctx, inventory.MaxProviderStatusReadLimit)
+	_, _, err := reader.ReadProviderStatuses(ctx, inventoryapp.MaxProviderStatusReadLimit)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("ReadProviderStatuses error=%v, want caller cancellation", err)
 	}
