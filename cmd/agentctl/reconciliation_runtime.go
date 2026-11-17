@@ -8,6 +8,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/app"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation"
+	reconciliationcontracts "github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation/contracts"
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
@@ -149,7 +150,7 @@ func newRuntimeReconciliationController(statePath string, runner bootstrap.Comma
 		return nil, nil, err
 	}
 	store := baseline.store
-	sqliteStore, ok := store.(agentstate.SQLiteStore)
+	_, ok := store.(agentstate.SQLiteStore)
 	if !ok {
 		return nil, nil, fmt.Errorf("Agent SQLite store is required for reconciliation")
 	}
@@ -173,11 +174,24 @@ func newRuntimeReconciliationController(statePath string, runner bootstrap.Comma
 	}
 	resolver := nativeOwnershipResolver{delegate: desiredStateResolverAdapter{resolver: definitionapp.NewResolver(registry)}, inventory: app.NewInventoryRepository(statePath), profiles: profiles, enabled: len(nativeLayers) > 0}
 	options := agentlifecycle.CollectorConfigurationOptions{Platform: baseline.platform, Catalog: baseline.dependencies, Layers: baseline.layers, AdditionalBaselineInputs: additionalBaselineInputs, BinaryPath: state.Collector.BinaryPath, ConfigPath: state.Collector.ConfigPath, ValidationEnvironment: []string{"OTEL_GATEWAY_ENDPOINT=" + state.Collector.GatewayEndpoint}, Runner: runner, GatewayRepository: baseline.gateways}
-	attempts := agentstate.NewSQLiteAttemptsFromStore(sqliteStore)
+	reconciliationRepository := app.NewReconciliationRepository(statePath)
+	recordRecoveryFailure := func(state agentstate.State) error {
+		if state.PendingActivation == nil || state.PendingActivation.Candidate == nil {
+			return fmt.Errorf("pending candidate recovery evidence is required")
+		}
+		pending := state.PendingActivation
+		mapping := pending.Candidate
+		return reconciliationRepository.RecordRecoveryFailure(reconciliationcontracts.RecoveryFailure{
+			DesiredRevision:     mapping.DesiredSetRevision,
+			BaselineFingerprint: mapping.BaselineFingerprint,
+			CandidateDigest:     mapping.CandidateDigest,
+			Generation:          pending.Generation,
+		})
+	}
 	controller := &reconciliation.Controller{Desired: app.NewDesiredStateRepository(statePath), Baseline: baseline, Resolver: resolver, Compiler: runtimeCandidateCompiler{compiler: collectorruntime.NewCompiler(collectorCatalog)}, Validator: func(ctx context.Context, candidate runtimecontracts.Candidate) error {
 		return (runtimeCandidateValidator{runner: runner, binary: state.Collector.BinaryPath, env: options.ValidationEnvironment}).Validate(ctx, candidate)
-	}, Applier: runtimeCandidateApplier{store: store, options: options}, Attempts: attempts, Outcomes: attempts}
-	return controller, attempts.RecordRecoveryFailure, nil
+	}, Applier: runtimeCandidateApplier{store: store, options: options}, Attempts: reconciliationRepository, Outcomes: reconciliationRepository}
+	return controller, recordRecoveryFailure, nil
 }
 
 func runRuntimeWithReconciliation(ctx context.Context, statePath string, teardown dependencyTeardownFunc, reporter agenthealth.ObservationReporter, runner bootstrap.CommandRunner) error {

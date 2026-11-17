@@ -14,6 +14,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
 	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
+	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation"
@@ -23,6 +24,7 @@ import (
 	definitionsapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
 	definitionsdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
 	redisprofile "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/redis"
+	platformsqlite "github.com/ar-imms/telemetry-agent/internal/platform/sqlite"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 	"gopkg.in/yaml.v3"
 )
@@ -323,8 +325,8 @@ service:
 	}
 	compiler := collectorruntime.NewCompiler(capabilities)
 	options := agentlifecycle.CollectorConfigurationOptions{Platform: platform, Catalog: definitions, Layers: layers, BinaryPath: "otelcol-contrib", ConfigPath: configPath, RenderValues: values, ValidationEnvironment: []string{"OTEL_GATEWAY_ENDPOINT=127.0.0.1:4317"}, Runner: successfulCandidateRunner{}}
-	attempts := agentstate.NewSQLiteAttemptsFromStore(store)
-	controller := Controller{Desired: repository, Baseline: testCleanBaseline{store: store, platform: platform, dependencies: definitions, layers: layers, values: values}, Resolver: integrationContributionResolverTest{resolver: resolver}, Compiler: compiler, Validator: func(context.Context, collectorruntime.Candidate) error { return nil }, Applier: testM2Applier{store: store, options: options}, Attempts: attempts, Outcomes: attempts}
+	reconciliationRepository := configurationsqlite.NewReconciliationRepository(store.OpenDatabase, platformsqlite.UpdateLocker(), store)
+	controller := Controller{Desired: repository, Baseline: testCleanBaseline{store: store, platform: platform, dependencies: definitions, layers: layers, values: values}, Resolver: integrationContributionResolverTest{resolver: resolver}, Compiler: compiler, Validator: func(context.Context, collectorruntime.Candidate) error { return nil }, Applier: testM2Applier{store: store, options: options}, Attempts: reconciliationRepository, Outcomes: reconciliationRepository}
 	first, err := controller.Reconcile(context.Background())
 	if err != nil || first.Status != StatusApplied {
 		t.Fatalf("plug reconciliation=%+v err=%v", first, err)

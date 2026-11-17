@@ -10,6 +10,7 @@ import (
 	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
 	materializationapp "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/application"
 	proposalapp "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
+	reconciliationcontracts "github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation/contracts"
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	remoteconfigsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig/sqlite"
 	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
@@ -98,6 +99,13 @@ func NewMaterializationRepositoryWithEvents(path string, publisher events.Publis
 func NewApprovalRepository(path string) proposalapp.ApprovalRepository {
 	store := agentstate.NewSQLiteStoreForPath(path, initializeAgentSQLiteSchema)
 	return configurationsqlite.NewApprovalRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
+}
+
+// NewReconciliationRepository constructs Configuration's SQLite adapter over
+// the composed database, including Runtime candidate evidence in the same snapshot.
+func NewReconciliationRepository(path string) reconciliationcontracts.Repository {
+	store := agentstate.NewSQLiteStoreForPath(path, initializeAgentSQLiteSchema)
+	return configurationsqlite.NewReconciliationRepository(store.OpenDatabase, platformsqlite.UpdateLocker(), store)
 }
 
 // NewCoreGatewayRuntimeStore constructs the Core Gateway adapter using the

@@ -9,6 +9,7 @@ import (
 	materializationapp "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/application"
 	materializationdomain "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/domain"
 	proposalapp "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
+	"github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation/contracts"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/domain"
 	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
@@ -109,6 +110,22 @@ func TestApprovalRepositoryUsesConfigurationAdapter(t *testing.T) {
 	repository := NewApprovalRepository(filepath.Join(t.TempDir(), "state.db"))
 	if _, _, err := repository.CommitApproval(proposalapp.ApprovalCommit{}); !errors.Is(err, proposalapp.ErrInvalidProposal) {
 		t.Fatalf("invalid approval commit error=%v, want ErrInvalidProposal", err)
+	}
+}
+
+func TestReconciliationRepositoryUsesComposedSQLiteDatabase(t *testing.T) {
+	repository := NewReconciliationRepository(filepath.Join(t.TempDir(), "state.db"))
+	if _, err := repository.BeginAttempt(contracts.Target{
+		DesiredRevision: 1, DesiredGeneration: 1, BaselineFingerprint: "baseline",
+	}); err != nil {
+		t.Fatalf("persist reconciliation attempt through composed repository: %v", err)
+	}
+	history, err := repository.History(10)
+	if err != nil {
+		t.Fatalf("read reconciliation history: %v", err)
+	}
+	if len(history) != 1 || history[0].Number != 1 || history[0].Status != "started" {
+		t.Fatalf("reconciliation history=%+v, want one started attempt", history)
 	}
 }
 

@@ -71,12 +71,12 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 		return integrationCommandError(stderr, command, err)
 	}
 	stateStore := newAgentStateStore(*statePath)
-	store, ok := stateStore.(agentstate.SQLiteStore)
+	_, ok := stateStore.(agentstate.SQLiteStore)
 	if !ok {
 		return integrationCommandError(stderr, command, fmt.Errorf("SQLite state store is required"))
 	}
 	repository := app.NewDesiredStateRepository(*statePath)
-	diagnostics := store.ReconciliationRepository()
+	diagnostics := app.NewReconciliationRepository(*statePath)
 	switch command {
 	case "configure", "update":
 		if *id == "" || *definition == "" || *version == "" {
