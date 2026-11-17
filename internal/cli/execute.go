@@ -5,6 +5,7 @@ import (
 	"io"
 
 	dependencycommands "github.com/ar-imms/telemetry-agent/internal/cli/commands/dependency"
+	healthcommands "github.com/ar-imms/telemetry-agent/internal/cli/commands/health"
 	inventorycommands "github.com/ar-imms/telemetry-agent/internal/cli/commands/inventory"
 	monitoringcommands "github.com/ar-imms/telemetry-agent/internal/cli/commands/monitoring"
 	"github.com/spf13/cobra"
@@ -61,10 +62,13 @@ func newRootCommand(dispatch Dispatch, stdout, stderr io.Writer, rootHelp func(i
 
 	for _, name := range []string{
 		"bootstrap", "integration", "run",
-		"discovery", "status", "doctor", "enroll", "install", "uninstall",
+		"discovery", "enroll", "install", "uninstall",
 	} {
 		root.AddCommand(newLegacyCommand(name, false, dispatch, exitCode))
 	}
+	root.AddCommand(healthcommands.NewCommands(dispatch, func(code int) {
+		*exitCode = code
+	})...)
 	root.AddCommand(dependencycommands.NewCommand(dispatch, func(code int) {
 		*exitCode = code
 	}))
