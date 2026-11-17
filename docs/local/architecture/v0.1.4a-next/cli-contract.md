@@ -211,3 +211,7 @@ Minimum requirements: exact immutable target/container identity, preflight valid
 5. Whether `inventory refresh` should refresh Agent inventory only, OTel observer config, or both; default proposal is **Agent inventory only**, since OTel owns its own observation lifecycle.
 
 **Related docs:** [Architecture overview](architecture-overview.md), [Context boundaries](context-boundaries.md), [Source structure](source-structure.md), [Migration roadmap](../../plans/v0.1.4a-next/migration-roadmap.md).
+
+## 12. Verified command-tree ownership
+
+`internal/cli/commands/dependency` now owns construction of the existing `dependency` Cobra command group and its seven existing operation aliases (`list`, `install`, `status`, `pending`, `configure`, `disable`, and `uninstall`). The group forwards the original argument path, command context, output streams, and exit code through the existing dispatcher. Legacy flags and handlers remain the source of behavior; aliases do not duplicate use cases. This is an ownership extraction only and does not add command behavior or change the public contract. See the PR-09.5 report for commit-level verification.
