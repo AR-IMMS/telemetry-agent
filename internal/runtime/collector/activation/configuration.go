@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/lifecyclelock"
 )
 
 // ErrStaleConfiguration indicates desired state changed while a candidate was
@@ -47,7 +48,7 @@ func (c configurationCoordinator) withLifecycleLock(action func() error) error {
 	activationMutex.Lock()
 	defer activationMutex.Unlock()
 	if c.lockPath != "" {
-		lock, err := agentstate.AcquireLifecycleLock(c.lockPath)
+		lock, err := lifecyclelock.Acquire(c.lockPath)
 		if err != nil {
 			return fmt.Errorf("acquire Agent lifecycle lock: %w", err)
 		}

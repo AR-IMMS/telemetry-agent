@@ -9,6 +9,7 @@ import (
 	remoteconfigsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig/sqlite"
 	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
 	platformsqlite "github.com/ar-imms/telemetry-agent/internal/platform/sqlite"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/lifecyclelock"
 )
 
 func NewCoreGatewayStore(path string, initializeSchema func(*sql.DB) error) coreconfig.GatewayRuntimeRepository {
@@ -28,7 +29,7 @@ func newTestCoreGatewayRepository(store SQLiteStore) coreconfig.GatewayRuntimeRe
 			if state.Collector.ConfigPath == "" {
 				return nil, nil
 			}
-			lifecycleLock, err := AcquireLifecycleLock(state.Collector.ConfigPath + ".lifecycle")
+			lifecycleLock, err := lifecyclelock.Acquire(state.Collector.ConfigPath + ".lifecycle")
 			if err != nil {
 				return nil, fmt.Errorf("acquire lifecycle lock for Core Gateway acceptance: %w", err)
 			}

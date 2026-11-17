@@ -18,6 +18,7 @@ import (
 	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/lifecyclelock"
 	opampdomain "github.com/ar-imms/telemetry-agent/internal/runtime/opamp/domain"
 	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
@@ -193,7 +194,7 @@ func TestRuntimeLaunchSnapshotWaitsForConfigActivationLock(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	lock, err := agentstate.AcquireLifecycleLock(configPath + ".lifecycle")
+	lock, err := lifecyclelock.Acquire(configPath + ".lifecycle")
 	if err != nil {
 		t.Fatal(err)
 	}

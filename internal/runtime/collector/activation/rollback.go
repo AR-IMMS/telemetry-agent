@@ -7,6 +7,7 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/lifecyclelock"
 )
 
 func rollbackUnappliedConfiguration(
@@ -25,7 +26,7 @@ func rollbackUnappliedConfiguration(
 	if err != nil {
 		return fmt.Errorf("load failed activation state: %w", err)
 	}
-	lock, err := agentstate.AcquireLifecycleLock(configPath + ".lifecycle")
+	lock, err := lifecyclelock.Acquire(configPath + ".lifecycle")
 	if err != nil {
 		return fmt.Errorf("acquire lifecycle lock for rollback: %w", err)
 	}

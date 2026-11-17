@@ -9,6 +9,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/lifecyclelock"
 	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
@@ -194,7 +195,7 @@ func TestTeardownSerializesWithDependencyReenable(t *testing.T) {
 	}
 	reenableDone := make(chan error, 1)
 	go func() {
-		lock, err := agentstate.AcquireLifecycleLock(configPath + ".lifecycle")
+		lock, err := lifecyclelock.Acquire(configPath + ".lifecycle")
 		if err != nil {
 			reenableDone <- err
 			return

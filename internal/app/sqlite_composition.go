@@ -24,6 +24,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 	platformsqlite "github.com/ar-imms/telemetry-agent/internal/platform/sqlite"
 	sqlitemigrate "github.com/ar-imms/telemetry-agent/internal/platform/sqlite/migrate"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/lifecyclelock"
 )
 
 // NewAgentSQLiteStore constructs the Agent's shared SQLite adapter with
@@ -123,7 +124,7 @@ func NewCoreGatewayRuntimeStore(path string) coreconfig.GatewayRuntimeRepository
 			if state.Collector.ConfigPath == "" {
 				return nil, nil
 			}
-			lifecycleLock, err := agentstate.AcquireLifecycleLock(state.Collector.ConfigPath + ".lifecycle")
+			lifecycleLock, err := lifecyclelock.Acquire(state.Collector.ConfigPath + ".lifecycle")
 			if err != nil {
 				return nil, fmt.Errorf("acquire lifecycle lock for Core Gateway acceptance: %w", err)
 			}

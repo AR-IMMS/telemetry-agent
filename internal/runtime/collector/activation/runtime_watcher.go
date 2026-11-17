@@ -11,6 +11,7 @@ import (
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	runtimecontracts "github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/lifecyclelock"
 )
 
 // collectorRunner supervises one Collector process until it exits or its
@@ -200,7 +201,7 @@ func (w runtimeWatcher) Run(ctx context.Context) error {
 func (w runtimeWatcher) prepareLaunch(ctx context.Context) (agentstate.State, supervisor.Options, func(), error) {
 	cleanup := func() {}
 	if w.lockPath != "" {
-		lock, err := agentstate.AcquireLifecycleLock(w.lockPath)
+		lock, err := lifecyclelock.Acquire(w.lockPath)
 		if err != nil {
 			return agentstate.State{}, supervisor.Options{}, cleanup, fmt.Errorf("acquire lifecycle lock for Collector launch: %w", err)
 		}

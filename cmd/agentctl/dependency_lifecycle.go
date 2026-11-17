@@ -12,6 +12,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/lifecyclelock"
 )
 
 // managedDependencyInstallFunc installs one dependency after confirming that
@@ -114,7 +115,7 @@ func (l managedDependencyLifecycle) Apply(
 			"bootstrap the Collector before managing dependencies",
 		)
 	}
-	lifecycleLock, err := agentstate.AcquireLifecycleLock(
+	lifecycleLock, err := lifecyclelock.Acquire(
 		state.Collector.ConfigPath + ".lifecycle",
 	)
 	if err != nil {
@@ -259,7 +260,7 @@ func (i managedDependencyInstaller) Install(
 			"dependency installer is not configured",
 		)
 	}
-	lifecycleLock, err := agentstate.AcquireLifecycleLock(
+	lifecycleLock, err := lifecyclelock.Acquire(
 		state.Collector.ConfigPath + ".lifecycle",
 	)
 	if err != nil {

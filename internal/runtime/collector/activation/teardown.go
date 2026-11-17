@@ -8,6 +8,7 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/lifecyclelock"
 	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
@@ -73,7 +74,7 @@ func (c teardownCoordinator) applyDependency(
 		)
 	}
 	if strings.TrimSpace(c.lockPath) != "" {
-		lock, err := agentstate.AcquireLifecycleLock(c.lockPath)
+		lock, err := lifecyclelock.Acquire(c.lockPath)
 		if err != nil {
 			return fmt.Errorf("acquire lifecycle lock for dependency %q teardown: %w", name, err)
 		}

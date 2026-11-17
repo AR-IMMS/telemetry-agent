@@ -13,6 +13,7 @@ import (
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/lifecyclelock"
 	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
@@ -59,7 +60,7 @@ func TestCoreGatewayAcceptanceWaitsForCollectorActivationLock(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	lock, err := AcquireLifecycleLock(configPath + ".lifecycle")
+	lock, err := lifecyclelock.Acquire(configPath + ".lifecycle")
 	if err != nil {
 		t.Fatal(err)
 	}
