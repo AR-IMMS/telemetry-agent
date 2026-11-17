@@ -48,7 +48,7 @@ func TestLiveDockerTemplateAutoMaterializesDesiredInstance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	templateRepository := store.TemplateRepository()
+	templateRepository := newTestTemplateRepository(store)
 	templateService := templatesapp.NewService(registry, templateRepository)
 	if _, _, err := templateService.Put(redisRuntimeTemplate(), 0); err != nil {
 		t.Fatal(err)

@@ -10,6 +10,7 @@ import (
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	remoteconfigsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig/sqlite"
 	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
+	templatesapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	enrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
@@ -48,6 +49,10 @@ func newTestProposalRepository(store SQLiteStore) proposalapp.ProposalRepository
 
 func newTestDesiredStateRepository(store SQLiteStore) desiredstateapp.Repository {
 	return configurationsqlite.NewIntegrationRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
+}
+
+func newTestTemplateRepository(store SQLiteStore) templatesapp.Repository {
+	return configurationsqlite.NewTemplateRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
 }
 
 func newTestCoreGatewayStore(path string) coreconfig.GatewayRuntimeRepository {

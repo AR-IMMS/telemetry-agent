@@ -17,7 +17,7 @@ import (
 
 func TestSQLiteTemplateRepositoryCASNoOpDeleteTombstoneAndRestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	repository := newTestSQLiteStore(path).TemplateRepository()
+	repository := newTestTemplateRepository(newTestSQLiteStore(path))
 	created, setRevision, err := repository.Put(sqliteTestTemplate("redis-main", templatesdomain.StatusEnabled), 0)
 	if err != nil || created.Revision != 1 || setRevision != 1 {
 		t.Fatalf("create template=%+v set revision=%d err=%v", created, setRevision, err)
@@ -47,7 +47,7 @@ func TestSQLiteTemplateRepositoryCASNoOpDeleteTombstoneAndRestart(t *testing.T) 
 	if _, _, err := repository.Put(sqliteTestTemplate("redis-main", templatesdomain.StatusEnabled), 3); !errors.Is(err, templatesapp.ErrTemplateDeleted) {
 		t.Fatalf("tombstone reuse error=%v", err)
 	}
-	restarted := newTestSQLiteStore(path).TemplateRepository()
+	restarted := newTestTemplateRepository(newTestSQLiteStore(path))
 	snapshot, err := restarted.Snapshot()
 	if err != nil || snapshot.Revision != 3 || len(snapshot.Templates) != 1 || snapshot.Templates[0].Status != templatesdomain.StatusDeleted {
 		t.Fatalf("restart snapshot=%+v err=%v", snapshot, err)
@@ -64,7 +64,7 @@ func TestSQLiteTemplateMutationRollbackAndMigrationCompatibility(t *testing.T) {
 	if err := store.Save(state); err != nil {
 		t.Fatal(err)
 	}
-	repository := store.TemplateRepository()
+	repository := newTestTemplateRepository(store)
 	if _, _, err := repository.Put(sqliteTestTemplate("redis-main", templatesdomain.StatusEnabled), 0); err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func TestSQLiteTemplateMigrationFromV12PreservesPopulatedOperationalTables(t *te
 }
 
 func TestSQLiteTemplateSnapshotsRemainConsistentDuringConcurrentCreates(t *testing.T) {
-	repository := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db")).TemplateRepository()
+	repository := newTestTemplateRepository(newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db")))
 	const count = 16
 	var wg sync.WaitGroup
 	start := make(chan struct{})

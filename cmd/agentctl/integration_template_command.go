@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/app"
 	configurationdomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	templatesapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
 	templatesdomain "github.com/ar-imms/telemetry-agent/internal/configuration/templates/domain"
@@ -57,8 +58,7 @@ func runIntegrationTemplate(ctx context.Context, args []string, stdout, stderr i
 	if err := ctx.Err(); err != nil {
 		return integrationCommandError(stderr, "template "+command, err)
 	}
-	store := newAgentSQLiteStore(*statePath)
-	repository := store.TemplateRepository()
+	repository := app.NewTemplateRepository(*statePath)
 	registry, err := productionIntegrationRegistry()
 	if err != nil {
 		return integrationCommandError(stderr, "template "+command, err)

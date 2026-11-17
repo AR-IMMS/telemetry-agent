@@ -35,7 +35,6 @@ type runtimeProposalRefresher struct {
 }
 
 func newRuntimeProposalRefresher(statePath string) (runtimeProposalRefresher, error) {
-	store := newAgentSQLiteStore(statePath)
 	registry, err := productionIntegrationRegistry()
 	if err != nil {
 		return runtimeProposalRefresher{}, err
@@ -46,7 +45,7 @@ func newRuntimeProposalRefresher(statePath string) (runtimeProposalRefresher, er
 		assessor = matchingdomain.NewCatalogCapabilityAssessor(catalog, platform.OS, platform.OS+"/"+platform.Architecture)
 	}
 	return runtimeProposalRefresher{
-		inventory: app.NewInventoryRepository(statePath), templates: store.TemplateRepository(), manager: application.NewProposalManager(app.NewProposalRepository(statePath)),
+		inventory: app.NewInventoryRepository(statePath), templates: app.NewTemplateRepository(statePath), manager: application.NewProposalManager(app.NewProposalRepository(statePath)),
 		matcher: matchingapp.NewMatcher(registry, assessor), templateEvaluator: monitoringtemplatesapp.NewEvaluator(registry, assessor),
 	}, nil
 }

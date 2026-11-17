@@ -607,7 +607,7 @@ service:
 
 func newRuntimeTemplateServiceForTest(t *testing.T, statePath string, registry definitionsapp.Registry) templatesapp.Service {
 	t.Helper()
-	return templatesapp.NewService(registry, sqlitefixture.NewSQLiteStore(statePath).TemplateRepository())
+	return templatesapp.NewService(registry, newTestTemplateRepository(sqlitefixture.NewSQLiteStore(statePath)))
 }
 
 func writeRuntimeTemplateFile(t *testing.T, path string, template templatesconfigdomain.Template) {

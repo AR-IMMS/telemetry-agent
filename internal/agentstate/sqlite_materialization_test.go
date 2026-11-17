@@ -132,7 +132,7 @@ func TestSQLiteMaterializationRejectsStaleSnapshotTokens(t *testing.T) {
 			execMaterializationSQL(t, store, `UPDATE inventory_meta SET write_revision=2 WHERE id=1`)
 		}, batch: materializationdomain.Batch{ExpectedInventoryWriteRevision: 1, ExpectedTemplateSetRevision: 1}},
 		{name: "templates", mutate: func(t *testing.T, store SQLiteStore) {
-			_, _, err := store.TemplateRepository().Put(sqliteTestTemplate("redis-main", templatesdomain.StatusDisabled), 1)
+			_, _, err := newTestTemplateRepository(store).Put(sqliteTestTemplate("redis-main", templatesdomain.StatusDisabled), 1)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -231,7 +231,7 @@ func prepareMaterializationRevisions(t *testing.T, store SQLiteStore, inventory,
 	if _, err := db.Exec(`UPDATE integration_desired_state SET desired_set_revision=? WHERE id=1`, desired); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := store.TemplateRepository().Put(sqliteTestTemplate("redis-main", templatesdomain.StatusEnabled), 0); err != nil {
+	if _, _, err := newTestTemplateRepository(store).Put(sqliteTestTemplate("redis-main", templatesdomain.StatusEnabled), 0); err != nil {
 		t.Fatal(err)
 	}
 }

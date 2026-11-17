@@ -38,7 +38,7 @@ func TestIntegrationTemplateCommandsUseConfigurationWithoutReconciling(t *testin
 	if code := runIntegration(context.Background(), []string{"template", "delete", "--state-path", path, "--id", "redis-local", "--expected-revision", "2"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("delete exit=%d stderr=%s", code, stderr.String())
 	}
-	snapshot, err := sqlitefixture.NewSQLiteStore(path).TemplateRepository().Snapshot()
+	snapshot, err := newTestTemplateRepository(sqlitefixture.NewSQLiteStore(path)).Snapshot()
 	if err != nil || len(snapshot.Templates) != 1 || string(snapshot.Templates[0].Status) != "deleted" {
 		t.Fatalf("deleted Template tombstone=%+v err=%v", snapshot, err)
 	}
@@ -92,7 +92,7 @@ func TestIntegrationTemplateFileWorkflowExportsFullTemplateAndPreservesInlineInp
 	if code := runIntegration(context.Background(), []string{"template", "update", "--state-path", statePath, "--file", filePath, "--expected-revision", "1"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("update from file exit=%d stderr=%s", code, stderr.String())
 	}
-	snapshot, err := sqlitefixture.NewSQLiteStore(statePath).TemplateRepository().Snapshot()
+	snapshot, err := newTestTemplateRepository(sqlitefixture.NewSQLiteStore(statePath)).Snapshot()
 	if err != nil || len(snapshot.Templates) != 1 || snapshot.Templates[0].Revision != 2 || snapshot.Templates[0].Settings["collection_interval"] != "30s" {
 		t.Fatalf("updated template=%+v err=%v", snapshot, err)
 	}
@@ -126,7 +126,7 @@ func TestIntegrationTemplateFileInputRejectsInvalidJSONAndRevisionConflict(t *te
 	if code := runIntegration(context.Background(), []string{"template", "update", "--state-path", statePath, "--file", filePath, "--expected-revision", "99"}, &stdout, &stderr); code != 1 || !strings.Contains(stderr.String(), "revision") {
 		t.Fatalf("stale update exit=%d stderr=%q", code, stderr.String())
 	}
-	snapshot, err := sqlitefixture.NewSQLiteStore(statePath).TemplateRepository().Snapshot()
+	snapshot, err := newTestTemplateRepository(sqlitefixture.NewSQLiteStore(statePath)).Snapshot()
 	if err != nil || len(snapshot.Templates) != 1 || snapshot.Templates[0].Revision != 1 {
 		t.Fatalf("stale update overwrote persisted Template: snapshot=%+v err=%v", snapshot, err)
 	}

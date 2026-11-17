@@ -12,6 +12,7 @@ import (
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	remoteconfigsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig/sqlite"
 	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
+	templatesapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	enrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
@@ -67,6 +68,13 @@ func NewProposalRepository(path string) proposalapp.ProposalRepository {
 func NewDesiredStateRepository(path string) desiredstateapp.Repository {
 	store := agentstate.NewSQLiteStoreForPath(path, initializeAgentSQLiteSchema)
 	return configurationsqlite.NewIntegrationRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
+}
+
+// NewTemplateRepository constructs the Configuration-owned Template adapter
+// using the Application's ordered migration registry and shared lock.
+func NewTemplateRepository(path string) templatesapp.Repository {
+	store := agentstate.NewSQLiteStoreForPath(path, initializeAgentSQLiteSchema)
+	return configurationsqlite.NewTemplateRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
 }
 
 // NewCoreGatewayRuntimeStore constructs the Core Gateway adapter using the

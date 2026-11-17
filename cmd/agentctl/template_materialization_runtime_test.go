@@ -43,7 +43,7 @@ func TestRuntimeTemplateMaterializerProjectsStableInstancesAndNoOps(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	templates := store.TemplateRepository()
+	templates := newTestTemplateRepository(store)
 	service := templatesapp.NewService(registry, templates)
 	if _, _, err := service.Put(redisRuntimeTemplate(), 0); err != nil {
 		t.Fatal(err)
@@ -138,7 +138,7 @@ func TestNativeRedisProfileDoesNotCreateAgentInstancesDuringContainerChurn(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	templates := store.TemplateRepository()
+	templates := newTestTemplateRepository(store)
 	service := templatesapp.NewService(registry, templates)
 	if _, _, err := service.Put(redisRuntimeTemplate(), 0); err != nil {
 		t.Fatal(err)
@@ -195,7 +195,7 @@ func TestRuntimeTemplateUpdateChangesGeneratedInstancesButPreservesManualState(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	templates := store.TemplateRepository()
+	templates := newTestTemplateRepository(store)
 	templateService := templatesapp.NewService(registry, templates)
 	template := redisRuntimeTemplate()
 	if _, _, err := templateService.Put(template, 0); err != nil {
@@ -275,7 +275,7 @@ func TestRuntimeTemplateMaterializerPreservesFailureAndTracksResourceLifecycle(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	templates := store.TemplateRepository()
+	templates := newTestTemplateRepository(store)
 	templateService := templatesapp.NewService(registry, templates)
 	if _, _, err := templateService.Put(redisRuntimeTemplate(), 0); err != nil {
 		t.Fatal(err)

@@ -12,6 +12,7 @@ import (
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	remoteconfigsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig/sqlite"
 	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
+	templatesapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	enrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
 	installation "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
@@ -43,6 +44,12 @@ func NewProposalRepositoryFromStore(store agentstate.SQLiteStore) proposalapp.Pr
 // test store while sharing the production SQLite transaction lock.
 func NewDesiredStateRepositoryFromStore(store agentstate.SQLiteStore) desiredstateapp.Repository {
 	return configurationsqlite.NewIntegrationRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
+}
+
+// NewTemplateRepositoryFromStore constructs a Configuration adapter over a
+// test store while sharing the production SQLite transaction lock.
+func NewTemplateRepositoryFromStore(store agentstate.SQLiteStore) templatesapp.Repository {
+	return configurationsqlite.NewTemplateRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
 }
 
 // NewStore returns a fixture Agent state repository.

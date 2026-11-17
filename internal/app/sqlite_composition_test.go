@@ -70,6 +70,17 @@ func TestDesiredStateRepositoryUsesComposedSQLiteDatabase(t *testing.T) {
 	}
 }
 
+func TestTemplateRepositoryUsesComposedSQLiteDatabase(t *testing.T) {
+	repository := NewTemplateRepository(filepath.Join(t.TempDir(), "state.db"))
+	snapshot, err := repository.Snapshot()
+	if err != nil {
+		t.Fatalf("read initial Configuration Templates: %v", err)
+	}
+	if snapshot.Revision != 0 || len(snapshot.Templates) != 0 {
+		t.Fatalf("initial Templates=%+v, want empty revision 0", snapshot)
+	}
+}
+
 func TestIdentityRepositoriesUseComposedSQLiteDatabase(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
 	identity, err := installationid.ParseInstallationID("11111111-2222-4333-8444-555555555555")

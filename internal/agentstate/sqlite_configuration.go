@@ -7,15 +7,9 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 	reconciliationcontracts "github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation/contracts"
 	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
-	templatesapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 	platformsqlite "github.com/ar-imms/telemetry-agent/internal/platform/sqlite"
 )
-
-// TemplateRepository returns the Configuration-owned Template adapter.
-func (s SQLiteStore) TemplateRepository() templatesapp.Repository {
-	return configurationsqlite.NewTemplateRepository(s.OpenDatabase, platformsqlite.UpdateLocker())
-}
 
 // MaterializationRepository returns the Configuration-owned projection adapter.
 func (s SQLiteStore) MaterializationRepository() materializationapp.Repository {
