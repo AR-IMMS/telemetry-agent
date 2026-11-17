@@ -4,9 +4,11 @@ $legacyPackageDirectory = Join-Path $repoRoot 'internal/integration'
 $legacyPackageFixture = Join-Path $repoRoot 'internal/integration/doc.go'
 $importFixture = Join-Path $repoRoot 'internal/monitoring/profiles/definitions/redis/architecture_guard_fixture.go'
 $domainAdapterFixture = Join-Path $repoRoot 'internal/monitoring/matching/domain/architecture_guard_fixture.go'
+$applicationAdapterFixture = Join-Path $repoRoot 'internal/configuration/desiredstate/application/architecture_guard_fixture.go'
 $guardPath = Join-Path $PSScriptRoot 'check-architecture.ps1'
 
-if ((Test-Path -LiteralPath $legacyPackageDirectory) -or (Test-Path -LiteralPath $importFixture) -or (Test-Path -LiteralPath $domainAdapterFixture)) {
+if ((Test-Path -LiteralPath $legacyPackageDirectory) -or (Test-Path -LiteralPath $importFixture) -or
+    (Test-Path -LiteralPath $domainAdapterFixture) -or (Test-Path -LiteralPath $applicationAdapterFixture)) {
     throw 'Refusing to overwrite an existing Monitoring architecture fixture.'
 }
 
@@ -49,6 +51,18 @@ import _ "$modulePath/internal/platform/sqlite"
         throw "The architecture guard did not reject infrastructure imports from a Monitoring domain package. Output:`n$output"
     }
     Write-Output 'Negative fixture rejected: Monitoring domain packages cannot import SQLite adapters.'
+
+    @"
+package application
+
+import _ "$modulePath/internal/platform/sqlite"
+"@ | Set-Content -LiteralPath $applicationAdapterFixture -Encoding utf8
+    $output = & pwsh -NoProfile -File $guardPath 2>&1 | Out-String
+    $guardExit = $LASTEXITCODE
+    if ($guardExit -eq 0 -or $output -notmatch 'application package imports adapter') {
+        throw "The architecture guard did not reject infrastructure imports from a Configuration application package. Output:`n$output"
+    }
+    Write-Output 'Negative fixture rejected: Configuration application packages cannot import platform SQLite.'
 }
 finally {
     if (Test-Path -LiteralPath $importFixture) {
@@ -56,6 +70,9 @@ finally {
     }
     if (Test-Path -LiteralPath $domainAdapterFixture) {
         Remove-Item -LiteralPath $domainAdapterFixture
+    }
+    if (Test-Path -LiteralPath $applicationAdapterFixture) {
+        Remove-Item -LiteralPath $applicationAdapterFixture
     }
     if (Test-Path -LiteralPath $legacyPackageFixture) {
         Remove-Item -LiteralPath $legacyPackageFixture

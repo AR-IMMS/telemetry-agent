@@ -770,6 +770,32 @@ try {
             }
         }
 
+        # Application packages orchestrate through owner contracts and must
+        # not construct persistence, platform, or provider adapters directly.
+        # Some contexts are currently guarded through a broad domain root too;
+        # classify application packages here so the rule and failure identify
+        # the actual layer rather than reporting a false domain violation.
+        $isApplicationPackage = $package -match '/application(?:/|$)'
+        if ($isApplicationPackage) {
+            foreach ($imported in $imports) {
+                $isAdapterImport = $imported -eq "$modulePath/internal/agentstate" -or
+                    $imported.StartsWith("$platformPackageRoot/", [StringComparison]::Ordinal)
+                foreach ($adapter in $adapterRoots) {
+                    # Broad capability roots also contain inward-facing
+                    # contracts (for example dependencies/domain); those are
+                    # valid application dependencies, not concrete adapters.
+                    if ($imported -match '/(?:domain|application|contracts)(?:/|$)') { continue }
+                    if ($imported -eq $adapter -or $imported.StartsWith("$adapter/", [StringComparison]::Ordinal)) {
+                        $isAdapterImport = $true
+                        break
+                    }
+                }
+                if ($isAdapterImport) {
+                    $violations.Add("application package imports adapter: $package -> $imported")
+                }
+            }
+        }
+
         $isReconciliationPackage = $package -eq $reconciliationContextRoot -or
             $package.StartsWith("$reconciliationContextRoot/", [StringComparison]::Ordinal)
         if ($isReconciliationPackage -and $imports -contains $agentLifecyclePackage) {
@@ -814,10 +840,12 @@ try {
         if ($isExplicitRuntimeDomain) { $isContextAdapter = $false }
         if ($isContextAdapter) { continue }
         $isDomain = $false
-        foreach ($root in $domainRoots) {
-            if ($package -eq $root -or $package.StartsWith("$root/", [StringComparison]::Ordinal)) {
-                $isDomain = $true
-                break
+        if (-not $isApplicationPackage) {
+            foreach ($root in $domainRoots) {
+                if ($package -eq $root -or $package.StartsWith("$root/", [StringComparison]::Ordinal)) {
+                    $isDomain = $true
+                    break
+                }
             }
         }
         if (-not $isDomain) { continue }
