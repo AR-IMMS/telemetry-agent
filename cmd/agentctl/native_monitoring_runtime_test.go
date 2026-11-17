@@ -16,6 +16,7 @@ import (
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	definitionsdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
 	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	collectorruntime "github.com/ar-imms/telemetry-agent/internal/runtime/collector"
@@ -214,9 +215,9 @@ type nativeOwnershipDelegate struct {
 	contribution integration.Contribution
 }
 
-func (d *nativeOwnershipDelegate) Resolve(instance integration.IntegrationInstance) (integration.ResolvedInstance, error) {
+func (d *nativeOwnershipDelegate) Resolve(instance integration.IntegrationInstance) (definitionsdomain.Contribution, error) {
 	d.calls++
-	return integration.ResolvedInstance{Instance: instance, Contribution: d.contribution}, nil
+	return d.contribution, nil
 }
 
 func TestNativeOwnershipResolverDelegatesExactlyOneReceiverOwner(t *testing.T) {
@@ -239,8 +240,8 @@ func TestNativeOwnershipResolverDelegatesExactlyOneReceiverOwner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if delegate.calls != 1 || len(resolved.Contribution.Intents()) != 0 {
-		t.Fatalf("native target receiver ownership calls=%d contribution=%v; want one validation and no Agent receiver", delegate.calls, resolved.Contribution.Intents())
+	if delegate.calls != 1 || len(resolved.Intents()) != 0 {
+		t.Fatalf("native target receiver ownership calls=%d contribution=%v; want one validation and no Agent receiver", delegate.calls, resolved.Intents())
 	}
 }
 
@@ -263,8 +264,8 @@ func TestNativeOwnershipResolverKeepsLegacyAndUnmatchedTargetsAgentOwned(t *test
 			if err != nil {
 				t.Fatal(err)
 			}
-			if delegate.calls != 1 || len(resolved.Contribution.Intents()) != 1 {
-				t.Fatalf("Agent-owned target contribution=%v calls=%d", resolved.Contribution.Intents(), delegate.calls)
+			if delegate.calls != 1 || len(resolved.Intents()) != 1 {
+				t.Fatalf("Agent-owned target contribution=%v calls=%d", resolved.Intents(), delegate.calls)
 			}
 		})
 	}

@@ -7,6 +7,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	definitionsdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
 	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
@@ -82,7 +83,7 @@ func nativeDockerMonitoringInputsWithProfiles(statePath, osName string, profiles
 }
 
 type nativeOwnershipResolver struct {
-	delegate  resolver
+	delegate  contributionResolver
 	inventory interface {
 		Snapshot() (inventoryctx.InventorySnapshot, error)
 	}
@@ -90,17 +91,27 @@ type nativeOwnershipResolver struct {
 	enabled  bool
 }
 
-type resolver interface {
-	Resolve(integration.IntegrationInstance) (integration.ResolvedInstance, error)
+type contributionResolver interface {
+	Resolve(integration.IntegrationInstance) (definitionsdomain.Contribution, error)
 }
 
-func (r nativeOwnershipResolver) Resolve(instance integration.IntegrationInstance) (integration.ResolvedInstance, error) {
+type integrationContributionResolver struct{ resolver integration.Resolver }
+
+func (r integrationContributionResolver) Resolve(instance integration.IntegrationInstance) (definitionsdomain.Contribution, error) {
+	resolved, err := r.resolver.Resolve(instance)
+	if err != nil {
+		return definitionsdomain.Contribution{}, err
+	}
+	return resolved.Contribution, nil
+}
+
+func (r nativeOwnershipResolver) Resolve(instance integration.IntegrationInstance) (definitionsdomain.Contribution, error) {
 	if !r.enabled || instance.Binding == nil {
 		return r.delegate.Resolve(instance)
 	}
 	snapshot, err := r.inventory.Snapshot()
 	if err != nil {
-		return integration.ResolvedInstance{}, fmt.Errorf("read inventory for native receiver ownership: %w", err)
+		return definitionsdomain.Contribution{}, fmt.Errorf("read inventory for native receiver ownership: %w", err)
 	}
 	for _, resource := range snapshot.Resources {
 		binding := instance.Binding
@@ -108,16 +119,16 @@ func (r nativeOwnershipResolver) Resolve(instance integration.IntegrationInstanc
 			continue
 		}
 		if profile, matched := r.profiles.Match(string(resource.Key.Provider), resource.Attributes); matched && profile.ID == instance.DefinitionID {
-			resolved, err := r.delegate.Resolve(instance)
+			_, err := r.delegate.Resolve(instance)
 			if err != nil {
-				return integration.ResolvedInstance{}, err
+				return definitionsdomain.Contribution{}, err
 			}
-			return integration.ResolvedInstance{Instance: resolved.Instance, Contribution: integration.NewContribution(nil)}, nil
+			return definitionsdomain.Contribution{}, nil
 		}
 	}
 	return r.delegate.Resolve(instance)
 }
 
 var _ interface {
-	Resolve(integration.IntegrationInstance) (integration.ResolvedInstance, error)
+	Resolve(integration.IntegrationInstance) (definitionsdomain.Contribution, error)
 } = nativeOwnershipResolver{}

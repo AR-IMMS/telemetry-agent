@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
+	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation"
@@ -21,12 +23,13 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	redisintegration "github.com/ar-imms/telemetry-agent/internal/integration/redis"
+	definitionsdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 	"gopkg.in/yaml.v3"
 )
 
 func TestReconcileResolvesOnlyEnabledInstancesAndSubmitsCompleteSnapshot(t *testing.T) {
-	desired := &snapshotReader{snapshot: configuration.DesiredSnapshot{Revision: 12, Instances: []integration.IntegrationInstance{
+	desired := &snapshotReader{snapshot: desiredstateapp.Snapshot{Revision: 12, Instances: []desiredstatedomain.Instance{
 		{ID: "enabled", DefinitionID: "fixture", DefinitionVersion: "1.0.0", Configuration: map[string]any{"endpoint": "localhost:1"}, Enabled: true},
 		{ID: "disabled", DefinitionID: "fixture", DefinitionVersion: "1.0.0", Configuration: map[string]any{"endpoint": "localhost:2"}},
 	}}}
@@ -51,7 +54,7 @@ func TestReconcileResolvesOnlyEnabledInstancesAndSubmitsCompleteSnapshot(t *test
 }
 
 func TestReconcileUnplugKeepsOtherEnabledIntegrationsInCandidate(t *testing.T) {
-	desired := &snapshotReader{snapshot: configuration.DesiredSnapshot{Revision: 13, Instances: []integration.IntegrationInstance{
+	desired := &snapshotReader{snapshot: desiredstateapp.Snapshot{Revision: 13, Instances: []desiredstatedomain.Instance{
 		{ID: "postgres-a", DefinitionID: "postgres", DefinitionVersion: "1.0.0", Configuration: map[string]any{}, Enabled: true},
 		{ID: "redis-a", DefinitionID: "redis", DefinitionVersion: "1.0.0", Configuration: map[string]any{}, Enabled: false},
 	}}}
@@ -66,7 +69,7 @@ func TestReconcileUnplugKeepsOtherEnabledIntegrationsInCandidate(t *testing.T) {
 }
 
 func TestM2GenerationChangeReconcilesSameEnabledIntegrationRevision(t *testing.T) {
-	desired := &snapshotReader{snapshot: configuration.DesiredSnapshot{Revision: 12, Instances: []integration.IntegrationInstance{{ID: "postgres-a", DefinitionID: "postgres", DefinitionVersion: "1.0.0", Configuration: map[string]any{}, Enabled: true}}}}
+	desired := &snapshotReader{snapshot: desiredstateapp.Snapshot{Revision: 12, Instances: []desiredstatedomain.Instance{{ID: "postgres-a", DefinitionID: "postgres", DefinitionVersion: "1.0.0", Configuration: map[string]any{}, Enabled: true}}}}
 	baseline := &changingBaseline{generation: 4}
 	resolver, compiler, applier := &testResolver{}, &testCompiler{}, &revisionRecordingApplier{}
 	controller := Controller{Desired: desired, Baseline: baseline, Resolver: resolver, Compiler: compiler, Validator: func(context.Context, collectorruntime.Candidate) error { return nil }, Applier: applier, Attempts: &testAttempts{}}
@@ -83,7 +86,7 @@ func TestM2GenerationChangeReconcilesSameEnabledIntegrationRevision(t *testing.T
 }
 
 func TestStaleAdmissionImmediatelyReconcilesLatestDesiredRevision(t *testing.T) {
-	desired := &sequenceReader{snapshots: []configuration.DesiredSnapshot{
+	desired := &sequenceReader{snapshots: []desiredstateapp.Snapshot{
 		{Revision: 12},
 		{Revision: 13},
 	}}
@@ -99,7 +102,7 @@ func TestStaleAdmissionImmediatelyReconcilesLatestDesiredRevision(t *testing.T) 
 }
 
 func TestReconcileLatestRepeatsWhenBaselineFingerprintChangesAfterApply(t *testing.T) {
-	desired := &snapshotReader{snapshot: configuration.DesiredSnapshot{Revision: 12}}
+	desired := &snapshotReader{snapshot: desiredstateapp.Snapshot{Revision: 12}}
 	baseline := &sequenceBaseline{snapshots: []BaselineSnapshot{
 		{DesiredGeneration: 4, Fingerprint: "before", Input: runtimecontracts.RenderInput{Platform: identity.PlatformInfo{OS: "windows", Architecture: "amd64"}}},
 		{DesiredGeneration: 4, Fingerprint: "after", Input: runtimecontracts.RenderInput{Platform: identity.PlatformInfo{OS: "windows", Architecture: "amd64"}}},
@@ -122,7 +125,7 @@ func TestReconcileLatestRepeatsWhenBaselineFingerprintChangesAfterApply(t *testi
 }
 
 func TestReconcileAcknowledgesAppliedOnlyFromM2Journal(t *testing.T) {
-	controller := Controller{Desired: &snapshotReader{snapshot: configuration.DesiredSnapshot{Revision: 12}}, Baseline: staticBaseline{}, Resolver: &testResolver{}, Compiler: &testCompiler{}, Validator: func(context.Context, collectorruntime.Candidate) error { return nil }, Applier: &testApplier{}, Attempts: &testAttempts{}, Outcomes: fixedOutcome{mapping: CandidateOutcome{Outcome: "applied"}, generation: 37, found: true}}
+	controller := Controller{Desired: &snapshotReader{snapshot: desiredstateapp.Snapshot{Revision: 12}}, Baseline: staticBaseline{}, Resolver: &testResolver{}, Compiler: &testCompiler{}, Validator: func(context.Context, collectorruntime.Candidate) error { return nil }, Applier: &testApplier{}, Attempts: &testAttempts{}, Outcomes: fixedOutcome{mapping: CandidateOutcome{Outcome: "applied"}, generation: 37, found: true}}
 	result, err := controller.Reconcile(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -136,6 +139,30 @@ func TestPermanentCapabilityFailureBlocksWithoutRetry(t *testing.T) {
 	failure := classify("compile", errors.Join(runtimecontracts.ErrInvalidCandidate, collectorruntime.ErrUnsupportedCapability))
 	if failure.Class != FailurePermanent || attemptStatus(failure.Class, 1) != StatusBlocked {
 		t.Fatalf("unsupported capability classification = %+v", failure)
+	}
+}
+
+func TestReconcileRejectsInvalidDesiredInstanceBeforeProfileResolution(t *testing.T) {
+	resolver := &testResolver{}
+	compiler := &testCompiler{}
+	controller := Controller{
+		Desired: &snapshotReader{snapshot: desiredstateapp.Snapshot{Revision: 1, Instances: []desiredstatedomain.Instance{{
+			ID: "invalid id", DefinitionID: "fixture", DefinitionVersion: "1.0.0", Configuration: map[string]any{}, Enabled: true,
+		}}}},
+		Baseline: staticBaseline{}, Resolver: resolver, Compiler: compiler,
+		Validator: func(context.Context, collectorruntime.Candidate) error { return nil },
+		Applier:   &testApplier{}, Attempts: &testAttempts{},
+	}
+	if _, err := controller.Reconcile(context.Background()); err == nil {
+		t.Fatal("Reconcile() error = nil, want invalid desired state")
+	} else {
+		var failure Failure
+		if !errors.As(err, &failure) || failure.Class != FailurePermanent || failure.Code != "invalid_candidate" {
+			t.Fatalf("Reconcile() error = %v, want permanent invalid_candidate failure", err)
+		}
+	}
+	if len(resolver.ids) != 0 || compiler.count != 0 {
+		t.Fatalf("invalid desired state reached profile resolution or compilation: resolver calls=%v compiler count=%d", resolver.ids, compiler.count)
 	}
 }
 
@@ -154,7 +181,7 @@ func TestPeriodicSQLitePollingDetectsCommittedCrossProcessDesiredChange(t *testi
 		t.Fatal(err)
 	}
 	observed := make(chan uint64, 8)
-	controller := Controller{Desired: reader.IntegrationRepository(), Baseline: staticBaseline{}, Resolver: integration.NewResolver(registry), Compiler: &testCompiler{}, Validator: func(context.Context, collectorruntime.Candidate) error { return nil }, Applier: recordingApplier{revisions: observed}, Attempts: &testAttempts{}}
+	controller := Controller{Desired: reader.IntegrationRepository(), Baseline: staticBaseline{}, Resolver: integrationContributionResolverTest{resolver: integration.NewResolver(registry)}, Compiler: &testCompiler{}, Validator: func(context.Context, collectorruntime.Candidate) error { return nil }, Applier: recordingApplier{revisions: observed}, Attempts: &testAttempts{}}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
@@ -298,7 +325,7 @@ service:
 	compiler := collectorruntime.NewCompiler(capabilities)
 	options := agentlifecycle.CollectorConfigurationOptions{Platform: platform, Catalog: definitions, Layers: layers, BinaryPath: "otelcol-contrib", ConfigPath: configPath, RenderValues: values, ValidationEnvironment: []string{"OTEL_GATEWAY_ENDPOINT=127.0.0.1:4317"}, Runner: successfulCandidateRunner{}}
 	attempts := agentstate.NewSQLiteAttemptsFromStore(store)
-	controller := Controller{Desired: repository, Baseline: testCleanBaseline{store: store, platform: platform, dependencies: definitions, layers: layers, values: values}, Resolver: resolver, Compiler: compiler, Validator: func(context.Context, collectorruntime.Candidate) error { return nil }, Applier: testM2Applier{store: store, options: options}, Attempts: attempts, Outcomes: attempts}
+	controller := Controller{Desired: repository, Baseline: testCleanBaseline{store: store, platform: platform, dependencies: definitions, layers: layers, values: values}, Resolver: integrationContributionResolverTest{resolver: resolver}, Compiler: compiler, Validator: func(context.Context, collectorruntime.Candidate) error { return nil }, Applier: testM2Applier{store: store, options: options}, Attempts: attempts, Outcomes: attempts}
 	first, err := controller.Reconcile(context.Background())
 	if err != nil || first.Status != StatusApplied {
 		t.Fatalf("plug reconciliation=%+v err=%v", first, err)
@@ -385,15 +412,15 @@ func pipelineHasReceiver(t *testing.T, candidate []byte, expected string) bool {
 }
 
 func TestReconcileDoesNotApplyWhenResolverFails(t *testing.T) {
-	controller := Controller{Desired: &snapshotReader{snapshot: configuration.DesiredSnapshot{Revision: 1, Instances: []integration.IntegrationInstance{{ID: "one", DefinitionID: "fixture", DefinitionVersion: "1.0.0", Configuration: map[string]any{}, Enabled: true}}}}, Baseline: staticBaseline{}, Resolver: &testResolver{err: errors.New("invalid")}, Compiler: &testCompiler{}, Validator: func(context.Context, collectorruntime.Candidate) error { return nil }, Applier: &testApplier{}, Attempts: &testAttempts{}}
+	controller := Controller{Desired: &snapshotReader{snapshot: desiredstateapp.Snapshot{Revision: 1, Instances: []desiredstatedomain.Instance{{ID: "one", DefinitionID: "fixture", DefinitionVersion: "1.0.0", Configuration: map[string]any{}, Enabled: true}}}}, Baseline: staticBaseline{}, Resolver: &testResolver{err: errors.New("invalid")}, Compiler: &testCompiler{}, Validator: func(context.Context, collectorruntime.Candidate) error { return nil }, Applier: &testApplier{}, Attempts: &testAttempts{}}
 	if _, err := controller.Reconcile(context.Background()); err == nil {
 		t.Fatal("Reconcile() error = nil, want resolver error")
 	}
 }
 
-type snapshotReader struct{ snapshot configuration.DesiredSnapshot }
+type snapshotReader struct{ snapshot desiredstateapp.Snapshot }
 
-func (s *snapshotReader) Snapshot() (configuration.DesiredSnapshot, error) { return s.snapshot, nil }
+func (s *snapshotReader) Snapshot() (desiredstateapp.Snapshot, error) { return s.snapshot, nil }
 
 type staticBaseline struct{}
 
@@ -406,12 +433,22 @@ type testResolver struct {
 	err error
 }
 
-func (r *testResolver) Resolve(i integration.IntegrationInstance) (integration.ResolvedInstance, error) {
+func (r *testResolver) Resolve(i desiredstatedomain.Instance) (definitionsdomain.Contribution, error) {
 	r.ids = append(r.ids, i.ID)
 	if r.err != nil {
-		return integration.ResolvedInstance{}, r.err
+		return definitionsdomain.Contribution{}, r.err
 	}
-	return integration.ResolvedInstance{Instance: i, Contribution: integration.NewContribution(nil)}, nil
+	return integration.NewContribution(nil), nil
+}
+
+type integrationContributionResolverTest struct{ resolver integration.Resolver }
+
+func (r integrationContributionResolverTest) Resolve(instance desiredstatedomain.Instance) (definitionsdomain.Contribution, error) {
+	resolved, err := r.resolver.Resolve(instance)
+	if err != nil {
+		return definitionsdomain.Contribution{}, err
+	}
+	return resolved.Contribution, nil
 }
 
 type testCompiler struct {
@@ -477,11 +514,11 @@ func (a *staleOnceApplier) ApplyCandidate(_ context.Context, request CandidateAp
 }
 
 type sequenceReader struct {
-	snapshots []configuration.DesiredSnapshot
+	snapshots []desiredstateapp.Snapshot
 	index     int
 }
 
-func (s *sequenceReader) Snapshot() (configuration.DesiredSnapshot, error) {
+func (s *sequenceReader) Snapshot() (desiredstateapp.Snapshot, error) {
 	index := s.index
 	if index >= len(s.snapshots) {
 		index = len(s.snapshots) - 1

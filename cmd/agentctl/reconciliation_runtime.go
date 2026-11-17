@@ -171,7 +171,7 @@ func newRuntimeReconciliationController(statePath string, runner bootstrap.Comma
 	if nativeErr != nil {
 		return nil, nil, fmt.Errorf("resolve native monitoring ownership: %w", nativeErr)
 	}
-	resolver := nativeOwnershipResolver{delegate: integration.NewResolver(registry), inventory: sqliteStore.InventoryRepository(), profiles: profiles, enabled: len(nativeLayers) > 0}
+	resolver := nativeOwnershipResolver{delegate: integrationContributionResolver{resolver: integration.NewResolver(registry)}, inventory: sqliteStore.InventoryRepository(), profiles: profiles, enabled: len(nativeLayers) > 0}
 	options := agentlifecycle.CollectorConfigurationOptions{Platform: baseline.platform, Catalog: baseline.dependencies, Layers: baseline.layers, AdditionalBaselineInputs: additionalBaselineInputs, BinaryPath: state.Collector.BinaryPath, ConfigPath: state.Collector.ConfigPath, ValidationEnvironment: []string{"OTEL_GATEWAY_ENDPOINT=" + state.Collector.GatewayEndpoint}, Runner: runner, GatewayRepository: baseline.gateways}
 	attempts := agentstate.NewSQLiteAttemptsFromStore(sqliteStore)
 	controller := &reconciliation.Controller{Desired: sqliteStore.IntegrationRepository(), Baseline: baseline, Resolver: resolver, Compiler: runtimeCandidateCompiler{compiler: collectorruntime.NewCompiler(collectorCatalog)}, Validator: func(ctx context.Context, candidate runtimecontracts.Candidate) error {

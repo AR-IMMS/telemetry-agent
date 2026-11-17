@@ -8,8 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/configuration"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
+	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
+	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
+	definitionsdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 )
 
@@ -42,10 +43,10 @@ type Result struct {
 }
 
 type desiredReader interface {
-	Snapshot() (configuration.DesiredSnapshot, error)
+	Snapshot() (desiredstateapp.Snapshot, error)
 }
 type resolver interface {
-	Resolve(integration.IntegrationInstance) (integration.ResolvedInstance, error)
+	Resolve(desiredstatedomain.Instance) (definitionsdomain.Contribution, error)
 }
 type compiler interface {
 	Compile(input contracts.RenderInput, resolved []contracts.ResolvedContribution) (contracts.Candidate, error)
@@ -119,12 +120,16 @@ func (c *Controller) Reconcile(ctx context.Context) (Result, error) {
 		if !instance.Enabled {
 			continue
 		}
-		value, resolveErr := c.Resolver.Resolve(instance)
+		if resolveErr := instance.Validate(); resolveErr != nil {
+			failure := classify("resolve", resolveErr)
+			return finish(Outcome{Status: attemptStatus(failure.Class, attempt.Number), Stage: failure.Stage, Code: failure.Code, Class: failure.Class, SafeDetail: "integration resolution failed", RetryAt: retryAt(attempt.Number)}, failure)
+		}
+		contribution, resolveErr := c.Resolver.Resolve(instance)
 		if resolveErr != nil {
 			failure := classify("resolve", resolveErr)
 			return finish(Outcome{Status: attemptStatus(failure.Class, attempt.Number), Stage: failure.Stage, Code: failure.Code, Class: failure.Class, SafeDetail: "integration resolution failed", RetryAt: retryAt(attempt.Number)}, failure)
 		}
-		resolved = append(resolved, contracts.ResolvedContribution{InstanceID: instance.ID, Contribution: value.Contribution})
+		resolved = append(resolved, contracts.ResolvedContribution{InstanceID: instance.ID, Contribution: contribution})
 	}
 	candidate, err := c.Compiler.Compile(baseline.Input, resolved)
 	if err != nil {
@@ -286,7 +291,7 @@ func classify(stage string, err error) Failure {
 	}
 	class := FailureTransient
 	code := stage + "_failed"
-	if errors.Is(err, integration.ErrInvalidInstance) || errors.Is(err, integration.ErrUnknownDefinition) || errors.Is(err, integration.ErrInvalidContribution) || errors.Is(err, contracts.ErrInvalidCandidate) {
+	if errors.Is(err, desiredstatedomain.ErrInvalidInstance) || errors.Is(err, definitionsdomain.ErrInvalidDefinition) || errors.Is(err, definitionsdomain.ErrUnknownDefinition) || errors.Is(err, definitionsdomain.ErrInvalidContribution) || errors.Is(err, contracts.ErrInvalidCandidate) {
 		class = FailurePermanent
 		code = "invalid_candidate"
 	}

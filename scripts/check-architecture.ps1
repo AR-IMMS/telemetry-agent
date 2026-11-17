@@ -142,6 +142,18 @@ try {
             $violations.Add('cmd/agentctl/integration_command.go must call the Configuration desiredstate application use case')
         }
     }
+    # Reconciliation consumes Configuration's snapshot and a narrow profile
+    # contribution port; it must not depend on legacy Integration models.
+    $reconciliationControllerPath = Join-Path $repoRoot 'internal/configuration/reconciliation/controller.go'
+    if (Test-Path -LiteralPath $reconciliationControllerPath -PathType Leaf) {
+        $source = Get-Content -LiteralPath $reconciliationControllerPath -Raw
+        if ($source -match '"github.com/ar-imms/telemetry-agent/internal/integration"') {
+            $violations.Add('Configuration reconciliation must use desiredstate and Monitoring contracts instead of internal/integration')
+        }
+        if ($source -notmatch '"github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"') {
+            $violations.Add('Configuration reconciliation must consume the desiredstate domain model')
+        }
+    }
     # Proposal approval belongs to Configuration and consumes its canonical
     # desired-state model directly; the CLI is a delivery adapter over the same
     # model. Keep these paths off the temporary Integration compatibility facade.
