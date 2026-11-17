@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/configuration"
+	materializationdomain "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/domain"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 )
@@ -33,7 +33,7 @@ func TestSQLiteMaterializationPublishesOnlyCommittedDesiredRevision(t *testing.T
 		return nil
 	})
 	repository := store.MaterializationRepositoryWithEvents(publisher)
-	batch := configuration.MaterializationBatch{
+	batch := materializationdomain.Batch{
 		ExpectedInventoryWriteRevision: 1,
 		ExpectedTemplateSetRevision:    1,
 		ExpectedDesiredSetRevision:     0,
@@ -47,7 +47,7 @@ func TestSQLiteMaterializationPublishesOnlyCommittedDesiredRevision(t *testing.T
 		t.Fatalf("no-op materialization revision=%d err=%v", revision, err)
 	}
 	batch.ExpectedInventoryWriteRevision = 2
-	if _, err := repository.ApplyTemplateProjection(batch); !errors.Is(err, configuration.ErrMaterializationConflict) {
+	if _, err := repository.ApplyTemplateProjection(batch); !errors.Is(err, materializationdomain.ErrMaterializationConflict) {
 		t.Fatalf("stale materialization error = %v, want conflict", err)
 	}
 	if len(published) != 1 || published[0] != 1 {
@@ -60,7 +60,7 @@ func TestSQLiteMaterializationQueueFailureDoesNotUndoCommittedWrite(t *testing.T
 	prepareMaterializationRevisions(t, store, 1, 0)
 	publisher := desiredEventPublisherFunc(func(events.DesiredConfigurationChanged) error { return events.ErrQueueFull })
 	repository := store.MaterializationRepositoryWithEvents(publisher)
-	batch := configuration.MaterializationBatch{
+	batch := materializationdomain.Batch{
 		ExpectedInventoryWriteRevision: 1,
 		ExpectedTemplateSetRevision:    1,
 		Upsert:                         []integration.IntegrationInstance{generatedTestInstance()},
@@ -79,7 +79,7 @@ func TestSQLiteMaterializationAppliesTemplateProjectionIdempotently(t *testing.T
 	prepareMaterializationRevisions(t, store, 1, 0)
 	repository := store.MaterializationRepository()
 	instance := generatedTestInstance()
-	batch := configuration.MaterializationBatch{
+	batch := materializationdomain.Batch{
 		ExpectedInventoryWriteRevision: 1,
 		ExpectedTemplateSetRevision:    1,
 		ExpectedDesiredSetRevision:     0,
@@ -125,22 +125,22 @@ func TestSQLiteMaterializationRejectsStaleSnapshotTokens(t *testing.T) {
 	for _, test := range []struct {
 		name   string
 		mutate func(t *testing.T, store SQLiteStore)
-		batch  configuration.MaterializationBatch
+		batch  materializationdomain.Batch
 	}{
 		{name: "inventory", mutate: func(t *testing.T, store SQLiteStore) {
 			execMaterializationSQL(t, store, `UPDATE inventory_meta SET write_revision=2 WHERE id=1`)
-		}, batch: configuration.MaterializationBatch{ExpectedInventoryWriteRevision: 1, ExpectedTemplateSetRevision: 1}},
+		}, batch: materializationdomain.Batch{ExpectedInventoryWriteRevision: 1, ExpectedTemplateSetRevision: 1}},
 		{name: "templates", mutate: func(t *testing.T, store SQLiteStore) {
 			_, _, err := store.TemplateRepository().Put(sqliteTestTemplate("redis-main", integration.TemplateDisabled), 1)
 			if err != nil {
 				t.Fatal(err)
 			}
-		}, batch: configuration.MaterializationBatch{ExpectedInventoryWriteRevision: 1, ExpectedTemplateSetRevision: 1}},
+		}, batch: materializationdomain.Batch{ExpectedInventoryWriteRevision: 1, ExpectedTemplateSetRevision: 1}},
 		{name: "desired", mutate: func(t *testing.T, store SQLiteStore) {
 			if _, _, err := store.IntegrationRepository().Put(integrationInstance("local-cache", "localhost:6380"), 0); err != nil {
 				t.Fatal(err)
 			}
-		}, batch: configuration.MaterializationBatch{ExpectedInventoryWriteRevision: 1, ExpectedTemplateSetRevision: 1}},
+		}, batch: materializationdomain.Batch{ExpectedInventoryWriteRevision: 1, ExpectedTemplateSetRevision: 1}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
@@ -148,7 +148,7 @@ func TestSQLiteMaterializationRejectsStaleSnapshotTokens(t *testing.T) {
 			test.mutate(t, store)
 			test.batch.ExpectedDesiredSetRevision = 0
 			test.batch.Upsert = []integration.IntegrationInstance{generatedTestInstance()}
-			if _, err := store.MaterializationRepository().ApplyTemplateProjection(test.batch); !errors.Is(err, configuration.ErrMaterializationConflict) {
+			if _, err := store.MaterializationRepository().ApplyTemplateProjection(test.batch); !errors.Is(err, materializationdomain.ErrMaterializationConflict) {
 				t.Fatalf("stale snapshot error=%v", err)
 			}
 		})
@@ -159,7 +159,7 @@ func TestSQLiteMaterializationRollsBackAllProjectionWrites(t *testing.T) {
 	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	prepareMaterializationRevisions(t, store, 1, 0)
 	execMaterializationSQL(t, store, `CREATE TRIGGER reject_materialized_revision BEFORE UPDATE ON integration_desired_state BEGIN SELECT RAISE(ABORT,'injected failure'); END`)
-	_, err := store.MaterializationRepository().ApplyTemplateProjection(configuration.MaterializationBatch{
+	_, err := store.MaterializationRepository().ApplyTemplateProjection(materializationdomain.Batch{
 		ExpectedInventoryWriteRevision: 1,
 		ExpectedTemplateSetRevision:    1,
 		ExpectedDesiredSetRevision:     0,
@@ -186,7 +186,7 @@ func TestSQLiteMaterializationSerializesConcurrentSnapshotWriters(t *testing.T) 
 		go func(instance integration.IntegrationInstance) {
 			defer workers.Done()
 			<-start
-			_, err := store.MaterializationRepository().ApplyTemplateProjection(configuration.MaterializationBatch{
+			_, err := store.MaterializationRepository().ApplyTemplateProjection(materializationdomain.Batch{
 				ExpectedInventoryWriteRevision: 1,
 				ExpectedTemplateSetRevision:    1,
 				ExpectedDesiredSetRevision:     0,
@@ -202,7 +202,7 @@ func TestSQLiteMaterializationSerializesConcurrentSnapshotWriters(t *testing.T) 
 	for err := range results {
 		if err == nil {
 			succeeded++
-		} else if errors.Is(err, configuration.ErrMaterializationConflict) {
+		} else if errors.Is(err, materializationdomain.ErrMaterializationConflict) {
 			conflicted++
 		} else {
 			t.Fatalf("concurrent projection error=%v", err)

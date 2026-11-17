@@ -1,13 +1,12 @@
 package integration
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"regexp"
 
 	"github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
+	materializationdomain "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/domain"
 	templatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/templates/domain"
 	definitions "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
 	templatesapp "github.com/ar-imms/telemetry-agent/internal/monitoring/templates/application"
@@ -82,21 +81,13 @@ func CloneIntegrationTemplate(template IntegrationTemplate) (IntegrationTemplate
 
 // GeneratedInstanceID returns a deterministic ID for one owner/template/resource/Integration pairing.
 func GeneratedInstanceID(owner TemplateOwner, templateID string, resource ResourceIdentity, integrationID string) (string, error) {
-	if !validTemplateOwner(owner) || !templateIDPattern.MatchString(templateID) ||
-		!definitionIDPattern.MatchString(integrationID) || validateResourceIdentity(resource) != nil {
+	id, err := materializationdomain.GeneratedInstanceID(owner, templateID, domain.ResourceBinding{
+		Provider: resource.Provider, ProviderInstance: resource.ProviderInstance, ResourceID: resource.ResourceID,
+	}, integrationID)
+	if err != nil {
 		return "", fmt.Errorf("%w: malformed generated instance identity", ErrInvalidTemplate)
 	}
-	canonical, err := json.Marshal(struct {
-		Owner         TemplateOwner    `json:"owner"`
-		TemplateID    string           `json:"template_id"`
-		Resource      ResourceIdentity `json:"resource"`
-		IntegrationID string           `json:"integration_id"`
-	}{owner, templateID, resource, integrationID})
-	if err != nil {
-		return "", fmt.Errorf("%w: encode generated instance identity: %v", ErrInvalidTemplate, err)
-	}
-	digest := sha256.Sum256(canonical)
-	return "template-" + hex.EncodeToString(digest[:12]), nil
+	return id, nil
 }
 
 // ResolveTemplateSettings applies Definition defaults, explicit settings and declared resource bindings.

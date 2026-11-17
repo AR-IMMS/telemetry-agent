@@ -12,6 +12,7 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
+	materializationapp "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/application"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
@@ -91,7 +92,7 @@ func TestLiveDockerTemplateAutoMaterializesDesiredInstance(t *testing.T) {
 	}
 	materializer := runtimeTemplateMaterializer{
 		inventory: store.InventoryRepository(), templates: templateRepository, desired: store.IntegrationRepository(),
-		service: configuration.NewMaterializationService(store.MaterializationRepository()),
+		service: materializationapp.NewService(store.MaterializationRepository()),
 		matcher: integration.NewMatcher(registry, integration.NewCatalogCapabilityAssessor(catalog, runtime.GOOS, runtime.GOOS+"/"+runtime.GOARCH)),
 	}
 	if err := materializer.Refresh(context.Background()); err != nil {

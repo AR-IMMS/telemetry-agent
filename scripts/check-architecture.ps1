@@ -92,6 +92,21 @@ try {
             SourceRoot = "$modulePath/internal/runtime/collector"
             TargetRoot = "$modulePath/internal/integration"
             Reason = 'Runtime compiles validated Monitoring contributions through its collector contracts; it does not depend on the compatibility facade.'
+        },
+        @{
+            SourceRoot = "$modulePath/internal/configuration/materialization/domain"
+            TargetRoot = "$modulePath/internal/monitoring"
+            Reason = 'Configuration materialization domain owns persisted projection identity and depends only on Configuration models; Monitoring evidence is consumed by the application boundary.'
+        },
+        @{
+            SourceRoot = "$modulePath/internal/configuration/materialization/application"
+            TargetRoot = "$modulePath/internal/integration"
+            Reason = 'Configuration materialization consumes owner contracts directly, not the multi-owner Integration facade.'
+        },
+        @{
+            SourceRoot = "$modulePath/internal/configuration/sqlite"
+            TargetRoot = "$modulePath/internal/integration"
+            Reason = 'Configuration SQLite adapters persist owner models directly and do not depend on the Integration compatibility facade.'
         }
     )
 
@@ -410,6 +425,23 @@ try {
         )) {
             if ($source -notmatch [regex]::Escape($requiredImport)) {
                 $violations.Add("Configuration desired-state SQLite adapter must use $requiredImport")
+            }
+        }
+    }
+    $materializationSQLite = Join-Path $repoRoot 'internal/configuration/sqlite/materialization.go'
+    if (Test-Path -LiteralPath $materializationSQLite -PathType Leaf) {
+        $source = Get-Content -LiteralPath $materializationSQLite -Raw
+        if ($source -match '"github.com/ar-imms/telemetry-agent/internal/configuration"') {
+            $violations.Add('Configuration materialization SQLite adapter must implement the capability application port directly')
+        }
+        foreach ($requiredImport in @(
+            'internal/configuration/materialization/application',
+            'internal/configuration/materialization/domain',
+            'internal/configuration/desiredstate/domain',
+            'internal/configuration/templates/domain'
+        )) {
+            if ($source -notmatch [regex]::Escape($requiredImport)) {
+                $violations.Add("Configuration materialization SQLite adapter must use $requiredImport")
             }
         }
     }

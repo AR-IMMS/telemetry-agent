@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
+	materializationapp "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/application"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
 	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
@@ -50,7 +51,7 @@ func TestRuntimeTemplateMaterializerProjectsStableInstancesAndNoOps(t *testing.T
 	}
 	materializer := runtimeTemplateMaterializer{
 		inventory: store.InventoryRepository(), templates: templates, desired: store.IntegrationRepository(),
-		service: configuration.NewMaterializationService(store.MaterializationRepository()),
+		service: materializationapp.NewService(store.MaterializationRepository()),
 		matcher: integration.NewMatcher(registry, supportedTemplateCapability{}),
 	}
 	if err := materializer.Refresh(context.Background()); err != nil {
@@ -142,7 +143,7 @@ func TestNativeRedisProfileDoesNotCreateAgentInstancesDuringContainerChurn(t *te
 	}
 	materializer := runtimeTemplateMaterializer{
 		inventory: store.InventoryRepository(), templates: templates, desired: store.IntegrationRepository(),
-		service:          configuration.NewMaterializationService(store.MaterializationRepository()),
+		service:          materializationapp.NewService(store.MaterializationRepository()),
 		matcher:          integration.NewMatcher(registry, supportedTemplateCapability{}),
 		nativeMonitoring: true, nativeProfiles: monitoringdomain.DefaultRegistry(),
 	}
@@ -204,7 +205,7 @@ func TestRuntimeTemplateUpdateChangesGeneratedInstancesButPreservesManualState(t
 	desiredRepository := store.IntegrationRepository()
 	materializer := runtimeTemplateMaterializer{
 		inventory: store.InventoryRepository(), templates: templates, desired: desiredRepository,
-		service: configuration.NewMaterializationService(store.MaterializationRepository()),
+		service: materializationapp.NewService(store.MaterializationRepository()),
 		matcher: integration.NewMatcher(registry, supportedTemplateCapability{}),
 	}
 	if err := materializer.Refresh(context.Background()); err != nil {
@@ -280,7 +281,7 @@ func TestRuntimeTemplateMaterializerPreservesFailureAndTracksResourceLifecycle(t
 	desiredRepository := store.IntegrationRepository()
 	materializer := runtimeTemplateMaterializer{
 		inventory: store.InventoryRepository(), templates: templates, desired: desiredRepository,
-		service: configuration.NewMaterializationService(store.MaterializationRepository()),
+		service: materializationapp.NewService(store.MaterializationRepository()),
 		matcher: integration.NewMatcher(registry, supportedTemplateCapability{}),
 	}
 	refreshAfterSuccessfulCycle := func() {

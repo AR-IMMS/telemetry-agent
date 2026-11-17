@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
+	materializationdomain "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/domain"
 	proposals "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
@@ -52,7 +53,7 @@ func TestRepositoriesUseSharedStateDatabaseAndRetainCASContracts(t *testing.T) {
 		t.Fatalf("stale Template CAS error=%v", err)
 	}
 
-	if _, err := configurationsqlite.NewMaterializationRepository(store.OpenDatabase, locker).ApplyTemplateProjection(configuration.MaterializationBatch{}); !errors.Is(err, configuration.ErrInvalidMaterialization) {
+	if _, err := configurationsqlite.NewMaterializationRepository(store.OpenDatabase, locker).ApplyTemplateProjection(materializationdomain.Batch{}); !errors.Is(err, materializationdomain.ErrInvalidMaterialization) {
 		t.Fatalf("invalid materialization error=%v", err)
 	}
 	if _, _, err := configurationsqlite.NewApprovalRepository(store.OpenDatabase, locker).CommitApproval(proposals.ApprovalCommit{}); !errors.Is(err, proposals.ErrInvalidProposal) {
@@ -104,7 +105,7 @@ func TestMaterializationRepositoryCommitsProjectionBeforePublishingWakeup(t *tes
 		published = event.Revision
 		return nil
 	}))
-	batch := configuration.MaterializationBatch{
+	batch := materializationdomain.Batch{
 		ExpectedInventoryWriteRevision: 1, ExpectedTemplateSetRevision: 1,
 		ExpectedDesiredSetRevision: 0, Upsert: []integration.IntegrationInstance{instance},
 	}

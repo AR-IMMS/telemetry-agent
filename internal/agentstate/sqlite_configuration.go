@@ -4,6 +4,7 @@ import (
 	"database/sql"
 
 	"github.com/ar-imms/telemetry-agent/internal/configuration"
+	materializationapp "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/application"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 	reconciliationcontracts "github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation/contracts"
 	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
@@ -21,14 +22,14 @@ func (s SQLiteStore) TemplateRepository() configuration.TemplateRepository {
 }
 
 // MaterializationRepository returns the Configuration-owned projection adapter.
-func (s SQLiteStore) MaterializationRepository() configuration.MaterializationRepository {
+func (s SQLiteStore) MaterializationRepository() materializationapp.Repository {
 	return configurationsqlite.NewMaterializationRepository(s.OpenDatabase, &sqliteUpdateMutex)
 }
 
 // MaterializationRepositoryWithEvents adds an optional post-commit advisory wakeup.
 func (s SQLiteStore) MaterializationRepositoryWithEvents(publisher interface {
 	Publish(events.DesiredConfigurationChanged) error
-}) configuration.MaterializationRepository {
+}) materializationapp.Repository {
 	return configurationsqlite.NewMaterializationRepositoryWithEvents(s.OpenDatabase, &sqliteUpdateMutex, publisher)
 }
 
