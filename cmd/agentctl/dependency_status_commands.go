@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	dependencycommands "github.com/ar-imms/telemetry-agent/internal/cli/commands/dependency"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
@@ -35,12 +35,7 @@ func runDependencyStatus(ctx context.Context, args []string, stdout io.Writer, s
 	}
 
 	if deps.listDependencyStatuses == nil {
-		fmt.Fprintln(
-			stderr,
-			"dependency status: lister is not configured",
-		)
-
-		return 1
+		return dependencycommands.Status(ctx, stdout, stderr, nil, nil)
 	}
 
 	state := agentstate.State{
@@ -62,74 +57,12 @@ func runDependencyStatus(ctx context.Context, args []string, stdout io.Writer, s
 		state = loadedState
 	}
 
-	results, err := deps.listDependencyStatuses(ctx)
-	if err != nil {
-		fmt.Fprintf(stderr, "dependency status: %v\n", err)
-
-		return 1
+	managedNames := make(map[string]struct{}, len(state.Dependencies))
+	for name := range state.Dependencies {
+		managedNames[strings.ToLower(strings.TrimSpace(name))] = struct{}{}
 	}
 
-	fmt.Fprintln(stdout, "Dependency status:")
-
-	for _, result := range results {
-		if result.InspectionError != nil {
-			fmt.Fprintf(
-				stdout,
-				"- %s: unknown (%v)\n",
-				result.Definition.Name,
-				result.InspectionError,
-			)
-
-			continue
-		}
-
-		name := strings.ToLower(
-			strings.TrimSpace(result.Definition.Name),
-		)
-		_, managed := state.Dependencies[name]
-
-		if result.Status.Availability == dependency.AvailabilityDisabled &&
-			!managed {
-			fmt.Fprintf(
-				stdout,
-				"- %s: not installed\n",
-				result.Definition.Name,
-			)
-
-			continue
-		}
-
-		condition := string(result.Status.Health)
-		if result.Status.Drifted {
-			condition += ", drifted"
-		}
-
-		metricsEndpoint := strings.TrimSpace(
-			result.Definition.MetricsEndpoint,
-		)
-		if metricsEndpoint == "" {
-			fmt.Fprintf(
-				stdout,
-				"- %s: %s (%s)\n",
-				result.Definition.Name,
-				result.Status.Availability,
-				condition,
-			)
-
-			continue
-		}
-
-		fmt.Fprintf(
-			stdout,
-			"- %s: %s (%s) — metrics: %s\n",
-			result.Definition.Name,
-			result.Status.Availability,
-			condition,
-			metricsEndpoint,
-		)
-	}
-
-	return 0
+	return dependencycommands.Status(ctx, stdout, stderr, deps.listDependencyStatuses, managedNames)
 
 }
 
