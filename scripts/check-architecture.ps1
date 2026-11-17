@@ -23,8 +23,10 @@ try {
     $domainRoots = @(
         "$modulePath/internal/configuration",
         "$modulePath/internal/identity",
-        "$modulePath/internal/integration",
         "$modulePath/internal/monitoring/profiles",
+        "$modulePath/internal/monitoring/profiles/definitions/domain",
+        "$modulePath/internal/monitoring/matching/domain",
+        "$modulePath/internal/monitoring/templates/domain",
         "$modulePath/internal/inventory",
         "$modulePath/internal/health",
         "$modulePath/internal/operations/command",
@@ -39,15 +41,16 @@ try {
     $adapterRoots = @(
         "$modulePath/internal/runtime/service",
         "$modulePath/internal/runtime/collector/activation",
+        "$modulePath/internal/platform",
         "$modulePath/internal/agentstate",
         "$modulePath/internal/runtime/bootstrap",
         "$modulePath/internal/runtime/collector",
         "$modulePath/internal/coreapi",
-        "$modulePath/internal/coreconfig",
         "$modulePath/internal/runtime/dependencies",
         "$modulePath/internal/runtime/opamp",
         "$modulePath/internal/runtime/process",
         "$modulePath/internal/configuration/sqlite",
+        "$modulePath/internal/configuration/remoteconfig/sqlite",
         "$modulePath/internal/identity/credentials",
         "$modulePath/internal/identity/enrollment/sqlite",
         "$modulePath/internal/identity/sqlite",
@@ -84,29 +87,9 @@ try {
             Reason = 'Inventory emits normalized observations; Monitoring owns profile interpretation.'
         },
         @{
-            SourceRoot = "$modulePath/internal/inventory"
-            TargetRoot = "$modulePath/internal/integration"
-            Reason = 'Inventory supplies observations; Monitoring owns profile matching and recommendations.'
-        },
-        @{
-            SourceRoot = "$modulePath/internal/runtime/collector"
-            TargetRoot = "$modulePath/internal/integration"
-            Reason = 'Runtime compiles validated Monitoring contributions through its collector contracts; it does not depend on the compatibility facade.'
-        },
-        @{
             SourceRoot = "$modulePath/internal/configuration/materialization/domain"
             TargetRoot = "$modulePath/internal/monitoring"
             Reason = 'Configuration materialization domain owns persisted projection identity and depends only on Configuration models; Monitoring evidence is consumed by the application boundary.'
-        },
-        @{
-            SourceRoot = "$modulePath/internal/configuration/materialization/application"
-            TargetRoot = "$modulePath/internal/integration"
-            Reason = 'Configuration materialization consumes owner contracts directly, not the multi-owner Integration facade.'
-        },
-        @{
-            SourceRoot = "$modulePath/internal/configuration/sqlite"
-            TargetRoot = "$modulePath/internal/integration"
-            Reason = 'Configuration SQLite adapters persist owner models directly and do not depend on the Integration compatibility facade.'
         }
     )
 
@@ -324,6 +307,25 @@ try {
     $packageLines = & go list -f '{{.ImportPath}}|{{range .Imports}}{{.}},{{end}}' ./internal/... ./cmd/agentctl
     if ($LASTEXITCODE -ne 0) {
         throw 'go list failed while checking architecture imports.'
+    }
+
+    $retiredIntegrationRoot = Join-Path $repoRoot 'internal/integration'
+    if (Test-Path -LiteralPath $retiredIntegrationRoot) {
+        $retiredIntegrationFiles = Get-ChildItem -LiteralPath $retiredIntegrationRoot -Recurse -File -Filter '*.go'
+        if ($retiredIntegrationFiles.Count -gt 0) {
+            $violations.Add('retired internal/integration package must not contain Go source')
+        }
+    }
+    foreach ($line in $packageLines) {
+        $parts = $line -split '\|', 2
+        if ($parts.Count -ne 2 -or [string]::IsNullOrWhiteSpace($parts[1])) { continue }
+        $imports = @($parts[1] -split ',' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        if (@($imports | Where-Object {
+            $_ -eq "$modulePath/internal/integration" -or
+                $_.StartsWith("$modulePath/internal/integration/", [StringComparison]::Ordinal)
+        }).Count -gt 0) {
+            $violations.Add("retired internal/integration package must not be imported by $($parts[0])")
+        }
     }
 
     # Runtime dependency catalog selection consumes only the enabled-name
