@@ -1,9 +1,6 @@
 package agentstate
 
 import (
-	"fmt"
-	"strings"
-
 	activationdomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/domain"
 	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 	dependencyapplication "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/application"
@@ -111,53 +108,11 @@ func (s State) OwnsDependency(name string) bool {
 func (s *State) RecordAgentInstallation(
 	installation servicedomain.AgentInstallation,
 ) error {
-	platform := strings.ToLower(strings.TrimSpace(installation.Platform))
-	if platform == "" {
-		return fmt.Errorf("Agent installation platform is required")
+	validated, err := serviceapplication.ValidateAgentInstallation(installation)
+	if err != nil {
+		return err
 	}
-
-	serviceName := strings.TrimSpace(installation.ServiceName)
-	if serviceName == "" {
-		return fmt.Errorf("Agent installation service name is required")
-	}
-
-	if len(installation.Ownership.Resources) == 0 {
-		return fmt.Errorf("Agent installation ownership is required")
-	}
-
-	resources := make(
-		[]servicedomain.OwnedResource,
-		0,
-		len(installation.Ownership.Resources),
-	)
-
-	for _, resource := range installation.Ownership.Resources {
-		resource.Kind = strings.TrimSpace(resource.Kind)
-		resource.Identifier = strings.TrimSpace(resource.Identifier)
-
-		if resource.Kind == "" {
-			return fmt.Errorf(
-				"Agent installation owned resource kind is required",
-			)
-		}
-		if resource.Identifier == "" {
-			return fmt.Errorf(
-				"Agent installation owned resource identifier is required",
-			)
-		}
-
-		resources = append(resources, resource)
-	}
-
-	s.Installation = &servicedomain.AgentInstallation{
-		Platform:    platform,
-		ServiceName: serviceName,
-		BinaryPath:  installation.BinaryPath,
-		Ownership: servicedomain.OwnershipRecord{
-			Resources: resources,
-		},
-	}
-
+	s.Installation = &validated
 	return nil
 }
 

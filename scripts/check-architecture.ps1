@@ -182,7 +182,7 @@ try {
                 $violations.Add("agentstate.State must delegate $useCase to Runtime dependencies/application")
             }
         }
-        foreach ($useCase in @('RecordDependencyOwnership', 'OwnsDependency')) {
+        foreach ($useCase in @('RecordDependencyOwnership', 'OwnsDependency', 'ValidateAgentInstallation')) {
             if ($source -notmatch "serviceapplication\.$useCase\(") {
                 $violations.Add("agentstate.State must delegate $useCase to Runtime service/application")
             }

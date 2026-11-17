@@ -40,3 +40,38 @@ func TestRecordDependencyOwnershipRequiresExistingDependency(t *testing.T) {
 		t.Fatalf("RecordDependencyOwnership() error = %v", err)
 	}
 }
+
+func TestValidateAgentInstallationNormalizesAndCopiesOwnership(t *testing.T) {
+	installation := servicedomain.AgentInstallation{
+		Platform:    " Windows ",
+		ServiceName: " agent-service ",
+		BinaryPath:  " C:/agent/agent.exe ",
+		Ownership: servicedomain.OwnershipRecord{Resources: []servicedomain.OwnedResource{
+			{Kind: " file ", Identifier: " C:/agent/agent.exe "},
+		}},
+	}
+
+	got, err := ValidateAgentInstallation(installation)
+	if err != nil {
+		t.Fatalf("ValidateAgentInstallation() error = %v", err)
+	}
+	if got.Platform != "windows" || got.ServiceName != "agent-service" || got.BinaryPath != installation.BinaryPath {
+		t.Fatalf("normalized installation = %#v", got)
+	}
+	if got.Ownership.Resources[0] != (servicedomain.OwnedResource{Kind: "file", Identifier: "C:/agent/agent.exe"}) {
+		t.Fatalf("normalized ownership = %#v", got.Ownership)
+	}
+	installation.Ownership.Resources[0].Identifier = "changed"
+	if got.Ownership.Resources[0].Identifier != "C:/agent/agent.exe" {
+		t.Fatalf("validated installation aliases caller input: %#v", got)
+	}
+}
+
+func TestValidateAgentInstallationRejectsMissingOwnership(t *testing.T) {
+	_, err := ValidateAgentInstallation(servicedomain.AgentInstallation{
+		Platform: "linux", ServiceName: "agent", Ownership: servicedomain.OwnershipRecord{},
+	})
+	if err == nil || err.Error() != "Agent installation ownership is required" {
+		t.Fatalf("ValidateAgentInstallation() error = %v", err)
+	}
+}

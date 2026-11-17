@@ -54,6 +54,39 @@ func OwnsDependency(current OwnershipSnapshot, name string) bool {
 	return exists && record != nil && len(record.Resources) > 0
 }
 
+// ValidateAgentInstallation normalizes and validates the platform service and
+// concrete owned resources recorded for an installed Agent.
+func ValidateAgentInstallation(
+	installation servicedomain.AgentInstallation,
+) (servicedomain.AgentInstallation, error) {
+	installation.Platform = normalizeName(installation.Platform)
+	if installation.Platform == "" {
+		return servicedomain.AgentInstallation{}, fmt.Errorf("Agent installation platform is required")
+	}
+	installation.ServiceName = strings.TrimSpace(installation.ServiceName)
+	if installation.ServiceName == "" {
+		return servicedomain.AgentInstallation{}, fmt.Errorf("Agent installation service name is required")
+	}
+	if len(installation.Ownership.Resources) == 0 {
+		return servicedomain.AgentInstallation{}, fmt.Errorf("Agent installation ownership is required")
+	}
+
+	resources := make([]servicedomain.OwnedResource, 0, len(installation.Ownership.Resources))
+	for _, resource := range installation.Ownership.Resources {
+		resource.Kind = strings.TrimSpace(resource.Kind)
+		resource.Identifier = strings.TrimSpace(resource.Identifier)
+		if resource.Kind == "" {
+			return servicedomain.AgentInstallation{}, fmt.Errorf("Agent installation owned resource kind is required")
+		}
+		if resource.Identifier == "" {
+			return servicedomain.AgentInstallation{}, fmt.Errorf("Agent installation owned resource identifier is required")
+		}
+		resources = append(resources, resource)
+	}
+	installation.Ownership.Resources = resources
+	return installation, nil
+}
+
 func cloneOwnershipSnapshot(current OwnershipSnapshot) OwnershipSnapshot {
 	next := OwnershipSnapshot{
 		Dependencies: make(map[string]*servicedomain.OwnershipRecord, len(current.Dependencies)),
