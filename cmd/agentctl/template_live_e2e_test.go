@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	materializationapp "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/application"
 	templatesapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
@@ -21,6 +20,7 @@ import (
 	matchingdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/domain"
 	templatesmonitoringapp "github.com/ar-imms/telemetry-agent/internal/monitoring/templates/application"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
+	agentservice "github.com/ar-imms/telemetry-agent/internal/runtime/service"
 )
 
 // TestLiveDockerTemplateAutoMaterializesDesiredInstance verifies the live Docker
@@ -35,7 +35,7 @@ func TestLiveDockerTemplateAutoMaterializesDesiredInstance(t *testing.T) {
 	if statePath == "" || fixtureID == "" || endpoint == "" {
 		t.Fatal("isolated state path, Redis container ID, and explicit Docker endpoint are required")
 	}
-	if filepath.Clean(statePath) == filepath.Clean(agentstate.DefaultPath()) {
+	if filepath.Clean(statePath) == filepath.Clean(agentservice.DefaultStatePath()) {
 		t.Fatal("E2E must not use the production Agent state path")
 	}
 	relative, err := filepath.Rel(os.TempDir(), filepath.Clean(statePath))

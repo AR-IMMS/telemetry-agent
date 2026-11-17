@@ -20,6 +20,7 @@ import (
 	reconciliationcontracts "github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation/contracts"
 	definitionapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
 	definitionsdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
+	agentservice "github.com/ar-imms/telemetry-agent/internal/runtime/service"
 )
 
 func writeIntegrationHelp(w io.Writer) {
@@ -49,7 +50,7 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 	}
 	flags := flag.NewFlagSet("integration "+command, flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	statePath := flags.String("state-path", agentstate.DefaultPath(), "persistent Agent state path")
+	statePath := flags.String("state-path", agentservice.DefaultStatePath(), "persistent Agent state path")
 	id := flags.String("id", "", "Integration instance ID")
 	definition := flags.String("definition", "", "exact definition ID")
 	version := flags.String("version", "", "exact definition version")

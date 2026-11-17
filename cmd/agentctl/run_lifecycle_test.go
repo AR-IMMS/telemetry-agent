@@ -5,9 +5,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	agentservice "github.com/ar-imms/telemetry-agent/internal/runtime/service"
 	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
@@ -43,11 +43,11 @@ func TestRunCollectorUsesDefaultStatePath(t *testing.T) {
 			stderr.String(),
 		)
 	}
-	if gotStatePath != agentstate.DefaultPath() {
+	if gotStatePath != agentservice.DefaultStatePath() {
 		t.Fatalf(
 			"state path = %q, want %q",
 			gotStatePath,
-			agentstate.DefaultPath(),
+			agentservice.DefaultStatePath(),
 		)
 	}
 	if stdout.String() != "Collector stopped\n" {

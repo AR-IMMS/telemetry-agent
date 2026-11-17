@@ -11,11 +11,11 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/coreapi"
 	credentialstore "github.com/ar-imms/telemetry-agent/internal/identity/credentials"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	installationapp "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
+	agentservice "github.com/ar-imms/telemetry-agent/internal/runtime/service"
 
 	"github.com/charmbracelet/x/term"
 )
@@ -24,7 +24,7 @@ func runEnrollment(ctx context.Context, args []string, stdout, stderr io.Writer,
 	flags := flag.NewFlagSet("enroll", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	coreOrigin := flags.String("core-origin", "", "trusted HTTPS AR-IMMS Core origin")
-	statePath := flags.String("state-path", agentstate.DefaultPath(), "Agent operational state database path")
+	statePath := flags.String("state-path", agentservice.DefaultStatePath(), "Agent operational state database path")
 	resume := flags.Bool("resume", false, "resume the durable pending enrollment attempt")
 	reEnroll := flags.Bool("re-enroll", false, "start a new enrollment after an authorized Core revocation")
 	flags.Usage = func() {

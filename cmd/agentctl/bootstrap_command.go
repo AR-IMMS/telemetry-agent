@@ -14,6 +14,7 @@ import (
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	agentservice "github.com/ar-imms/telemetry-agent/internal/runtime/service"
 )
 
 func runBootstrap(
@@ -37,7 +38,7 @@ func runBootstrap(
 	configPath := flags.String("config-path", "", "final rendered Collector configuration path")
 	statePath := flags.String(
 		"state-path",
-		agentstate.DefaultPath(),
+		agentservice.DefaultStatePath(),
 		"Agent lifecycle state path",
 	)
 	validationEndpoint := flags.String("validation-endpoint", defaultValidationEndpoint, "endpoint supplied only to Collector validation")

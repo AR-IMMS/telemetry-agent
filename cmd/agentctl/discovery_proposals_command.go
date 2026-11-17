@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/app"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
+	agentservice "github.com/ar-imms/telemetry-agent/internal/runtime/service"
 )
 
 func runDiscovery(ctx context.Context, args []string, stdout, stderr io.Writer) int {
@@ -41,7 +41,7 @@ func runDiscoveryProposals(ctx context.Context, args []string, stdout, stderr io
 	command := args[0]
 	flags := flag.NewFlagSet("discovery proposals "+command, flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	statePath := flags.String("state-path", agentstate.DefaultPath(), "persistent Agent state path")
+	statePath := flags.String("state-path", agentservice.DefaultStatePath(), "persistent Agent state path")
 	id := flags.String("id", "", "stable proposal ID")
 	revision := flags.Uint64("revision", 0, "expected proposal revision")
 	desiredRevision := flags.Uint64("expected-desired-revision", 0, "expected desired Integration set revision")

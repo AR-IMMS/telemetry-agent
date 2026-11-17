@@ -11,13 +11,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/app"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
 	profilesapplication "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/application"
 	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	collectorruntime "github.com/ar-imms/telemetry-agent/internal/runtime/collector"
+	agentservice "github.com/ar-imms/telemetry-agent/internal/runtime/service"
 )
 
 // writeInventoryHelp prints the read-only inventory command surface.
@@ -40,7 +40,7 @@ func runInventory(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	command := args[0]
 	flags := flag.NewFlagSet("inventory "+command, flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	statePath := flags.String("state-path", agentstate.DefaultPath(), "persistent Agent state path")
+	statePath := flags.String("state-path", agentservice.DefaultStatePath(), "persistent Agent state path")
 	activeOnly := flags.Bool("active-only", false, "list only resources currently present in a complete provider snapshot")
 	if err := parseCompatibilityFlags(flags, args[1:]); err != nil {
 		return 2

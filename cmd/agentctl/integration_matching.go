@@ -10,13 +10,13 @@ import (
 	"sort"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/app"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
 	matchingapp "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/application"
 	matchingdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
+	agentservice "github.com/ar-imms/telemetry-agent/internal/runtime/service"
 )
 
 type integrationMatchOutput struct {
@@ -65,7 +65,7 @@ type matchDiagnosticView struct {
 func runIntegrationMatch(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("integration match", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	statePath := flags.String("state-path", agentstate.DefaultPath(), "persistent Agent state path")
+	statePath := flags.String("state-path", agentservice.DefaultStatePath(), "persistent Agent state path")
 	if err := parseCompatibilityFlags(flags, args); err != nil {
 		return 2
 	}

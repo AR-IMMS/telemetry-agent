@@ -14,6 +14,7 @@ import (
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/service"
+	agentservice "github.com/ar-imms/telemetry-agent/internal/runtime/service"
 )
 
 func runInstall(
@@ -243,7 +244,7 @@ func runUninstall(
 
 	statePath := flags.String(
 		"state-path",
-		agentstate.DefaultPath(),
+		agentservice.DefaultStatePath(),
 		"Agent lifecycle state path",
 	)
 	timeout := flags.Duration(

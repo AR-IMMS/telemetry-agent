@@ -15,6 +15,7 @@ import (
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	agentservice "github.com/ar-imms/telemetry-agent/internal/runtime/service"
 	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
@@ -36,7 +37,7 @@ func runCollector(
 
 	statePath := flags.String(
 		"state-path",
-		agentstate.DefaultPath(),
+		agentservice.DefaultStatePath(),
 		"persistent Agent state path",
 	)
 

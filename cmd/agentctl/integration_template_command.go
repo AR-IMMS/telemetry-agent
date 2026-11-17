@@ -10,11 +10,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/app"
 	configurationdomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	templatesapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
 	templatesdomain "github.com/ar-imms/telemetry-agent/internal/configuration/templates/domain"
+	agentservice "github.com/ar-imms/telemetry-agent/internal/runtime/service"
 )
 
 func writeIntegrationTemplateHelp(w io.Writer) {
@@ -34,7 +34,7 @@ func runIntegrationTemplate(ctx context.Context, args []string, stdout, stderr i
 	command := args[0]
 	flags := flag.NewFlagSet("integration template "+command, flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	statePath := flags.String("state-path", agentstate.DefaultPath(), "persistent Agent state path")
+	statePath := flags.String("state-path", agentservice.DefaultStatePath(), "persistent Agent state path")
 	id := flags.String("id", "", "stable Template ID")
 	expected := flags.Uint64("expected-revision", 0, "expected Template revision; create uses 0")
 	templateJSON := flags.String("template-json", "", "secret-free Integration Template JSON")

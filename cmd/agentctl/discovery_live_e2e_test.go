@@ -22,6 +22,7 @@ import (
 	definitionsapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
 	definitionsdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	agentservice "github.com/ar-imms/telemetry-agent/internal/runtime/service"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
@@ -41,7 +42,7 @@ func TestLiveDockerInventoryWhenExplicitlyEnabled(t *testing.T) {
 	if statePath == "" || fixtureID == "" || endpoint == "" {
 		t.Fatal("E2E state path, fixture ID, and explicit Docker endpoint are required")
 	}
-	if filepath.Clean(statePath) == filepath.Clean(agentstate.DefaultPath()) {
+	if filepath.Clean(statePath) == filepath.Clean(agentservice.DefaultStatePath()) {
 		t.Fatal("E2E must not use the production Agent state path")
 	}
 
@@ -207,7 +208,7 @@ func TestLiveDockerProposalAndExplicitApproval(t *testing.T) {
 	}
 	statePath := os.Getenv("AR_IMMS_S4_E2E_STATE")
 	fixtureID := os.Getenv("AR_IMMS_S4_E2E_CONTAINER_ID")
-	if statePath == "" || fixtureID == "" || filepath.Clean(statePath) == filepath.Clean(agentstate.DefaultPath()) {
+	if statePath == "" || fixtureID == "" || filepath.Clean(statePath) == filepath.Clean(agentservice.DefaultStatePath()) {
 		t.Fatal("isolated E2E state path and disposable fixture ID are required")
 	}
 	store := sqlitefixture.NewSQLiteStore(statePath)
@@ -307,7 +308,7 @@ func TestLiveDatabaseFixturesMatchIntoNeedsInputProposals(t *testing.T) {
 	postgresID := os.Getenv("AR_IMMS_S4_E2E_POSTGRES_ID")
 	mongoID := os.Getenv("AR_IMMS_S4_E2E_MONGO_ID")
 	endpoint := os.Getenv(dockerDiscoveryEndpointEnv)
-	if statePath == "" || postgresID == "" || mongoID == "" || endpoint == "" || filepath.Clean(statePath) == filepath.Clean(agentstate.DefaultPath()) {
+	if statePath == "" || postgresID == "" || mongoID == "" || endpoint == "" || filepath.Clean(statePath) == filepath.Clean(agentservice.DefaultStatePath()) {
 		t.Fatal("isolated E2E state path, Docker endpoint, and PostgreSQL/MongoDB fixture IDs are required")
 	}
 	store := sqlitefixture.NewSQLiteStore(statePath)
