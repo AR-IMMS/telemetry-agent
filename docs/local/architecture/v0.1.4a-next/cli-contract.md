@@ -27,7 +27,7 @@ agentctl inventory
 agentctl discovery
 agentctl status
 agentctl enroll
-agentctl service         # Windows dispatcher entrypoint; missing in root help
+agentctl service         # Windows-only internal dispatcher; identified in root help
 agentctl install
 agentctl uninstall
 agentctl help
