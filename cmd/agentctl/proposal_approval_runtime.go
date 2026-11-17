@@ -7,24 +7,30 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ar-imms/telemetry-agent/internal/configuration"
+
 	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
+	configurationtemplatesapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
+	configurationtemplatesdomain "github.com/ar-imms/telemetry-agent/internal/configuration/templates/domain"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
 	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	matchingapp "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/application"
+	matchingdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/domain"
 	definitionapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
 	definitionsdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
+	monitoringtemplatesapp "github.com/ar-imms/telemetry-agent/internal/monitoring/templates/application"
+	monitoringtemplatesdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/templates/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 	"runtime"
 	"time"
 )
 
 type runtimeProposalRefresher struct {
-	inventory inventoryctx.InventoryRepository
-	templates configuration.TemplateRepository
-	manager   application.ProposalManager
-	matcher   integration.Matcher
+	inventory         inventoryctx.InventoryRepository
+	templates         configurationtemplatesapp.Repository
+	manager           application.ProposalManager
+	matcher           matchingapp.Matcher
+	templateEvaluator monitoringtemplatesapp.Evaluator
 }
 
 func newRuntimeProposalRefresher(statePath string) (runtimeProposalRefresher, error) {
@@ -34,13 +40,13 @@ func newRuntimeProposalRefresher(statePath string) (runtimeProposalRefresher, er
 		return runtimeProposalRefresher{}, err
 	}
 	platform := identity.PlatformInfo{OS: runtime.GOOS, Architecture: runtime.GOARCH}
-	var assessor integration.CapabilityAssessor
+	var assessor matchingdomain.CapabilityAssessor
 	if catalog, catalogErr := collectorruntime.StaticCatalog(platform); catalogErr == nil {
-		assessor = integration.NewCatalogCapabilityAssessor(catalog, platform.OS, platform.OS+"/"+platform.Architecture)
+		assessor = matchingdomain.NewCatalogCapabilityAssessor(catalog, platform.OS, platform.OS+"/"+platform.Architecture)
 	}
 	return runtimeProposalRefresher{
 		inventory: store.InventoryRepository(), templates: store.TemplateRepository(), manager: application.NewProposalManager(store.ProposalRepository()),
-		matcher: integration.NewMatcher(registry, assessor),
+		matcher: matchingapp.NewMatcher(registry, assessor), templateEvaluator: monitoringtemplatesapp.NewEvaluator(registry, assessor),
 	}, nil
 }
 
@@ -57,7 +63,11 @@ func (r runtimeProposalRefresher) Refresh(ctx context.Context) error {
 		return fmt.Errorf("read Templates for proposal refresh: %w", err)
 	}
 	matchSnapshot := projectInventory(snapshot, time.Now().UTC())
-	templateReport, err := r.matcher.MatchTemplates(matchSnapshot, templates.Templates)
+	templateInputs, err := monitoringTemplateInputs(templates.Templates)
+	if err != nil {
+		return fmt.Errorf("match Templates for proposal refresh: %w", err)
+	}
+	templateReport, err := r.templateEvaluator.MatchTemplates(matchSnapshot, templateInputs)
 	if err != nil {
 		return fmt.Errorf("match Templates for proposal refresh: %w", err)
 	}
@@ -83,7 +93,7 @@ func (r runtimeProposalRefresher) Refresh(ctx context.Context) error {
 	return nil
 }
 
-func materializableTemplatePairs(report integration.TemplateMatchReport) map[string]struct{} {
+func materializableTemplatePairs(report monitoringtemplatesapp.TemplateMatchReport) map[string]struct{} {
 	pairs := make(map[string]struct{})
 	for _, result := range report.Results {
 		if result.Materializable || result.Conflict {
@@ -93,11 +103,11 @@ func materializableTemplatePairs(report integration.TemplateMatchReport) map[str
 	return pairs
 }
 
-func templatePairKey(resource integration.ResourceIdentity, definitionID string) string {
+func templatePairKey(resource matchingdomain.ResourceIdentity, definitionID string) string {
 	return resource.Provider + "\x00" + resource.ProviderInstance + "\x00" + resource.ResourceID + "\x00" + definitionID
 }
 
-func proposalObservationFromMatch(result integration.MatchResult, inventoryRevision uint64) (application.ProposalObservation, error) {
+func proposalObservationFromMatch(result matchingdomain.MatchResult, inventoryRevision uint64) (application.ProposalObservation, error) {
 	observation := application.ProposalObservation{
 		Identity: application.ProposalIdentity{
 			Provider: result.Resource.Provider, ProviderInstance: result.Resource.ProviderInstance,
@@ -129,9 +139,38 @@ func proposalObservationFromMatch(result integration.MatchResult, inventoryRevis
 	return observation, nil
 }
 
+func monitoringTemplateInputs(templates []configurationtemplatesdomain.Template) ([]monitoringtemplatesdomain.TemplateInput, error) {
+	inputs := make([]monitoringtemplatesdomain.TemplateInput, 0, len(templates))
+	for _, template := range templates {
+		if err := template.Validate(); err != nil {
+			return nil, err
+		}
+		bindings := make([]monitoringtemplatesdomain.TemplateSettingBinding, len(template.Bindings))
+		for index, binding := range template.Bindings {
+			bindings[index] = monitoringtemplatesdomain.TemplateSettingBinding{
+				Target: binding.Target,
+				Source: monitoringtemplatesdomain.TemplateBindingSource{
+					Kind:               monitoringtemplatesdomain.TemplateBindingSourceKind(binding.Source.Kind),
+					Attribute:          binding.Source.Attribute,
+					EndpointScope:      binding.Source.EndpointScope,
+					EndpointProtocol:   binding.Source.EndpointProtocol,
+					EndpointProvenance: binding.Source.EndpointProvenance,
+				},
+			}
+		}
+		inputs = append(inputs, monitoringtemplatesdomain.TemplateInput{
+			ID: template.ID, Owner: string(template.Owner), Revision: template.Revision,
+			Evaluate:     template.Status == configurationtemplatesdomain.StatusEnabled,
+			DefinitionID: template.DefinitionID, DefinitionVersion: template.DefinitionVersion,
+			Selector: template.Selector, Settings: template.Settings, Bindings: bindings,
+		})
+	}
+	return inputs, nil
+}
+
 type runtimeApprovalVerifier struct {
 	inventory inventoryctx.InventoryRepository
-	matcher   integration.Matcher
+	matcher   matchingapp.Matcher
 	resolver  definitionapp.Resolver
 }
 
@@ -142,11 +181,11 @@ func newRuntimeApprovalService(statePath string) (application.ApprovalService, e
 		return application.ApprovalService{}, err
 	}
 	platform := identity.PlatformInfo{OS: runtime.GOOS, Architecture: runtime.GOARCH}
-	var assessor integration.CapabilityAssessor
+	var assessor matchingdomain.CapabilityAssessor
 	if catalog, catalogErr := collectorruntime.StaticCatalog(platform); catalogErr == nil {
-		assessor = integration.NewCatalogCapabilityAssessor(catalog, platform.OS, platform.OS+"/"+platform.Architecture)
+		assessor = matchingdomain.NewCatalogCapabilityAssessor(catalog, platform.OS, platform.OS+"/"+platform.Architecture)
 	}
-	matcher := integration.NewMatcher(registry, assessor)
+	matcher := matchingapp.NewMatcher(registry, assessor)
 	verifier := runtimeApprovalVerifier{
 		inventory: store.InventoryRepository(), matcher: matcher, resolver: definitionapp.NewResolver(registry),
 	}
@@ -165,7 +204,7 @@ func (v runtimeApprovalVerifier) Verify(ctx context.Context, proposal applicatio
 	if err != nil {
 		return application.VerifiedCandidate{}, err
 	}
-	var match *integration.MatchResult
+	var match *matchingdomain.MatchResult
 	for i := range report.Results {
 		result := &report.Results[i]
 		resource := result.Resource
@@ -175,8 +214,8 @@ func (v runtimeApprovalVerifier) Verify(ctx context.Context, proposal applicatio
 			break
 		}
 	}
-	if match == nil || match.MatchStatus != integration.MatchMatched || match.ResourceFingerprint != proposal.ResourceFingerprint ||
-		(match.CapabilityStatus != integration.CapabilitySupported && match.CapabilityStatus != integration.CapabilityNotAssessed) {
+	if match == nil || match.MatchStatus != matchingdomain.MatchMatched || match.ResourceFingerprint != proposal.ResourceFingerprint ||
+		(match.CapabilityStatus != matchingdomain.CapabilitySupported && match.CapabilityStatus != matchingdomain.CapabilityNotAssessed) {
 		return application.VerifiedCandidate{}, application.ErrApprovalStale
 	}
 	settings := map[string]any{}
@@ -195,7 +234,7 @@ func (v runtimeApprovalVerifier) Verify(ctx context.Context, proposal applicatio
 		}
 		settings[name] = value
 	}
-	if match.ResolutionStatus == integration.ResolutionNeedsInput && len(inputs) == 0 {
+	if match.ResolutionStatus == matchingdomain.ResolutionNeedsInput && len(inputs) == 0 {
 		return application.VerifiedCandidate{}, application.ErrApprovalStale
 	}
 	validationInstance := desiredstatedomain.Instance{
@@ -224,13 +263,13 @@ func (v runtimeApprovalVerifier) Verify(ctx context.Context, proposal applicatio
 		}, nil
 	}
 	candidatePayload, err := json.Marshal(struct {
-		Resource     integration.ResourceIdentity `json:"resource"`
-		DefinitionID string                       `json:"definition_id"`
-		Version      string                       `json:"definition_version"`
-		Capabilities []string                     `json:"capabilities"`
-		Settings     json.RawMessage              `json:"settings"`
+		Resource     matchingdomain.ResourceIdentity `json:"resource"`
+		DefinitionID string                          `json:"definition_id"`
+		Version      string                          `json:"definition_version"`
+		Capabilities []string                        `json:"capabilities"`
+		Settings     json.RawMessage                 `json:"settings"`
 	}{
-		Resource:     integration.ResourceIdentity{Provider: proposal.Identity.Provider, ProviderInstance: proposal.Identity.ProviderInstance, ResourceID: proposal.Identity.ResourceID},
+		Resource:     matchingdomain.ResourceIdentity{Provider: proposal.Identity.Provider, ProviderInstance: proposal.Identity.ProviderInstance, ResourceID: proposal.Identity.ResourceID},
 		DefinitionID: match.DefinitionID, Version: match.DefinitionVersion, Capabilities: capabilities, Settings: encoded,
 	})
 	if err != nil {

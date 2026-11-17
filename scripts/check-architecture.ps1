@@ -194,11 +194,21 @@ try {
     $proposalApprovalRuntime = Join-Path $repoRoot 'cmd/agentctl/proposal_approval_runtime.go'
     if (Test-Path -LiteralPath $proposalApprovalRuntime -PathType Leaf) {
         $source = Get-Content -LiteralPath $proposalApprovalRuntime -Raw
-        if ($source -match 'integration\.NewResolver|integration\.Resolver') {
-            $violations.Add('cmd/agentctl/proposal_approval_runtime.go must resolve proposal settings through Monitoring definitions/application')
+        if ($source -match '"github.com/ar-imms/telemetry-agent/internal/integration"') {
+            $violations.Add('cmd/agentctl/proposal_approval_runtime.go must use Monitoring matching and template application contracts instead of internal/integration')
         }
-        if ($source -notmatch 'internal/monitoring/profiles/definitions/application') {
-            $violations.Add('cmd/agentctl/proposal_approval_runtime.go must use Monitoring definitions/application for approval revalidation')
+        if ($source -match '"github.com/ar-imms/telemetry-agent/internal/configuration"') {
+            $violations.Add('cmd/agentctl/proposal_approval_runtime.go must use Configuration templates/application instead of the root facade')
+        }
+        foreach ($requiredImport in @(
+            'internal/configuration/templates/application',
+            'internal/monitoring/matching/application',
+            'internal/monitoring/profiles/definitions/application',
+            'internal/monitoring/templates/application'
+        )) {
+            if ($source -notmatch [regex]::Escape($requiredImport)) {
+                $violations.Add("cmd/agentctl/proposal_approval_runtime.go must use $requiredImport")
+            }
         }
     }
     # Ordered schema composition belongs to the Application boundary. The
