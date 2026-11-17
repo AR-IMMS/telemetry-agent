@@ -389,4 +389,6 @@ docs/
 
 **Verified Inventory CLI command-tree capability — source commit `fc3c2eb`:** `internal/cli/commands/inventory` owns construction of the existing Inventory Cobra group and operation aliases. The root CLI composes that capability directly; it forwards existing Inventory paths and flags to the same compatibility handler and retains the former command help summary. Repository construction and Inventory behavior remain with their existing owners.
 
+**Verified Health CLI command nodes — source commit `fce9f2f`:** `internal/cli/commands/health` owns Cobra construction for the existing top-level `status` and `doctor` commands. The root CLI still exposes both names and forwards their exact path, arguments, context, writers, and exit code to the existing handlers. Health evidence and assessment remain owned by `internal/health`.
+
 **Source audit correction at `c9f4425`:** The Integration compatibility package and all Go imports of `internal/integration` are absent from the current tree. The historical import counts recorded in earlier migration entries describe those earlier source points only and are superseded. Keep the historical migration narrative; do not treat those counts as current blockers.
