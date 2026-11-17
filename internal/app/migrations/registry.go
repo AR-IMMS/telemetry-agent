@@ -17,8 +17,9 @@ import (
 // Hooks supplies Agent-owned schema/state semantics used when composing
 // context migrations. The callbacks do not transfer table ownership.
 type Hooks struct {
-	InitializeAgentState func(*sql.DB) error
-	ReadAgentState       func(*sql.Tx) (remoteconfigsqlite.AgentState, error)
+	InitializeAgentState        func(*sql.DB) error
+	ReadAgentState              func(*sql.Tx) (remoteconfigsqlite.AgentState, error)
+	ReadAcceptedGatewaySnapshot func(*sql.Tx) (activationsqlite.AcceptedGatewaySnapshot, bool, error)
 }
 
 // BuildAgentRegistry returns the historical contiguous schema registry in
@@ -66,7 +67,21 @@ func BuildAgentRegistry(hooks Hooks) ([]migrate.Migration, error) {
 		},
 	}}
 	registry = append(registry, identityinstallationsqlite.Migrations()...)
-	registry = append(registry, remoteconfigsqlite.Migrations(hooks.ReadAgentState)...)
+	registry = append(registry, remoteconfigsqlite.Migrations()...)
+	registry = append(registry, activationsqlite.CoreGatewayRuntimeMigration(
+		func(tx *sql.Tx) (activationsqlite.GatewayMigrationState, error) {
+			state, err := hooks.ReadAgentState(tx)
+			if err != nil {
+				return activationsqlite.GatewayMigrationState{}, err
+			}
+			return activationsqlite.GatewayMigrationState{
+				BootstrapEndpoint:   state.BootstrapEndpoint,
+				ActivatedGeneration: state.ActivatedGeneration,
+				AppliedGeneration:   state.AppliedGeneration,
+			}, nil
+		},
+		hooks.ReadAcceptedGatewaySnapshot,
+	))
 	registry = append(registry, identityenrollmentsqlite.Migrations()...)
 	registry = append(registry, migration6)
 	registry = append(registry, activationsqlite.Migrations()...)

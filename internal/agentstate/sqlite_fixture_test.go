@@ -21,6 +21,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 	platformsqlite "github.com/ar-imms/telemetry-agent/internal/platform/sqlite"
 	sqlitemigrate "github.com/ar-imms/telemetry-agent/internal/platform/sqlite/migrate"
+	activationsqlite "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/sqlite"
 )
 
 func newTestSQLiteStore(path string) SQLiteStore {
@@ -87,6 +88,12 @@ func initializeTestSQLiteSchema(db *sql.DB) error {
 				ActivatedGeneration: state.ActivatedGeneration,
 				AppliedGeneration:   state.AppliedGeneration,
 			}, nil
+		},
+		ReadAcceptedGatewaySnapshot: func(tx *sql.Tx) (activationsqlite.AcceptedGatewaySnapshot, bool, error) {
+			snapshot, exists, err := remoteconfigsqlite.ReadSnapshot(tx)
+			return activationsqlite.AcceptedGatewaySnapshot{
+				Revision: snapshot.Revision, Endpoint: snapshot.Endpoint, Generation: snapshot.Generation,
+			}, exists, err
 		},
 	})
 	if err != nil {

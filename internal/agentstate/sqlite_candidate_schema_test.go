@@ -12,6 +12,7 @@ import (
 	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
 	identityenrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
 	identityinstallationsqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
+	activationsqlite "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/sqlite"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
@@ -33,16 +34,22 @@ func TestCandidateJournalMigrationPreservesVersionSixLifecycleState(t *testing.T
 		}
 	}
 	configurationMigrations := configurationsqlite.Migrations()
-	gatewayMigrations := remoteconfigsqlite.Migrations(func(*sql.Tx) (remoteconfigsqlite.AgentState, error) {
-		return remoteconfigsqlite.AgentState{}, os.ErrNotExist
-	})
+	gatewayMigrations := remoteconfigsqlite.Migrations()
+	runtimeGatewayMigration := activationsqlite.CoreGatewayRuntimeMigration(
+		func(*sql.Tx) (activationsqlite.GatewayMigrationState, error) {
+			return activationsqlite.GatewayMigrationState{}, os.ErrNotExist
+		},
+		func(*sql.Tx) (activationsqlite.AcceptedGatewaySnapshot, bool, error) {
+			return activationsqlite.AcceptedGatewaySnapshot{}, false, nil
+		},
+	)
 	if len(configurationMigrations) == 0 || configurationMigrations[0].Version != 6 {
 		t.Fatalf("Configuration migration registry does not start at version 6: %+v", configurationMigrations)
 	}
 	for _, migrate := range []func(*sql.DB) error{
 		identityinstallationsqlite.Migrations()[0].Apply,
 		gatewayMigrations[0].Apply,
-		gatewayMigrations[1].Apply,
+		runtimeGatewayMigration.Apply,
 		identityenrollmentsqlite.Migrations()[0].Apply,
 		configurationMigrations[0].Apply,
 	} {
