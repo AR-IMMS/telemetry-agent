@@ -4,9 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
 	"testing"
 	"time"
+
+	desiredstate "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 )
 
 func TestApprovalServiceRevalidatesAndBuildsDiscoveryBoundInstance(t *testing.T) {
@@ -30,8 +31,8 @@ func TestApprovalServiceRevalidatesAndBuildsDiscoveryBoundInstance(t *testing.T)
 	if verifier.inputs["label"] != "reviewed" {
 		t.Fatal("verifier input aliases request settings")
 	}
-	wantBinding := integration.ResourceBinding{Provider: "docker", ProviderInstance: "local", ResourceID: "container-a"}
-	if instance.Source != integration.SourceDiscovery || instance.Binding == nil || *instance.Binding != wantBinding || instance.Revision != 3 || desiredRevision != 5 {
+	wantBinding := desiredstate.ResourceBinding{Provider: "docker", ProviderInstance: "local", ResourceID: "container-a"}
+	if instance.Source != desiredstate.SourceDiscovery || instance.Binding == nil || *instance.Binding != wantBinding || instance.Revision != 3 || desiredRevision != 5 {
 		t.Fatalf("approved instance=%+v desired revision=%d", instance, desiredRevision)
 	}
 	if repository.commit.ExpectedDesiredRevision != 4 || repository.commit.InventoryWriteRevision != 7 || repository.commit.VerifiedCandidateDigest != proposal.CandidateDigest {
@@ -130,7 +131,7 @@ type recordingApprovalRepository struct {
 	calls  int
 }
 
-func (r *recordingApprovalRepository) CommitApproval(commit ApprovalCommit) (integration.IntegrationInstance, uint64, error) {
+func (r *recordingApprovalRepository) CommitApproval(commit ApprovalCommit) (desiredstate.Instance, uint64, error) {
 	r.commit = commit
 	r.calls++
 	commit.Instance.Revision = 3
