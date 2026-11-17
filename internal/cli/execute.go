@@ -57,14 +57,58 @@ func newRootCommand(dispatch Dispatch, stdout, stderr io.Writer, rootHelp func(i
 	})
 
 	for _, name := range []string{
-		"bootstrap", "dependency", "integration", "run", "inventory",
+		"bootstrap", "integration", "run",
 		"discovery", "status", "doctor", "enroll", "install", "uninstall",
 	} {
 		root.AddCommand(newLegacyCommand(name, false, dispatch, exitCode))
 	}
+	root.AddCommand(newLegacyOperationsCommand("dependency", []string{
+		"list", "install", "status", "pending", "configure", "disable", "uninstall",
+	}, dispatch, exitCode))
+	root.AddCommand(newLegacyOperationsCommand("inventory", []string{
+		"list", "inspect", "status",
+	}, dispatch, exitCode))
 	root.AddCommand(newLegacyCommand("service", true, dispatch, exitCode))
 	root.AddCommand(newMonitoringCommand(dispatch, exitCode))
 	return root
+}
+
+func newLegacyOperationsCommand(name string, operations []string, dispatch Dispatch, exitCode *int) *cobra.Command {
+	group := &cobra.Command{
+		Use:                name,
+		Short:              "Existing " + name + " commands",
+		DisableFlagParsing: true,
+		Run: func(command *cobra.Command, args []string) {
+			if hasHelpArgument(args) {
+				_ = command.Help()
+				return
+			}
+			*exitCode = dispatch(command.Context(), append([]string{name}, args...), command.OutOrStdout(), command.ErrOrStderr())
+		},
+	}
+	for _, operation := range operations {
+		group.AddCommand(&cobra.Command{
+			Use:                operation,
+			DisableFlagParsing: true,
+			Run: func(command *cobra.Command, args []string) {
+				if hasHelpArgument(args) {
+					_ = command.Help()
+					return
+				}
+				*exitCode = dispatch(command.Context(), append([]string{name, operation}, args...), command.OutOrStdout(), command.ErrOrStderr())
+			},
+		})
+	}
+	return group
+}
+
+func hasHelpArgument(args []string) bool {
+	for _, arg := range args {
+		if arg == "--help" || arg == "-h" {
+			return true
+		}
+	}
+	return false
 }
 
 func newLegacyCommand(name string, hidden bool, dispatch Dispatch, exitCode *int) *cobra.Command {

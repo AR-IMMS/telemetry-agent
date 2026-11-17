@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -69,5 +71,87 @@ func TestExecuteMonitoringAliasesMatchLegacyDispatch(t *testing.T) {
 				t.Fatalf("alias dispatch = %#v, legacy dispatch = %#v", alias, legacy)
 			}
 		})
+	}
+}
+
+func TestExecuteListsExistingDependencyAndInventoryOperations(t *testing.T) {
+	tests := []struct {
+		name       string
+		command    string
+		operations []string
+	}{
+		{
+			name:       "dependency",
+			command:    "dependency",
+			operations: []string{"list", "install", "status", "pending", "configure", "disable", "uninstall"},
+		},
+		{
+			name:       "inventory",
+			command:    "inventory",
+			operations: []string{"list", "inspect", "status"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			code := Execute(context.Background(), []string{test.command, "--help"}, &stdout, &stderr,
+				func(context.Context, []string, io.Writer, io.Writer) int {
+					t.Fatal("help must not dispatch a business command")
+					return 0
+				}, func(io.Writer) {})
+			if code != 0 {
+				t.Fatalf("help exit code = %d, want 0; stderr = %q", code, stderr.String())
+			}
+			for _, operation := range test.operations {
+				if !strings.Contains(stdout.String(), operation) {
+					t.Errorf("help output does not list %q: %s", operation, stdout.String())
+				}
+			}
+		})
+	}
+}
+
+func TestExecuteDependencyAndInventoryOperationsPreserveLegacyDispatch(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "dependency install flags", args: []string{"dependency", "install", "--state-path", "agent.db", "node-exporter"}},
+		{name: "dependency configure flags", args: []string{"dependency", "configure", "--state-path", "agent.db"}},
+		{name: "inventory inspect flags", args: []string{"inventory", "inspect", "--id", "container-1"}},
+		{name: "legacy extension command", args: []string{"dependency", "future-command", "--raw", "value"}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var got []string
+			code := Execute(context.Background(), test.args, io.Discard, io.Discard,
+				func(_ context.Context, args []string, _, _ io.Writer) int {
+					got = append([]string(nil), args...)
+					return 7
+				}, func(io.Writer) {})
+			if code != 7 {
+				t.Fatalf("exit code = %d, want legacy handler code 7", code)
+			}
+			if !reflect.DeepEqual(got, test.args) {
+				t.Fatalf("dispatched args = %#v, want %#v", got, test.args)
+			}
+		})
+	}
+}
+
+func TestExecuteDependencyLeafHelpDoesNotDispatch(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := Execute(context.Background(), []string{"dependency", "install", "--help"}, &stdout, &stderr,
+		func(context.Context, []string, io.Writer, io.Writer) int {
+			t.Fatal("leaf help must not dispatch a business command")
+			return 0
+		}, func(io.Writer) {})
+	if code != 0 {
+		t.Fatalf("help exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Usage:") {
+		t.Fatalf("leaf help output lacks usage: %s", stdout.String())
 	}
 }
