@@ -2,12 +2,12 @@ package librehardwaremonitor
 
 import (
 	"context"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
-	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
-	"io"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 func TestNewInstallerComposesAdminReconcileAndFreshInstall(t *testing.T) {
@@ -117,13 +117,7 @@ func TestNewInstallerComposesAdminReconcileAndFreshInstall(t *testing.T) {
 func TestNewInstallerReturnsDependencyInstaller(t *testing.T) {
 	installer := NewInstaller(
 		DefaultOptions(),
-		testDownloader(func(
-			ctx context.Context,
-			url string,
-			writer io.Writer,
-		) error {
-			return nil
-		}),
+		nil,
 	)
 
 	if installer == nil {

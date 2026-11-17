@@ -1,4 +1,4 @@
-package librehardwaremonitor
+package artifacts
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	dependency "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 )
 
 const maxArtifactBytes int64 = 32 << 20
@@ -41,22 +41,15 @@ func DownloadAndVerify(
 	}
 
 	hash := sha256.New()
-
 	limitedDestination := &sizeLimitedWriter{
 		destination: io.MultiWriter(destination, hash),
 		limit:       maxArtifactBytes,
 	}
-
-	if err := downloader.Download(
-		ctx,
-		artifact.URL,
-		limitedDestination,
-	); err != nil {
+	if err := downloader.Download(ctx, artifact.URL, limitedDestination); err != nil {
 		return fmt.Errorf("download Libre Hardware Monitor artifact: %w", err)
 	}
 
 	gotSHA256 := hex.EncodeToString(hash.Sum(nil))
-
 	if !strings.EqualFold(gotSHA256, artifact.SHA256) {
 		return fmt.Errorf(
 			"Libre Hardware Monitor artifact checksum mismatch: got %s, want %s",
@@ -64,31 +57,25 @@ func DownloadAndVerify(
 			artifact.SHA256,
 		)
 	}
-
 	return nil
 }
 
 // Write forwards bytes up to the configured limit, then stops the download.
 func (w *sizeLimitedWriter) Write(content []byte) (int, error) {
 	remaining := w.limit - w.written
-
 	if remaining <= 0 {
 		return 0, fmt.Errorf(
 			"Libre Hardware Monitor artifact exceeds size limit of %d bytes",
 			w.limit,
 		)
 	}
-
 	if int64(len(content)) > remaining {
 		allowed := int(remaining)
-
 		written, err := w.destination.Write(content[:allowed])
 		w.written += int64(written)
-
 		if err != nil {
 			return written, err
 		}
-
 		return written, fmt.Errorf(
 			"Libre Hardware Monitor artifact exceeds size limit of %d bytes",
 			w.limit,
@@ -97,6 +84,5 @@ func (w *sizeLimitedWriter) Write(content []byte) (int, error) {
 
 	written, err := w.destination.Write(content)
 	w.written += int64(written)
-
 	return written, err
 }

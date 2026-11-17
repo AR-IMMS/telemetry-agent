@@ -2,10 +2,12 @@ package librehardwaremonitor
 
 import (
 	"context"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
-	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"net/http"
 	"time"
+
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/libre_hardware_monitor/artifacts"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 // installerDependencies groups runtime adapters for one LHM installer.
@@ -97,7 +99,7 @@ func NewInstaller(
 	options Options,
 	downloader dependency.ArtifactDownloader,
 ) dependency.Installer {
-	artifact := PinnedArtifact()
+	artifact := artifacts.PinnedArtifact()
 	runPowerShell := newPowerShellScriptRunner(runOSProcess)
 
 	return newInstaller(
@@ -114,7 +116,7 @@ func NewInstaller(
 			stageArchive: func(
 				ctx context.Context,
 			) (string, func(), error) {
-				return StageArchive(ctx, artifact, downloader)
+				return artifacts.StageArchive(ctx, artifact, downloader)
 			},
 			installArchive: InstallArchive,
 			writeConfig:    WriteConfig,

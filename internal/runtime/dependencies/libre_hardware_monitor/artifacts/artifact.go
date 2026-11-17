@@ -1,4 +1,4 @@
-package librehardwaremonitor
+package artifacts
 
 // Artifact identifies one checksum-pinned upstream LHM ZIP release.
 type Artifact struct {
