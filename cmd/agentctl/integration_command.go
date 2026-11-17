@@ -13,7 +13,8 @@ import (
 	"strings"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/configuration"
+	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
+	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation"
 	reconciliationcontracts "github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation/contracts"
 	"github.com/ar-imms/telemetry-agent/internal/integration"
@@ -97,16 +98,16 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 		if err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
-		service := configuration.NewIntegrationService(integration.NewResolver(registry), repository)
-		instance := integration.IntegrationInstance{ID: *id, DefinitionID: *definition, DefinitionVersion: *version, Configuration: values, Enabled: *enabled}
-		var stored integration.IntegrationInstance
+		service := desiredstateapp.NewService(desiredStateResolverAdapter{resolver: integration.NewResolver(registry)}, repository)
+		instance := desiredstatedomain.Instance{ID: *id, DefinitionID: *definition, DefinitionVersion: *version, Configuration: values, Enabled: *enabled}
+		var stored desiredstatedomain.Instance
 		var revision uint64
 		if command == "update" && !flagProvided(args[1:], "--enabled") {
 			stored, revision, err = service.PutPreservingEnabled(instance, *expected)
 		} else {
 			stored, revision, err = service.Put(instance, *expected)
 		}
-		if errors.Is(err, configuration.ErrIntegrationNotFound) {
+		if errors.Is(err, desiredstateapp.ErrInstanceNotFound) {
 			err = sql.ErrNoRows
 		}
 		if err != nil {
@@ -130,9 +131,9 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 		if err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
-		service := configuration.NewIntegrationService(integration.NewResolver(registry), repository)
+		service := desiredstateapp.NewService(desiredStateResolverAdapter{resolver: integration.NewResolver(registry)}, repository)
 		stored, revision, err := service.SetEnabled(*id, command == "enable", *expected)
-		if errors.Is(err, configuration.ErrIntegrationNotFound) {
+		if errors.Is(err, desiredstateapp.ErrInstanceNotFound) {
 			err = sql.ErrNoRows
 		}
 		if err != nil {
@@ -214,6 +215,16 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 		return usageIntegration(stderr, "unknown integration command "+command)
 	}
 	return 0
+}
+
+type desiredStateResolverAdapter struct{ resolver integration.Resolver }
+
+func (a desiredStateResolverAdapter) Resolve(instance desiredstatedomain.Instance) (desiredstatedomain.Instance, error) {
+	resolved, err := a.resolver.Resolve(instance)
+	if err != nil {
+		return desiredstatedomain.Instance{}, err
+	}
+	return resolved.Instance, nil
 }
 
 func usageIntegration(w io.Writer, message string) int {

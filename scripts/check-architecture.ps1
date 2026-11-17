@@ -130,6 +130,18 @@ try {
             }
         }
     }
+    # Integration CRUD is delivered through the desired-state use case; keep
+    # the CLI adapter off Configuration's transitional root facade.
+    $integrationCommandPath = Join-Path $repoRoot 'cmd/agentctl/integration_command.go'
+    if (Test-Path -LiteralPath $integrationCommandPath -PathType Leaf) {
+        $source = Get-Content -LiteralPath $integrationCommandPath -Raw
+        if ($source -match '"github.com/ar-imms/telemetry-agent/internal/configuration"') {
+            $violations.Add('cmd/agentctl/integration_command.go must use Configuration desiredstate/application instead of the root facade')
+        }
+        if ($source -notmatch '"github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"') {
+            $violations.Add('cmd/agentctl/integration_command.go must call the Configuration desiredstate application use case')
+        }
+    }
     # Proposal approval belongs to Configuration and consumes its canonical
     # desired-state model directly; the CLI is a delivery adapter over the same
     # model. Keep these paths off the temporary Integration compatibility facade.
