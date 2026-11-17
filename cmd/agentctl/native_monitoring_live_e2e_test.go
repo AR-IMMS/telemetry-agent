@@ -158,7 +158,7 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 	if len(probeCycle.ProviderResults) != 1 || probeCycle.ProviderResults[0].ErrorCode != "" {
 		t.Fatalf("Agent Docker discovery preflight result=%+v", probeCycle.ProviderResults)
 	}
-	probeInventory, err := sqlitefixture.NewSQLiteStore(probeStatePath).InventoryRepository().Snapshot()
+	probeInventory, err := sqlitefixture.NewInventoryRepositoryFromStore(sqlitefixture.NewSQLiteStore(probeStatePath)).Snapshot()
 	if err != nil {
 		t.Fatalf("read Agent Docker discovery preflight inventory: %v", err)
 	}
@@ -191,7 +191,7 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 	if duplicates := nativeDuplicateMetricSamples(sinkOutput.String()); len(duplicates) > 0 {
 		t.Fatalf("duplicate Redis OTLP points detected: %v", duplicates)
 	}
-	inventory, err := store.InventoryRepository().Snapshot()
+	inventory, err := sqlitefixture.NewInventoryRepositoryFromStore(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +275,7 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 			t.Fatalf("pause Redis to induce an isolated scrape failure: %v\n%s", err, output)
 		}
 		waitForNativeCollectorFailure(t, serviceDone, collectorLogs, "redis/alternate_port", fmt.Sprintf("127.0.0.1:%d", secondPort))
-		inventory, err := store.InventoryRepository().Snapshot()
+		inventory, err := sqlitefixture.NewInventoryRepositoryFromStore(store).Snapshot()
 		if err != nil {
 			t.Fatalf("read Agent inventory after induced scrape failure: %v", err)
 		}
@@ -331,7 +331,7 @@ func verifyNativeDockerRecovery(t *testing.T, ctx context.Context, manager strin
 	if output, err := exec.CommandContext(ctx, "docker", "stop", manager).CombinedOutput(); err != nil {
 		t.Fatalf("stop isolated Docker Engine manager: %v\n%s", err, output)
 	}
-	outageAt := waitForNativeProviderOutage(t, ctx, store.InventoryRepository())
+	outageAt := waitForNativeProviderOutage(t, ctx, sqlitefixture.NewInventoryRepositoryFromStore(store))
 	if missing := nativeInventoryMissingResources(store, resourceIDs...); len(missing) != 0 {
 		t.Fatalf("Agent inventory did not preserve present Redis resources during failed Docker observations: %v", missing)
 	}
@@ -348,7 +348,7 @@ func verifyNativeDockerRecovery(t *testing.T, ctx context.Context, manager strin
 			t.Fatalf("start monitored Redis after daemon recovery: %v\n%s", err, output)
 		}
 	}
-	waitForNativeProviderRecovery(t, ctx, store.InventoryRepository(), outageAt)
+	waitForNativeProviderRecovery(t, ctx, sqlitefixture.NewInventoryRepositoryFromStore(store), outageAt)
 	waitForNativeInventoryPresent(t, ctx, store, resourceIDs...)
 	waitForNativeNewMetrics(t, ctx, serviceDone, sink, pointCounts)
 	stateAfter, err := store.Load()
@@ -496,7 +496,7 @@ func waitForNativeInventoryPresent(t *testing.T, ctx context.Context, store agen
 }
 
 func nativeInventoryRecoveryDiagnostic(store agentstate.SQLiteStore, resourceIDs ...string) string {
-	snapshot, err := store.InventoryRepository().Snapshot()
+	snapshot, err := sqlitefixture.NewInventoryRepositoryFromStore(store).Snapshot()
 	if err != nil {
 		return "inventory_snapshot_error=" + err.Error()
 	}
@@ -522,7 +522,7 @@ func nativeInventoryContainsAll(store agentstate.SQLiteStore, resourceIDs ...str
 }
 
 func nativeInventoryMissingResources(store agentstate.SQLiteStore, resourceIDs ...string) []string {
-	snapshot, err := store.InventoryRepository().Snapshot()
+	snapshot, err := sqlitefixture.NewInventoryRepositoryFromStore(store).Snapshot()
 	if err != nil {
 		return []string{"inventory_snapshot_error=" + err.Error()}
 	}

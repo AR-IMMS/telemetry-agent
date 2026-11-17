@@ -62,7 +62,7 @@ func TestLiveDockerInventoryWhenExplicitlyEnabled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	repository := store.InventoryRepository()
+	repository := sqlitefixture.NewInventoryRepositoryFromStore(store)
 	coordinator, err := inventoryapp.NewCoordinator(repository, []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), 5*time.Second)
 	if err != nil {
 		t.Fatal(err)
@@ -156,7 +156,7 @@ func TestLiveDockerUnavailableRetainsInventory(t *testing.T) {
 		t.Fatal("E2E state path and unreachable local Docker endpoint are required")
 	}
 	store := sqlitefixture.NewSQLiteStore(statePath)
-	repository := store.InventoryRepository()
+	repository := sqlitefixture.NewInventoryRepositoryFromStore(store)
 	before, err := repository.Snapshot()
 	if err != nil {
 		t.Fatal(err)
@@ -315,14 +315,14 @@ func TestLiveDatabaseFixturesMatchIntoNeedsInputProposals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	coordinator, err := inventoryapp.NewCoordinator(store.InventoryRepository(), []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), 5*time.Second)
+	coordinator, err := inventoryapp.NewCoordinator(sqlitefixture.NewInventoryRepositoryFromStore(store), []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), 5*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := coordinator.DiscoverOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	inventory, err := store.InventoryRepository().Snapshot()
+	inventory, err := sqlitefixture.NewInventoryRepositoryFromStore(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}

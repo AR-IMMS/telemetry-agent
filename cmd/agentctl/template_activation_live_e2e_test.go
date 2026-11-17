@@ -116,7 +116,7 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	discoveryCoordinator, err := inventoryapp.NewCoordinator(store.InventoryRepository(), []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), 5*time.Second)
+	discoveryCoordinator, err := inventoryapp.NewCoordinator(sqlitefixture.NewInventoryRepositoryFromStore(store), []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), 5*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}

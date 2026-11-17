@@ -53,7 +53,7 @@ func TestPreMovePopulatedDatabaseSurvivesOpenAndReopen(t *testing.T) {
 		if err != nil || desired.Revision != 1 || len(desired.Instances) != 1 || desired.Instances[0].ID != "redis-main" {
 			t.Fatalf("open %d desired state=%+v err=%v", open, desired, err)
 		}
-		inventory, err := store.InventoryRepository().Snapshot()
+		inventory, err := newTestInventoryRepository(store).Snapshot()
 		if err != nil {
 			t.Fatalf("open %d load inventory: %v", open, err)
 		}

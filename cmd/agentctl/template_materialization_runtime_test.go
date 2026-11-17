@@ -49,7 +49,7 @@ func TestRuntimeTemplateMaterializerProjectsStableInstancesAndNoOps(t *testing.T
 		t.Fatal(err)
 	}
 	provider := &mutableTemplateProvider{snapshot: redisProviderSnapshot("container-a")}
-	coordinator, err := inventoryapp.NewCoordinator(store.InventoryRepository(), []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), time.Second)
+	coordinator, err := inventoryapp.NewCoordinator(sqlitefixture.NewInventoryRepositoryFromStore(store), []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestRuntimeTemplateMaterializerProjectsStableInstancesAndNoOps(t *testing.T
 		t.Fatal(err)
 	}
 	materializer := runtimeTemplateMaterializer{
-		inventory: store.InventoryRepository(), templates: templates, desired: store.IntegrationRepository(),
+		inventory: sqlitefixture.NewInventoryRepositoryFromStore(store), templates: templates, desired: store.IntegrationRepository(),
 		service: materializationapp.NewService(store.MaterializationRepository()),
 		matcher: templatesmonitoringapp.NewEvaluator(registry, supportedTemplateCapability{}),
 	}
@@ -144,12 +144,12 @@ func TestNativeRedisProfileDoesNotCreateAgentInstancesDuringContainerChurn(t *te
 		t.Fatal(err)
 	}
 	provider := &mutableTemplateProvider{snapshot: nativeRedisProviderSnapshot("container-a")}
-	coordinator, err := inventoryapp.NewCoordinator(store.InventoryRepository(), []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), time.Second)
+	coordinator, err := inventoryapp.NewCoordinator(sqlitefixture.NewInventoryRepositoryFromStore(store), []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
 	materializer := runtimeTemplateMaterializer{
-		inventory: store.InventoryRepository(), templates: templates, desired: store.IntegrationRepository(),
+		inventory: sqlitefixture.NewInventoryRepositoryFromStore(store), templates: templates, desired: store.IntegrationRepository(),
 		service:          materializationapp.NewService(store.MaterializationRepository()),
 		matcher:          templatesmonitoringapp.NewEvaluator(registry, supportedTemplateCapability{}),
 		nativeMonitoring: true, nativeProfiles: monitoringdomain.DefaultRegistry(),
@@ -202,7 +202,7 @@ func TestRuntimeTemplateUpdateChangesGeneratedInstancesButPreservesManualState(t
 		t.Fatal(err)
 	}
 	provider := &mutableTemplateProvider{snapshot: redisProviderSnapshot("container-a", "container-b")}
-	coordinator, err := inventoryapp.NewCoordinator(store.InventoryRepository(), []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), time.Second)
+	coordinator, err := inventoryapp.NewCoordinator(sqlitefixture.NewInventoryRepositoryFromStore(store), []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +211,7 @@ func TestRuntimeTemplateUpdateChangesGeneratedInstancesButPreservesManualState(t
 	}
 	desiredRepository := store.IntegrationRepository()
 	materializer := runtimeTemplateMaterializer{
-		inventory: store.InventoryRepository(), templates: templates, desired: desiredRepository,
+		inventory: sqlitefixture.NewInventoryRepositoryFromStore(store), templates: templates, desired: desiredRepository,
 		service: materializationapp.NewService(store.MaterializationRepository()),
 		matcher: templatesmonitoringapp.NewEvaluator(registry, supportedTemplateCapability{}),
 	}
@@ -281,13 +281,13 @@ func TestRuntimeTemplateMaterializerPreservesFailureAndTracksResourceLifecycle(t
 		t.Fatal(err)
 	}
 	provider := &mutableTemplateProvider{snapshot: redisProviderSnapshot("container-a")}
-	coordinator, err := inventoryapp.NewCoordinator(store.InventoryRepository(), []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), time.Second)
+	coordinator, err := inventoryapp.NewCoordinator(sqlitefixture.NewInventoryRepositoryFromStore(store), []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
 	desiredRepository := store.IntegrationRepository()
 	materializer := runtimeTemplateMaterializer{
-		inventory: store.InventoryRepository(), templates: templates, desired: desiredRepository,
+		inventory: sqlitefixture.NewInventoryRepositoryFromStore(store), templates: templates, desired: desiredRepository,
 		service: materializationapp.NewService(store.MaterializationRepository()),
 		matcher: templatesmonitoringapp.NewEvaluator(registry, supportedTemplateCapability{}),
 	}

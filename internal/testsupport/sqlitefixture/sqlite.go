@@ -13,6 +13,8 @@ import (
 	enrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
 	installation "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
 	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
+	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
+	inventorysqlite "github.com/ar-imms/telemetry-agent/internal/inventory/sqlite"
 	platformsqlite "github.com/ar-imms/telemetry-agent/internal/platform/sqlite"
 	sqlitemigrate "github.com/ar-imms/telemetry-agent/internal/platform/sqlite/migrate"
 )
@@ -20,6 +22,12 @@ import (
 // NewSQLiteStore returns a fixture store using the production migration registry.
 func NewSQLiteStore(path string) agentstate.SQLiteStore {
 	return agentstate.NewSQLiteStoreWithGatewayApplied(path, initialize, remoteconfigsqlite.MarkGatewayAppliedInTransaction)
+}
+
+// NewInventoryRepositoryFromStore constructs an Inventory adapter over a test
+// store while sharing the production SQLite transaction lock.
+func NewInventoryRepositoryFromStore(store agentstate.SQLiteStore) inventoryapp.InventoryRepository {
+	return inventorysqlite.NewInventoryRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
 }
 
 // NewStore returns a fixture Agent state repository.

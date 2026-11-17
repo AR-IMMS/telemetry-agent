@@ -57,7 +57,7 @@ func TestLiveDockerTemplateAutoMaterializesDesiredInstance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	coordinator, err := inventoryapp.NewCoordinator(store.InventoryRepository(), []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), 5*time.Second)
+	coordinator, err := inventoryapp.NewCoordinator(sqlitefixture.NewInventoryRepositoryFromStore(store), []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), 5*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestLiveDockerTemplateAutoMaterializesDesiredInstance(t *testing.T) {
 	if !cycle.Succeeded() {
 		t.Fatalf("Docker provider cycle failed: %+v", cycle.ProviderResults)
 	}
-	inventory, err := store.InventoryRepository().Snapshot()
+	inventory, err := sqlitefixture.NewInventoryRepositoryFromStore(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestLiveDockerTemplateAutoMaterializesDesiredInstance(t *testing.T) {
 		t.Fatal(err)
 	}
 	materializer := runtimeTemplateMaterializer{
-		inventory: store.InventoryRepository(), templates: templateRepository, desired: store.IntegrationRepository(),
+		inventory: sqlitefixture.NewInventoryRepositoryFromStore(store), templates: templateRepository, desired: store.IntegrationRepository(),
 		service: materializationapp.NewService(store.MaterializationRepository()),
 		matcher: templatesmonitoringapp.NewEvaluator(registry, matchingdomain.NewCatalogCapabilityAssessor(catalog, runtime.GOOS, runtime.GOOS+"/"+runtime.GOARCH)),
 	}

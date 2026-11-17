@@ -45,7 +45,7 @@ func TestCatalogCapabilityAssessorUsesPinnedRuntimeCatalog(t *testing.T) {
 func TestIntegrationMatchReadsPersistedInventoryWithoutDesiredStateMutation(t *testing.T) {
 	statePath := t.TempDir() + "/agent.db"
 	store := sqlitefixture.NewSQLiteStore(statePath)
-	repository := store.InventoryRepository()
+	repository := sqlitefixture.NewInventoryRepositoryFromStore(store)
 	now := time.Now().UTC()
 	snapshot := inventorydomain.ProviderSnapshot{
 		ProviderID: "docker", ProviderInstanceID: "local-engine", Complete: true, ObservedAt: now,

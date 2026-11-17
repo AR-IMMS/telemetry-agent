@@ -114,7 +114,7 @@ func TestMonitoringProposalMigrationFromV11PreservesExistingState(t *testing.T) 
 		t.Fatal(err)
 	}
 	providerSnapshot, resources := inventoryFixture(time.Now().UTC(), "container-a")
-	if err := store.InventoryRepository().CommitProviderSnapshot(0, providerSnapshot, resources, true); err != nil {
+	if err := newTestInventoryRepository(store).CommitProviderSnapshot(0, providerSnapshot, resources, true); err != nil {
 		t.Fatal(err)
 	}
 	db, err := store.open()

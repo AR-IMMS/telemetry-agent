@@ -66,7 +66,7 @@ func TestRepositoriesUseSharedStateDatabaseAndRetainCASContracts(t *testing.T) {
 func TestMaterializationRepositoryCommitsProjectionBeforePublishingWakeup(t *testing.T) {
 	store := sqlitefixture.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	locker := &sync.Mutex{}
-	inventory := store.InventoryRepository()
+	inventory := sqlitefixture.NewInventoryRepositoryFromStore(store)
 	at := time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)
 	providerSnapshot := inventorydomain.ProviderSnapshot{
 		ProviderID: "docker", ProviderInstanceID: "local", Complete: true, ObservedAt: at,
@@ -129,7 +129,7 @@ func TestApprovalRepositoryCommitsProposalAndDesiredStateTogether(t *testing.T) 
 		Key:  inventorydomain.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-a"},
 		Kind: inventorydomain.ResourceContainer, Presence: inventorydomain.PresencePresent, FirstSeenAt: at, LastSeenAt: at,
 	}
-	if err := store.InventoryRepository().CommitProviderSnapshot(0, providerSnapshot, []inventorydomain.Resource{resource}, true); err != nil {
+	if err := sqlitefixture.NewInventoryRepositoryFromStore(store).CommitProviderSnapshot(0, providerSnapshot, []inventorydomain.Resource{resource}, true); err != nil {
 		t.Fatalf("commit inventory: %v", err)
 	}
 	proposal := pendingProposal(t, at)

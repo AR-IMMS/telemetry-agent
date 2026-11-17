@@ -17,7 +17,7 @@ import (
 
 func TestInventoryCommandsReadPersistedSnapshot(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "state.db")
-	repository := sqlitefixture.NewSQLiteStore(statePath).InventoryRepository()
+	repository := sqlitefixture.NewInventoryRepositoryFromStore(sqlitefixture.NewSQLiteStore(statePath))
 	at := time.Now().UTC()
 	snapshot := inventorydomain.ProviderSnapshot{
 		ProviderID: "docker", ProviderInstanceID: "local", Complete: true, ObservedAt: at,
@@ -67,7 +67,7 @@ func TestInventoryCommandsReadPersistedSnapshot(t *testing.T) {
 
 func TestInventoryListActiveOnlyExcludesMissingHistory(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "state.db")
-	repository := sqlitefixture.NewSQLiteStore(statePath).InventoryRepository()
+	repository := sqlitefixture.NewInventoryRepositoryFromStore(sqlitefixture.NewSQLiteStore(statePath))
 	at := time.Now().UTC()
 	first := inventorydomain.ProviderSnapshot{
 		ProviderID: "docker", ProviderInstanceID: "local", Complete: true, ObservedAt: at,

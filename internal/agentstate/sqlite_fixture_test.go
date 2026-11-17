@@ -11,6 +11,8 @@ import (
 	enrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
 	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
+	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
+	inventorysqlite "github.com/ar-imms/telemetry-agent/internal/inventory/sqlite"
 	platformsqlite "github.com/ar-imms/telemetry-agent/internal/platform/sqlite"
 	sqlitemigrate "github.com/ar-imms/telemetry-agent/internal/platform/sqlite/migrate"
 )
@@ -31,6 +33,10 @@ func newTestIdentityStore(path string) installationid.InstallationIdentityReposi
 func newTestEnrollmentStore(path string) enrollment.AttemptRepository {
 	store := newSQLiteStoreForPath(path, initializeTestSQLiteSchema)
 	return enrollmentsqlite.New(store.OpenDatabase, platformsqlite.UpdateLocker())
+}
+
+func newTestInventoryRepository(store SQLiteStore) inventoryapp.InventoryRepository {
+	return inventorysqlite.NewInventoryRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
 }
 
 func newTestCoreGatewayStore(path string) coreconfig.GatewayRuntimeRepository {

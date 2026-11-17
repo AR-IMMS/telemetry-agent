@@ -22,7 +22,7 @@ func TestPersistedInventoryToProposalAndExplicitApproval(t *testing.T) {
 		t.Fatal(err)
 	}
 	provider := staticRedisInventoryProvider{}
-	coordinator, err := inventoryapp.NewCoordinator(store.InventoryRepository(), []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), time.Second)
+	coordinator, err := inventoryapp.NewCoordinator(sqlitefixture.NewInventoryRepositoryFromStore(store), []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
