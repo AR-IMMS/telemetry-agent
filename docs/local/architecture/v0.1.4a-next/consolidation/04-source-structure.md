@@ -283,7 +283,7 @@ The historical `internal/dependency` baseline had 72 production Go files: 22 at 
 | Full Mock Core | `mockcore/*` → retain `internal/mockcore` test infrastructure | Versioned Core/OpAMP contract fixtures; replaceable by endpoint/config, never production policy authority. |
 | Operations Mock Core | `operations/testsupport/mockcore/*` → retain as narrow Operations test fixture | NATS binding/authorization scenarios; consolidate with full Mock Core only if it reduces duplicated test behavior without coupling production packages. |
 
-**Verified dependency CLI capability — source commit `0a7cdb6b9140487bf3284391eca48423b98fa088`:** `internal/cli/commands/dependency` owns catalog-list text and exit-code presentation behind the existing Runtime catalog query callback. Argument parsing and legacy command dispatch remain in `cmd/agentctl`; no dependency policy, installation lifecycle, or catalog lookup moved into the CLI package. The package boundary preserves the configured-reader error, query error, empty-catalog message, definition ordering, and context forwarding.
+**Verified dependency CLI capability — source commits `0a7cdb6b9140487bf3284391eca48423b98fa088` and `ee523460db08d6efa6a01b0005f57e63d98f7dad`:** `internal/cli/commands/dependency` owns catalog-list and lifecycle-status text/exit-code presentation behind existing Runtime query callbacks. `cmd/agentctl` retains argument parsing, SQLite state loading and managed-name projection, and legacy dispatch. The CLI package owns no dependency policy, installation lifecycle, catalog lookup, or persistence. Output text/order, inspection errors, managed-disabled interpretation, context forwarding, and exit codes remain covered by capability and executable tests.
 
 ### Migration dependency order
 
