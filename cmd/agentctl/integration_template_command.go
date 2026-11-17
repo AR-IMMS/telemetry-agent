@@ -11,8 +11,9 @@ import (
 	"strings"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/configuration"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
+	configurationdomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
+	templatesapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
+	templatesdomain "github.com/ar-imms/telemetry-agent/internal/configuration/templates/domain"
 )
 
 func writeIntegrationTemplateHelp(w io.Writer) {
@@ -62,7 +63,7 @@ func runIntegrationTemplate(ctx context.Context, args []string, stdout, stderr i
 	if err != nil {
 		return integrationCommandError(stderr, "template "+command, err)
 	}
-	service := configuration.NewTemplateService(registry, repository)
+	service := templatesapp.NewService(registry, repository)
 	switch command {
 	case "create", "update":
 		if flagProvided(args[1:], "--file") == flagProvided(args[1:], "--template-json") {
@@ -74,7 +75,7 @@ func runIntegrationTemplate(ctx context.Context, args []string, stdout, stderr i
 		if command == "create" && *expected != 0 {
 			return usageIntegrationTemplate(stderr, "create requires --expected-revision 0")
 		}
-		var template integration.IntegrationTemplate
+		var template templatesdomain.Template
 		if *templateFile != "" {
 			template, err = decodeTemplateFile(*templateFile)
 		} else {
@@ -83,10 +84,10 @@ func runIntegrationTemplate(ctx context.Context, args []string, stdout, stderr i
 		if err != nil {
 			return integrationCommandError(stderr, "template "+command, err)
 		}
-		if template.Owner != "" && template.Owner != integration.TemplateOwnerLocal {
-			return integrationCommandError(stderr, "template "+command, configuration.ErrTemplateOwnerNotLocal)
+		if template.Owner != "" && template.Owner != configurationdomain.TemplateOwnerLocal {
+			return integrationCommandError(stderr, "template "+command, templatesapp.ErrTemplateOwnerNotLocal)
 		}
-		template.Owner = integration.TemplateOwnerLocal
+		template.Owner = configurationdomain.TemplateOwnerLocal
 		stored, setRevision, err := service.Put(template, *expected)
 		if err != nil {
 			return integrationCommandError(stderr, "template "+command, err)
@@ -112,7 +113,7 @@ func runIntegrationTemplate(ctx context.Context, args []string, stdout, stderr i
 		for _, template := range snapshot.Templates {
 			if template.ID == *id {
 				if *outputFormat == "json" {
-					if err := integration.ValidateIntegrationTemplate(template); err != nil {
+					if err := template.Validate(); err != nil {
 						return integrationCommandError(stderr, "template inspect", err)
 					}
 					encoder := json.NewEncoder(stdout)
@@ -126,7 +127,7 @@ func runIntegrationTemplate(ctx context.Context, args []string, stdout, stderr i
 				return 0
 			}
 		}
-		return integrationCommandError(stderr, "template inspect", configuration.ErrTemplateNotFound)
+		return integrationCommandError(stderr, "template inspect", templatesapp.ErrTemplateNotFound)
 	case "enable", "disable":
 		if *id == "" || !flagProvided(args[1:], "--expected-revision") {
 			return usageIntegrationTemplate(stderr, command+" requires --id and --expected-revision")
@@ -151,41 +152,41 @@ func runIntegrationTemplate(ctx context.Context, args []string, stdout, stderr i
 	return 0
 }
 
-func decodeTemplate(raw string) (integration.IntegrationTemplate, error) {
+func decodeTemplate(raw string) (templatesdomain.Template, error) {
 	if strings.TrimSpace(raw) == "" {
-		return integration.IntegrationTemplate{}, fmt.Errorf("--template-json is required")
+		return templatesdomain.Template{}, fmt.Errorf("--template-json is required")
 	}
 	return decodeTemplateReader(strings.NewReader(raw))
 }
 
-func decodeTemplateFile(path string) (integration.IntegrationTemplate, error) {
+func decodeTemplateFile(path string) (templatesdomain.Template, error) {
 	if strings.TrimSpace(path) == "" {
-		return integration.IntegrationTemplate{}, fmt.Errorf("--file path is required")
+		return templatesdomain.Template{}, fmt.Errorf("--file path is required")
 	}
 	file, err := os.Open(path)
 	if err != nil {
-		return integration.IntegrationTemplate{}, fmt.Errorf("open Template file: %w", err)
+		return templatesdomain.Template{}, fmt.Errorf("open Template file: %w", err)
 	}
 	defer file.Close()
 	content, err := io.ReadAll(io.LimitReader(file, (1<<20)+1))
 	if err != nil {
-		return integration.IntegrationTemplate{}, fmt.Errorf("read Template file: %w", err)
+		return templatesdomain.Template{}, fmt.Errorf("read Template file: %w", err)
 	}
 	if len(content) > 1<<20 {
-		return integration.IntegrationTemplate{}, fmt.Errorf("Template JSON exceeds the 1 MiB file limit")
+		return templatesdomain.Template{}, fmt.Errorf("Template JSON exceeds the 1 MiB file limit")
 	}
 	return decodeTemplateReader(bytes.NewReader(content))
 }
 
-func decodeTemplateReader(input io.Reader) (integration.IntegrationTemplate, error) {
+func decodeTemplateReader(input io.Reader) (templatesdomain.Template, error) {
 	decoder := json.NewDecoder(input)
 	decoder.DisallowUnknownFields()
-	var template integration.IntegrationTemplate
+	var template templatesdomain.Template
 	if err := decoder.Decode(&template); err != nil {
-		return integration.IntegrationTemplate{}, fmt.Errorf("decode Template JSON (maximum 1 MiB): %w", err)
+		return templatesdomain.Template{}, fmt.Errorf("decode Template JSON (maximum 1 MiB): %w", err)
 	}
 	if err := decoder.Decode(new(any)); err != io.EOF {
-		return integration.IntegrationTemplate{}, fmt.Errorf("Template JSON must contain one object")
+		return templatesdomain.Template{}, fmt.Errorf("Template JSON must contain one object")
 	}
 	return template, nil
 }

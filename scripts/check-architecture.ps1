@@ -153,6 +153,23 @@ try {
             $violations.Add('cmd/agentctl/integration_command.go must call the Configuration desiredstate application use case')
         }
     }
+    # Template CLI operations call Configuration's owning use case directly.
+    $templateCommandPath = Join-Path $repoRoot 'cmd/agentctl/integration_template_command.go'
+    if (Test-Path -LiteralPath $templateCommandPath -PathType Leaf) {
+        $source = Get-Content -LiteralPath $templateCommandPath -Raw
+        if ($source -match '"github.com/ar-imms/telemetry-agent/internal/configuration"' -or
+            $source -match '"github.com/ar-imms/telemetry-agent/internal/integration"') {
+            $violations.Add('cmd/agentctl/integration_template_command.go must use Configuration templates/domain and application instead of compatibility facades')
+        }
+        foreach ($requiredImport in @(
+            'internal/configuration/templates/application',
+            'internal/configuration/templates/domain'
+        )) {
+            if ($source -notmatch [regex]::Escape($requiredImport)) {
+                $violations.Add("cmd/agentctl/integration_template_command.go must use $requiredImport")
+            }
+        }
+    }
     # Reconciliation consumes Configuration's snapshot and a narrow profile
     # contribution port; it must not depend on legacy Integration models.
     $reconciliationControllerPath = Join-Path $repoRoot 'internal/configuration/reconciliation/controller.go'
