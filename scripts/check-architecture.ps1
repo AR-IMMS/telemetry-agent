@@ -394,6 +394,25 @@ try {
             }
         }
     }
+    # The SQLite desired-state adapter implements the owning application port
+    # and validates Configuration domain values; it must not depend on either
+    # the root facade or the former multi-owner Integration model package.
+    $desiredStateSQLite = Join-Path $repoRoot 'internal/configuration/sqlite/integration.go'
+    if (Test-Path -LiteralPath $desiredStateSQLite -PathType Leaf) {
+        $source = Get-Content -LiteralPath $desiredStateSQLite -Raw
+        if ($source -match '"github.com/ar-imms/telemetry-agent/internal/configuration"' -or
+            $source -match '"github.com/ar-imms/telemetry-agent/internal/integration"') {
+            $violations.Add('Configuration desired-state SQLite adapter must use owner application/domain packages instead of compatibility facades')
+        }
+        foreach ($requiredImport in @(
+            'internal/configuration/desiredstate/application',
+            'internal/configuration/desiredstate/domain'
+        )) {
+            if ($source -notmatch [regex]::Escape($requiredImport)) {
+                $violations.Add("Configuration desired-state SQLite adapter must use $requiredImport")
+            }
+        }
+    }
     $proposalApprovalRuntime = Join-Path $repoRoot 'cmd/agentctl/proposal_approval_runtime.go'
     if (Test-Path -LiteralPath $proposalApprovalRuntime -PathType Leaf) {
         $source = Get-Content -LiteralPath $proposalApprovalRuntime -Raw
