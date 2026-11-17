@@ -138,6 +138,9 @@ try {
         if ($source -match '"github.com/ar-imms/telemetry-agent/internal/configuration"') {
             $violations.Add('cmd/agentctl/integration_command.go must use Configuration desiredstate/application instead of the root facade')
         }
+        if ($source -match '"github.com/ar-imms/telemetry-agent/internal/integration"') {
+            $violations.Add('cmd/agentctl/integration_command.go must resolve profiles through Monitoring definition/application instead of internal/integration')
+        }
         if ($source -notmatch '"github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"') {
             $violations.Add('cmd/agentctl/integration_command.go must call the Configuration desiredstate application use case')
         }
