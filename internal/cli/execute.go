@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 
+	dependencycommands "github.com/ar-imms/telemetry-agent/internal/cli/commands/dependency"
 	monitoringcommands "github.com/ar-imms/telemetry-agent/internal/cli/commands/monitoring"
 	"github.com/spf13/cobra"
 )
@@ -63,9 +64,9 @@ func newRootCommand(dispatch Dispatch, stdout, stderr io.Writer, rootHelp func(i
 	} {
 		root.AddCommand(newLegacyCommand(name, false, dispatch, exitCode))
 	}
-	root.AddCommand(newLegacyOperationsCommand("dependency", []string{
-		"list", "install", "status", "pending", "configure", "disable", "uninstall",
-	}, dispatch, exitCode))
+	root.AddCommand(dependencycommands.NewCommand(dispatch, func(code int) {
+		*exitCode = code
+	}))
 	root.AddCommand(newLegacyOperationsCommand("inventory", []string{
 		"list", "inspect", "status",
 	}, dispatch, exitCode))
