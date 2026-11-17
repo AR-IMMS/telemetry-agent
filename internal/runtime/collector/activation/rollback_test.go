@@ -10,6 +10,7 @@ import (
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
@@ -68,7 +69,7 @@ func TestRollbackRestoresCollectorConfigAndGatewayEndpointPair(t *testing.T) {
 	sqliteStore := sqlitefixture.NewSQLiteStore(statePath)
 	var store agentstate.Repository = sqliteStore
 	if err := sqliteStore.Save(agentstate.State{
-		Collector: agentstate.CollectorContext{
+		Collector: collectordomain.CollectorContext{
 			ConfigPath:      configPath,
 			GatewayEndpoint: "bootstrap.example:4317",
 		},

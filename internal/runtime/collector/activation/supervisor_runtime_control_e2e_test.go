@@ -35,6 +35,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/mockcore"
 	"github.com/ar-imms/telemetry-agent/internal/opampserver"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
@@ -257,7 +258,7 @@ service:
 		OpAMPServerURL:    endpoint, ServerCAFile: serverCAFile, Enabled: true,
 	}
 	if _, err := sqlitefixture.NewStore(statePath).Update(func(state *agentstate.State) error {
-		state.Collector = agentstate.CollectorContext{
+		state.Collector = collectordomain.CollectorContext{
 			BinaryPath: collectorPath, ConfigPath: collectorConfig,
 			GatewayEndpoint: initialEndpoint, HealthEndpoint: healthEndpoint,
 		}

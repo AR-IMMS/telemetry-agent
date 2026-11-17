@@ -12,13 +12,14 @@ import (
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 )
 
 func TestPrepareAgentInstallationIdentityReusesPersistentID(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "state.db")
 	store := sqlitefixture.NewStore(statePath)
 	if _, err := store.Update(func(state *agentstate.State) error {
-		state.Collector = agentstate.CollectorContext{
+		state.Collector = collectordomain.CollectorContext{
 			BinaryPath:      "otelcol",
 			ConfigPath:      "otel.yaml",
 			GatewayEndpoint: "127.0.0.1:4317",

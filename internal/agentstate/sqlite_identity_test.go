@@ -11,6 +11,7 @@ import (
 
 	installationapp "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/domain"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
@@ -19,7 +20,7 @@ func TestSQLiteIdentityRepositoryInitializesAndReusesCommittedID(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
 	store := newTestSQLiteStore(path)
 	wantState := State{
-		Collector: CollectorContext{
+		Collector: collectordomain.CollectorContext{
 			BinaryPath:      "otelcol",
 			ConfigPath:      "otel.yaml",
 			GatewayEndpoint: "127.0.0.1:4317",

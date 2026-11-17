@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
@@ -15,7 +16,7 @@ func TestFileStorePersistsDesiredState(t *testing.T) {
 	statePath := t.TempDir() + "/state.json"
 
 	want := State{
-		Collector: CollectorContext{
+		Collector: collectordomain.CollectorContext{
 			ConfigRoot:      "/opt/ar-imms/configs",
 			BinaryPath:      "/opt/ar-imms/otelcol-contrib",
 			ConfigPath:      "/etc/ar-imms/otel.yaml",

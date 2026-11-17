@@ -23,6 +23,7 @@ import (
 	installationapp "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
@@ -102,7 +103,7 @@ func TestLiveDockerApplicationProfilesDeliverOTLP(t *testing.T) {
 	configPath := filepath.Join(root, "agent", "otel.yaml")
 	store := sqlitefixture.NewSQLiteStore(statePath)
 	testState := agentstate.State{
-		Collector:         agentstate.CollectorContext{ConfigRoot: configRoot, BinaryPath: binary, ConfigPath: configPath, GatewayEndpoint: sinkEndpoint, HealthEndpoint: defaultHealthEndpoint},
+		Collector:         collectordomain.CollectorContext{ConfigRoot: configRoot, BinaryPath: binary, ConfigPath: configPath, GatewayEndpoint: sinkEndpoint, HealthEndpoint: defaultHealthEndpoint},
 		DesiredGeneration: 1, ActivatedGeneration: 1, AppliedGeneration: 1, Dependencies: map[string]dependencydomain.DependencyState{},
 	}
 	if os.Getenv(pr07aSupervisorProfileParityEnv) == "1" {

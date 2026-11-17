@@ -18,6 +18,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation"
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
@@ -786,7 +787,7 @@ func TestRunBootstrapPersistsCollectorContextAndManagedReceiverLayer(
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	wantContext := agentstate.CollectorContext{
+	wantContext := collectordomain.CollectorContext{
 		ConfigRoot:      configRoot,
 		BinaryPath:      `C:\AR-IMMS\otelcol-contrib.exe`,
 		ConfigPath:      configPath,

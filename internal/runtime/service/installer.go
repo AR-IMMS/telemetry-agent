@@ -15,6 +15,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
@@ -220,7 +221,7 @@ func (i Installer) Install(
 			)
 		}
 
-		state.Collector = agentstate.CollectorContext{
+		state.Collector = collectordomain.CollectorContext{
 			ConfigRoot:      options.ConfigRoot,
 			BinaryPath:      result.BinaryPath,
 			ConfigPath:      result.ConfigPath,

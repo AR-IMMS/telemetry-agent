@@ -5,20 +5,11 @@ import (
 	"strings"
 
 	activationdomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/domain"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 	dependencyapplication "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/application"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
-
-// CollectorContext is the persisted runtime context required to render and
-// supervise the local OpenTelemetry Collector.
-type CollectorContext struct {
-	ConfigRoot      string `json:"configRoot"`
-	BinaryPath      string `json:"binaryPath"`
-	ConfigPath      string `json:"configPath"`
-	GatewayEndpoint string `json:"gatewayEndpoint"`
-	HealthEndpoint  string `json:"healthEndpoint"`
-}
 
 // SupervisorContext records the pinned OpAMP Supervisor runtime owned by the Agent.
 type SupervisorContext struct {
@@ -32,11 +23,11 @@ type SupervisorContext struct {
 
 // State is the Agent-owned desired state persisted on the local machine.
 type State struct {
-	Collector           CollectorContext  `json:"collector"`
-	Supervisor          SupervisorContext `json:"supervisor,omitempty"`
-	DesiredGeneration   uint64            `json:"desiredGeneration"`
-	ActivatedGeneration uint64            `json:"activatedGeneration"`
-	AppliedGeneration   uint64            `json:"appliedGeneration"`
+	Collector           collectordomain.CollectorContext `json:"collector"`
+	Supervisor          SupervisorContext                `json:"supervisor,omitempty"`
+	DesiredGeneration   uint64                           `json:"desiredGeneration"`
+	ActivatedGeneration uint64                           `json:"activatedGeneration"`
+	AppliedGeneration   uint64                           `json:"appliedGeneration"`
 	// PendingActivation supports recovery between config promotion and commit.
 	PendingActivation *activationdomain.PendingActivation         `json:"pendingActivation,omitempty"`
 	Dependencies      map[string]dependencydomain.DependencyState `json:"dependencies"`

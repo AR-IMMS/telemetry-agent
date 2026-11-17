@@ -11,6 +11,7 @@ import (
 	"time"
 
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
@@ -276,7 +277,7 @@ func TestCoreGatewaySnapshotWriteFailureKeepsBootstrapOwnership(t *testing.T) {
 func TestCoreGatewayRequiresMatchingInitializedInstallation(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
 	store := newTestSQLiteStore(path)
-	if err := store.Save(State{Collector: CollectorContext{GatewayEndpoint: "bootstrap:4317"}}); err != nil {
+	if err := store.Save(State{Collector: collectordomain.CollectorContext{GatewayEndpoint: "bootstrap:4317"}}); err != nil {
 		t.Fatalf("seed state: %v", err)
 	}
 	snapshot := coreconfig.GatewaySnapshot{InstallationID: "11111111-2222-4333-8444-555555555555", Revision: 1, Endpoint: "core:4317"}
@@ -297,7 +298,7 @@ func TestCoreGatewayRequiresMatchingInitializedInstallation(t *testing.T) {
 func TestCoreGatewayLegacyImportAndRestart(t *testing.T) {
 	dir := t.TempDir()
 	legacyPath := filepath.Join(dir, "state.json")
-	want := State{Collector: CollectorContext{GatewayEndpoint: "legacy:4317"}, DesiredGeneration: 2,
+	want := State{Collector: collectordomain.CollectorContext{GatewayEndpoint: "legacy:4317"}, DesiredGeneration: 2,
 		Dependencies: map[string]dependencydomain.DependencyState{"redis": {Enabled: true}}}
 	if err := NewFileStore(legacyPath).Save(want); err != nil {
 		t.Fatalf("write legacy state: %v", err)
@@ -327,7 +328,7 @@ func TestCoreGatewayLegacyImportAndRestart(t *testing.T) {
 func seededGatewayStore(t *testing.T) (SQLiteStore, string) {
 	t.Helper()
 	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
-	want := State{Collector: CollectorContext{GatewayEndpoint: "bootstrap:4317"}, DesiredGeneration: 4, ActivatedGeneration: 4, AppliedGeneration: 3, Dependencies: map[string]dependencydomain.DependencyState{"redis": {Enabled: true, Ownership: &servicedomain.OwnershipRecord{Resources: []servicedomain.OwnedResource{{Kind: "service", Identifier: "redis-service"}}}}}}
+	want := State{Collector: collectordomain.CollectorContext{GatewayEndpoint: "bootstrap:4317"}, DesiredGeneration: 4, ActivatedGeneration: 4, AppliedGeneration: 3, Dependencies: map[string]dependencydomain.DependencyState{"redis": {Enabled: true, Ownership: &servicedomain.OwnershipRecord{Resources: []servicedomain.OwnedResource{{Kind: "service", Identifier: "redis-service"}}}}}}
 	if err := store.Save(want); err != nil {
 		t.Fatalf("seed M1 state: %v", err)
 	}

@@ -15,6 +15,7 @@ import (
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
@@ -185,7 +186,7 @@ func TestRuntimeLaunchSnapshotWaitsForConfigActivationLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := store.Save(agentstate.State{
-		Collector:           agentstate.CollectorContext{ConfigPath: configPath},
+		Collector:           collectordomain.CollectorContext{ConfigPath: configPath},
 		ActivatedGeneration: 1,
 		Dependencies:        map[string]dependencydomain.DependencyState{},
 	}); err != nil {
@@ -362,7 +363,7 @@ func TestRuntimeWatcherConfirmsUnchangedGatewayRevisionWithoutRestart(t *testing
 	}
 	store := agentstate.NewFileStore(filepath.Join(root, "state.json"))
 	if err := store.Save(agentstate.State{
-		Collector:           agentstate.CollectorContext{ConfigPath: configPath},
+		Collector:           collectordomain.CollectorContext{ConfigPath: configPath},
 		DesiredGeneration:   1,
 		ActivatedGeneration: 1,
 		Dependencies:        map[string]dependencydomain.DependencyState{},

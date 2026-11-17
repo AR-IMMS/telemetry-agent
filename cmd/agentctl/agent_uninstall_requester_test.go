@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
@@ -24,7 +25,7 @@ func TestManagedAgentUninstallRequesterUsesPersistedStateWithoutRuntimeRebuild(t
 	statePath := filepath.Join(t.TempDir(), "state.json")
 	store := sqlitefixture.NewStore(statePath)
 	saveTestState(t, store, agentstate.State{
-		Collector: agentstate.CollectorContext{
+		Collector: collectordomain.CollectorContext{
 			ConfigRoot:      "/srv/ar-imms/config",
 			BinaryPath:      "/opt/ar-imms/collector/otelcol-contrib",
 			ConfigPath:      "/var/lib/ar-imms/telemetry-agent/collector.yaml",

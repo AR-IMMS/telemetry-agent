@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
@@ -173,7 +174,7 @@ func TestTeardownSerializesWithDependencyReenable(t *testing.T) {
 	configPath := filepath.Join(root, "otel.yaml")
 	store := agentstate.NewFileStore(filepath.Join(root, "state.json"))
 	if err := store.Save(agentstate.State{
-		Collector:         agentstate.CollectorContext{ConfigPath: configPath},
+		Collector:         collectordomain.CollectorContext{ConfigPath: configPath},
 		DesiredGeneration: 1,
 		AppliedGeneration: 1,
 		Dependencies: map[string]dependencydomain.DependencyState{

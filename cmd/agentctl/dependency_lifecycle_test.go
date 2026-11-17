@@ -12,6 +12,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
@@ -135,7 +136,7 @@ service:
 	store := sqlitefixture.NewStore(statePath)
 
 	_, err := store.Update(func(state *agentstate.State) error {
-		state.Collector = agentstate.CollectorContext{
+		state.Collector = collectordomain.CollectorContext{
 			ConfigRoot:      configRoot,
 			BinaryPath:      "otelcol-contrib",
 			ConfigPath:      targetPath,
@@ -402,7 +403,7 @@ service:
 	store := sqlitefixture.NewStore(statePath)
 
 	_, err := store.Update(func(state *agentstate.State) error {
-		state.Collector = agentstate.CollectorContext{
+		state.Collector = collectordomain.CollectorContext{
 			ConfigRoot:      configRoot,
 			BinaryPath:      "otelcol-contrib",
 			ConfigPath:      targetPath,
@@ -536,7 +537,7 @@ service:
 	}
 
 	_, err := store.Update(func(state *agentstate.State) error {
-		state.Collector = agentstate.CollectorContext{
+		state.Collector = collectordomain.CollectorContext{
 			ConfigRoot:      configRoot,
 			BinaryPath:      "otelcol-contrib",
 			ConfigPath:      targetPath,
@@ -656,7 +657,7 @@ func TestManagedDependencyLifecycleRejectsEnableWithoutOwnership(
 	store := sqlitefixture.NewStore(statePath)
 
 	_, err := store.Update(func(state *agentstate.State) error {
-		state.Collector = agentstate.CollectorContext{
+		state.Collector = collectordomain.CollectorContext{
 			ConfigRoot:      "configs",
 			BinaryPath:      "otelcol-contrib",
 			ConfigPath:      "otel.yaml",

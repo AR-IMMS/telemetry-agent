@@ -12,6 +12,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
@@ -147,7 +148,7 @@ func TestInstallerStagesAgentPersistsStateThenStartsService(
 	}
 
 	if got, want := store.state.Collector,
-		(agentstate.CollectorContext{
+		(collectordomain.CollectorContext{
 			ConfigRoot: "/srv/ar-imms/collector-config",
 			BinaryPath: "/opt/ar-imms/telemetry-agent/collector/" +
 				"versions/0.160.0/otelcol-contrib",

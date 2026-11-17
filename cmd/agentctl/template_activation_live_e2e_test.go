@@ -22,6 +22,7 @@ import (
 	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
@@ -58,7 +59,7 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 	configPath := filepath.Join(tempDir, "agent", "otel.yaml")
 	store := sqlitefixture.NewSQLiteStore(statePath)
 	initial := agentstate.State{
-		Collector: agentstate.CollectorContext{
+		Collector: collectordomain.CollectorContext{
 			ConfigRoot: configRoot, BinaryPath: binary, ConfigPath: configPath,
 			GatewayEndpoint: sinkEndpoint, HealthEndpoint: defaultHealthEndpoint,
 		},
