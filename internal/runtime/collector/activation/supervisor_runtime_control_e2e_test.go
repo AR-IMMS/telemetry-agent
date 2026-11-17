@@ -726,7 +726,17 @@ func managedRuntimeEnrollmentHandler(t *testing.T, corePointer *atomic.Pointer[m
 		}
 		writer.Header().Set("Content-Type", "application/json")
 		writer.WriteHeader(http.StatusCreated)
-		_ = json.NewEncoder(writer).Encode(map[string]any{"data": response, "meta": map[string]string{"request_id": "pr07c-e2e-request"}})
+		data := map[string]any{
+			"enrollment_id": response.EnrollmentID, "installation_id": response.InstallationID,
+			"binding": map[string]any{
+				"id": response.Binding.ID, "node_id": response.Binding.NodeID, "status": response.Binding.Status,
+			},
+			"credential": map[string]any{"type": response.Credential.Type, "access_token": response.Credential.AccessToken},
+			"control_plane": map[string]any{
+				"base_url": response.ControlPlane.BaseURL, "poll_interval_seconds": response.ControlPlane.PollIntervalSeconds,
+			},
+		}
+		_ = json.NewEncoder(writer).Encode(map[string]any{"data": data, "meta": map[string]string{"request_id": "pr07c-e2e-request"}})
 		enrollmentCount++
 	})
 }
@@ -772,11 +782,31 @@ func TestManagedRuntimeEnrollmentHandlerAcceptsCoreWireRequest(t *testing.T) {
 	corePointer := &atomic.Pointer[mockcore.Server]{}
 	corePointer.Store(core)
 	handler := managedRuntimeEnrollmentHandler(t, corePointer, "fixture-agent-token", "replacement-agent-token", bootstrapToken, "replacement-bootstrap-token", nodeID)
-	request := httptest.NewRequest(http.MethodPost, "https://core.example/api/v1/agent-enrollments", strings.NewReader(`{"bootstrap_token":"fixture-bootstrap-token","enrollment_attempt_id":"22222222-3333-4444-8555-666666666666","installation":{"id":"11111111-2222-4333-8444-555555555555"},"agent":{"version":"test"},"environment":{"os":"windows","architecture":"amd64"}}`))
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusCreated {
-		t.Fatalf("enrollment handler status = %d, body = %q", response.Code, response.Body.String())
+	server := httptest.NewTLSServer(handler)
+	defer server.Close()
+	previousTransport := http.DefaultTransport
+	http.DefaultTransport = server.Client().Transport
+	t.Cleanup(func() {
+		http.DefaultTransport = previousTransport
+	})
+	origin, err := enrollment.ParseCoreOrigin(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := coreapi.NewEnrollmentClient().Enroll(context.Background(), origin, enrollment.EnrollmentRequest{
+		BootstrapToken: bootstrapToken,
+		EnrollmentPayload: enrollment.EnrollmentPayload{
+			AttemptID:    "22222222-3333-4444-8555-666666666666",
+			Installation: enrollment.Installation{ID: "11111111-2222-4333-8444-555555555555"},
+			Agent:        enrollment.Agent{Version: "test"},
+			Environment:  enrollment.Environment{OS: "windows", Architecture: "amd64"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Core enrollment client rejected fixture response: %v", err)
+	}
+	if response.InstallationID != "11111111-2222-4333-8444-555555555555" || response.Binding.NodeID != nodeID || response.Credential.AccessToken != "fixture-agent-token" {
+		t.Fatalf("decoded Core enrollment response = %+v", response)
 	}
 }
 
