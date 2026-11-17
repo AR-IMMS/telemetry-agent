@@ -2,113 +2,80 @@ package proposals
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
-	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
-	"regexp"
 	"sort"
 	"time"
+
+	proposaldomain "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/domain"
 )
 
-var (
-	// ErrInvalidProposal identifies malformed or unsafe proposal input.
-	ErrInvalidProposal = errors.New("invalid monitoring proposal")
-	// ErrProposalConflict identifies a proposal revision changed by another writer.
-	ErrProposalConflict = errors.New("monitoring proposal revision conflict")
-	// ErrUnknownProposal identifies a proposal ID that is not persisted.
-	ErrUnknownProposal = errors.New("monitoring proposal not found")
-	// ErrProposalTransition identifies an unsupported operator state transition.
-	ErrProposalTransition = errors.New("invalid monitoring proposal transition")
-)
+// ErrInvalidProposal identifies malformed or unsafe proposal input.
+var ErrInvalidProposal = proposaldomain.ErrInvalidProposal
 
-var integrationProposalIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
+// ErrProposalConflict identifies a proposal revision changed by another writer.
+var ErrProposalConflict = proposaldomain.ErrProposalConflict
 
-// ProposalStatus represents the review lifecycle owned by Configuration.
-type ProposalStatus string
+// ErrUnknownProposal identifies a proposal ID that is not persisted.
+var ErrUnknownProposal = proposaldomain.ErrUnknownProposal
+
+// ErrProposalTransition identifies an unsupported operator state transition.
+var ErrProposalTransition = proposaldomain.ErrProposalTransition
+
+// ProposalStatus preserves the legacy import path for the domain lifecycle status.
+type ProposalStatus = proposaldomain.ProposalStatus
 
 const (
-	// ProposalPending means a fresh candidate is ready for explicit operator review.
-	ProposalPending ProposalStatus = "pending"
-	// ProposalNeedsInput means a match requires non-secret operator configuration.
-	ProposalNeedsInput ProposalStatus = "needs_input"
-	// ProposalDismissed means the operator declined the current material revision.
-	ProposalDismissed ProposalStatus = "dismissed"
-	// ProposalApproved means approval and desired-state mutation committed atomically.
-	ProposalApproved ProposalStatus = "approved"
-	// ProposalStale means current evidence cannot be approved.
-	ProposalStale ProposalStatus = "stale"
+	// ProposalPending identifies a candidate ready for explicit review.
+	ProposalPending = proposaldomain.ProposalPending
+	// ProposalNeedsInput identifies a candidate awaiting non-secret settings.
+	ProposalNeedsInput = proposaldomain.ProposalNeedsInput
+	// ProposalDismissed identifies an explicitly declined material revision.
+	ProposalDismissed = proposaldomain.ProposalDismissed
+	// ProposalApproved identifies an atomically approved desired-state transition.
+	ProposalApproved = proposaldomain.ProposalApproved
+	// ProposalStale identifies a proposal that cannot be approved from current evidence.
+	ProposalStale = proposaldomain.ProposalStale
+	// ProposalMatchMatched identifies a matching Monitoring definition.
+	ProposalMatchMatched = proposaldomain.ProposalMatchMatched
+	// ProposalMatchAmbiguous identifies more than one matching definition.
+	ProposalMatchAmbiguous = proposaldomain.ProposalMatchAmbiguous
+	// ProposalMatchStale identifies resource evidence that is not current.
+	ProposalMatchStale = proposaldomain.ProposalMatchStale
+	// ProposalResolutionReady identifies a fully resolved candidate.
+	ProposalResolutionReady = proposaldomain.ProposalResolutionReady
+	// ProposalResolutionNeedsInput identifies a candidate awaiting operator input.
+	ProposalResolutionNeedsInput = proposaldomain.ProposalResolutionNeedsInput
+	// ProposalResolutionInvalid identifies a candidate rejected during resolution.
+	ProposalResolutionInvalid = proposaldomain.ProposalResolutionInvalid
+	// ProposalCapabilitySupported identifies a Collector-supported profile.
+	ProposalCapabilitySupported = proposaldomain.ProposalCapabilitySupported
+	// ProposalCapabilityUnsupported identifies a Collector-unsupported profile.
+	ProposalCapabilityUnsupported = proposaldomain.ProposalCapabilityUnsupported
+	// ProposalCapabilityUnverified identifies an unverified capability result.
+	ProposalCapabilityUnverified = proposaldomain.ProposalCapabilityUnverified
+	// ProposalCapabilityNotAssessed identifies an unevaluated capability.
+	ProposalCapabilityNotAssessed = proposaldomain.ProposalCapabilityNotAssessed
 )
 
-const (
-	ProposalMatchMatched          = "matched"
-	ProposalMatchAmbiguous        = "ambiguous"
-	ProposalMatchStale            = "stale"
-	ProposalResolutionReady       = "ready"
-	ProposalResolutionNeedsInput  = "needs_input"
-	ProposalResolutionInvalid     = "invalid"
-	ProposalCapabilitySupported   = "supported"
-	ProposalCapabilityUnsupported = "unsupported"
-	ProposalCapabilityUnverified  = "unverified"
-	ProposalCapabilityNotAssessed = "not_assessed"
-	maxProposalPayloadBytes       = 64 * 1024
-)
+// ProposalIdentity is the stable Inventory resource/Integration pair.
+type ProposalIdentity = proposaldomain.ProposalIdentity
 
-// ProposalIdentity is the stable resource/Integration pair; definition version is revision data.
-type ProposalIdentity struct {
-	Provider, ProviderInstance, ResourceID, IntegrationID string
-}
-
-// StableProposalID returns a deterministic ID independent of definition version or candidate revision.
+// StableProposalID preserves the legacy import path for proposal identity allocation.
 func StableProposalID(identity ProposalIdentity) (string, error) {
-	key := inventoryctx.ResourceKey{Provider: inventoryctx.ProviderID(identity.Provider), ProviderInstance: inventoryctx.ProviderInstanceID(identity.ProviderInstance), ProviderResourceID: identity.ResourceID}
-	if err := key.Validate(); err != nil || !integrationProposalIDPattern.MatchString(identity.IntegrationID) {
-		return "", fmt.Errorf("%w: malformed proposal identity", ErrInvalidProposal)
-	}
-	canonical, err := json.Marshal(struct {
-		Provider, ProviderInstance, ResourceID, IntegrationID string
-	}{identity.Provider, identity.ProviderInstance, identity.ResourceID, identity.IntegrationID})
-	if err != nil {
-		return "", fmt.Errorf("%w: encode proposal identity: %v", ErrInvalidProposal, err)
-	}
-	digest := sha256.Sum256(canonical)
-	return "proposal-" + hex.EncodeToString(digest[:]), nil
+	return proposaldomain.StableProposalID(identity)
 }
 
 // ProposalEvidence is bounded, sanitized matching evidence safe for operator review.
-type ProposalEvidence struct {
-	Code, Source, Value string
-}
+type ProposalEvidence = proposaldomain.ProposalEvidence
 
 // ProposalInput describes a non-secret setting required before explicit approval.
-type ProposalInput struct {
-	Name, Reason string
-}
+type ProposalInput = proposaldomain.ProposalInput
 
 // Proposal stores the current material candidate revision and its last approval reference.
-type Proposal struct {
-	ID                       string
-	Identity                 ProposalIdentity
-	Revision                 uint64
-	Status                   ProposalStatus
-	DefinitionVersion        string
-	ResourceFingerprint      string
-	CandidateDigest          string
-	ApprovedCandidateDigest  string
-	CandidateConfiguration   json.RawMessage `json:",omitempty"`
-	CapabilityEvidence       json.RawMessage
-	Evidence                 []ProposalEvidence
-	RequiredInputs           []ProposalInput
-	Diagnostics              []string
-	InventoryRevision        uint64
-	ApprovedInstanceID       string
-	ApprovedInstanceRevision uint64
-	CreatedAt, UpdatedAt     time.Time
-}
+type Proposal = proposaldomain.Proposal
 
-// ProposalObservation is a provider-neutral view of one Integration Matcher result.
+// ProposalObservation is a provider-neutral view of one Monitoring Matcher result.
 type ProposalObservation struct {
 	Identity               ProposalIdentity
 	DefinitionVersion      string
