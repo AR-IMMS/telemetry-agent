@@ -182,6 +182,11 @@ try {
                 $violations.Add("agentstate.State must delegate $useCase to Runtime dependencies/application")
             }
         }
+        foreach ($useCase in @('RecordDependencyOwnership', 'OwnsDependency')) {
+            if ($source -notmatch "serviceapplication\.$useCase\(") {
+                $violations.Add("agentstate.State must delegate $useCase to Runtime service/application")
+            }
+        }
     }
     foreach ($sourceRoot in @((Join-Path $repoRoot 'internal'), (Join-Path $repoRoot 'cmd'))) {
         foreach ($sourceFile in (Get-ChildItem -LiteralPath $sourceRoot -Recurse -File -Filter '*.go')) {

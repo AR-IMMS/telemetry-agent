@@ -9,6 +9,7 @@ import (
 	dependencyapplication "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/application"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 	opampdomain "github.com/ar-imms/telemetry-agent/internal/runtime/opamp/domain"
+	serviceapplication "github.com/ar-imms/telemetry-agent/internal/runtime/service/application"
 	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
@@ -92,59 +93,18 @@ func (s *State) RecordOwnership(
 	name string,
 	resources []servicedomain.OwnedResource,
 ) error {
-	normalizedName := strings.ToLower(strings.TrimSpace(name))
-	if normalizedName == "" {
-		return fmt.Errorf("dependency name is required")
+	next, err := serviceapplication.RecordDependencyOwnership(s.dependencyOwnershipSnapshot(), name, resources)
+	if err != nil {
+		return err
 	}
-
-	if len(resources) == 0 {
-		return fmt.Errorf(
-			"dependency %q ownership resources are required",
-			normalizedName,
-		)
-	}
-
-	for _, resource := range resources {
-		if strings.TrimSpace(resource.Kind) == "" {
-			return fmt.Errorf(
-				"dependency %q owned resource kind is required",
-				normalizedName,
-			)
-		}
-		if strings.TrimSpace(resource.Identifier) == "" {
-			return fmt.Errorf(
-				"dependency %q owned resource identifier is required",
-				normalizedName,
-			)
-		}
-	}
-
-	dependency, exists := s.Dependencies[normalizedName]
-	if !exists {
-		return fmt.Errorf(
-			"dependency %q has no persisted Agent state",
-			normalizedName,
-		)
-	}
-
-	dependency.Ownership = &servicedomain.OwnershipRecord{
-		Resources: append([]servicedomain.OwnedResource(nil), resources...),
-	}
-	s.Dependencies[normalizedName] = dependency
-
+	s.applyDependencyOwnership(next)
 	return nil
 }
 
 // OwnsDependency reports whether Agent state contains at least one concrete
 // resource ownership record for the named dependency.
 func (s State) OwnsDependency(name string) bool {
-	normalizedName := strings.ToLower(strings.TrimSpace(name))
-
-	dependency, exists := s.Dependencies[normalizedName]
-
-	return exists &&
-		dependency.Ownership != nil &&
-		len(dependency.Ownership.Resources) > 0
+	return serviceapplication.OwnsDependency(s.dependencyOwnershipSnapshot(), name)
 }
 
 // RecordAgentInstallation persists validated platform and ownership metadata.
@@ -225,4 +185,23 @@ func (s State) dependencySnapshot() dependencyapplication.Snapshot {
 func (s *State) applyDependencySnapshot(snapshot dependencyapplication.Snapshot) {
 	s.DesiredGeneration = snapshot.DesiredGeneration
 	s.Dependencies = snapshot.Dependencies
+}
+
+func (s State) dependencyOwnershipSnapshot() serviceapplication.OwnershipSnapshot {
+	dependencies := make(map[string]*servicedomain.OwnershipRecord, len(s.Dependencies))
+	for name, dependency := range s.Dependencies {
+		dependencies[name] = dependency.Ownership
+	}
+	return serviceapplication.OwnershipSnapshot{Dependencies: dependencies}
+}
+
+func (s *State) applyDependencyOwnership(snapshot serviceapplication.OwnershipSnapshot) {
+	for name, ownership := range snapshot.Dependencies {
+		dependency, exists := s.Dependencies[name]
+		if !exists {
+			continue
+		}
+		dependency.Ownership = ownership
+		s.Dependencies[name] = dependency
+	}
 }
