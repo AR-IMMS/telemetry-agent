@@ -419,10 +419,10 @@ type testCompiler struct {
 	resolvedIDs []string
 }
 
-func (c *testCompiler) Compile(_ runtimecontracts.RenderInput, resolved []integration.ResolvedInstance) (collectorruntime.Candidate, error) {
+func (c *testCompiler) Compile(_ runtimecontracts.RenderInput, resolved []runtimecontracts.ResolvedContribution) (collectorruntime.Candidate, error) {
 	c.count++
 	for _, item := range resolved {
-		c.resolvedIDs = append(c.resolvedIDs, item.Instance.ID)
+		c.resolvedIDs = append(c.resolvedIDs, item.InstanceID)
 	}
 	return collectorruntime.Candidate{}, nil
 }

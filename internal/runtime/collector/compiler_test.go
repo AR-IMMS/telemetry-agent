@@ -10,11 +10,13 @@ import (
 	"strings"
 	"testing"
 
-	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
-	redisintegration "github.com/ar-imms/telemetry-agent/internal/integration/redis"
+	definitionapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
+	definitions "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
+	redisprofile "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/redis"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 	"gopkg.in/yaml.v3"
 )
 
@@ -37,34 +39,53 @@ func testInput(t *testing.T) config.RenderInput {
 	return config.RenderInput{Platform: identity.PlatformInfo{OS: "linux", Architecture: "amd64"}, Layers: []config.Layer{{Name: "test", Path: path}}}
 }
 
-func testResolved(t *testing.T, id string) integration.ResolvedInstance {
+func testResolved(t *testing.T, id string) contracts.ResolvedContribution {
 	t.Helper()
-	intent, err := integration.NewComponentIntent("testreceiver", map[string]any{"protocols": map[string]any{"grpc": map[string]any{"endpoint": "127.0.0.1:9000"}}})
+	intent, err := definitions.NewComponentIntent("testreceiver", map[string]any{"protocols": map[string]any{"grpc": map[string]any{"endpoint": "127.0.0.1:9000"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return integration.ResolvedInstance{Instance: integration.IntegrationInstance{ID: id, DefinitionID: "test", DefinitionVersion: "1.0.0", Configuration: map[string]any{}, Enabled: true}, Contribution: integration.NewContribution([]integration.ComponentIntent{intent})}
+	return contracts.ResolvedContribution{InstanceID: id, Contribution: definitions.NewContribution([]definitions.ComponentIntent{intent})}
+}
+
+func testRedisContribution(t *testing.T, id string, settings map[string]any) contracts.ResolvedContribution {
+	t.Helper()
+	definition := redisprofile.Definition()
+	registry, err := definitionapp.NewRegistry(definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := definitionapp.NewResolver(registry).Resolve(definitionapp.ResolveInput{
+		DefinitionID: definition.ID,
+		Version:      definition.Version,
+		Enabled:      true,
+		Settings:     settings,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return contracts.ResolvedContribution{InstanceID: id, Contribution: resolved.Contribution}
 }
 
 func TestCompilerIsDeterministicAndPreservesBaselinePipelines(t *testing.T) {
 	c := NewCompiler(testCatalog(t))
 	input := testInput(t)
-	a, err := c.Compile(input, []integration.ResolvedInstance{testResolved(t, "instance-a")})
+	a, err := c.Compile(input, []contracts.ResolvedContribution{testResolved(t, "instance-a")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := c.Compile(input, []integration.ResolvedInstance{testResolved(t, "instance-a")})
+	b, err := c.Compile(input, []contracts.ResolvedContribution{testResolved(t, "instance-a")})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if a.Digest() != b.Digest() || !bytes.Equal(a.Bytes(), b.Bytes()) {
 		t.Fatal("equivalent inputs generated different candidate bytes/digests")
 	}
-	ordered, err := c.Compile(input, []integration.ResolvedInstance{testResolved(t, "instance-z"), testResolved(t, "instance-a")})
+	ordered, err := c.Compile(input, []contracts.ResolvedContribution{testResolved(t, "instance-z"), testResolved(t, "instance-a")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	reversed, err := c.Compile(input, []integration.ResolvedInstance{testResolved(t, "instance-a"), testResolved(t, "instance-z")})
+	reversed, err := c.Compile(input, []contracts.ResolvedContribution{testResolved(t, "instance-a"), testResolved(t, "instance-z")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,20 +140,20 @@ func containsString(values []any, expected string) bool {
 
 func TestCompilerRejectsUnsupportedCapabilityAndAmbiguousKinds(t *testing.T) {
 	c := NewCompiler(testCatalog(t))
-	unknown, _ := integration.NewComponentIntent("unknownreceiver", map[string]any{})
-	resolved := integration.ResolvedInstance{Instance: integration.IntegrationInstance{ID: "cache", DefinitionID: "test", DefinitionVersion: "1.0.0", Configuration: map[string]any{}, Enabled: true}, Contribution: integration.NewContribution([]integration.ComponentIntent{unknown})}
-	if _, err := c.Compile(testInput(t), []integration.ResolvedInstance{resolved}); !errors.Is(err, ErrUnsupportedCapability) {
+	unknown, _ := definitions.NewComponentIntent("unknownreceiver", map[string]any{})
+	resolved := contracts.ResolvedContribution{InstanceID: "cache", Contribution: definitions.NewContribution([]definitions.ComponentIntent{unknown})}
+	if _, err := c.Compile(testInput(t), []contracts.ResolvedContribution{resolved}); !errors.Is(err, ErrUnsupportedCapability) {
 		t.Fatalf("unsupported error=%v", err)
 	}
 	processor, err := NewCatalog("0.160.0", "test", []Capability{{ID: "proc", NativeName: "batch", Kind: "processor", OS: []string{"linux"}, Signals: []string{"metrics"}, Pipeline: "metrics"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	i, err := integration.NewComponentIntent("proc", map[string]any{"timeout": "1s"})
+	i, err := definitions.NewComponentIntent("proc", map[string]any{"timeout": "1s"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = NewCompiler(processor).Compile(testInput(t), []integration.ResolvedInstance{{Instance: integration.IntegrationInstance{ID: "x", DefinitionID: "test", DefinitionVersion: "1.0.0", Configuration: map[string]any{}, Enabled: true}, Contribution: integration.NewContribution([]integration.ComponentIntent{i})}})
+	_, err = NewCompiler(processor).Compile(testInput(t), []contracts.ResolvedContribution{{InstanceID: "x", Contribution: definitions.NewContribution([]definitions.ComponentIntent{i})}})
 	if !errors.Is(err, ErrUnsupportedCapability) {
 		t.Fatalf("ambiguous processor mapping error=%v", err)
 	}
@@ -143,11 +164,11 @@ func TestCompilerWiresExporterWithoutReplacingBaseline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	intent, err := integration.NewComponentIntent("testexporter", map[string]any{"endpoint": "127.0.0.1:4317"})
+	intent, err := definitions.NewComponentIntent("testexporter", map[string]any{"endpoint": "127.0.0.1:4317"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	candidate, err := NewCompiler(exporter).Compile(testInput(t), []integration.ResolvedInstance{{Instance: integration.IntegrationInstance{ID: "cache", DefinitionID: "test", DefinitionVersion: "1.0.0", Configuration: map[string]any{}, Enabled: true}, Contribution: integration.NewContribution([]integration.ComponentIntent{intent})}})
+	candidate, err := NewCompiler(exporter).Compile(testInput(t), []contracts.ResolvedContribution{{InstanceID: "cache", Contribution: definitions.NewContribution([]definitions.ComponentIntent{intent})}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,30 +190,21 @@ func TestNewCatalogRejectsAmbiguousPipelineMapping(t *testing.T) {
 	}
 }
 
-func TestCompilerRejectsDuplicateIntentsAndSkipsDisabledInstances(t *testing.T) {
+func TestCompilerRejectsDuplicateIntents(t *testing.T) {
 	catalog := testCatalog(t)
-	intent, err := integration.NewComponentIntent("testreceiver", map[string]any{"protocols": map[string]any{"grpc": map[string]any{"endpoint": "127.0.0.1:9000"}}})
+	intent, err := definitions.NewComponentIntent("testreceiver", map[string]any{"protocols": map[string]any{"grpc": map[string]any{"endpoint": "127.0.0.1:9000"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	duplicate := testResolved(t, "instance-a")
-	duplicate.Contribution = integration.NewContribution([]integration.ComponentIntent{intent, intent})
-	if _, err := NewCompiler(catalog).Compile(testInput(t), []integration.ResolvedInstance{duplicate}); !errors.Is(err, ErrComponentIDConflict) {
+	duplicate.Contribution = definitions.NewContribution([]definitions.ComponentIntent{intent, intent})
+	if _, err := NewCompiler(catalog).Compile(testInput(t), []contracts.ResolvedContribution{duplicate}); !errors.Is(err, ErrComponentIDConflict) {
 		t.Fatalf("duplicate intent error=%v", err)
-	}
-	disabled := testResolved(t, "disabled")
-	disabled.Instance.Enabled = false
-	candidate, err := NewCompiler(catalog).Compile(testInput(t), []integration.ResolvedInstance{disabled})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Contains(candidate.Bytes(), []byte("/i-"+stableInstanceSuffix("disabled"))) {
-		t.Fatal("disabled instance emitted Collector configuration")
 	}
 }
 
 func TestCandidateBytesAreDefensivelyCopied(t *testing.T) {
-	candidate, err := NewCompiler(testCatalog(t)).Compile(testInput(t), []integration.ResolvedInstance{testResolved(t, "instance-a")})
+	candidate, err := NewCompiler(testCatalog(t)).Compile(testInput(t), []contracts.ResolvedContribution{testResolved(t, "instance-a")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,22 +216,9 @@ func TestCandidateBytesAreDefensivelyCopied(t *testing.T) {
 }
 
 func TestRedisInstancesCompileToIndependentStableReceiverIDs(t *testing.T) {
-	definition := redisintegration.Definition()
-	registry, err := integration.NewRegistry(definition)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resolver := integration.NewResolver(registry)
-	var resolved []integration.ResolvedInstance
+	var resolved []contracts.ResolvedContribution
 	for _, id := range []string{"redis-a", "redis-b"} {
-		instance, err := resolver.Resolve(integration.IntegrationInstance{
-			ID: id, DefinitionID: definition.ID, DefinitionVersion: definition.Version,
-			Enabled: true, Configuration: map[string]any{"endpoint": "127.0.0.1:6379"},
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		resolved = append(resolved, instance)
+		resolved = append(resolved, testRedisContribution(t, id, map[string]any{"endpoint": "127.0.0.1:6379"}))
 	}
 	input := testInput(t)
 	input.Platform = identity.PlatformInfo{OS: "windows", Architecture: "amd64"}
@@ -241,19 +240,8 @@ func TestRedisInstancesCompileToIndependentStableReceiverIDs(t *testing.T) {
 }
 
 func TestCompilerFailsClosedWhenCatalogDoesNotAuthorizeRedis(t *testing.T) {
-	definition := redisintegration.Definition()
-	registry, err := integration.NewRegistry(definition)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resolved, err := integration.NewResolver(registry).Resolve(integration.IntegrationInstance{
-		ID: "redis-a", DefinitionID: definition.ID, DefinitionVersion: definition.Version,
-		Enabled: true, Configuration: map[string]any{"endpoint": "127.0.0.1:6379"},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := NewCompiler(testCatalog(t)).Compile(testInput(t), []integration.ResolvedInstance{resolved}); !errors.Is(err, ErrUnsupportedCapability) {
+	resolved := testRedisContribution(t, "redis-a", map[string]any{"endpoint": "127.0.0.1:6379"})
+	if _, err := NewCompiler(testCatalog(t)).Compile(testInput(t), []contracts.ResolvedContribution{resolved}); !errors.Is(err, ErrUnsupportedCapability) {
 		t.Fatalf("Redis compile error = %v, want unsupported capability", err)
 	}
 }
@@ -263,7 +251,7 @@ func TestNativeValidationWhenPinnedBinaryProvided(t *testing.T) {
 	if binary == "" {
 		t.Skip("pinned Collector binary is not available in this test environment")
 	}
-	candidate, err := NewCompiler(testCatalog(t)).Compile(testInput(t), []integration.ResolvedInstance{testResolved(t, "instance-a")})
+	candidate, err := NewCompiler(testCatalog(t)).Compile(testInput(t), []contracts.ResolvedContribution{testResolved(t, "instance-a")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,18 +273,7 @@ func TestRedisCandidateNativeValidationWhenPinnedBinaryProvided(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	definition := redisintegration.Definition()
-	registry, err := integration.NewRegistry(definition)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resolved, err := integration.NewResolver(registry).Resolve(integration.IntegrationInstance{
-		ID: "redis-native-validation", DefinitionID: definition.ID, DefinitionVersion: definition.Version,
-		Enabled: true, Configuration: map[string]any{"endpoint": "127.0.0.1:6379"},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	resolved := testRedisContribution(t, "redis-native-validation", map[string]any{"endpoint": "127.0.0.1:6379"})
 	configRoot, err := filepath.Abs(filepath.Join("..", "..", "..", "configs"))
 	if err != nil {
 		t.Fatal(err)
@@ -311,7 +288,7 @@ func TestRedisCandidateNativeValidationWhenPinnedBinaryProvided(t *testing.T) {
 		InlineLayers: []config.InlineLayer{config.MetricsReceiverLayer([]string{"otlp", "hostmetrics"})},
 		Values:       map[string]string{"OTEL_GATEWAY_ENDPOINT": "127.0.0.1:4317"},
 	}
-	candidate, err := NewCompiler(catalog).Compile(input, []integration.ResolvedInstance{resolved})
+	candidate, err := NewCompiler(catalog).Compile(input, []contracts.ResolvedContribution{resolved})
 	if err != nil {
 		t.Fatal(err)
 	}

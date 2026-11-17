@@ -108,7 +108,7 @@ type runtimeCandidateApplier struct {
 
 type runtimeCandidateCompiler struct{ compiler collectorruntime.Compiler }
 
-func (c runtimeCandidateCompiler) Compile(input config.RenderInput, resolved []integration.ResolvedInstance) (runtimecontracts.Candidate, error) {
+func (c runtimeCandidateCompiler) Compile(input config.RenderInput, resolved []runtimecontracts.ResolvedContribution) (runtimecontracts.Candidate, error) {
 	candidate, err := c.compiler.Compile(input, resolved)
 	return candidate, classifyRuntimeCandidateError(err)
 }

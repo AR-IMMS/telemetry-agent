@@ -9,10 +9,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
-	redisintegration "github.com/ar-imms/telemetry-agent/internal/integration/redis"
+	definitionapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
+	redisprofile "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/redis"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 	"gopkg.in/yaml.v3"
 )
 
@@ -181,14 +182,14 @@ func TestRedisCandidateNativeValidationWhenPinnedArtifactProvided(t *testing.T) 
 	if got := os.Getenv("OTELCOL_ARTIFACT_SHA256"); got != expectedChecksum {
 		t.Fatalf("Collector archive checksum evidence=%q, want %q", got, expectedChecksum)
 	}
-	definition := redisintegration.Definition()
-	registry, err := integration.NewRegistry(definition)
+	definition := redisprofile.Definition()
+	registry, err := definitionapp.NewRegistry(definition)
 	if err != nil {
 		t.Fatal(err)
 	}
-	resolved, err := integration.NewResolver(registry).Resolve(integration.IntegrationInstance{
-		ID: "redis-e2e", DefinitionID: definition.ID, DefinitionVersion: definition.Version,
-		Enabled: true, Configuration: map[string]any{"endpoint": "127.0.0.1:6379"},
+	resolved, err := definitionapp.NewResolver(registry).Resolve(definitionapp.ResolveInput{
+		DefinitionID: definition.ID, Version: definition.Version,
+		Enabled: true, Settings: map[string]any{"endpoint": "127.0.0.1:6379"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -199,7 +200,7 @@ func TestRedisCandidateNativeValidationWhenPinnedArtifactProvided(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	candidate, err := NewCompiler(catalog).Compile(input, []integration.ResolvedInstance{resolved})
+	candidate, err := NewCompiler(catalog).Compile(input, []contracts.ResolvedContribution{{InstanceID: "redis-e2e", Contribution: resolved.Contribution}})
 	if err != nil {
 		t.Fatal(err)
 	}

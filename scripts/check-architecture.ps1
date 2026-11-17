@@ -81,6 +81,11 @@ try {
             SourceRoot = "$modulePath/internal/inventory"
             TargetRoot = "$modulePath/internal/integration"
             Reason = 'Inventory supplies observations; Monitoring owns profile matching and recommendations.'
+        },
+        @{
+            SourceRoot = "$modulePath/internal/runtime/collector"
+            TargetRoot = "$modulePath/internal/integration"
+            Reason = 'Runtime compiles validated Monitoring contributions through its collector contracts; it does not depend on the compatibility facade.'
         }
     )
 

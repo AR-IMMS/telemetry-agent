@@ -7,9 +7,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 	"gopkg.in/yaml.v3"
 )
 
@@ -23,7 +22,7 @@ type Compiler struct{ catalog Catalog }
 func NewCompiler(catalog Catalog) Compiler { return Compiler{catalog: catalog} }
 
 // Compile renders the existing baseline, adds supported intent components deterministically, and returns complete candidate bytes.
-func (c Compiler) Compile(input config.RenderInput, resolved []integration.ResolvedInstance) (Candidate, error) {
+func (c Compiler) Compile(input config.RenderInput, resolved []contracts.ResolvedContribution) (Candidate, error) {
 	baseline, err := config.Render(input)
 	if err != nil {
 		return Candidate{}, fmt.Errorf("%w: render baseline: %v", ErrCompilation, err)
@@ -36,14 +35,11 @@ func (c Compiler) Compile(input config.RenderInput, resolved []integration.Resol
 		return Candidate{}, fmt.Errorf("%w: baseline is empty", ErrCompilation)
 	}
 	components := make([]compiledComponent, 0)
-	for _, resolvedInstance := range resolved {
-		if err := integration.ValidateInstance(resolvedInstance.Instance); err != nil {
-			return Candidate{}, fmt.Errorf("%w: %v", ErrInvalidIntent, err)
+	for _, contribution := range resolved {
+		if contribution.InstanceID == "" {
+			return Candidate{}, fmt.Errorf("%w: resolved contribution has no instance identifier", ErrInvalidIntent)
 		}
-		if !resolvedInstance.Instance.Enabled {
-			continue
-		}
-		for _, intent := range resolvedInstance.Contribution.Intents() {
+		for _, intent := range contribution.Contribution.Intents() {
 			capability, err := c.catalog.lookup(intent.Capability(), input.Platform.OS)
 			if err != nil {
 				return Candidate{}, err
@@ -52,7 +48,7 @@ func (c Compiler) Compile(input config.RenderInput, resolved []integration.Resol
 			if err := json.Unmarshal(intent.Configuration(), &component); err != nil || component == nil {
 				return Candidate{}, fmt.Errorf("%w: capability %s requires object configuration", ErrInvalidIntent, intent.Capability())
 			}
-			nativeID := capability.nativeName + "/i-" + stableInstanceSuffix(resolvedInstance.Instance.ID)
+			nativeID := capability.nativeName + "/i-" + stableInstanceSuffix(contribution.InstanceID)
 			components = append(components, compiledComponent{capability, nativeID, component})
 		}
 	}

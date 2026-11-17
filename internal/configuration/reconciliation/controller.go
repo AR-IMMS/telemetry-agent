@@ -48,7 +48,7 @@ type resolver interface {
 	Resolve(integration.IntegrationInstance) (integration.ResolvedInstance, error)
 }
 type compiler interface {
-	Compile(input contracts.RenderInput, resolved []integration.ResolvedInstance) (contracts.Candidate, error)
+	Compile(input contracts.RenderInput, resolved []contracts.ResolvedContribution) (contracts.Candidate, error)
 }
 
 type candidateValidator func(context.Context, contracts.Candidate) error
@@ -114,7 +114,7 @@ func (c *Controller) Reconcile(ctx context.Context) (Result, error) {
 		}
 		return result, cause
 	}
-	resolved := make([]integration.ResolvedInstance, 0, len(snapshot.Instances))
+	resolved := make([]contracts.ResolvedContribution, 0, len(snapshot.Instances))
 	for _, instance := range snapshot.Instances {
 		if !instance.Enabled {
 			continue
@@ -124,7 +124,7 @@ func (c *Controller) Reconcile(ctx context.Context) (Result, error) {
 			failure := classify("resolve", resolveErr)
 			return finish(Outcome{Status: attemptStatus(failure.Class, attempt.Number), Stage: failure.Stage, Code: failure.Code, Class: failure.Class, SafeDetail: "integration resolution failed", RetryAt: retryAt(attempt.Number)}, failure)
 		}
-		resolved = append(resolved, value)
+		resolved = append(resolved, contracts.ResolvedContribution{InstanceID: instance.ID, Contribution: value.Contribution})
 	}
 	candidate, err := c.Compiler.Compile(baseline.Input, resolved)
 	if err != nil {

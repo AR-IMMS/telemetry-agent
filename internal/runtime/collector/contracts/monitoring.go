@@ -1,5 +1,15 @@
 package contracts
 
+import profile "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
+
+// ResolvedContribution pairs one stable desired-state identifier with the
+// Monitoring-owned, runtime-neutral contribution that Runtime compiles. The
+// desired-state model and its lifecycle policy remain owned by Configuration.
+type ResolvedContribution struct {
+	InstanceID   string
+	Contribution profile.Contribution
+}
+
 // DockerMonitoringProfile is the Runtime-owned input needed to render one
 // validated Docker monitoring intent into Collector configuration.
 type DockerMonitoringProfile struct {
