@@ -1,3 +1,44 @@
+## [0.1.4a-next] - Unreleased
+
+This is the release-candidate changelog for the `chore/v0.1.4a-next`
+integration branch. It describes the target contents; this version is not
+published yet.
+
+### Highlights
+
+- Install, upgrade, recover, and uninstall the Agent and its managed runtime on
+  Windows and Linux while preserving installation identity and owned resources.
+- Enroll Agents with protected credentials and retain local recovery behavior
+  when control-plane connectivity is unavailable.
+- Use the pinned OpenTelemetry Collector and OpAMP Supervisor for supported
+  native runtime flows, with validation, readiness checks, last-known-good
+  recovery, and an explicit legacy ownership path.
+- Monitor hosts and supported workloads with OpenTelemetry-native collection,
+  including Docker-discovered Redis and PostgreSQL profiles and generic
+  Prometheus endpoints where configured and reachable.
+- Retain Agent-managed Windows Exporter and Libre Hardware Monitor support, and
+  optional Linux Node Exporter integration, alongside Collector-managed
+  collection.
+- Inspect inventory, health evidence, and diagnostics; execute authorized
+  infrastructure operations through the existing Core-authorized Operations
+  channel. Mutating container operations remain disabled by default.
+- Preserve existing `agentctl` commands and behavior while organizing newer
+  commands around the shared application use cases.
+
+### Developer notes
+
+- Keep Fleet enrollment, desired Collector configuration, and publication
+  contracts separate from Core business authorization and local Agent
+  orchestration. The Mock Fleet is test-only and provisional; production
+  Fleet/NestJS interoperability is not verified by Mock Fleet tests.
+- Existing SQLite state and migration history remain supported. Agent-managed
+  exporters and OS integration remain distinct from Collector lifecycle
+  ownership.
+- Verification covers Windows and Ubuntu CI, including live Ubuntu Docker,
+  JetStream, Collector/OTLP, Supervisor fallback, and Mock Fleet E2Es. Windows
+  Docker-dependent hosted E2Es are skipped; see the PR-09.5 verification report
+  for exact-head evidence and limitations.
+
 ## [0.1.2] - 2026-10-01
 
 ### Added
