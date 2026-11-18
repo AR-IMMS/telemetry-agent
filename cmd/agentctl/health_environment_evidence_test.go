@@ -126,6 +126,36 @@ func TestAgentEnvironmentEvidenceIncludesVerifiedCollectorVersion(t *testing.T) 
 	}
 }
 
+func TestAgentEnvironmentEvidenceIncludesVerifiedSupervisorVersion(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "agent.db")
+	installationID := mustIdentityID(t, "11111111-2222-4333-8444-555555555555")
+	if _, err := sqlitefixture.NewIdentityStore(statePath).EnsureInstallationID(installationID); err != nil {
+		t.Fatalf("persist Agent installation ID: %v", err)
+	}
+	const supervisorPath = `C:\ProgramData\AR-IMMS\versions\opampsupervisor.exe`
+	state := agentstate.State{}
+	state.Supervisor.BinaryPath = supervisorPath
+	if err := app.NewAgentSQLiteStore(statePath).Save(state); err != nil {
+		t.Fatalf("persist managed Supervisor path: %v", err)
+	}
+
+	var inspectedCollectorPath, inspectedSupervisorPath string
+	evidence := newAgentEnvironmentEvidenceWithVersionInspector(statePath, func(collectorPath, supervisorPath string) identityhost.ManagedRuntimeVersions {
+		inspectedCollectorPath = collectorPath
+		inspectedSupervisorPath = supervisorPath
+		return identityhost.ManagedRuntimeVersions{Supervisor: "0.160.0"}
+	})
+	if inspectedCollectorPath != "" || inspectedSupervisorPath != supervisorPath {
+		t.Fatalf("runtime version inspector paths = (%q, %q); want empty Collector and Supervisor path %q", inspectedCollectorPath, inspectedSupervisorPath, supervisorPath)
+	}
+	if evidence.SupervisorVersion != "0.160.0" {
+		t.Fatalf("Supervisor version evidence = %q; want verified version 0.160.0", evidence.SupervisorVersion)
+	}
+	if !hasEnvironmentEvidence(evidence.Evidence, "supervisor-installed-version", identityhost.EvidenceOutcomeObserved) {
+		t.Fatalf("verified Supervisor version has no provenance fact: %+v", evidence.Evidence)
+	}
+}
+
 func hasAgentIDEvidence(facts []identityhost.EnvironmentFact, outcome identityhost.EvidenceOutcome) bool {
 	return hasEnvironmentEvidence(facts, "agent-installation-id", outcome)
 }

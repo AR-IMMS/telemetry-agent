@@ -24,6 +24,13 @@ const dependencyEvidenceTimeout = 5 * time.Second
 // newAgentEnvironmentEvidence reads the persisted installation ID and local
 // host evidence without creating identity or asserting Core topology.
 func newAgentEnvironmentEvidence(statePath string) *identityhost.EnvironmentEvidence {
+	return newAgentEnvironmentEvidenceWithVersionInspector(statePath, bootstrap.InspectInstalledRuntimeVersions)
+}
+
+func newAgentEnvironmentEvidenceWithVersionInspector(
+	statePath string,
+	inspectVersions func(string, string) identityhost.ManagedRuntimeVersions,
+) *identityhost.EnvironmentEvidence {
 	installationID := installationid.InstallationID{}
 	var identityErr error
 	var managedState agentstate.State
@@ -49,7 +56,7 @@ func newAgentEnvironmentEvidence(statePath string) *identityhost.EnvironmentEvid
 		}
 	}
 
-	versions := bootstrap.InspectInstalledRuntimeVersions(
+	versions := inspectVersions(
 		managedState.Collector.BinaryPath,
 		managedState.Supervisor.BinaryPath,
 	)
