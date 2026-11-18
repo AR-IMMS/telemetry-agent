@@ -1,7 +1,9 @@
 package mockfleet
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"io"
@@ -9,8 +11,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/open-telemetry/opamp-go/protobufs"
 	opampserver "github.com/open-telemetry/opamp-go/server"
 	opamptypes "github.com/open-telemetry/opamp-go/server/types"
+	"google.golang.org/protobuf/proto"
 )
 
 const exchangePath = "/v1/enrollments/exchange"
@@ -18,10 +22,12 @@ const exchangePath = "/v1/enrollments/exchange"
 // Server is an in-memory fixture for the illustrative Fleet enrollment
 // exchange. Its routes and response details remain provisional.
 type Server struct {
-	mu          sync.Mutex
-	invitations map[string]invitation
-	attempts    map[string]exchangeRecord
-	credentials map[string]*issuedCredential
+	mu             sync.Mutex
+	invitations    map[string]invitation
+	attempts       map[string]exchangeRecord
+	credentials    map[string]*issuedCredential
+	desiredConfigs map[string][]byte
+	remoteStatuses map[string][]*protobufs.RemoteConfigStatus
 }
 
 type invitation struct {
@@ -34,6 +40,7 @@ type exchangeRecord struct {
 }
 
 type issuedCredential struct {
+	agentID  string
 	secret   string
 	revoked  bool
 	sessions map[opamptypes.Connection]struct{}
@@ -67,9 +74,11 @@ type exchangeResult struct {
 // this package does not invent an unapproved Core-to-Fleet HTTP endpoint.
 func New() *Server {
 	return &Server{
-		invitations: make(map[string]invitation),
-		attempts:    make(map[string]exchangeRecord),
-		credentials: make(map[string]*issuedCredential),
+		invitations:    make(map[string]invitation),
+		attempts:       make(map[string]exchangeRecord),
+		credentials:    make(map[string]*issuedCredential),
+		desiredConfigs: make(map[string][]byte),
+		remoteStatuses: make(map[string][]*protobufs.RemoteConfigStatus),
 	}
 }
 
@@ -86,6 +95,50 @@ func (s *Server) SeedInvitation(token, nodeID string) error {
 	}
 	s.invitations[token] = invitation{nodeID: nodeID}
 	return nil
+}
+
+// SetDesiredConfig sets an ephemeral standard OpAMP config offer for a fixture
+// Agent. It does not model Fleet revision or publication semantics.
+func (s *Server) SetDesiredConfig(agentID string, config []byte) error {
+	if s == nil || strings.TrimSpace(agentID) == "" || len(config) == 0 {
+		return errors.New("mock Fleet desired config requires an Agent ID and payload")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.desiredConfigs[agentID] = append([]byte(nil), config...)
+	return nil
+}
+
+// RemoteConfigStatuses returns copies of OpAMP statuses reported for one
+// fixture Agent without attributing them to an unapproved Fleet revision.
+func (s *Server) RemoteConfigStatuses(agentID string) []*protobufs.RemoteConfigStatus {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	statuses := s.remoteStatuses[agentID]
+	result := make([]*protobufs.RemoteConfigStatus, 0, len(statuses))
+	for _, status := range statuses {
+		result = append(result, proto.Clone(status).(*protobufs.RemoteConfigStatus))
+	}
+	return result
+}
+
+// ActiveOpAMPSessions returns the number of fixture sessions for an Agent.
+func (s *Server) ActiveOpAMPSessions(agentID string) int {
+	if s == nil {
+		return 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	count := 0
+	for _, credential := range s.credentials {
+		if credential.agentID == agentID {
+			count += len(credential.sessions)
+		}
+	}
+	return count
 }
 
 // ServeHTTP implements the single illustrative enrollment exchange route.
@@ -152,6 +205,7 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	}
 	s.attempts[exchange.AttemptID] = exchangeRecord{request: exchange, result: result}
 	s.credentials[result.CredentialID] = &issuedCredential{
+		agentID:  exchange.AgentID,
 		secret:   result.Credential,
 		sessions: make(map[opamptypes.Connection]struct{}),
 	}
@@ -184,15 +238,36 @@ func (s *Server) revokeCredential(credentialID string) error {
 	return errors.Join(disconnectErrors...)
 }
 
-func (s *Server) acceptsCredential(secret string) (string, bool) {
+// RevokeCredential revokes one fixture credential and disconnects all its
+// active OpAMP sessions. This is a test control, not a proposed Fleet API.
+func (s *Server) RevokeCredential(credentialID string) error {
+	return s.revokeCredential(credentialID)
+}
+
+func (s *Server) acceptsCredential(secret string) (string, string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for credentialID, credential := range s.credentials {
 		if credential.secret == secret && !credential.revoked {
-			return credentialID, true
+			return credentialID, credential.agentID, true
 		}
 	}
-	return "", false
+	return "", "", false
+}
+
+func (s *Server) desiredConfig(agentID string) []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]byte(nil), s.desiredConfigs[agentID]...)
+}
+
+func (s *Server) recordRemoteConfigStatus(agentID string, status *protobufs.RemoteConfigStatus) {
+	if status == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.remoteStatuses[agentID] = append(s.remoteStatuses[agentID], proto.Clone(status).(*protobufs.RemoteConfigStatus))
 }
 
 func (s *Server) addSession(credentialID string, session opamptypes.Connection) bool {
@@ -214,21 +289,31 @@ func (s *Server) removeSession(credentialID string, session opamptypes.Connectio
 	}
 }
 
-type opampFixture struct {
+// OpAMPServer is an authenticated in-memory OpAMP fixture for tests. It is not
+// an AR-IMMS Fleet server and persists no desired state.
+type OpAMPServer struct {
 	server   opampserver.OpAMPServer
+	fleet    *Server
 	url      string
 	closed   chan struct{}
 	rejected chan struct{}
+	mu       sync.Mutex
+	sentHash map[opamptypes.Connection][]byte
 }
 
-func startOpAMP(fleet *Server) (*opampFixture, error) {
+// StartOpAMPServer starts a loopback OpAMP endpoint for authenticated fixture
+// credentials. Config and status messages use the standard OpAMP protobuf.
+func (s *Server) StartOpAMPServer() (*OpAMPServer, error) {
+	fleet := s
 	if fleet == nil {
 		return nil, errors.New("mock Fleet fixture is required")
 	}
-	fixture := &opampFixture{
+	fixture := &OpAMPServer{
 		server:   opampserver.New(nil),
+		fleet:    fleet,
 		closed:   make(chan struct{}, 8),
 		rejected: make(chan struct{}, 8),
+		sentHash: make(map[opamptypes.Connection][]byte),
 	}
 	err := fixture.server.Start(opampserver.StartSettings{
 		ListenEndpoint: "127.0.0.1:0",
@@ -242,7 +327,7 @@ func startOpAMP(fleet *Server) (*opampFixture, error) {
 						fixture.recordRejected()
 						return opamptypes.ConnectionResponse{Accept: false, HTTPStatusCode: http.StatusUnauthorized}
 					}
-					credentialID, accepted := fleet.acceptsCredential(strings.TrimPrefix(authorization, bearerPrefix))
+					credentialID, agentID, accepted := fleet.acceptsCredential(strings.TrimPrefix(authorization, bearerPrefix))
 					if !accepted {
 						fixture.recordRejected()
 						return opamptypes.ConnectionResponse{Accept: false, HTTPStatusCode: http.StatusUnauthorized}
@@ -255,8 +340,37 @@ func startOpAMP(fleet *Server) (*opampFixture, error) {
 									_ = connection.Disconnect()
 								}
 							},
+							OnMessage: func(_ context.Context, connection opamptypes.Connection, message *protobufs.AgentToServer) *protobufs.ServerToAgent {
+								fleet.recordRemoteConfigStatus(agentID, message.GetRemoteConfigStatus())
+								response := &protobufs.ServerToAgent{
+									InstanceUid:  message.GetInstanceUid(),
+									Capabilities: uint64(protobufs.ServerCapabilities_ServerCapabilities_OffersRemoteConfig),
+								}
+								config := fleet.desiredConfig(agentID)
+								if len(config) == 0 {
+									return response
+								}
+								hash := sha256.Sum256(config)
+								fixture.mu.Lock()
+								if bytes.Equal(fixture.sentHash[connection], hash[:]) {
+									fixture.mu.Unlock()
+									return response
+								}
+								fixture.sentHash[connection] = append([]byte(nil), hash[:]...)
+								fixture.mu.Unlock()
+								response.RemoteConfig = &protobufs.AgentRemoteConfig{
+									Config: &protobufs.AgentConfigMap{ConfigMap: map[string]*protobufs.AgentConfigFile{
+										"": {Body: config},
+									}},
+									ConfigHash: hash[:],
+								}
+								return response
+							},
 							OnConnectionClose: func(connection opamptypes.Connection) {
 								fleet.removeSession(credentialID, connection)
+								fixture.mu.Lock()
+								delete(fixture.sentHash, connection)
+								fixture.mu.Unlock()
 								select {
 								case fixture.closed <- struct{}{}:
 								default:
@@ -275,23 +389,37 @@ func startOpAMP(fleet *Server) (*opampFixture, error) {
 	return fixture, nil
 }
 
-func (f *opampFixture) urlString() string {
+func startOpAMP(fleet *Server) (*OpAMPServer, error) {
+	return fleet.StartOpAMPServer()
+}
+
+// Endpoint returns the loopback WebSocket endpoint used by the test fixture.
+func (f *OpAMPServer) Endpoint() string {
 	return f.url
 }
 
-func (f *opampFixture) stop(ctx context.Context) error {
+// Stop closes the listener and all current OpAMP connections.
+func (f *OpAMPServer) Stop(ctx context.Context) error {
 	return f.server.Stop(ctx)
 }
 
-func (f *opampFixture) sessionClosed() <-chan struct{} {
+func (f *OpAMPServer) urlString() string {
+	return f.Endpoint()
+}
+
+func (f *OpAMPServer) stop(ctx context.Context) error {
+	return f.Stop(ctx)
+}
+
+func (f *OpAMPServer) sessionClosed() <-chan struct{} {
 	return f.closed
 }
 
-func (f *opampFixture) rejectedConnections() int {
+func (f *OpAMPServer) rejectedConnections() int {
 	return len(f.rejected)
 }
 
-func (f *opampFixture) recordRejected() {
+func (f *OpAMPServer) recordRejected() {
 	select {
 	case f.rejected <- struct{}{}:
 	default:
