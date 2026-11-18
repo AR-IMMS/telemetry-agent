@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/app"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	identityhost "github.com/ar-imms/telemetry-agent/internal/identity/host"
@@ -13,6 +15,7 @@ import (
 	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
 	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
 	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 )
 
@@ -23,9 +26,13 @@ const dependencyEvidenceTimeout = 5 * time.Second
 func newAgentEnvironmentEvidence(statePath string) *identityhost.EnvironmentEvidence {
 	installationID := installationid.InstallationID{}
 	var identityErr error
+	var managedState agentstate.State
+	var stateErr error
 	if _, err := os.Stat(statePath); err != nil {
 		identityErr = err
+		stateErr = err
 	} else {
+		managedState, stateErr = app.NewAgentSQLiteStore(statePath).Load()
 		db, err := app.NewAgentSQLiteStore(statePath).OpenDatabase()
 		if err != nil {
 			identityErr = err
@@ -42,7 +49,21 @@ func newAgentEnvironmentEvidence(statePath string) *identityhost.EnvironmentEvid
 		}
 	}
 
-	evidence := identityhost.CollectEnvironmentEvidence(installationID)
+	versions := bootstrap.InspectInstalledRuntimeVersions(
+		managedState.Collector.BinaryPath,
+		managedState.Supervisor.BinaryPath,
+	)
+	evidence := identityhost.CollectEnvironmentEvidenceWithVersions(installationID, versions)
+	if stateErr != nil {
+		evidence.Evidence = append(evidence.Evidence, identityhost.EnvironmentFact{
+			Source: "managed-runtime-state", Outcome: identityhost.EvidenceOutcomeUnavailable,
+			Confidence: identityhost.EvidenceConfidenceUnknown, ObservedAt: evidence.ObservedAt,
+			Reason: "managed runtime state is unavailable",
+		})
+	} else {
+		evidence.Evidence = appendManagedRuntimeVersionEvidence(evidence.Evidence, "collector-installed-version", managedState.Collector.BinaryPath, versions.Collector, evidence.ObservedAt)
+		evidence.Evidence = appendManagedRuntimeVersionEvidence(evidence.Evidence, "supervisor-installed-version", managedState.Supervisor.BinaryPath, versions.Supervisor, evidence.ObservedAt)
+	}
 	if identityErr != nil {
 		evidence.AgentID = ""
 		evidence.Evidence = append(evidence.Evidence, identityhost.EnvironmentFact{
@@ -57,6 +78,30 @@ func newAgentEnvironmentEvidence(statePath string) *identityhost.EnvironmentEvid
 		Confidence: identityhost.EvidenceConfidenceVerified, ObservedAt: evidence.ObservedAt,
 	})
 	return &evidence
+}
+
+func appendManagedRuntimeVersionEvidence(
+	facts []identityhost.EnvironmentFact,
+	source string,
+	binaryPath string,
+	version string,
+	observedAt time.Time,
+) []identityhost.EnvironmentFact {
+	if strings.TrimSpace(binaryPath) == "" {
+		return facts
+	}
+	outcome := identityhost.EvidenceOutcomeObserved
+	confidence := identityhost.EvidenceConfidenceVerified
+	reason := ""
+	if strings.TrimSpace(version) == "" {
+		outcome = identityhost.EvidenceOutcomeUnavailable
+		confidence = identityhost.EvidenceConfidenceUnknown
+		reason = "installed binary could not be verified against its pinned artifact record"
+	}
+	return append(facts, identityhost.EnvironmentFact{
+		Source: source, Outcome: outcome, Confidence: confidence,
+		ObservedAt: observedAt, Reason: reason,
+	})
 }
 
 func newAgentHealthEvidenceSources(statePath string) []agenthealth.EvidenceSource {
