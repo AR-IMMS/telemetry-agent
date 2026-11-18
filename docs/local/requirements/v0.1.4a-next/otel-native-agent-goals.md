@@ -1,6 +1,6 @@
 # OTel-Native Telemetry Agent — Goals and Scope
 
-**Status:** Under user review. Fleet Management Server and Core Backend remain external; production integration remains dependent on their approved contracts.
+**Status:** Accepted. Fleet Management Server and Core Backend remain external; production integration remains dependent on their approved contracts.
 
 **Owner:** AR-IMMS Telemetry Agent maintainers.
 
