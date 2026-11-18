@@ -236,6 +236,15 @@ func (i Installer) Install(
 	if previousState.Installation != nil {
 		configBackupPath = filepath.Join(configStagingDirectory, "previous-collector-config")
 		if _, statErr := os.Stat(layout.CollectorConfigurationPath); statErr == nil {
+			if err := config.PreserveFileSecurity(layout.CollectorConfigurationPath, bootstrapConfigPath); err != nil {
+				if restartErr := service.Install(ctx, layout); restartErr != nil {
+					return Layout{}, errors.Join(
+						fmt.Errorf("preserve previous Collector configuration security: %w", err),
+						fmt.Errorf("restart existing Agent service: %w", restartErr),
+					)
+				}
+				return Layout{}, fmt.Errorf("preserve previous Collector configuration security: %w", err)
+			}
 			if err := os.Rename(layout.CollectorConfigurationPath, configBackupPath); err != nil {
 				if restartErr := service.Install(ctx, layout); restartErr != nil {
 					return Layout{}, errors.Join(

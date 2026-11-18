@@ -98,6 +98,9 @@ func ActivateRenderedConfig(
 			err,
 		)
 	}
+	if err := config.PreserveFileSecurity(targetPath, stagedConfigPath); err != nil {
+		return fmt.Errorf("preserve active Collector configuration security: %w", err)
+	}
 
 	if err := os.Rename(stagedConfigPath, targetPath); err != nil {
 		return fmt.Errorf(

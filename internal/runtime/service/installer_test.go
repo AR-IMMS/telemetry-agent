@@ -361,6 +361,7 @@ func TestInstallerRestoresPreviousOwnerAfterTargetServiceStartFailure(t *testing
 	if err := os.WriteFile(configPath, []byte("previous collector configuration\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	previousConfigSecurity := setConfigSecurityForTest(t, configPath)
 	layout := Layout{
 		Platform:                    "linux",
 		InstallDirectory:            "/new/install",
@@ -410,7 +411,7 @@ func TestInstallerRestoresPreviousOwnerAfterTargetServiceStartFailure(t *testing
 			if got, want := string(activeConfig), "previous collector configuration\n"; got != want {
 				t.Fatalf("active Collector config during staging = %q, want prior config %q", got, want)
 			}
-			if err := os.WriteFile(options.ConfigPath, []byte("target collector configuration\n"), 0o600); err != nil {
+			if err := os.WriteFile(options.ConfigPath, []byte("target collector configuration\n"), 0o640); err != nil {
 				return bootstrap.Result{}, err
 			}
 			return bootstrap.Result{BinaryPath: "/new/collector", ConfigPath: options.ConfigPath}, nil
@@ -433,6 +434,9 @@ func TestInstallerRestoresPreviousOwnerAfterTargetServiceStartFailure(t *testing
 					installCount++
 					if installCount == 1 {
 						steps = append(steps, "start-target")
+						if got := captureConfigSecurityForTest(t, configPath); got != previousConfigSecurity {
+							t.Fatalf("target Collector config security = %q, want preserved prior security %q", got, previousConfigSecurity)
+						}
 						activeConfig, err := os.ReadFile(configPath)
 						if err != nil {
 							t.Fatal(err)
