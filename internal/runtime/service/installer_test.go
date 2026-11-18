@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -212,6 +213,11 @@ func TestInstallerAcceptsWrappedMissingStateForNewInstallation(t *testing.T) {
 
 func TestInstallerExplicitLegacyRollbackDisablesManagedSupervisor(t *testing.T) {
 	platform := identity.PlatformInfo{OS: "linux", Architecture: "amd64"}
+	layout, err := DefaultLayout(platform)
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout.CollectorConfigurationPath = filepath.Join(t.TempDir(), "collector.yaml")
 	endpoint := "wss://opamp.example.test/v1/opamp"
 	store := &recordingStateStore{state: agentstate.State{
 		Installation: &servicedomain.AgentInstallation{},
@@ -225,7 +231,7 @@ func TestInstallerExplicitLegacyRollbackDisablesManagedSupervisor(t *testing.T) 
 	serviceRunning := true
 	var serviceSteps []string
 	installer := Installer{
-		layoutFor: DefaultLayout,
+		layoutFor: func(identity.PlatformInfo) (Layout, error) { return layout, nil },
 		copyAgentBinary: func(context.Context, string, string) error {
 			serviceSteps = append(serviceSteps, "copy")
 			if serviceRunning {
@@ -233,7 +239,10 @@ func TestInstallerExplicitLegacyRollbackDisablesManagedSupervisor(t *testing.T) 
 			}
 			return nil
 		},
-		bootstrap: func(context.Context, bootstrap.Options) (bootstrap.Result, error) {
+		bootstrap: func(_ context.Context, options bootstrap.Options) (bootstrap.Result, error) {
+			if err := os.WriteFile(options.ConfigPath, []byte("candidate\n"), 0o600); err != nil {
+				return bootstrap.Result{}, err
+			}
 			return bootstrap.Result{BinaryPath: "/collector", ConfigPath: "/collector.yaml"}, nil
 		},
 		installSupervisor: func(context.Context, string, identity.PlatformInfo) (string, error) {
@@ -256,7 +265,7 @@ func TestInstallerExplicitLegacyRollbackDisablesManagedSupervisor(t *testing.T) 
 			}, nil
 		},
 	}
-	_, err := installer.Install(context.Background(), Options{
+	_, err = installer.Install(context.Background(), Options{
 		Platform: platform, SourceBinaryPath: "/tmp/agentctl", ConfigRoot: "/etc/ar-imms",
 		GatewayEndpoint: "127.0.0.1:4317", HealthEndpoint: "http://127.0.0.1:13133",
 		DisableSupervisor: true, ConfigInput: config.RenderInput{Platform: platform},
@@ -278,6 +287,11 @@ func TestInstallerExplicitLegacyRollbackDisablesManagedSupervisor(t *testing.T) 
 
 func TestInstallerRestartsExistingServiceWhenStatePersistenceFails(t *testing.T) {
 	platform := identity.PlatformInfo{OS: "linux", Architecture: "amd64"}
+	layout, err := DefaultLayout(platform)
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout.CollectorConfigurationPath = filepath.Join(t.TempDir(), "collector.yaml")
 	persistErr := fmt.Errorf("state database unavailable")
 	store := &recordingStateStore{
 		state: agentstate.State{
@@ -289,7 +303,7 @@ func TestInstallerRestartsExistingServiceWhenStatePersistenceFails(t *testing.T)
 	serviceRunning := true
 	var serviceSteps []string
 	installer := Installer{
-		layoutFor: DefaultLayout,
+		layoutFor: func(identity.PlatformInfo) (Layout, error) { return layout, nil },
 		copyAgentBinary: func(context.Context, string, string) error {
 			serviceSteps = append(serviceSteps, "copy")
 			if serviceRunning {
@@ -297,7 +311,10 @@ func TestInstallerRestartsExistingServiceWhenStatePersistenceFails(t *testing.T)
 			}
 			return nil
 		},
-		bootstrap: func(context.Context, bootstrap.Options) (bootstrap.Result, error) {
+		bootstrap: func(_ context.Context, options bootstrap.Options) (bootstrap.Result, error) {
+			if err := os.WriteFile(options.ConfigPath, []byte("candidate\n"), 0o600); err != nil {
+				return bootstrap.Result{}, err
+			}
 			return bootstrap.Result{BinaryPath: "/collector", ConfigPath: "/collector.yaml"}, nil
 		},
 		installSupervisor: func(context.Context, string, identity.PlatformInfo) (string, error) {
@@ -320,7 +337,7 @@ func TestInstallerRestartsExistingServiceWhenStatePersistenceFails(t *testing.T)
 		},
 	}
 
-	_, err := installer.Install(context.Background(), Options{
+	_, err = installer.Install(context.Background(), Options{
 		Platform: platform, SourceBinaryPath: "/tmp/agentctl", ConfigRoot: "/etc/ar-imms",
 		GatewayEndpoint: "127.0.0.1:4317", HealthEndpoint: "http://127.0.0.1:13133",
 		DisableSupervisor: true, ConfigInput: config.RenderInput{Platform: platform},
@@ -340,9 +357,25 @@ func TestInstallerRestartsExistingServiceWhenStatePersistenceFails(t *testing.T)
 func TestInstallerRestoresPreviousOwnerAfterTargetServiceStartFailure(t *testing.T) {
 	platform := identity.PlatformInfo{OS: "linux", Architecture: "amd64"}
 	activationErr := errors.New("target service start failed")
+	configPath := filepath.Join(t.TempDir(), "collector.yaml")
+	if err := os.WriteFile(configPath, []byte("previous collector configuration\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	layout := Layout{
+		Platform:                    "linux",
+		InstallDirectory:            "/new/install",
+		DataDirectory:               "/new/data",
+		AgentBinaryPath:             "/new/agentctl",
+		CollectorConfigurationPath:  configPath,
+		SupervisorInstallDirectory:  "/new/supervisor",
+		SupervisorConfigurationPath: "/new/supervisor.yaml",
+		SupervisorStateDirectory:    "/new/supervisor-state",
+		StatePath:                   filepath.Join(t.TempDir(), "state.db"),
+		ServiceName:                 DefaultAgentServiceName,
+	}
 	previousState := agentstate.State{
 		Collector: collectordomain.CollectorContext{
-			BinaryPath: "/old/collector", ConfigPath: "/old/collector.yaml",
+			BinaryPath: "/old/collector", ConfigPath: configPath,
 			GatewayEndpoint: "gateway.old:4317", HealthEndpoint: "http://127.0.0.1:13133",
 		},
 		Supervisor: opampdomain.SupervisorContext{BinaryPath: "/old/opampsupervisor"},
@@ -357,7 +390,7 @@ func TestInstallerRestoresPreviousOwnerAfterTargetServiceStartFailure(t *testing
 	installCount := 0
 	var steps []string
 	installer := Installer{
-		layoutFor: DefaultLayout,
+		layoutFor: func(identity.PlatformInfo) (Layout, error) { return layout, nil },
 		copyAgentBinary: func(context.Context, string, string) error {
 			steps = append(steps, "copy-agent")
 			if serviceRunning {
@@ -365,9 +398,22 @@ func TestInstallerRestoresPreviousOwnerAfterTargetServiceStartFailure(t *testing
 			}
 			return nil
 		},
-		bootstrap: func(context.Context, bootstrap.Options) (bootstrap.Result, error) {
+		bootstrap: func(_ context.Context, options bootstrap.Options) (bootstrap.Result, error) {
 			steps = append(steps, "bootstrap")
-			return bootstrap.Result{BinaryPath: "/new/collector", ConfigPath: "/new/collector.yaml"}, nil
+			if options.ConfigPath == configPath {
+				t.Fatal("update bootstrap rendered directly over the active Collector configuration")
+			}
+			activeConfig, err := os.ReadFile(configPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got, want := string(activeConfig), "previous collector configuration\n"; got != want {
+				t.Fatalf("active Collector config during staging = %q, want prior config %q", got, want)
+			}
+			if err := os.WriteFile(options.ConfigPath, []byte("target collector configuration\n"), 0o600); err != nil {
+				return bootstrap.Result{}, err
+			}
+			return bootstrap.Result{BinaryPath: "/new/collector", ConfigPath: options.ConfigPath}, nil
 		},
 		installSupervisor: func(context.Context, string, identity.PlatformInfo) (string, error) {
 			steps = append(steps, "install-supervisor")
@@ -387,6 +433,13 @@ func TestInstallerRestoresPreviousOwnerAfterTargetServiceStartFailure(t *testing
 					installCount++
 					if installCount == 1 {
 						steps = append(steps, "start-target")
+						activeConfig, err := os.ReadFile(configPath)
+						if err != nil {
+							t.Fatal(err)
+						}
+						if got, want := string(activeConfig), "target collector configuration\n"; got != want {
+							t.Fatalf("target service started with Collector config %q, want %q", got, want)
+						}
 						if !store.state.Supervisor.Enabled {
 							t.Fatal("target service started before Supervisor ownership was persisted")
 						}
@@ -417,7 +470,14 @@ func TestInstallerRestoresPreviousOwnerAfterTargetServiceStartFailure(t *testing
 		t.Fatal("previous Agent service was not restarted after rollback")
 	}
 	if !reflect.DeepEqual(store.state, previousState) {
-		t.Fatalf("persisted Agent state = %#v, want previous owner state %#v", store.state, previousState)
+		t.Fatalf("Install() error = %v; transition steps = %v; persisted Agent state = %#v, want previous owner state %#v", err, steps, store.state, previousState)
+	}
+	configBytes, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(configBytes), "previous collector configuration\n"; got != want {
+		t.Fatalf("active Collector config = %q, want restored previous config %q", got, want)
 	}
 	if got, want := steps, []string{"bootstrap", "install-supervisor", "stop", "copy-agent", "start-target", "stop", "restart-previous"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("transition steps = %v, want %v", got, want)
