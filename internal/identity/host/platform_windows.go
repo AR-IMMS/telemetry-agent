@@ -10,6 +10,10 @@ import (
 )
 
 func collectPlatformDetails() (platformDetails, error) {
+	return platformDetails{Kernel: runtime.GOOS}, nil
+}
+
+func collectEnvironmentPlatformDetails() (platformDetails, error) {
 	details := platformDetails{Kernel: runtime.GOOS}
 	key, err := registry.OpenKey(registry.LOCAL_MACHINE, `SOFTWARE\Microsoft\Windows NT\CurrentVersion`, registry.QUERY_VALUE)
 	if err != nil {

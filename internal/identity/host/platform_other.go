@@ -9,6 +9,10 @@ func collectPlatformDetails() (platformDetails, error) {
 	return platformDetails{}, fmt.Errorf("unsupported platform")
 }
 
+func collectEnvironmentPlatformDetails() (platformDetails, error) {
+	return collectPlatformDetails()
+}
+
 func readPlatformEnvironmentSignals() platformEnvironmentSignals {
 	return platformEnvironmentSignals{}
 }

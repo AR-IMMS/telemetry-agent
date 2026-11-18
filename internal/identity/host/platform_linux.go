@@ -21,6 +21,10 @@ func collectPlatformDetails() (platformDetails, error) {
 	return details, nil
 }
 
+func collectEnvironmentPlatformDetails() (platformDetails, error) {
+	return collectPlatformDetails()
+}
+
 func readPlatformEnvironmentSignals() platformEnvironmentSignals {
 	var manufacturer, product string
 	if value, err := os.ReadFile("/sys/class/dmi/id/sys_vendor"); err == nil {

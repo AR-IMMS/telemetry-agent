@@ -160,7 +160,7 @@ func CollectEnvironmentEvidence(agentID installationid.InstallationID) Environme
 	if machineErr == nil {
 		machine.HostID, machineErr = machineIDFingerprint(runtime.GOOS, rawMachineID)
 	}
-	details, detailsErr := collectPlatformDetails()
+	details, detailsErr := collectEnvironmentPlatformDetails()
 	return collectEnvironmentEvidence(agentID.String(), hostname, hostnameErr, machine, machineErr, details, detailsErr, readPlatformEnvironmentSignals(), observedAt)
 }
 
