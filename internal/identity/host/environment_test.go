@@ -56,7 +56,8 @@ func TestClassifyEnvironmentKeepsKubernetesSeparateFromComputeType(t *testing.T)
 	if got.HostType != HostTypeUnknown {
 		t.Fatalf("host type = %q, want %q for a Pod that is not proven to be a node agent", got.HostType, HostTypeUnknown)
 	}
-	if got.HostIDSource != "linux-machine-id" || got.ObservedAt != observedAt {
+	if got.HostIDSource != "" || !hasEvidenceSource(got.Evidence, "linux-machine-id") ||
+		!hasEvidenceOutcome(got.Evidence, EvidenceOutcomeConflict) || got.ObservedAt != observedAt {
 		t.Fatalf("identity provenance missing: %+v", got)
 	}
 }
@@ -95,6 +96,33 @@ func TestClassifyEnvironmentDoesNotPromoteContainerToHostIdentity(t *testing.T) 
 	if got.HostType != HostTypeUnknown || got.ComputeType != ComputeTypeUnknown ||
 		got.Orchestrator != OrchestratorUnknown || got.DeploymentScope != DeploymentScopeUnknown {
 		t.Fatalf("container evidence must not imply host topology: %+v", got)
+	}
+}
+
+func TestClassifyEnvironmentDoesNotClaimContainerMachineIDAsHostIdentity(t *testing.T) {
+	got := classifyEnvironment(environmentObservation{
+		AgentID:                  "11111111-2222-4333-8444-555555555555",
+		OS:                       "linux",
+		Architecture:             "amd64",
+		HostID:                   "linux-container-machine-id",
+		HostIDSource:             "linux-machine-id",
+		KubernetesDetected:       true,
+		KubernetesPodIdentity:    true,
+		ContainerRuntimeDetected: true,
+		ObservedAt:               time.Date(2026, 11, 19, 4, 0, 0, 0, time.UTC),
+	})
+
+	if got.AgentID != "11111111-2222-4333-8444-555555555555" {
+		t.Fatalf("container classification changed installation identity: %+v", got)
+	}
+	if got.HostID != "" || got.HostIDSource != "" {
+		t.Fatalf("container-scoped machine ID was presented as a host identity: %+v", got)
+	}
+	if got.DeploymentScope != DeploymentScopeK8sPod || got.HostType != HostTypeUnknown {
+		t.Fatalf("container context was classified as a host: %+v", got)
+	}
+	if !hasEvidenceOutcome(got.Evidence, EvidenceOutcomeConflict) {
+		t.Fatalf("host/container identity ambiguity was not retained: %+v", got.Evidence)
 	}
 }
 

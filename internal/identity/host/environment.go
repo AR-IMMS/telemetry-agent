@@ -256,6 +256,7 @@ func machineIDSource(operatingSystem string) string {
 }
 
 func classifyEnvironment(observation environmentObservation) EnvironmentEvidence {
+	hostIDAmbiguous := observation.ContainerRuntimeDetected && !observation.KubernetesNodeAgent
 	result := EnvironmentEvidence{
 		AgentID:           observation.AgentID,
 		OS:                observation.OS,
@@ -276,7 +277,11 @@ func classifyEnvironment(observation environmentObservation) EnvironmentEvidence
 	if result.ObservedAt.IsZero() {
 		result.ObservedAt = time.Now().UTC()
 	}
-	if observation.HostIDSource != "" {
+	if hostIDAmbiguous && observation.HostIDSource != "" {
+		result.HostID = ""
+		result.HostIDSource = ""
+		result.Evidence = append(result.Evidence, EnvironmentFact{Source: observation.HostIDSource, Outcome: EvidenceOutcomeConflict, Confidence: EvidenceConfidenceUnknown, ObservedAt: result.ObservedAt, Reason: "container machine identifier cannot establish whether it identifies the host or container"})
+	} else if observation.HostIDSource != "" {
 		result.Evidence = append(result.Evidence, EnvironmentFact{Source: observation.HostIDSource, Outcome: EvidenceOutcomeObserved, Confidence: EvidenceConfidenceInferred, ObservedAt: result.ObservedAt})
 	} else {
 		result.Evidence = append(result.Evidence, EnvironmentFact{Source: "host-id", Outcome: EvidenceOutcomeUnavailable, Confidence: EvidenceConfidenceUnknown, ObservedAt: result.ObservedAt, Reason: "stable host identifier unavailable"})
@@ -329,6 +334,9 @@ func classifyEnvironment(observation environmentObservation) EnvironmentEvidence
 		result.DeploymentScope = DeploymentScopeUnknown
 		result.HostType = HostTypeUnknown
 		result.ClassificationNote = "container context prevents asserting host service identity"
+	}
+	if hostIDAmbiguous {
+		result.ClassificationNote = "container context prevents asserting host identity from the machine identifier"
 	}
 	return result
 }
