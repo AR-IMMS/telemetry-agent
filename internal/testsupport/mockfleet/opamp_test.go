@@ -96,7 +96,7 @@ func TestRevokedEnrollmentCredentialDisconnectsAndRejectsOpAMPSession(t *testing
 		t.Fatal("fixture-issued credential did not establish an OpAMP session")
 	}
 
-	if err := fleet.revokeCredential(credential.CredentialID); err != nil {
+	if err := fleet.RevokeCredential(credential.CredentialID); err != nil {
 		t.Fatalf("revoke fixture-issued credential: %v", err)
 	}
 	select {
