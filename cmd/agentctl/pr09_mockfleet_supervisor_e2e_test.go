@@ -82,9 +82,6 @@ func TestPR09MockFleetSupervisorConfigAndRollbackE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	remoteConfig := []byte(fmt.Sprintf("exporters:\n  otlp:\n    endpoint: %q\n    tls:\n      insecure: true\n", sinkB))
-	if err := fleet.SetDesiredConfig(agentID, remoteConfig); err != nil {
-		t.Fatalf("set fixture remote config: %v", err)
-	}
 	enrollmentHTTP := httptest.NewServer(fleet)
 	t.Cleanup(enrollmentHTTP.Close)
 	exchangeBody, err := json.Marshal(struct {
@@ -181,6 +178,13 @@ func TestPR09MockFleetSupervisorConfigAndRollbackE2E(t *testing.T) {
 		}
 	})
 
+	// Let Supervisor initialize and start its local Collector config before the
+	// first remote offer. This avoids racing its startup config-state setup while
+	// still exercising remote config application on an active Collector.
+	waitPR07ASinkContains(t, ctx, done, sinkAOutput, "hostmetrics", "Supervisor initial local-config OTLP")
+	if err := fleet.SetDesiredConfig(agentID, remoteConfig); err != nil {
+		t.Fatalf("set fixture remote config: %v", err)
+	}
 	waitPR07ASinkContains(t, ctx, done, sinkBOutput, "hostmetrics", "Mock Fleet remote-config OTLP")
 	goodHash := sha256.Sum256(remoteConfig)
 	waitPR09MockFleetStatus(t, ctx, done, fleet, agentID, protobufs.RemoteConfigStatuses_RemoteConfigStatuses_APPLIED, goodHash[:])
