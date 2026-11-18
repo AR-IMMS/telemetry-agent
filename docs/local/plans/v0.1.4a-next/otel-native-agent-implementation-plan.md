@@ -1,6 +1,6 @@
 # OTel-Native Telemetry Agent — Implementation Plan
 
-**Status:** Approved planning baseline; implementation has not started.
+**Status:** Proposed for user review; implementation has not started and is not authorized until the user accepts this plan.
 
 **Scope:** Telemetry Agent repository only. Do not implement Fleet Management Server or Core Backend here.
 
@@ -38,7 +38,7 @@ Source-grounded constraint: current `internal/app/runtime.go` starts the desired
 | GOAL-05 official Supervisor provisioning | D, E |
 | GOAL-06 safe configuration authority cutover | C, F |
 | GOAL-07 Fleet enrollment and credentials | F |
-| GOAL-08 inventory and health reporting | A, F |
+| GOAL-08 inventory and health reporting | A, G |
 | GOAL-09 managed Windows Exporter/LHM/Node Exporter | E (regression gates) |
 | GOAL-10 Core-authorized Operations | E (regression gates) |
 | GOAL-11 CLI, SQLite and security compatibility | A–F (focused gates) |
@@ -55,16 +55,16 @@ flowchart TD
     E --> F[Verify pinned Supervisor v0.160.0 composition, fallback, rollback]
     A --> G[Preservation regression gates: CLI, dependencies, Health, Operations]
     D --> H[Review existing mode/process ownership safety]
-    F --> I[External Fleet contracts and operational service]
+    F --> I[Enrollment/auth, OpAMP and desired-config contracts + operational Fleet]
     H --> I
-    B --> I
-    G --> I
-    I --> J[Fleet enrollment/report/config integration]
+    I --> J[Fleet enrollment and config integration]
     J --> K[Cut over native desired-config authority]
+    R[Inventory/health reporting contract + operational Fleet reporting API] --> S[Agent inventory/health reporting]
     K --> L[Retire duplicate native writers after verified migration]
+    L --> M[Legacy cleanup after support decision]
 ```
 
-Identity work, worker composition, pinned Supervisor verification and focused preservation tests do not require Fleet to be operational. Fleet integration and authority cutover do.
+Identity work, worker composition, pinned Supervisor verification and focused preservation tests do not require Fleet to be operational. Enrollment/auth, OpAMP and desired-config integration block configuration cutover. Full Inventory/Health reporting has its own contract and implementation slice and does not block configuration cutover; only endpoint observations essential to the effective Collector configuration must be available and validated.
 
 ## 4. Implementation slices
 
@@ -128,19 +128,31 @@ Identity work, worker composition, pinned Supervisor verification and focused pr
 - **Verification:** `go test ./internal/runtime/dependencies/... ./internal/health/... ./internal/operations/... ./cmd/agentctl/... -count=1`; native OS dependency/service tests as applicable; credential ACL and SQLite fixture/migration checks.
 - **Rollback/failure:** Revert only the specific affected change; never reset state, credential store, or dependency installation to make a test pass.
 
-### Slice F — Fleet contract integration and controlled authority cutover (P1, externally dependent)
+### Slice F — Fleet enrollment/config integration and controlled authority cutover (P1, externally dependent)
 
 - **Objective:** Move target native installations from current Core-backed desired-config authority to Fleet only after the cross-system path is ready.
-- **Related goals:** GOAL-04, GOAL-06, GOAL-07, GOAL-08, GOAL-12.
-- **Scope/source paths:** Agent enrollment/credential client, `internal/identity`, `internal/configuration/remoteconfig`, `internal/runtime/opamp`, `internal/runtime/service`, local inventory/health reporting and app worker composition. Exact files depend on approved contracts.
-- **Expected behavior changes:** Implement Agent-side contract clients only for approved Enrollment & Identity, Configuration Management, Inventory & Health Reporting, and OpAMP Integration Profile contracts. Keep existing Core-backed behavior until Fleet path is operational. At cutover, Fleet becomes sole native desired-config authority and the Agent disconnects only duplicate native policy writers.
+- **Related goals:** GOAL-04, GOAL-06, GOAL-07, GOAL-12.
+- **Scope/source paths:** Agent enrollment/credential client, `internal/identity`, `internal/configuration/remoteconfig`, `internal/runtime/opamp`, `internal/runtime/service` and app worker composition. Exact files depend on approved contracts. Include only local observations of dependency endpoints required by the effective Collector config.
+- **Expected behavior changes:** Implement Agent-side contract clients only for approved Enrollment & Identity, Configuration Management and OpAMP Integration Profile contracts. Keep existing Core-backed behavior until Fleet path is operational. At cutover, Fleet becomes sole native desired-config authority and the Agent disconnects only duplicate native policy writers.
 - **Explicit non-changes:** No Fleet/Core/Mongo implementation; no invented endpoints or payloads; no premature writer shutdown; no credential replacement without explicit migration/recovery semantics.
-- **Dependencies:** Owner-approved contracts, operational Fleet service, Core-to-Fleet authorization/binding integration, config composition decision, migration plan and test environment.
-- **Acceptance criteria:** Existing identity/credentials preserved or migrated explicitly; retries and revocation are safe; inventory/health evidence is authenticated and freshness-aware; revision/hash status is truthful; no concurrent config authorities; current Core-backed and legacy paths remain available according to the approved transition policy.
+- **Dependencies:** Owner-approved Enrollment & Identity, Configuration Management and OpAMP Integration Profile contracts; operational Fleet enrollment/config service; Core-to-Fleet authorization/binding integration; config composition decision; essential dependency endpoint evidence; migration plan and test environment. Full Inventory/Health reporting API is not a dependency of this slice.
+- **Acceptance criteria:** Existing identity/credentials preserved or migrated explicitly; retries and revocation are safe; dependency endpoints required by the effective config are available and validated; revision/hash status is truthful; no concurrent config authorities; current Core-backed and legacy paths remain available according to the approved transition policy.
 - **Verification:** Contract-compatible Mock Fleet/Core tests separated from production NestJS interoperability; native Windows/Linux enrollment/revocation/config E2E; reconnect and invalid-config rollback; actual telemetry at OTLP sink; credential ACL and SQLite compatibility.
 - **Rollback/failure:** Before cutover, keep current Core-backed mode. During cutover, stop only after destination config, endpoint, credential and dependencies validate; preserve old state until new owner is verified; if unsafe to rollback, fail closed and retain evidence/state.
 
-### Slice G — Deferred legacy cleanup (P2)
+### Slice G — Fleet inventory and health reporting (P1, independently contract-dependent)
+
+- **Objective:** Report Agent inventory and health evidence through approved Fleet contracts without coupling delivery to configuration authority cutover.
+- **Related goals:** GOAL-08, GOAL-12.
+- **Scope/source paths:** Agent identity/evidence, `internal/inventory`, `internal/health`, and app composition. Exact transport/client paths depend on approved contracts.
+- **Expected behavior changes:** Add authenticated, freshness-aware reporting only after the Inventory & Health Reporting contract exists. Retain local evidence and report delivery state independently from Collector config state.
+- **Explicit non-changes:** This slice does not own desired Collector config, alter Core business topology, or gate Slice F configuration cutover. Essential dependency endpoint observations used by config are handled in Slice F under its approved contract.
+- **Dependencies:** Owner-approved Inventory & Health Reporting contract and operational Fleet reporting endpoint. It can proceed before or after Slice F and is not a prerequisite for config cutover.
+- **Acceptance criteria:** Local evidence remains available; reporting retries/failures do not erase inventory; stale/unknown evidence stays explicit; Core remains topology authority; reporting state does not alter config authority.
+- **Verification:** Contract-compatible Mock Fleet tests; outage/retry and duplicate reporting tests; native Windows/Linux tests for affected collectors; separate production Core interoperability status.
+- **Rollback/failure:** Disable only the reporting integration and preserve local evidence; no impact to current Core-backed configuration or Fleet config cutover.
+
+### Slice H — Deferred legacy cleanup (P2)
 
 - **Objective:** Remove only obsolete code after Fleet migration and compatibility obligations are proven complete.
 - **Related goals:** GOAL-04, GOAL-06, GOAL-11.
@@ -194,14 +206,14 @@ No wire schema or endpoint is created by this plan. Check `docs/shared/contracts
 
 All conditions are required before disconnecting Agent native config/reconciliation writers:
 
-1. Fleet enrollment, credential, configuration publication, inventory/health and OpAMP profile contracts are approved and implemented by their owners.
+1. Fleet Enrollment & Identity, Configuration Management and OpAMP Integration Profile contracts are approved and implemented by their owners. Inventory & Health Reporting is excluded from this gate.
 2. Core-to-Fleet authorization/binding behavior is defined; production NestJS interoperability is separately verified or explicitly marked as an external release limitation.
 3. Local/remote composition decisions cover endpoint/routing ownership, component IDs, dependency references, credential references, merge collisions and revision/hash attribution.
 4. Pinned Supervisor v0.160.0 tests prove merge, offline fallback, invalid config, rollback, reconnect and process-tree behavior.
-5. Agent can provision dependencies and credentials needed by the effective config before SUP applies it; missing prerequisites fail visibly.
+5. Agent can provision credentials and dependencies needed by the effective config before SUP applies it; required dependency endpoint observations are available and validated. Missing prerequisites fail visibly. This does not require the full Inventory/Health reporting API.
 6. Migration preserves installation UUID, protected credentials, SQLite state/migrations, CLI behavior and old usable config.
 7. The prior lifecycle owner is stopped and its process tree verified before target owner starts; one Collector owner is demonstrated.
-8. Current Core-backed native and legacy compatibility tests pass; target Fleet path reports evidence truthfully.
+8. Current Core-backed native and legacy compatibility tests pass; target Fleet config path reports configuration evidence truthfully.
 9. Native Windows and Linux E2E verifies applied config/revision as supported, rollback and actual OTLP sink delivery.
 10. Failure handling preserves old state and refuses unsafe rollback; the cutover state is recoverable without a general feature-flag system.
 
@@ -212,9 +224,10 @@ All conditions are required before disconnecting Agent native config/reconciliat
 | **A — Identity and environment evidence** | Slice A only; identity/evidence and compatibility | Review integrated baseline and PR #40 identity changes | Stable ID; provenance/time; independent environment dimensions; unknown/conflict safe; no auth/topology inference | Identity/platform unit tests, SQLite reopen/fixtures, native Windows/Linux evidence tests | Additive fields; unknown on error; no identity or credential rewrite |
 | **B — Behavior-preserving worker composition** | Slice B only; refactor app wiring | PR #40 review; baseline worker behavior captured | Same workers/effects in current Core-backed native and legacy states | App/runtime focused tests, full Go tests and architecture guard | Revert composition only; no persisted state changes |
 | **C — Supervisor composition and mode safety evidence** | Slices C/D; only verified gaps fixed | B; exact pinned binaries | Actual merge/fallback/rollback/collision behavior recorded; no lifecycle owner overlap | Pinned SUP tests; service/process containment tests on applicable native OS; OTLP sink test when collection changes | Keep current configuration/selector; revert new behavior if parity fails |
-| **D — Fleet Agent enrollment and evidence integration** | Contract-dependent parts of F (enrollment, credentials, inventory/health) | Approved contracts and live/Mock Fleet service | Contract conformance, protected credentials, safe retry/revocation, truthful evidence | Mock-backed contract E2E; Windows/Linux credential and outage tests; production Core separately tracked | Preserve Core-backed behavior and existing credentials until explicit migration succeeds |
-| **E — Fleet configuration integration and cutover** | Remaining F: composition, revision/status, writer cutover | D; all cutover preconditions | Fleet is sole native desired-config authority; SUP is sole native executor; no premature writer shutdown | Native Windows/Linux SUP/Fleet/Collector E2E; invalid config/reconnect; actual OTLP sink | Keep prior authority/state until target verified; controlled rollback only with compatible config/credentials |
-| **F — Legacy retirement (deferred)** | Slice G only | E passes and legacy support/removal criteria approved | No supported caller/state/rollback depends on removed path | Consumer audit, migrations, CLI, native platform tests | Restore compatibility path or previous artifact within declared rollback window |
+| **D — Fleet enrollment and credential integration** | Enrollment/authentication portion of Slice F | Approved Enrollment & Identity and Core-to-Fleet binding contracts; Fleet enrollment service | Existing identity/credentials preserved or migrated explicitly; retry/revocation safe; no secrets exposed | Mock-backed contract E2E; Windows/Linux protected credential and outage tests; production Core separately tracked | Preserve current Core-backed enrollment and credentials until explicit migration succeeds |
+| **E — Fleet desired-config integration and cutover** | Configuration portion of Slice F | D; approved Configuration Management and OpAMP contracts; config-composition decisions; required dependency endpoint observations; all cutover preconditions | Fleet is sole native desired-config authority; SUP is sole native executor; no premature writer shutdown. Full Inventory/Health reporting is not required. | Native Windows/Linux SUP/Fleet/Collector E2E; invalid config/reconnect; actual OTLP sink; endpoint readiness | Keep prior authority/state until target verified; controlled rollback only with compatible config/credentials |
+| **F — Fleet inventory/health reporting** | Slice G | Approved Inventory & Health Reporting contract and Fleet reporting endpoint; independent of E | Authenticated, freshness-aware reporting; local evidence and config cutover stay independent | Mock-backed report contract E2E; outage/retry/stale evidence tests; Windows/Linux as applicable | Disable reporting integration while retaining local evidence; no config-authority rollback needed |
+| **G — Legacy retirement (deferred)** | Slice H only | E passes and legacy support/removal criteria approved | No supported caller/state/rollback depends on removed path | Consumer audit, migrations, CLI, native platform tests | Restore compatibility path or previous artifact within declared rollback window |
 
 CLI, Windows Exporter, LHM, Node Exporter, Health and Operations are focused regression gates attached to affected PRs. They are not combined into a miscellaneous feature PR.
 
@@ -251,9 +264,18 @@ Keep the existing coding policy unchanged, including GoDoc/package docs, file-si
 
 Do not remove Agent Configuration, Monitoring, `internal/opampserver`, or legacy runtime merely because Fleet/Supervisor offers a similar capability. Remove a native writer only during verified Fleet cutover, when the replacement is operational and its state/rollback path is clear. Remove legacy-only code only after an explicit support-window decision, consumer and persisted-state audit, migration proof, CLI compatibility tests and rollback artifact availability. Preserve historical verification reports and ADRs.
 
-## 12. Sources
+## 12. Commit strategy
+
+- Use one commit for one cohesive change with independent engineering value.
+- Keep implementation and directly related tests together when they form one reviewable change.
+- Group small documentation edits that explain the same change; avoid trivial documentation-only micro-commits.
+- Split unrelated responsibilities and independently reversible migrations into separate commits.
+- Make commit boundaries useful for review, `git bisect`, revert and debugging; do not maximize commit count or combine unrelated changes.
+- Do not amend unrelated commits or rewrite Git history. Do not change the existing Coding Policy.
+
+## 13. Sources
 
 - [Goals and scope](../../requirements/v0.1.4a-next/otel-native-agent-goals.md).
 - [Release scope](../../requirements/v0.1.4a-next/release-scope.md), [CLI contract](../../architecture/v0.1.4a-next/cli-contract.md), [OpAMP integration](../../architecture/v0.1.4a-next/opamp-integration.md), [architecture overview](../../architecture/v0.1.4a-next/architecture-overview.md), and [PR-09.5 report](../../verification/v0.1.4a-next/pr-verification/pr-09.5-report.md).
 - [Agent coding policy](../../development/coding-policy.md) is unchanged. The shared policy path is `docs/shared/engineering/AI_CODING_POLICY.md`; the shared submodule is unavailable in this checkout, so its content was not copied or modified.
-- Approved 2026-11-18 architecture review inputs: ADR 0005, ADR 0006 and Fleet flow definitions supplied by the user. These were not tracked in this PR #40 source snapshot; no links are fabricated.
+- Accepted architecture review inputs: ADR 0005, ADR 0006 and Fleet flow definitions supplied by the user. These were not tracked in this PR #40 source snapshot; no links are fabricated.

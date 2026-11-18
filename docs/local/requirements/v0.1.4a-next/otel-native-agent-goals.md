@@ -1,6 +1,6 @@
 # OTel-Native Telemetry Agent — Goals and Scope
 
-**Status:** Architecture accepted; implementation plan approved as the planning baseline. No implementation is authorized by this document.
+**Status:** Proposed for user review. The architecture direction is accepted; this goals document is not yet accepted. Implementation is not authorized until the user accepts the documents.
 
 **Owner:** AR-IMMS Telemetry Agent maintainers.
 
@@ -99,7 +99,7 @@ The Fleet Management Server and the official OpAMP Supervisor are distinct produ
 | GOAL-05 | Official Supervisor provisioning | Pinned Supervisor is provisioned with protected credentials and local bootstrap/fallback inputs; tested merge and rollback behavior matches v0.160.0 | D, E |
 | GOAL-06 | Safe configuration authority cutover | Fleet owns target desired config/revisions; Supervisor applies/rolls back; cutover is withheld until contract, composition, migration and E2E gates pass | C, F |
 | GOAL-07 | Fleet enrollment and credentials | Agent uses approved Fleet enrollment/credential contracts, preserves retry and credential protections, and handles replacement/revocation safely | F |
-| GOAL-08 | Inventory and health evidence | Agent produces local evidence with freshness/unknown semantics and reports only through approved contracts | A, F |
+| GOAL-08 | Inventory and health evidence | Agent produces local evidence with freshness/unknown semantics and reports only through approved contracts; full reporting is independently deliverable from configuration cutover | A, G |
 | GOAL-09 | Managed OS exporters remain available | Windows Exporter, LHM and Node Exporter install/configure/enable/disable/status/uninstall behavior remains supported | E |
 | GOAL-10 | Core-authorized Operations remain intact | Existing NATS Operations authorization, local safety, idempotency, audit and outbox behavior remain independent from Fleet config authority | E |
 | GOAL-11 | CLI and persistence compatibility | Existing commands, flags, outputs, exit codes, SQLite migrations and persisted data remain compatible | E, F |
@@ -148,7 +148,7 @@ The Fleet Management Server and the official OpAMP Supervisor are distinct produ
 
 ## Definition of Done
 
-- All GOAL IDs map to accepted implementation slices and each slice has reviewed acceptance criteria.
+- All GOAL IDs map to user-accepted implementation slices and each slice has reviewed acceptance criteria.
 - Existing behavior is covered before worker ownership changes; current Core-backed native mode remains operational until cutover approval.
 - Agent identity/environment evidence is additive, provenance-bearing, privacy-conscious and tested on Windows/Linux.
 - Actual pinned Supervisor behavior, config merge, collision, fallback, rollback and process ownership are verified.

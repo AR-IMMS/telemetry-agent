@@ -10,7 +10,7 @@ and [release progress](release-progress.md).
 
 **Release goal:** installable and verified Linux/Windows `v0.1.4a-next`, not just a source refactor. All plans are authored now; they are **review-ready conditional plans**, not claims that code is implemented or tests passed. Before each PR starts, reconcile source paths and baselines against current HEAD and previous PR verification.
 
-The accepted OTel-native Agent goals and implementation baseline are in
+The proposed OTel-native Agent goals and implementation plan, pending user review, are in
 [Goals and Scope](../../requirements/v0.1.4a-next/otel-native-agent-goals.md)
 and [Agent-Side Implementation Plan](otel-native-agent-implementation-plan.md).
 The plan distinguishes the current Core-backed Supervisor mode from the
