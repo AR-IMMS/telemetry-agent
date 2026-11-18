@@ -28,8 +28,18 @@ type OpAMPServer struct {
 // StartOpAMPServer starts a loopback OpAMP endpoint for authenticated fixture
 // credentials. Config and status messages use the standard OpAMP protobuf.
 func (s *Server) StartOpAMPServer() (*OpAMPServer, error) {
+	return s.StartOpAMPServerAt("127.0.0.1:0")
+}
+
+// StartOpAMPServerAt starts the authenticated fixture on a specific loopback
+// endpoint. A fixed endpoint lets E2E tests delay server availability until a
+// managed Supervisor has completed its offline startup path.
+func (s *Server) StartOpAMPServerAt(listenEndpoint string) (*OpAMPServer, error) {
 	if s == nil {
 		return nil, errors.New("mock Fleet fixture is required")
+	}
+	if strings.TrimSpace(listenEndpoint) == "" {
+		return nil, errors.New("OpAMP fixture listen endpoint is required")
 	}
 	fixture := &OpAMPServer{
 		server:   opampserver.New(nil),
@@ -38,7 +48,7 @@ func (s *Server) StartOpAMPServer() (*OpAMPServer, error) {
 		sentHash: make(map[opamptypes.Connection][]byte),
 	}
 	err := fixture.server.Start(opampserver.StartSettings{
-		ListenEndpoint: "127.0.0.1:0",
+		ListenEndpoint: listenEndpoint,
 		ListenPath:     "/v1/opamp",
 		Settings: opampserver.Settings{
 			Callbacks: opamptypes.Callbacks{

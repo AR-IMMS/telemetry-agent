@@ -125,20 +125,17 @@ func TestPR09MockFleetSupervisorConfigAndRollbackE2E(t *testing.T) {
 	if err != nil {
 		t.Fatalf("provision Supervisor bearer from Agent credential store: %v", err)
 	}
-	opampServer, err := fleet.StartOpAMPServer()
+	opampListener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("start authenticated fixture OpAMP server: %v", err)
+		t.Fatalf("reserve fixture OpAMP endpoint: %v", err)
 	}
-	t.Cleanup(func() {
-		stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer stopCancel()
-		if err := opampServer.Stop(stopCtx); err != nil {
-			t.Errorf("stop fixture OpAMP server: %v", err)
-		}
-	})
+	opampEndpoint := opampListener.Addr().String()
+	if err := opampListener.Close(); err != nil {
+		t.Fatalf("release reserved fixture OpAMP endpoint: %v", err)
+	}
 
 	supervisorConfig, err := opampsupervisorconfig.Render(opampsupervisorconfig.Config{
-		ServerEndpoint: opampServer.Endpoint(),
+		ServerEndpoint: "ws://" + opampEndpoint + "/v1/opamp",
 		TokenFile:      tokenPath,
 		CollectorPath:  collectorPath,
 		LocalConfig:    localConfigPath,
@@ -178,10 +175,22 @@ func TestPR09MockFleetSupervisorConfigAndRollbackE2E(t *testing.T) {
 		}
 	})
 
-	// Let Supervisor initialize and start its local Collector config before the
-	// first remote offer. This avoids racing its startup config-state setup while
-	// still exercising remote config application on an active Collector.
+	// Keep the OpAMP endpoint unavailable until Supervisor has started its local
+	// Collector config. The pinned Supervisor can panic if its first OpAMP
+	// session starts before initial config state is ready, so this exercises its
+	// supported offline-start and reconnect path before remote config delivery.
 	waitPR07ASinkContains(t, ctx, done, sinkAOutput, "hostmetrics", "Supervisor initial local-config OTLP")
+	opampServer, err := fleet.StartOpAMPServerAt(opampEndpoint)
+	if err != nil {
+		t.Fatalf("start authenticated fixture OpAMP server after local startup: %v", err)
+	}
+	t.Cleanup(func() {
+		stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer stopCancel()
+		if err := opampServer.Stop(stopCtx); err != nil {
+			t.Errorf("stop fixture OpAMP server: %v", err)
+		}
+	})
 	if err := fleet.SetDesiredConfig(agentID, remoteConfig); err != nil {
 		t.Fatalf("set fixture remote config: %v", err)
 	}
