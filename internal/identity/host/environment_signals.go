@@ -55,9 +55,14 @@ func detectKubernetesSignals(env map[string]string) platformEnvironmentSignals {
 	podUID := strings.TrimSpace(env["POD_UID"])
 	servicePort := strings.TrimSpace(env["KUBERNETES_SERVICE_PORT"])
 	detected := serviceHost != "" || podUID != "" || servicePort != ""
+	nodeAgent := strings.EqualFold(
+		strings.TrimSpace(env["AR_IMMS_DEPLOYMENT_SCOPE"]),
+		string(DeploymentScopeK8sNodeAgent),
+	)
 	return platformEnvironmentSignals{
 		KubernetesDetected:       detected,
 		KubernetesPodIdentity:    detected,
 		KubernetesDetectionKnown: detected || strings.EqualFold(strings.TrimSpace(env["AR_IMMS_ORCHESTRATOR"]), "NONE"),
+		KubernetesNodeAgent:      detected && nodeAgent,
 	}
 }

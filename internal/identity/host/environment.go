@@ -304,7 +304,11 @@ func classifyEnvironment(observation environmentObservation) EnvironmentEvidence
 	switch {
 	case observation.KubernetesDetected:
 		result.Orchestrator = OrchestratorKubernetes
-		result.Evidence = append(result.Evidence, EnvironmentFact{Source: "kubernetes-environment", Outcome: EvidenceOutcomeObserved, Confidence: EvidenceConfidenceInferred, ObservedAt: result.ObservedAt})
+		source := "kubernetes-environment"
+		if observation.KubernetesNodeAgent {
+			source = "deployment-scope-setting"
+		}
+		result.Evidence = append(result.Evidence, EnvironmentFact{Source: source, Outcome: EvidenceOutcomeObserved, Confidence: EvidenceConfidenceInferred, ObservedAt: result.ObservedAt})
 		if observation.KubernetesNodeAgent {
 			result.DeploymentScope = DeploymentScopeK8sNodeAgent
 			result.HostType = HostTypeKubernetes

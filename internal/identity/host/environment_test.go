@@ -20,6 +20,15 @@ func hasEvidenceOutcome(evidence []EnvironmentFact, outcome EvidenceOutcome) boo
 	return false
 }
 
+func hasEvidenceSource(evidence []EnvironmentFact, source string) bool {
+	for _, fact := range evidence {
+		if fact.Source == source {
+			return true
+		}
+	}
+	return false
+}
+
 func TestClassifyEnvironmentKeepsKubernetesSeparateFromComputeType(t *testing.T) {
 	observedAt := time.Date(2026, 11, 18, 4, 0, 0, 0, time.UTC)
 	got := classifyEnvironment(environmentObservation{
@@ -194,6 +203,40 @@ func TestKubernetesEnvironmentSignalsRequirePositiveEvidence(t *testing.T) {
 		got := detectKubernetesSignals(map[string]string{"KUBERNETES_SERVICE_HOST": "10.0.0.1", "POD_UID": "pod-123"})
 		if !got.KubernetesDetected || !got.KubernetesPodIdentity || !got.KubernetesDetectionKnown {
 			t.Fatalf("Kubernetes pod signals = %+v", got)
+		}
+	})
+
+	t.Run("explicit node agent scope", func(t *testing.T) {
+		got := detectKubernetesSignals(map[string]string{
+			"KUBERNETES_SERVICE_HOST":  "10.0.0.1",
+			"POD_UID":                  "pod-123",
+			"AR_IMMS_DEPLOYMENT_SCOPE": string(DeploymentScopeK8sNodeAgent),
+		})
+		if !got.KubernetesDetected || !got.KubernetesNodeAgent {
+			t.Fatalf("explicit Kubernetes node-agent evidence = %+v", got)
+		}
+		classified := classifyEnvironment(environmentObservation{
+			OS:                       "linux",
+			KubernetesDetected:       got.KubernetesDetected,
+			KubernetesPodIdentity:    got.KubernetesPodIdentity,
+			KubernetesNodeAgent:      got.KubernetesNodeAgent,
+			ContainerRuntimeDetected: true,
+			ObservedAt:               time.Now().UTC(),
+		})
+		if classified.DeploymentScope != DeploymentScopeK8sNodeAgent || classified.HostType != HostTypeKubernetes {
+			t.Fatalf("explicit node-agent scope classified as %+v", classified)
+		}
+		if !hasEvidenceSource(classified.Evidence, "deployment-scope-setting") {
+			t.Fatalf("node-agent configuration provenance missing: %+v", classified.Evidence)
+		}
+	})
+
+	t.Run("node agent setting without Kubernetes evidence remains unknown", func(t *testing.T) {
+		got := detectKubernetesSignals(map[string]string{
+			"AR_IMMS_DEPLOYMENT_SCOPE": string(DeploymentScopeK8sNodeAgent),
+		})
+		if got.KubernetesDetected || got.KubernetesNodeAgent {
+			t.Fatalf("scope declaration alone must not assert Kubernetes: %+v", got)
 		}
 	})
 

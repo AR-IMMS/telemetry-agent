@@ -37,10 +37,11 @@ func readPlatformEnvironmentSignals() platformEnvironmentSignals {
 	}
 	virtualization, physical := normalizeHardwareEvidence(manufacturer, product)
 	environment := detectKubernetesSignals(map[string]string{
-		"KUBERNETES_SERVICE_HOST": os.Getenv("KUBERNETES_SERVICE_HOST"),
-		"KUBERNETES_SERVICE_PORT": os.Getenv("KUBERNETES_SERVICE_PORT"),
-		"POD_UID":                 os.Getenv("POD_UID"),
-		"AR_IMMS_ORCHESTRATOR":    os.Getenv("AR_IMMS_ORCHESTRATOR"),
+		"KUBERNETES_SERVICE_HOST":  os.Getenv("KUBERNETES_SERVICE_HOST"),
+		"KUBERNETES_SERVICE_PORT":  os.Getenv("KUBERNETES_SERVICE_PORT"),
+		"POD_UID":                  os.Getenv("POD_UID"),
+		"AR_IMMS_DEPLOYMENT_SCOPE": os.Getenv("AR_IMMS_DEPLOYMENT_SCOPE"),
+		"AR_IMMS_ORCHESTRATOR":     os.Getenv("AR_IMMS_ORCHESTRATOR"),
 	})
 	environment.VirtualizationVendor = virtualization
 	environment.PhysicalHardwareHint = physical
