@@ -109,6 +109,15 @@ type EnvironmentEvidence struct {
 	ClassificationNote string            `json:"classification_note,omitempty"`
 }
 
+// ManagedRuntimeVersions carries versions observed by the Runtime composition layer.
+// The identity package does not discover or manage these binaries.
+type ManagedRuntimeVersions struct {
+	// Collector is the managed OpenTelemetry Collector version, when available.
+	Collector string
+	// Supervisor is the managed OpAMP Supervisor version, when available.
+	Supervisor string
+}
+
 // EnvironmentFact records source provenance without retaining raw machine identifiers.
 type EnvironmentFact struct {
 	Source     string             `json:"source"`
@@ -153,6 +162,13 @@ type environmentObservation struct {
 // agentID must be the existing persisted installation UUID; this function does
 // not create or persist identity. Missing host evidence does not block startup.
 func CollectEnvironmentEvidence(agentID installationid.InstallationID) EnvironmentEvidence {
+	return CollectEnvironmentEvidenceWithVersions(agentID, ManagedRuntimeVersions{})
+}
+
+// CollectEnvironmentEvidenceWithVersions returns a local environment snapshot with
+// managed binary versions supplied by the caller. agentID must be the existing
+// persisted installation UUID; this function does not create or persist identity.
+func CollectEnvironmentEvidenceWithVersions(agentID installationid.InstallationID, versions ManagedRuntimeVersions) EnvironmentEvidence {
 	observedAt := time.Now().UTC()
 	hostname, hostnameErr := readHostNameForEvidence()
 	rawMachineID, machineErr := readRawMachineID()
@@ -161,7 +177,10 @@ func CollectEnvironmentEvidence(agentID installationid.InstallationID) Environme
 		machine.HostID, machineErr = machineIDFingerprint(runtime.GOOS, rawMachineID)
 	}
 	details, detailsErr := collectEnvironmentPlatformDetails()
-	return collectEnvironmentEvidence(agentID.String(), hostname, hostnameErr, machine, machineErr, details, detailsErr, readPlatformEnvironmentSignals(), observedAt)
+	result := collectEnvironmentEvidence(agentID.String(), hostname, hostnameErr, machine, machineErr, details, detailsErr, readPlatformEnvironmentSignals(), observedAt)
+	result.CollectorVersion = strings.TrimSpace(versions.Collector)
+	result.SupervisorVersion = strings.TrimSpace(versions.Supervisor)
+	return result
 }
 
 func collectEnvironmentEvidence(agentID string, hostname string, hostnameErr error, machine MachineIdentity, machineErr error, details platformDetails, detailsErr error, signals platformEnvironmentSignals, observedAt time.Time) EnvironmentEvidence {

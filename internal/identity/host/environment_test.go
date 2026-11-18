@@ -146,6 +146,26 @@ func TestCollectEnvironmentEvidenceUsesPersistedInstallationID(t *testing.T) {
 	}
 }
 
+func TestCollectEnvironmentEvidenceWithVersionsIncludesManagedRuntimeVersions(t *testing.T) {
+	const persistedID = "11111111-2222-4333-8444-555555555555"
+	id, err := installationid.ParseInstallationID(persistedID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := CollectEnvironmentEvidenceWithVersions(id, ManagedRuntimeVersions{
+		Collector:  " 0.160.0 ",
+		Supervisor: " 0.160.0 ",
+	})
+
+	if got.AgentID != persistedID {
+		t.Fatalf("agent ID = %q, want persisted installation UUID %q", got.AgentID, persistedID)
+	}
+	if got.CollectorVersion != "0.160.0" || got.SupervisorVersion != "0.160.0" {
+		t.Fatalf("managed runtime versions were not normalized into evidence: collector=%q supervisor=%q", got.CollectorVersion, got.SupervisorVersion)
+	}
+}
+
 func TestNormalizeHardwareEvidenceDistinguishesVirtualAndPhysicalHints(t *testing.T) {
 	tests := []struct {
 		name         string
