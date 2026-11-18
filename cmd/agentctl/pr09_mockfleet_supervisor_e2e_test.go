@@ -49,10 +49,9 @@ func TestPR09MockFleetSupervisorConfigAndRollbackE2E(t *testing.T) {
 	if err := verifyPR07AArtifact(supervisorPath, supervisorArtifact.SHA256); err != nil {
 		t.Fatalf("verify pinned Supervisor artifact: %v", err)
 	}
-	if err := verifyPR07AExecutable(collectorPath, "--version"); err != nil {
-		t.Fatalf("verify pinned Collector executable: %v", err)
-	}
-	collectorVersion, err := exec.Command(collectorPath, "--version").CombinedOutput()
+	versionCtx, versionCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer versionCancel()
+	collectorVersion, err := exec.CommandContext(versionCtx, collectorPath, "--version").CombinedOutput()
 	if err != nil || !strings.Contains(string(collectorVersion), "version 0.160.0") {
 		t.Fatalf("Collector is not pinned v0.160.0: err=%v output=%s", err, collectorVersion)
 	}
