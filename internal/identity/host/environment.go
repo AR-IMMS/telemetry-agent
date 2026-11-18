@@ -277,10 +277,14 @@ func classifyEnvironment(observation environmentObservation) EnvironmentEvidence
 	if result.ObservedAt.IsZero() {
 		result.ObservedAt = time.Now().UTC()
 	}
-	if hostIDAmbiguous && observation.HostIDSource != "" {
+	if hostIDAmbiguous {
 		result.HostID = ""
 		result.HostIDSource = ""
-		result.Evidence = append(result.Evidence, EnvironmentFact{Source: observation.HostIDSource, Outcome: EvidenceOutcomeConflict, Confidence: EvidenceConfidenceUnknown, ObservedAt: result.ObservedAt, Reason: "container machine identifier cannot establish whether it identifies the host or container"})
+		if observation.HostIDSource != "" {
+			result.Evidence = append(result.Evidence, EnvironmentFact{Source: observation.HostIDSource, Outcome: EvidenceOutcomeConflict, Confidence: EvidenceConfidenceUnknown, ObservedAt: result.ObservedAt, Reason: "container machine identifier cannot establish whether it identifies the host or container"})
+		} else {
+			result.Evidence = append(result.Evidence, EnvironmentFact{Source: "host-id", Outcome: EvidenceOutcomeUnavailable, Confidence: EvidenceConfidenceUnknown, ObservedAt: result.ObservedAt, Reason: "container machine identifier has no verified host source"})
+		}
 	} else if observation.HostIDSource != "" {
 		result.Evidence = append(result.Evidence, EnvironmentFact{Source: observation.HostIDSource, Outcome: EvidenceOutcomeObserved, Confidence: EvidenceConfidenceInferred, ObservedAt: result.ObservedAt})
 	} else {

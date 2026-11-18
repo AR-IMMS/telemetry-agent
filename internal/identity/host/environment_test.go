@@ -100,7 +100,7 @@ func TestClassifyEnvironmentDoesNotPromoteContainerToHostIdentity(t *testing.T) 
 }
 
 func TestClassifyEnvironmentDoesNotClaimContainerMachineIDAsHostIdentity(t *testing.T) {
-	got := classifyEnvironment(environmentObservation{
+	observation := environmentObservation{
 		AgentID:                  "11111111-2222-4333-8444-555555555555",
 		OS:                       "linux",
 		Architecture:             "amd64",
@@ -110,7 +110,8 @@ func TestClassifyEnvironmentDoesNotClaimContainerMachineIDAsHostIdentity(t *test
 		KubernetesPodIdentity:    true,
 		ContainerRuntimeDetected: true,
 		ObservedAt:               time.Date(2026, 11, 19, 4, 0, 0, 0, time.UTC),
-	})
+	}
+	got := classifyEnvironment(observation)
 
 	if got.AgentID != "11111111-2222-4333-8444-555555555555" {
 		t.Fatalf("container classification changed installation identity: %+v", got)
@@ -123,6 +124,12 @@ func TestClassifyEnvironmentDoesNotClaimContainerMachineIDAsHostIdentity(t *test
 	}
 	if !hasEvidenceOutcome(got.Evidence, EvidenceOutcomeConflict) {
 		t.Fatalf("host/container identity ambiguity was not retained: %+v", got.Evidence)
+	}
+
+	observation.HostIDSource = ""
+	got = classifyEnvironment(observation)
+	if got.HostID != "" {
+		t.Fatalf("container machine ID without source was presented as host identity: %+v", got)
 	}
 }
 
