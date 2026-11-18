@@ -16,6 +16,12 @@ type runtimeReconciler struct {
 	run func(context.Context, time.Duration) error
 }
 
+type runtimeOperations func(context.Context) error
+
+func (r runtimeOperations) Run(ctx context.Context) error {
+	return r(ctx)
+}
+
 func (r runtimeReconciler) Reconcile(context.Context) (reconciliation.Result, error) {
 	return reconciliation.Result{}, nil
 }
@@ -110,6 +116,39 @@ func TestRunControlLoopsWithoutDiscoveryPreservesReconciliation(t *testing.T) {
 	}
 	if refreshes.Load() != 1 {
 		t.Fatalf("proposal refresh calls=%d, want one startup refresh", refreshes.Load())
+	}
+}
+
+func TestRunControlLoopsOperationFailureCancelsReconciliation(t *testing.T) {
+	want := errors.New("operations runner failed")
+	components := RuntimeComponents{
+		Reconciler: runtimeReconciler{run: func(ctx context.Context, _ time.Duration) error {
+			<-ctx.Done()
+			return ctx.Err()
+		}},
+		Operations: runtimeOperations(func(context.Context) error { return want }),
+	}
+	if err := runControlLoops(context.Background(), components); !errors.Is(err, want) {
+		t.Fatalf("runtime error=%v, want originating Operations error %v", err, want)
+	}
+}
+
+func TestRunControlLoopsReconciliationFailureCancelsOperations(t *testing.T) {
+	want := errors.New("reconciliation failed")
+	var stopped atomic.Bool
+	components := RuntimeComponents{
+		Reconciler: runtimeReconciler{run: func(context.Context, time.Duration) error { return want }},
+		Operations: runtimeOperations(func(ctx context.Context) error {
+			<-ctx.Done()
+			stopped.Store(true)
+			return ctx.Err()
+		}),
+	}
+	if err := runControlLoops(context.Background(), components); !errors.Is(err, want) {
+		t.Fatalf("runtime error=%v, want originating reconciliation error %v", err, want)
+	}
+	if !stopped.Load() {
+		t.Fatal("Operations runner was not joined after reconciliation failed")
 	}
 }
 
