@@ -9,10 +9,13 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	credentialstore "github.com/ar-imms/telemetry-agent/internal/identity/credentials"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/domain"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/mockfleet"
@@ -20,6 +23,12 @@ import (
 )
 
 func TestEnrollmentApplicationStoresCredentialFromProvisionalMockFleetExchange(t *testing.T) {
+	if !canUseProtectedCredentialStoreForTest() {
+		if os.Getenv("AR_IMMS_REQUIRE_PROTECTED_ENROLLMENT_TEST") == "1" {
+			t.Fatal("required protected enrollment test has no elevated Windows token")
+		}
+		t.Skip("protected Windows credential-store integration requires an elevated process")
+	}
 	const (
 		agentID     = "10000000-0000-4000-8000-000000000001"
 		nodeID      = "10000000-0000-4000-8000-000000000002"
@@ -50,7 +59,7 @@ func TestEnrollmentApplicationStoresCredentialFromProvisionalMockFleetExchange(t
 		t.Fatalf("initialize Agent installation identity: %v", err)
 	}
 	repository := sqlitefixture.NewEnrollmentStore(statePath)
-	credentials := newMemoryEnrollmentCredentials()
+	credentials := credentialstore.New(statePath)
 	service := enrollment.Service{
 		Repository:  repository,
 		Credentials: credentials,
@@ -94,14 +103,26 @@ func TestEnrollmentApplicationStoresCredentialFromProvisionalMockFleetExchange(t
 	if exchange.AttemptID != attempt.Payload.AttemptID || exchange.AgentID != agentID || exchange.Token != inviteToken || exchange.Evidence.HostID != "host-evidence" {
 		t.Fatalf("provisional fixture exchange = %+v, want persisted attempt, installation identity, invitation, and host evidence", exchange)
 	}
-	if got, err := credentials.Get(attempt.AccessCredentialRef); err != nil || !strings.HasPrefix(got, "mock-credential-") {
-		t.Fatalf("stored Agent credential = %q, err=%v", got, err)
+	wantCredential := "mock-credential-" + attempt.Payload.AttemptID
+	if got, err := credentials.Get(attempt.AccessCredentialRef); err != nil || got != wantCredential {
+		t.Fatalf("stored Agent credential = %q, err=%v, want protected fixture credential", got, err)
 	}
 	if _, err := credentials.Get(attempt.BootstrapCredentialRef); !errors.Is(err, enrollment.ErrCredentialNotFound) {
 		t.Fatalf("bootstrap credential lookup error = %v, want deleted credential", err)
 	}
 	if strings.Contains(attempt.BootstrapCredentialRef, inviteToken) || strings.Contains(attempt.AccessCredentialRef, "mock-credential-") {
 		t.Fatal("credential material appeared in the persisted enrollment references")
+	}
+	for _, file := range enrollmentDatabaseFiles(t, statePath) {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatalf("read enrollment database file %s: %v", file, err)
+		}
+		if bytes.Contains(content, []byte(inviteToken)) || bytes.Contains(content, []byte(wantCredential)) {
+			clear(content)
+			t.Fatalf("SQLite file %s contains enrollment credential material", file)
+		}
+		clear(content)
 	}
 }
 
@@ -169,33 +190,16 @@ func (c provisionalMockFleetEnrollmentClient) Enroll(ctx context.Context, origin
 	}, nil
 }
 
+func enrollmentDatabaseFiles(t *testing.T, statePath string) []string {
+	t.Helper()
+	files, err := filepath.Glob(statePath + "*")
+	if err != nil {
+		t.Fatalf("list enrollment database files: %v", err)
+	}
+	return files
+}
+
 func metadataString(values map[string]any, key string) string {
 	value, _ := values[key].(string)
 	return value
-}
-
-type memoryEnrollmentCredentials struct {
-	values map[string]string
-}
-
-func newMemoryEnrollmentCredentials() *memoryEnrollmentCredentials {
-	return &memoryEnrollmentCredentials{values: make(map[string]string)}
-}
-
-func (s *memoryEnrollmentCredentials) Put(reference, value string) error {
-	s.values[reference] = value
-	return nil
-}
-
-func (s *memoryEnrollmentCredentials) Get(reference string) (string, error) {
-	value, exists := s.values[reference]
-	if !exists {
-		return "", enrollment.ErrCredentialNotFound
-	}
-	return value, nil
-}
-
-func (s *memoryEnrollmentCredentials) Delete(reference string) error {
-	delete(s.values, reference)
-	return nil
 }

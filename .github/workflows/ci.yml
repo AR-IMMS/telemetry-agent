@@ -202,6 +202,12 @@ jobs:
       - name: Test
         run: go test ./... -count=1
 
+      - name: Protected enrollment application with provisional Mock Fleet
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 40
+        env:
+          AR_IMMS_REQUIRE_PROTECTED_ENROLLMENT_TEST: '1'
+        run: go test ./internal/identity/enrollment/application -run '^TestEnrollmentApplicationStoresCredentialFromProvisionalMockFleetExchange$' -count=1 -v
+
       - name: Race-sensitive state and uninstall tests
         if: github.event_name == 'pull_request' && github.event.pull_request.number == 39
         run: go test -race ./internal/agentstate ./internal/identity/sqlite ./internal/identity/enrollment/sqlite ./internal/runtime/collector/activation ./cmd/agentctl -count=1
