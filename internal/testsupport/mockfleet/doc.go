@@ -1,4 +1,5 @@
-// Package mockfleet provides a provisional, test-only HTTP fixture for the
-// draft Fleet enrollment exchange example. It is not an approved wire
-// contract, production server, authorization system, or production client.
+// Package mockfleet provides provisional test-only fixtures for the draft
+// Fleet enrollment exchange and OpAMP session lifecycle. It is not an approved
+// wire contract, production server, authorization system, or production
+// client, and it is not imported by Agent runtime packages.
 package mockfleet

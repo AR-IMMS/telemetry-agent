@@ -1,12 +1,16 @@
 package mockfleet
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"strings"
 	"sync"
+
+	opampserver "github.com/open-telemetry/opamp-go/server"
+	opamptypes "github.com/open-telemetry/opamp-go/server/types"
 )
 
 const exchangePath = "/v1/enrollments/exchange"
@@ -17,6 +21,7 @@ type Server struct {
 	mu          sync.Mutex
 	invitations map[string]invitation
 	attempts    map[string]exchangeRecord
+	credentials map[string]*issuedCredential
 }
 
 type invitation struct {
@@ -26,6 +31,12 @@ type invitation struct {
 type exchangeRecord struct {
 	request exchangeRequest
 	result  exchangeResult
+}
+
+type issuedCredential struct {
+	secret   string
+	revoked  bool
+	sessions map[opamptypes.Connection]struct{}
 }
 
 type exchangeRequest struct {
@@ -58,6 +69,7 @@ func New() *Server {
 	return &Server{
 		invitations: make(map[string]invitation),
 		attempts:    make(map[string]exchangeRecord),
+		credentials: make(map[string]*issuedCredential),
 	}
 }
 
@@ -139,7 +151,151 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		OpAMPEndpoint: "wss://fleet.test.invalid/opamp",
 	}
 	s.attempts[exchange.AttemptID] = exchangeRecord{request: exchange, result: result}
+	s.credentials[result.CredentialID] = &issuedCredential{
+		secret:   result.Credential,
+		sessions: make(map[opamptypes.Connection]struct{}),
+	}
 	writeResult(writer, http.StatusCreated, result)
+}
+
+func (s *Server) revokeCredential(credentialID string) error {
+	if s == nil || strings.TrimSpace(credentialID) == "" {
+		return errors.New("mock Fleet credential ID is required")
+	}
+	s.mu.Lock()
+	credential, exists := s.credentials[credentialID]
+	if !exists {
+		s.mu.Unlock()
+		return errors.New("mock Fleet credential does not exist")
+	}
+	credential.revoked = true
+	sessions := make([]opamptypes.Connection, 0, len(credential.sessions))
+	for session := range credential.sessions {
+		sessions = append(sessions, session)
+	}
+	s.mu.Unlock()
+
+	var disconnectErrors []error
+	for _, session := range sessions {
+		if err := session.Disconnect(); err != nil {
+			disconnectErrors = append(disconnectErrors, err)
+		}
+	}
+	return errors.Join(disconnectErrors...)
+}
+
+func (s *Server) acceptsCredential(secret string) (string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for credentialID, credential := range s.credentials {
+		if credential.secret == secret && !credential.revoked {
+			return credentialID, true
+		}
+	}
+	return "", false
+}
+
+func (s *Server) addSession(credentialID string, session opamptypes.Connection) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	credential, exists := s.credentials[credentialID]
+	if !exists || credential.revoked {
+		return false
+	}
+	credential.sessions[session] = struct{}{}
+	return true
+}
+
+func (s *Server) removeSession(credentialID string, session opamptypes.Connection) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if credential, exists := s.credentials[credentialID]; exists {
+		delete(credential.sessions, session)
+	}
+}
+
+type opampFixture struct {
+	server   opampserver.OpAMPServer
+	url      string
+	closed   chan struct{}
+	rejected chan struct{}
+}
+
+func startOpAMP(fleet *Server) (*opampFixture, error) {
+	if fleet == nil {
+		return nil, errors.New("mock Fleet fixture is required")
+	}
+	fixture := &opampFixture{
+		server:   opampserver.New(nil),
+		closed:   make(chan struct{}, 8),
+		rejected: make(chan struct{}, 8),
+	}
+	err := fixture.server.Start(opampserver.StartSettings{
+		ListenEndpoint: "127.0.0.1:0",
+		ListenPath:     "/v1/opamp",
+		Settings: opampserver.Settings{
+			Callbacks: opamptypes.Callbacks{
+				OnConnecting: func(request *http.Request) opamptypes.ConnectionResponse {
+					const bearerPrefix = "Bearer "
+					authorization := request.Header.Get("Authorization")
+					if !strings.HasPrefix(authorization, bearerPrefix) {
+						fixture.recordRejected()
+						return opamptypes.ConnectionResponse{Accept: false, HTTPStatusCode: http.StatusUnauthorized}
+					}
+					credentialID, accepted := fleet.acceptsCredential(strings.TrimPrefix(authorization, bearerPrefix))
+					if !accepted {
+						fixture.recordRejected()
+						return opamptypes.ConnectionResponse{Accept: false, HTTPStatusCode: http.StatusUnauthorized}
+					}
+					return opamptypes.ConnectionResponse{
+						Accept: true,
+						ConnectionCallbacks: opamptypes.ConnectionCallbacks{
+							OnConnected: func(_ context.Context, connection opamptypes.Connection) {
+								if !fleet.addSession(credentialID, connection) {
+									_ = connection.Disconnect()
+								}
+							},
+							OnConnectionClose: func(connection opamptypes.Connection) {
+								fleet.removeSession(credentialID, connection)
+								select {
+								case fixture.closed <- struct{}{}:
+								default:
+								}
+							},
+						},
+					}
+				},
+			},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	fixture.url = "ws://" + fixture.server.Addr().String() + "/v1/opamp"
+	return fixture, nil
+}
+
+func (f *opampFixture) urlString() string {
+	return f.url
+}
+
+func (f *opampFixture) stop(ctx context.Context) error {
+	return f.server.Stop(ctx)
+}
+
+func (f *opampFixture) sessionClosed() <-chan struct{} {
+	return f.closed
+}
+
+func (f *opampFixture) rejectedConnections() int {
+	return len(f.rejected)
+}
+
+func (f *opampFixture) recordRejected() {
+	select {
+	case f.rejected <- struct{}{}:
+	default:
+	}
 }
 
 func writeResult(writer http.ResponseWriter, status int, result exchangeResult) {
