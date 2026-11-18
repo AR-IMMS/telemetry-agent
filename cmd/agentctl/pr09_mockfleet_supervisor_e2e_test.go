@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -21,6 +22,7 @@ import (
 	identity "github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	opampsupervisorconfig "github.com/ar-imms/telemetry-agent/internal/runtime/opamp"
+	processowner "github.com/ar-imms/telemetry-agent/internal/runtime/process"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/mockfleet"
 	"github.com/open-telemetry/opamp-go/protobufs"
 )
@@ -58,7 +60,6 @@ func TestPR09MockFleetSupervisorConfigAndRollbackE2E(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	root := t.TempDir()
-	collectorOutput := &lockedTemplateE2EBuffer{}
 	sinkAOutput, sinkBOutput := &lockedTemplateE2EBuffer{}, &lockedTemplateE2EBuffer{}
 	sinkADir, sinkBDir := filepath.Join(root, "sink-a"), filepath.Join(root, "sink-b")
 	for _, dir := range []string{sinkADir, sinkBDir} {
@@ -154,19 +155,21 @@ func TestPR09MockFleetSupervisorConfigAndRollbackE2E(t *testing.T) {
 	if err := os.WriteFile(supervisorConfigPath, supervisorConfig, 0600); err != nil {
 		t.Fatalf("write Supervisor test configuration: %v", err)
 	}
-	command := exec.CommandContext(ctx, supervisorPath, "--feature-gates=opampsupervisor.Extensions", "--config="+supervisorConfigPath)
-	command.Stdout, command.Stderr = collectorOutput, collectorOutput
-	if err := command.Start(); err != nil {
-		t.Fatalf("start pinned Supervisor: %v", err)
-	}
+	supervisorContext, stopSupervisor := context.WithCancel(ctx)
 	done := make(chan error, 1)
-	go func() { done <- command.Wait() }()
+	go func() {
+		done <- processowner.Run(supervisorContext, processowner.Options{
+			Executable: supervisorPath,
+			Arguments:  []string{"--feature-gates=opampsupervisor.Extensions", "--config=" + supervisorConfigPath},
+		})
+	}()
 	t.Cleanup(func() {
-		if command.Process != nil {
-			stopPR07ASupervisorProcess(command.Process)
-		}
+		stopSupervisor()
 		select {
-		case <-done:
+		case err := <-done:
+			if err != nil && !errors.Is(err, context.Canceled) {
+				t.Errorf("stop contained Supervisor process tree: %v", err)
+			}
 		case <-time.After(10 * time.Second):
 			t.Errorf("Supervisor and managed Collector did not stop")
 		}
@@ -222,12 +225,21 @@ func TestPR09MockFleetSupervisorConfigAndRollbackE2E(t *testing.T) {
 	if evidenceDir := strings.TrimSpace(os.Getenv(pr09MockFleetEvidenceEnv)); evidenceDir != "" {
 		writePR07AEvidence(t, evidenceDir, map[string]string{
 			"test-summary.txt": fmt.Sprintf("environment=%s/%s\nsupervisor=v0.160.0\ncollector=v0.160.0\ncredential=Agent credential store; raw token omitted\nremote_config_sha256=%x\ninvalid_config_sha256=%x\nremote_config_otlp=PASS\nautomatic_rollback=PASS\nrollback_otlp=PASS\nactive_session_revocation=PASS\nsupervisor_reconnect_after_revocation=REJECTED\nrevoked_reconnect=HTTP_401\nproduction_fleet_core_interop=NOT_VERIFIED\n", runtime.GOOS, runtime.GOARCH, goodHash, invalidHash),
-			"supervisor.log":   tailPR07ATestOutput(collectorOutput.String(), 160),
+			"supervisor.log":   readPR09MockFleetSupervisorLog(t, filepath.Join(root, "supervisor-state", "agent.log")),
 			"sink-a.log":       tailPR07ATestOutput(sinkAOutput.String(), 60),
 			"sink-b.log":       tailPR07ATestOutput(sinkBOutput.String(), 100),
 		})
 	}
 	t.Logf("remote_config_sha256=%x invalid_config_sha256=%x sinks=verified production_fleet_interop=NOT_VERIFIED", goodHash, invalidHash)
+}
+
+func readPR09MockFleetSupervisorLog(t *testing.T, path string) string {
+	t.Helper()
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Sprintf("Supervisor log unavailable: %v", err)
+	}
+	return tailPR07ATestOutput(string(contents), 160)
 }
 
 func waitPR09MockFleetStateDirectoryRelease(directory string, timeout time.Duration) error {
