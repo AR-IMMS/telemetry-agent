@@ -19,7 +19,6 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation"
 	reconciliationcontracts "github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation/contracts"
 	definitionapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
-	definitionsdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
 	agentservice "github.com/ar-imms/telemetry-agent/internal/runtime/service"
 )
 
@@ -101,7 +100,7 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 		if err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
-		service := desiredstateapp.NewService(desiredStateResolverAdapter{resolver: definitionapp.NewResolver(registry)}, repository)
+		service := desiredstateapp.NewService(app.NewMonitoringDesiredStateResolver(definitionapp.NewResolver(registry)), repository)
 		instance := desiredstatedomain.Instance{ID: *id, DefinitionID: *definition, DefinitionVersion: *version, Configuration: values, Enabled: *enabled}
 		var stored desiredstatedomain.Instance
 		var revision uint64
@@ -134,7 +133,7 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 		if err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
-		service := desiredstateapp.NewService(desiredStateResolverAdapter{resolver: definitionapp.NewResolver(registry)}, repository)
+		service := desiredstateapp.NewService(app.NewMonitoringDesiredStateResolver(definitionapp.NewResolver(registry)), repository)
 		stored, revision, err := service.SetEnabled(*id, command == "enable", *expected)
 		if errors.Is(err, desiredstateapp.ErrInstanceNotFound) {
 			err = sql.ErrNoRows
@@ -218,39 +217,6 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 		return usageIntegration(stderr, "unknown integration command "+command)
 	}
 	return 0
-}
-
-type desiredStateResolverAdapter struct{ resolver definitionapp.Resolver }
-
-func (a desiredStateResolverAdapter) Resolve(instance desiredstatedomain.Instance) (desiredstatedomain.Instance, error) {
-	resolved, _, err := a.ResolveWithContribution(instance)
-	return resolved, err
-}
-
-// ResolveWithContribution validates desired state and returns its Monitoring result for Runtime composition.
-func (a desiredStateResolverAdapter) ResolveWithContribution(instance desiredstatedomain.Instance) (desiredstatedomain.Instance, definitionsdomain.Contribution, error) {
-	if instance.Source == "" {
-		instance.Source = desiredstatedomain.SourceLocal
-	}
-	if err := instance.Validate(); err != nil {
-		return desiredstatedomain.Instance{}, definitionsdomain.Contribution{}, err
-	}
-	resolved, err := a.resolver.Resolve(definitionapp.ResolveInput{
-		DefinitionID: instance.DefinitionID, Version: instance.DefinitionVersion,
-		Enabled: instance.Enabled, Settings: instance.Configuration,
-	})
-	if err != nil {
-		if errors.Is(err, definitionsdomain.ErrUnknownDefinition) || errors.Is(err, definitionsdomain.ErrInvalidContribution) {
-			return desiredstatedomain.Instance{}, definitionsdomain.Contribution{}, err
-		}
-		return desiredstatedomain.Instance{}, definitionsdomain.Contribution{}, fmt.Errorf("%w: %v", desiredstatedomain.ErrInvalidInstance, err)
-	}
-	instance.Configuration = resolved.Settings
-	if instance.Binding != nil {
-		binding := *instance.Binding
-		instance.Binding = &binding
-	}
-	return instance, resolved.Contribution, nil
 }
 
 func usageIntegration(w io.Writer, message string) int {

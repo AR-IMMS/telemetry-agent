@@ -173,7 +173,7 @@ func newRuntimeReconciliationController(statePath string, runner bootstrap.Comma
 	if nativeErr != nil {
 		return nil, nil, fmt.Errorf("resolve native monitoring ownership: %w", nativeErr)
 	}
-	resolver := nativeOwnershipResolver{delegate: desiredStateResolverAdapter{resolver: definitionapp.NewResolver(registry)}, inventory: app.NewInventoryRepository(statePath), profiles: profiles, enabled: len(nativeLayers) > 0}
+	resolver := nativeOwnershipResolver{delegate: app.NewMonitoringDesiredStateResolver(definitionapp.NewResolver(registry)), inventory: app.NewInventoryRepository(statePath), profiles: profiles, enabled: len(nativeLayers) > 0}
 	options := agentlifecycle.CollectorConfigurationOptions{Platform: baseline.platform, Catalog: baseline.dependencies, Layers: baseline.layers, AdditionalBaselineInputs: additionalBaselineInputs, BinaryPath: state.Collector.BinaryPath, ConfigPath: state.Collector.ConfigPath, ValidationEnvironment: []string{"OTEL_GATEWAY_ENDPOINT=" + state.Collector.GatewayEndpoint}, Runner: runner, GatewayRepository: baseline.gateways}
 	reconciliationRepository := app.NewReconciliationRepository(statePath)
 	recordRecoveryFailure := func(state agentstate.State) error {

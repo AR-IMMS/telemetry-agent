@@ -3,47 +3,14 @@ package main
 import (
 	"bytes"
 	"context"
-	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation"
 	reconciliationcontracts "github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation/contracts"
-	definitionapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
-	definitionsdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
 	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
-
-func TestDesiredStateResolverAdapterPreservesLocalDefaultsAndValidationErrors(t *testing.T) {
-	registry, err := productionIntegrationRegistry()
-	if err != nil {
-		t.Fatal(err)
-	}
-	adapter := desiredStateResolverAdapter{resolver: definitionapp.NewResolver(registry)}
-	instance := desiredstatedomain.Instance{
-		ID: "redis-local", DefinitionID: "redis", DefinitionVersion: "1.0.0",
-		Configuration: map[string]any{"endpoint": "127.0.0.1:6379"}, Enabled: true,
-	}
-	resolved, err := adapter.Resolve(instance)
-	if err != nil {
-		t.Fatalf("Resolve() error = %v", err)
-	}
-	if resolved.Source != desiredstatedomain.SourceLocal || resolved.Configuration["endpoint"] != "127.0.0.1:6379" {
-		t.Fatalf("resolved instance = %+v, want local source and validated Redis settings", resolved)
-	}
-
-	instance.DefinitionID = "missing-profile"
-	if _, err := adapter.Resolve(instance); !errors.Is(err, definitionsdomain.ErrUnknownDefinition) {
-		t.Fatalf("unknown definition error = %v, want Monitoring's unknown-definition error", err)
-	}
-	instance.DefinitionID = "redis"
-	instance.Configuration = map[string]any{"endpoint": ""}
-	if _, err := adapter.Resolve(instance); !errors.Is(err, desiredstatedomain.ErrInvalidInstance) {
-		t.Fatalf("invalid settings error = %v, want legacy invalid-instance classification", err)
-	}
-}
 
 func TestIntegrationStatusDoesNotInferHealthOrDelivery(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")

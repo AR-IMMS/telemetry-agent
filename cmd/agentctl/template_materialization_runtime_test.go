@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+
+	"github.com/ar-imms/telemetry-agent/internal/app"
 	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
 	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	materializationapp "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/application"
@@ -218,7 +220,7 @@ func TestRuntimeTemplateUpdateChangesGeneratedInstancesButPreservesManualState(t
 	if err := materializer.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	manual, err := (desiredStateResolverAdapter{resolver: definitionapp.NewResolver(registry)}).Resolve(desiredstatedomain.Instance{
+	manual, err := app.NewMonitoringDesiredStateResolver(definitionapp.NewResolver(registry)).Resolve(desiredstatedomain.Instance{
 		ID: "manual-redis", DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true,
 		Configuration: map[string]any{"endpoint": "192.0.2.10:6379"}, Source: desiredstatedomain.SourceLocal,
 	})
