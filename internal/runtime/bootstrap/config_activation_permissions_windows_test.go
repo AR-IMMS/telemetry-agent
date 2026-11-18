@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"golang.org/x/sys/windows"
@@ -42,6 +43,7 @@ func TestActivateRenderedConfigPreservesExistingInheritedDACL(t *testing.T) {
 	if after := testDACLString(t, targetPath); after != before {
 		t.Fatalf("replacement DACL = %q, want preserved DACL %q", after, before)
 	}
+	assertDACLRemainsInheritable(t, targetPath)
 }
 
 func setTestProtectedDACL(t *testing.T, path string) {
@@ -74,5 +76,29 @@ func testDACLString(t *testing.T, path string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return descriptor.String()
+	value := descriptor.String()
+	daclStart := strings.Index(value, "D:")
+	if daclStart < 0 {
+		t.Fatalf("security descriptor %q has no DACL", value)
+	}
+	aceStart := strings.Index(value[daclStart:], "(")
+	if aceStart < 0 {
+		return ""
+	}
+	return value[daclStart+aceStart:]
+}
+
+func assertDACLRemainsInheritable(t *testing.T, path string) {
+	t.Helper()
+	descriptor, err := windows.GetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
+	if err != nil {
+		t.Fatal(err)
+	}
+	control, _, err := descriptor.Control()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if control&windows.SE_DACL_PROTECTED != 0 {
+		t.Fatal("replacement DACL became protected and will no longer inherit parent changes")
+	}
 }
