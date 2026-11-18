@@ -262,6 +262,9 @@ func classifyEnvironment(observation environmentObservation) EnvironmentEvidence
 	} else {
 		result.Evidence = append(result.Evidence, EnvironmentFact{Source: "host-id", Outcome: EvidenceOutcomeUnavailable, Confidence: EvidenceConfidenceUnknown, ObservedAt: result.ObservedAt, Reason: "stable host identifier unavailable"})
 	}
+	if observation.ContainerRuntimeDetected {
+		result.Evidence = append(result.Evidence, EnvironmentFact{Source: "container-runtime", Outcome: EvidenceOutcomeObserved, Confidence: EvidenceConfidenceInferred, ObservedAt: result.ObservedAt})
+	}
 
 	virtualized := observation.VirtualizationVendor != ""
 	physical := observation.PhysicalHardwareHint != ""

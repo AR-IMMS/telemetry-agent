@@ -80,6 +80,9 @@ func TestClassifyEnvironmentDoesNotPromoteContainerToHostIdentity(t *testing.T) 
 	if got.HostID != "" {
 		t.Fatalf("missing host identity must stay empty, got %q", got.HostID)
 	}
+	if !hasEvidenceOutcome(got.Evidence, EvidenceOutcomeObserved) {
+		t.Fatalf("container evidence source was not preserved: %+v", got.Evidence)
+	}
 	if got.HostType != HostTypeUnknown || got.ComputeType != ComputeTypeUnknown ||
 		got.Orchestrator != OrchestratorUnknown || got.DeploymentScope != DeploymentScopeUnknown {
 		t.Fatalf("container evidence must not imply host topology: %+v", got)
