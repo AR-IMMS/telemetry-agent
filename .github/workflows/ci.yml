@@ -322,6 +322,23 @@ jobs:
           path: ${{ runner.temp }}/pr07c-evidence/
           if-no-files-found: warn
 
+      - name: Mock Fleet Supervisor remote-config, rollback, and revocation E2E
+        if: runner.os == 'Linux'
+        env:
+          AR_IMMS_PR09_MOCKFLEET_LIVE_E2E: '1'
+          AR_IMMS_PR07A_SUPERVISOR_BINARY: ${{ env.AR_IMMS_PR07A_SUPERVISOR_BINARY }}
+          AR_IMMS_PR05_COLLECTOR_BINARY: ${{ env.OTELCOL_CONTRIB_BINARY }}
+          AR_IMMS_PR09_MOCKFLEET_EVIDENCE_DIR: ${{ runner.temp }}/pr09-mockfleet-evidence
+        run: go test ./cmd/agentctl -run '^TestPR09MockFleetSupervisorConfigAndRollbackE2E$' -count=1 -v
+
+      - name: Upload PR-09 Mock Fleet E2E evidence
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v6
+        with:
+          name: pr09-mockfleet-supervisor-${{ runner.os }}
+          path: ${{ runner.temp }}/pr09-mockfleet-evidence/
+          if-no-files-found: warn
+
       - name: Vet
         run: go vet ./...
 
