@@ -209,7 +209,7 @@ jobs:
         run: go test ./internal/identity/enrollment/application -run '^TestEnrollmentApplicationStoresCredentialFromProvisionalMockFleetExchange$' -count=1 -v
 
       - name: Race-sensitive state and uninstall tests
-        if: github.event_name == 'pull_request' && github.event.pull_request.number == 39
+        if: github.event_name == 'pull_request' && (github.event.pull_request.number == 39 || github.event.pull_request.number == 40)
         run: go test -race ./internal/agentstate ./internal/identity/sqlite ./internal/identity/enrollment/sqlite ./internal/runtime/collector/activation ./cmd/agentctl -count=1
 
       - name: Live Docker Inventory provider E2E
