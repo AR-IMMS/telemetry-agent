@@ -60,6 +60,22 @@ type runtimeDiscoveryProvider struct {
 	err   error
 }
 
+type cancellationDiscoveryProvider struct {
+	started   chan struct{}
+	cancelled chan struct{}
+}
+
+func (p cancellationDiscoveryProvider) ID() inventorydomain.ProviderID { return "docker" }
+func (p cancellationDiscoveryProvider) InstanceID() inventorydomain.ProviderInstanceID {
+	return "local"
+}
+func (p cancellationDiscoveryProvider) Discover(ctx context.Context) (inventorydomain.ProviderSnapshot, error) {
+	close(p.started)
+	<-ctx.Done()
+	close(p.cancelled)
+	return inventorydomain.ProviderSnapshot{}, ctx.Err()
+}
+
 func (p *runtimeDiscoveryProvider) ID() inventorydomain.ProviderID                 { return "docker" }
 func (p *runtimeDiscoveryProvider) InstanceID() inventorydomain.ProviderInstanceID { return "local" }
 func (p *runtimeDiscoveryProvider) Discover(context.Context) (inventorydomain.ProviderSnapshot, error) {
@@ -149,6 +165,46 @@ func TestRunControlLoopsReconciliationFailureCancelsOperations(t *testing.T) {
 	}
 	if !stopped.Load() {
 		t.Fatal("Operations runner was not joined after reconciliation failed")
+	}
+}
+
+func TestRunControlLoopsExternalCancellationStopsAndJoinsDiscovery(t *testing.T) {
+	provider := cancellationDiscoveryProvider{started: make(chan struct{}), cancelled: make(chan struct{})}
+	coordinator, err := inventoryapp.NewCoordinator(&runtimeInventoryRepository{}, []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	components := RuntimeComponents{
+		Inventory: coordinator,
+		Reconciler: runtimeReconciler{run: func(ctx context.Context, _ time.Duration) error {
+			<-ctx.Done()
+			return ctx.Err()
+		}},
+	}
+	done := make(chan error, 1)
+	go func() { done <- runControlLoops(ctx, components) }()
+
+	select {
+	case <-provider.started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("discovery did not start")
+	}
+	cancel()
+
+	select {
+	case <-provider.cancelled:
+	case <-time.After(3 * time.Second):
+		t.Fatal("discovery did not observe service cancellation")
+	}
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("runtime error = %v, want context.Canceled", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("runtime did not join its workers after cancellation")
 	}
 }
 
