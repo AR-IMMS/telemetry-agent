@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -81,6 +82,15 @@ func TestPR09MockFleetSupervisorConfigAndRollbackE2E(t *testing.T) {
 	const nodeID = "10000000-0000-4000-8000-000000000002"
 	const inviteToken = "mockfleet-supervisor-e2e-invitation"
 	fleet := mockfleet.New()
+	opampListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve fixture OpAMP endpoint: %v", err)
+	}
+	t.Cleanup(func() { _ = opampListener.Close() })
+	opampEndpoint := "ws://" + opampListener.Addr().String() + "/v1/opamp"
+	if err := fleet.SetOpAMPEndpoint(opampEndpoint); err != nil {
+		t.Fatalf("configure provisional fixture OpAMP endpoint: %v", err)
+	}
 	if err := fleet.SeedInvitation(inviteToken, nodeID); err != nil {
 		t.Fatal(err)
 	}
@@ -132,6 +142,12 @@ func TestPR09MockFleetSupervisorConfigAndRollbackE2E(t *testing.T) {
 	if enrollmentClient.credentialID == "" {
 		t.Fatal("Agent enrollment did not retain the fixture credential ID for revocation verification")
 	}
+	if enrollmentClient.opampEndpoint != opampEndpoint {
+		t.Fatalf("Agent enrollment OpAMP endpoint = %q, want provisional fixture endpoint %q", enrollmentClient.opampEndpoint, opampEndpoint)
+	}
+	if err := opampListener.Close(); err != nil {
+		t.Fatalf("release reserved fixture OpAMP endpoint: %v", err)
+	}
 	storedEnrollmentCredential, err := credentialStore.Get(enrollmentAttempt.AccessCredentialRef)
 	if err != nil {
 		t.Fatalf("read Agent-enrolled credential: %v", err)
@@ -170,17 +186,8 @@ func TestPR09MockFleetSupervisorConfigAndRollbackE2E(t *testing.T) {
 		t.Fatal("Supervisor token file does not contain the Agent-enrolled credential")
 	}
 	clear(provisionedToken)
-	opampListener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("reserve fixture OpAMP endpoint: %v", err)
-	}
-	opampEndpoint := opampListener.Addr().String()
-	if err := opampListener.Close(); err != nil {
-		t.Fatalf("release reserved fixture OpAMP endpoint: %v", err)
-	}
-
 	supervisorConfig, err := opampsupervisorconfig.Render(opampsupervisorconfig.Config{
-		ServerEndpoint: "ws://" + opampEndpoint + "/v1/opamp",
+		ServerEndpoint: enrollmentClient.opampEndpoint,
 		TokenFile:      tokenPath,
 		CollectorPath:  collectorPath,
 		LocalConfig:    localConfigPath,
@@ -225,7 +232,11 @@ func TestPR09MockFleetSupervisorConfigAndRollbackE2E(t *testing.T) {
 	// session starts before initial config state is ready, so this exercises its
 	// supported offline-start and reconnect path before remote config delivery.
 	waitPR07ASinkContains(t, ctx, done, sinkAOutput, "hostmetrics", "Supervisor initial local-config OTLP")
-	opampServer, err := fleet.StartOpAMPServerAt(opampEndpoint)
+	parsedOpAMPEndpoint, err := url.Parse(enrollmentClient.opampEndpoint)
+	if err != nil {
+		t.Fatalf("parse OpAMP endpoint returned by enrollment fixture: %v", err)
+	}
+	opampServer, err := fleet.StartOpAMPServerAt(parsedOpAMPEndpoint.Host)
 	if err != nil {
 		t.Fatalf("start authenticated fixture OpAMP server after local startup: %v", err)
 	}
@@ -294,9 +305,10 @@ func TestPR09MockFleetSupervisorConfigAndRollbackE2E(t *testing.T) {
 // provisionalMockFleetEnrollmentClient adapts the current Core-shaped
 // enrollment application port to test-only Mock Fleet exchange fields.
 type provisionalMockFleetEnrollmentClient struct {
-	endpoint     string
-	credentialID string
-	credential   string
+	endpoint      string
+	credentialID  string
+	credential    string
+	opampEndpoint string
 }
 
 func (c *provisionalMockFleetEnrollmentClient) Enroll(ctx context.Context, origin enrollment.CoreOrigin, request enrollment.EnrollmentRequest) (enrollment.EnrollmentResponse, error) {
@@ -323,10 +335,11 @@ func (c *provisionalMockFleetEnrollmentClient) Enroll(ctx context.Context, origi
 		return enrollment.EnrollmentResponse{}, fmt.Errorf("provisional Mock Fleet enrollment returned HTTP %d", response.StatusCode)
 	}
 	var issued struct {
-		AgentID      string `json:"agent_id"`
-		NodeID       string `json:"node_id"`
-		CredentialID string `json:"credential_id"`
-		Credential   string `json:"credential"`
+		AgentID       string `json:"agent_id"`
+		NodeID        string `json:"node_id"`
+		CredentialID  string `json:"credential_id"`
+		Credential    string `json:"credential"`
+		OpAMPEndpoint string `json:"opamp_endpoint"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&issued); err != nil {
 		return enrollment.EnrollmentResponse{}, fmt.Errorf("decode provisional Mock Fleet enrollment response: %w", err)
@@ -334,8 +347,12 @@ func (c *provisionalMockFleetEnrollmentClient) Enroll(ctx context.Context, origi
 	if issued.AgentID != request.Installation.ID {
 		return enrollment.EnrollmentResponse{}, fmt.Errorf("provisional Mock Fleet returned a mismatched Agent identity")
 	}
+	if strings.TrimSpace(issued.OpAMPEndpoint) == "" {
+		return enrollment.EnrollmentResponse{}, fmt.Errorf("provisional Mock Fleet omitted its OpAMP endpoint")
+	}
 	c.credentialID = issued.CredentialID
 	c.credential = issued.Credential
+	c.opampEndpoint = issued.OpAMPEndpoint
 	// These Core-shaped binding and control-plane values exercise the Agent's
 	// existing enrollment persistence port only; they are not Fleet contracts.
 	return enrollment.EnrollmentResponse{

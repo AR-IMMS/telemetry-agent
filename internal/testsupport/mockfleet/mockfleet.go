@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 
@@ -15,6 +16,8 @@ import (
 
 const exchangePath = "/v1/enrollments/exchange"
 
+const defaultOpAMPEndpoint = "wss://fleet.test.invalid/opamp"
+
 // Server is an in-memory fixture for the illustrative Fleet enrollment
 // exchange. Its routes and response details remain provisional.
 type Server struct {
@@ -24,6 +27,7 @@ type Server struct {
 	credentials    map[string]*issuedCredential
 	desiredConfigs map[string][]byte
 	remoteStatuses map[string][]*protobufs.RemoteConfigStatus
+	opampEndpoint  string
 }
 
 type invitation struct {
@@ -75,7 +79,25 @@ func New() *Server {
 		credentials:    make(map[string]*issuedCredential),
 		desiredConfigs: make(map[string][]byte),
 		remoteStatuses: make(map[string][]*protobufs.RemoteConfigStatus),
+		opampEndpoint:  defaultOpAMPEndpoint,
 	}
+}
+
+// SetOpAMPEndpoint configures the provisional enrollment response used by
+// test fixtures. It does not define or implement an approved Fleet contract.
+func (s *Server) SetOpAMPEndpoint(endpoint string) error {
+	if s == nil {
+		return errors.New("mock Fleet fixture is required")
+	}
+	parsed, err := url.Parse(strings.TrimSpace(endpoint))
+	if err != nil || !parsed.IsAbs() || parsed.Host == "" ||
+		(parsed.Scheme != "ws" && parsed.Scheme != "wss") || parsed.User != nil || parsed.Fragment != "" {
+		return errors.New("mock Fleet OpAMP endpoint must be an absolute ws or wss URL without user info or fragment")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.opampEndpoint = parsed.String()
+	return nil
 }
 
 // SeedInvitation adds a test invitation through the fixture boundary. It does
@@ -197,7 +219,7 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		NodeID:        invited.nodeID,
 		CredentialID:  "mock-credential-id-" + exchange.AttemptID,
 		Credential:    "mock-credential-" + exchange.AttemptID,
-		OpAMPEndpoint: "wss://fleet.test.invalid/opamp",
+		OpAMPEndpoint: s.opampEndpoint,
 	}
 	s.attempts[exchange.AttemptID] = exchangeRecord{request: exchange, result: result}
 	s.credentials[result.CredentialID] = &issuedCredential{

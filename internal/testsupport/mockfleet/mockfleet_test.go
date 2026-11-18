@@ -43,6 +43,49 @@ func TestExchangeReplaysSameResultForSameAttempt(t *testing.T) {
 	}
 }
 
+func TestEnrollmentExchangeReturnsConfiguredOpAMPEndpoint(t *testing.T) {
+	server := New()
+	if err := server.SetOpAMPEndpoint("ws://127.0.0.1:4318/v1/opamp"); err != nil {
+		t.Fatalf("configure provisional OpAMP endpoint: %v", err)
+	}
+	if err := server.SeedInvitation("invitation-token", "node-1"); err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(server)
+	t.Cleanup(httpServer.Close)
+
+	request := []byte(`{"schema_version":1,"enrollment_attempt_id":"attempt-1","agent_id":"agent-1","invitation_token":"invitation-token","identity_evidence":{"host_id":"host-1","compute_type":"VM","orchestrator":"NONE","deployment_scope":"HOST_SERVICE"}}`)
+	status, body := exchange(t, httpServer.URL, request)
+	if status != http.StatusCreated {
+		t.Fatalf("enrollment exchange status = %d; want %d", status, http.StatusCreated)
+	}
+	var result struct {
+		OpAMPEndpoint string `json:"opamp_endpoint"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("decode enrollment result: %v", err)
+	}
+	if result.OpAMPEndpoint != "ws://127.0.0.1:4318/v1/opamp" {
+		t.Fatalf("provisional OpAMP endpoint = %q; want configured endpoint", result.OpAMPEndpoint)
+	}
+}
+
+func TestSetOpAMPEndpointRejectsInvalidURLs(t *testing.T) {
+	server := New()
+	for _, endpoint := range []string{
+		"http://127.0.0.1:4318/v1/opamp",
+		"ws:///v1/opamp",
+		"ws://user:secret@127.0.0.1:4318/v1/opamp",
+		"ws://127.0.0.1:4318/v1/opamp#fragment",
+	} {
+		t.Run(endpoint, func(t *testing.T) {
+			if err := server.SetOpAMPEndpoint(endpoint); err == nil {
+				t.Fatalf("SetOpAMPEndpoint(%q) succeeded; want validation error", endpoint)
+			}
+		})
+	}
+}
+
 func TestExchangeRejectsChangedRequestForExistingAttempt(t *testing.T) {
 	server := New()
 	if err := server.SeedInvitation("invitation-token", "node-1"); err != nil {
