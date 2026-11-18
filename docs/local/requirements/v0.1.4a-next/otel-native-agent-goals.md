@@ -1,6 +1,6 @@
 # OTel-Native Telemetry Agent — Goals and Scope
 
-**Status:** Proposed for user review. The architecture direction is accepted; this goals document is not yet accepted. Implementation is not authorized until the user accepts the documents.
+**Status:** Under user review; this goals document is not yet accepted. The architecture direction is accepted. Agent implementation has been separately authorized; that authorization does not constitute acceptance of this document.
 
 **Owner:** AR-IMMS Telemetry Agent maintainers.
 

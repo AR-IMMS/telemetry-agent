@@ -1,6 +1,6 @@
 # OTel-Native Telemetry Agent — Implementation Plan
 
-**Status:** Proposed for user review; implementation has not started and is not authorized until the user accepts this plan.
+**Status:** Under user review; this plan is not yet accepted. Agent implementation has been separately authorized; that authorization does not constitute acceptance of this plan.
 
 **Scope:** Telemetry Agent repository only. Do not implement Fleet Management Server or Core Backend here.
 
