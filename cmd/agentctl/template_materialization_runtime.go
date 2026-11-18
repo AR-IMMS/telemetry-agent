@@ -8,10 +8,12 @@ import (
 	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
 	materializationapp "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/application"
 	materializationdomain "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/domain"
+	proposalapp "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 	templatesconfigapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
 	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
+	matchingapp "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/application"
 	matchingdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/domain"
 	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	templatesmonitoringapp "github.com/ar-imms/telemetry-agent/internal/monitoring/templates/application"
@@ -87,7 +89,7 @@ func (r runtimeTemplateMaterializer) Refresh(ctx context.Context) error {
 			return fmt.Errorf("read desired Integrations for materialization: %w", err)
 		}
 		asOf := time.Now().UTC()
-		matchSnapshot := projectInventory(inventory, asOf)
+		matchSnapshot := matchingapp.ProjectInventory(inventory, asOf)
 		if r.nativeMonitoring {
 			filtered := matchSnapshot.Resources[:0]
 			for _, resource := range matchSnapshot.Resources {
@@ -98,7 +100,7 @@ func (r runtimeTemplateMaterializer) Refresh(ctx context.Context) error {
 			}
 			matchSnapshot.Resources = filtered
 		}
-		monitoringTemplates, err := monitoringTemplateInputs(templates.Templates)
+		monitoringTemplates, err := proposalapp.MonitoringTemplateInputs(templates.Templates)
 		if err != nil {
 			return fmt.Errorf("project Configuration Templates for Monitoring evaluation: %w", err)
 		}

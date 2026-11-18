@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -121,21 +122,29 @@ func sameTemplateIntent(stored, requested []byte) bool {
 }
 
 func (s templateSQLite) Snapshot() (templatesapp.Snapshot, error) {
+	return s.SnapshotContext(context.Background())
+}
+
+// SnapshotContext reads a consistent Template set and honors caller cancellation.
+func (s templateSQLite) SnapshotContext(ctx context.Context) (templatesapp.Snapshot, error) {
+	if err := ctx.Err(); err != nil {
+		return templatesapp.Snapshot{}, err
+	}
 	db, err := s.store.openDatabase()
 	if err != nil {
 		return templatesapp.Snapshot{}, err
 	}
 	defer db.Close()
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return templatesapp.Snapshot{}, fmt.Errorf("begin Integration Template snapshot: %w", err)
 	}
 	defer tx.Rollback()
-	revision, err := templateSetRevision(tx)
+	revision, err := templateSetRevisionContext(ctx, tx)
 	if err != nil {
 		return templatesapp.Snapshot{}, err
 	}
-	rows, err := tx.Query(`SELECT payload FROM integration_templates ORDER BY template_id`)
+	rows, err := tx.QueryContext(ctx, `SELECT payload FROM integration_templates ORDER BY template_id`)
 	if err != nil {
 		return templatesapp.Snapshot{}, fmt.Errorf("query Integration Templates: %w", err)
 	}
@@ -167,6 +176,16 @@ func (s templateSQLite) Snapshot() (templatesapp.Snapshot, error) {
 func templateSetRevision(queryer interface{ QueryRow(string, ...any) *sql.Row }) (uint64, error) {
 	var revision uint64
 	if err := queryer.QueryRow(`SELECT template_set_revision FROM integration_template_state WHERE id=1`).Scan(&revision); err != nil {
+		return 0, fmt.Errorf("read Integration Template set revision: %w", err)
+	}
+	return revision, nil
+}
+
+func templateSetRevisionContext(ctx context.Context, queryer interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}) (uint64, error) {
+	var revision uint64
+	if err := queryer.QueryRowContext(ctx, `SELECT template_set_revision FROM integration_template_state WHERE id=1`).Scan(&revision); err != nil {
 		return 0, fmt.Errorf("read Integration Template set revision: %w", err)
 	}
 	return revision, nil

@@ -2,6 +2,7 @@ package application
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -18,6 +19,16 @@ type ProposalRepository interface {
 	DismissProposal(string, uint64, time.Time) error
 }
 
+// ContextProposalRepository provides cancellable persistence operations for application workflows.
+type ContextProposalRepository interface {
+	// ProposalSnapshotContext returns a consistent snapshot or stops when ctx is canceled.
+	ProposalSnapshotContext(context.Context) ([]Proposal, error)
+	// PutProposalContext performs a CAS update or stops when ctx is canceled.
+	PutProposalContext(context.Context, Proposal, uint64) error
+	// DismissProposalContext records a dismissal or stops when ctx is canceled.
+	DismissProposalContext(context.Context, string, uint64, time.Time) error
+}
+
 // ProposalManager refreshes durable proposals from one complete deterministic match evaluation.
 type ProposalManager struct{ repository ProposalRepository }
 
@@ -27,11 +38,24 @@ func NewProposalManager(repository ProposalRepository) ProposalManager {
 }
 
 // Refresh persists only actionable or input-requiring matches and marks absent proposals stale.
+
 func (m ProposalManager) Refresh(observations []ProposalObservation, at time.Time) error {
-	if m.repository == nil || at.IsZero() {
+	return m.RefreshContext(context.Background(), observations, at)
+}
+
+// RefreshContext persists proposals from one complete evaluation and honors caller cancellation.
+func (m ProposalManager) RefreshContext(ctx context.Context, observations []ProposalObservation, at time.Time) error {
+	if ctx == nil || m.repository == nil || at.IsZero() {
 		return fmt.Errorf("%w: repository and evaluation time are required", ErrInvalidProposal)
 	}
-	current, err := m.repository.ProposalSnapshot()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	repository, ok := m.repository.(ContextProposalRepository)
+	if !ok {
+		return fmt.Errorf("context-aware proposal repository is required")
+	}
+	current, err := repository.ProposalSnapshotContext(ctx)
 	if err != nil {
 		return fmt.Errorf("read proposal snapshot: %w", err)
 	}
@@ -46,6 +70,9 @@ func (m ProposalManager) Refresh(observations []ProposalObservation, at time.Tim
 	seen := make(map[string]struct{}, len(observations))
 	prepared := make(map[string]Proposal, len(observations))
 	for _, observation := range observations {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		proposal, eligible, err := proposalFromObservation(observation, at)
 		if err != nil {
 			return err
@@ -85,7 +112,7 @@ func (m ProposalManager) Refresh(observations []ProposalObservation, at time.Tim
 			if err := ValidateProposal(proposal); err != nil {
 				return err
 			}
-			if err := m.repository.PutProposal(proposal, 0); err != nil {
+			if err := repository.PutProposalContext(ctx, proposal, 0); err != nil {
 				return fmt.Errorf("insert monitoring proposal: %w", err)
 			}
 			continue
@@ -114,7 +141,7 @@ func (m ProposalManager) Refresh(observations []ProposalObservation, at time.Tim
 		if err := ValidateProposal(proposal); err != nil {
 			return err
 		}
-		if err := m.repository.PutProposal(proposal, previous.Revision); err != nil {
+		if err := repository.PutProposalContext(ctx, proposal, previous.Revision); err != nil {
 			return fmt.Errorf("refresh monitoring proposal: %w", err)
 		}
 	}
@@ -136,7 +163,7 @@ func (m ProposalManager) Refresh(observations []ProposalObservation, at time.Tim
 		previous.Status = ProposalStale
 		previous.Diagnostics = []string{"resource_or_match_unavailable"}
 		previous.UpdatedAt = at.UTC()
-		if err := m.repository.PutProposal(previous, byID[id].Revision); err != nil {
+		if err := repository.PutProposalContext(ctx, previous, byID[id].Revision); err != nil {
 			return fmt.Errorf("mark missing monitoring proposal stale: %w", err)
 		}
 	}
@@ -145,10 +172,22 @@ func (m ProposalManager) Refresh(observations []ProposalObservation, at time.Tim
 
 // Dismiss records an explicit operator decision using the expected material revision.
 func (m ProposalManager) Dismiss(id string, expectedRevision uint64, at time.Time) error {
-	if m.repository == nil || id == "" || expectedRevision == 0 || at.IsZero() {
+	return m.DismissContext(context.Background(), id, expectedRevision, at)
+}
+
+// DismissContext records an operator decision and honors caller cancellation.
+func (m ProposalManager) DismissContext(ctx context.Context, id string, expectedRevision uint64, at time.Time) error {
+	if ctx == nil || m.repository == nil || id == "" || expectedRevision == 0 || at.IsZero() {
 		return fmt.Errorf("%w: proposal ID, revision and time are required", ErrInvalidProposal)
 	}
-	proposals, err := m.repository.ProposalSnapshot()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	repository, ok := m.repository.(ContextProposalRepository)
+	if !ok {
+		return fmt.Errorf("context-aware proposal repository is required")
+	}
+	proposals, err := repository.ProposalSnapshotContext(ctx)
 	if err != nil {
 		return fmt.Errorf("read proposal before dismissal: %w", err)
 	}
@@ -165,7 +204,7 @@ func (m ProposalManager) Dismiss(id string, expectedRevision uint64, at time.Tim
 		if proposal.Status != ProposalPending && proposal.Status != ProposalNeedsInput {
 			return ErrProposalTransition
 		}
-		if err := m.repository.DismissProposal(id, expectedRevision, at.UTC()); err != nil {
+		if err := repository.DismissProposalContext(ctx, id, expectedRevision, at.UTC()); err != nil {
 			return fmt.Errorf("dismiss monitoring proposal: %w", err)
 		}
 		return nil

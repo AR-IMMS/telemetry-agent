@@ -1,6 +1,8 @@
 package sqlite_test
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
@@ -18,6 +20,28 @@ import (
 	"testing"
 	"time"
 )
+
+func TestTemplateSnapshotContextHonorsCancellationBeforeOpeningDatabase(t *testing.T) {
+	opened := false
+	repository := configurationsqlite.NewTemplateRepository(func() (*sql.DB, error) {
+		opened = true
+		return nil, errors.New("database should not be opened")
+	}, &sync.Mutex{})
+	reader, ok := repository.(interface {
+		SnapshotContext(context.Context) (templatesapp.Snapshot, error)
+	})
+	if !ok {
+		t.Fatal("Template SQLite repository does not expose cancellable snapshots")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := reader.SnapshotContext(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("SnapshotContext() error = %v, want context.Canceled", err)
+	}
+	if opened {
+		t.Fatal("canceled Template snapshot opened its database")
+	}
+}
 
 type desiredEventPublisherFunc func(events.DesiredConfigurationChanged) error
 

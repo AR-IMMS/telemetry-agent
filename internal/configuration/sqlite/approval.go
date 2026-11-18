@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -24,6 +25,14 @@ func NewApprovalRepository(open func() (*sql.DB, error), locker sync.Locker) app
 type approvalSQLite struct{ store database }
 
 func (s approvalSQLite) CommitApproval(commit application.ApprovalCommit) (domain.Instance, uint64, error) {
+	return s.CommitApprovalContext(context.Background(), commit)
+}
+
+// CommitApprovalContext atomically persists approval with caller cancellation.
+func (s approvalSQLite) CommitApprovalContext(ctx context.Context, commit application.ApprovalCommit) (domain.Instance, uint64, error) {
+	if err := ctx.Err(); err != nil {
+		return domain.Instance{}, 0, err
+	}
 	if commit.ProposalID == "" || commit.ProposalRevision == 0 || commit.ProposalRevision > math.MaxInt64 {
 		return domain.Instance{}, 0, proposaldomain.ErrInvalidProposal
 	}
@@ -37,14 +46,14 @@ func (s approvalSQLite) CommitApproval(commit application.ApprovalCommit) (domai
 		return domain.Instance{}, 0, err
 	}
 	defer db.Close()
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return domain.Instance{}, 0, fmt.Errorf("begin monitoring proposal approval: %w", err)
 	}
 	defer tx.Rollback()
 	var payload []byte
 	var persistedRevision uint64
-	err = tx.QueryRow(`SELECT payload,revision FROM integration_proposals WHERE proposal_id=?`, commit.ProposalID).Scan(&payload, &persistedRevision)
+	err = tx.QueryRowContext(ctx, `SELECT payload,revision FROM integration_proposals WHERE proposal_id=?`, commit.ProposalID).Scan(&payload, &persistedRevision)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Instance{}, 0, proposaldomain.ErrUnknownProposal
 	}
@@ -59,7 +68,7 @@ func (s approvalSQLite) CommitApproval(commit application.ApprovalCommit) (domai
 		return domain.Instance{}, 0, application.ErrApprovalConflict
 	}
 	if proposal.Status == proposaldomain.ProposalApproved {
-		return alreadyApproved(tx, proposal, commit)
+		return alreadyApproved(ctx, tx, proposal, commit)
 	}
 	if proposal.Status != proposaldomain.ProposalPending && proposal.Status != proposaldomain.ProposalNeedsInput {
 		return domain.Instance{}, 0, application.ErrApprovalNotEligible
@@ -72,14 +81,14 @@ func (s approvalSQLite) CommitApproval(commit application.ApprovalCommit) (domai
 		return domain.Instance{}, 0, application.ErrApprovalStale
 	}
 	var writeRevision uint64
-	if err := tx.QueryRow(`SELECT write_revision FROM inventory_meta WHERE id=1`).Scan(&writeRevision); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT write_revision FROM inventory_meta WHERE id=1`).Scan(&writeRevision); err != nil {
 		return domain.Instance{}, 0, fmt.Errorf("read inventory approval token: %w", err)
 	}
 	if writeRevision != commit.InventoryWriteRevision {
 		return domain.Instance{}, 0, application.ErrApprovalStale
 	}
 	var desiredRevision uint64
-	if err := tx.QueryRow(`SELECT desired_set_revision FROM integration_desired_state WHERE id=1`).Scan(&desiredRevision); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT desired_set_revision FROM integration_desired_state WHERE id=1`).Scan(&desiredRevision); err != nil {
 		return domain.Instance{}, 0, fmt.Errorf("read desired Integration revision: %w", err)
 	}
 	if desiredRevision != commit.ExpectedDesiredRevision {
@@ -89,12 +98,12 @@ func (s approvalSQLite) CommitApproval(commit application.ApprovalCommit) (domai
 	if err := validateApprovalInstance(proposal, instance); err != nil {
 		return domain.Instance{}, 0, err
 	}
-	if err := ensureUniqueResourceBinding(tx, instance); err != nil {
+	if err := ensureUniqueResourceBinding(ctx, tx, instance); err != nil {
 		return domain.Instance{}, 0, err
 	}
 	var currentPayload []byte
 	var currentRevision uint64
-	err = tx.QueryRow(`SELECT payload,revision FROM integration_instances WHERE instance_id=?`, instance.ID).Scan(&currentPayload, &currentRevision)
+	err = tx.QueryRowContext(ctx, `SELECT payload,revision FROM integration_instances WHERE instance_id=?`, instance.ID).Scan(&currentPayload, &currentRevision)
 	if errors.Is(err, sql.ErrNoRows) {
 		if proposal.ApprovedInstanceRevision != 0 {
 			return domain.Instance{}, 0, application.ErrApprovalConflict
@@ -122,12 +131,12 @@ func (s approvalSQLite) CommitApproval(commit application.ApprovalCommit) (domai
 		return domain.Instance{}, 0, fmt.Errorf("encode approved Integration: %w", err)
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	if _, err := tx.Exec(`INSERT INTO integration_instances(instance_id,payload,revision,updated_at) VALUES(?,?,?,?)
+	if _, err := tx.ExecContext(ctx, `INSERT INTO integration_instances(instance_id,payload,revision,updated_at) VALUES(?,?,?,?)
 		ON CONFLICT(instance_id) DO UPDATE SET payload=excluded.payload,revision=excluded.revision,updated_at=excluded.updated_at`,
 		instance.ID, instancePayload, instance.Revision, now); err != nil {
 		return domain.Instance{}, 0, fmt.Errorf("persist approved Integration: %w", err)
 	}
-	result, err := tx.Exec(`UPDATE integration_desired_state SET desired_set_revision=desired_set_revision+1,updated_at=? WHERE id=1 AND desired_set_revision=?`, now, desiredRevision)
+	result, err := tx.ExecContext(ctx, `UPDATE integration_desired_state SET desired_set_revision=desired_set_revision+1,updated_at=? WHERE id=1 AND desired_set_revision=?`, now, desiredRevision)
 	if err != nil {
 		return domain.Instance{}, 0, fmt.Errorf("advance desired Integration revision for approval: %w", err)
 	}
@@ -146,7 +155,7 @@ func (s approvalSQLite) CommitApproval(commit application.ApprovalCommit) (domai
 	if err != nil {
 		return domain.Instance{}, 0, fmt.Errorf("encode approved proposal: %w", err)
 	}
-	result, err = tx.Exec(`UPDATE integration_proposals SET status=?,payload=?,updated_at=? WHERE proposal_id=? AND revision=? AND status IN ('pending','needs_input')`,
+	result, err = tx.ExecContext(ctx, `UPDATE integration_proposals SET status=?,payload=?,updated_at=? WHERE proposal_id=? AND revision=? AND status IN ('pending','needs_input')`,
 		proposal.Status, proposalPayload, proposal.UpdatedAt.Format(time.RFC3339Nano), proposal.ID, commit.ProposalRevision)
 	if err != nil {
 		return domain.Instance{}, 0, fmt.Errorf("persist proposal approval: %w", err)
@@ -163,19 +172,19 @@ func (s approvalSQLite) CommitApproval(commit application.ApprovalCommit) (domai
 	return instance, desiredRevision + 1, nil
 }
 
-func alreadyApproved(tx *sql.Tx, proposal proposaldomain.Proposal, commit application.ApprovalCommit) (domain.Instance, uint64, error) {
+func alreadyApproved(ctx context.Context, tx *sql.Tx, proposal proposaldomain.Proposal, commit application.ApprovalCommit) (domain.Instance, uint64, error) {
 	if proposal.ApprovedInstanceID == "" || proposal.ApprovedInstanceID != commit.Instance.ID || proposal.ApprovedCandidateDigest == "" {
 		return domain.Instance{}, 0, application.ErrApprovalConflict
 	}
 	var payload []byte
 	var revision, desiredRevision uint64
-	if err := tx.QueryRow(`SELECT payload,revision FROM integration_instances WHERE instance_id=?`, proposal.ApprovedInstanceID).Scan(&payload, &revision); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT payload,revision FROM integration_instances WHERE instance_id=?`, proposal.ApprovedInstanceID).Scan(&payload, &revision); err != nil {
 		return domain.Instance{}, 0, application.ErrApprovalConflict
 	}
 	if revision != proposal.ApprovedInstanceRevision {
 		return domain.Instance{}, 0, application.ErrApprovalConflict
 	}
-	if err := tx.QueryRow(`SELECT desired_set_revision FROM integration_desired_state WHERE id=1`).Scan(&desiredRevision); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT desired_set_revision FROM integration_desired_state WHERE id=1`).Scan(&desiredRevision); err != nil {
 		return domain.Instance{}, 0, fmt.Errorf("read desired Integration revision for idempotent approval: %w", err)
 	}
 	var instance domain.Instance
@@ -199,8 +208,8 @@ func validateApprovalInstance(proposal proposaldomain.Proposal, instance domain.
 	return nil
 }
 
-func ensureUniqueResourceBinding(tx *sql.Tx, instance domain.Instance) error {
-	rows, err := tx.Query(`SELECT instance_id,payload FROM integration_instances ORDER BY instance_id`)
+func ensureUniqueResourceBinding(ctx context.Context, tx *sql.Tx, instance domain.Instance) error {
+	rows, err := tx.QueryContext(ctx, `SELECT instance_id,payload FROM integration_instances ORDER BY instance_id`)
 	if err != nil {
 		return fmt.Errorf("check desired resource bindings: %w", err)
 	}

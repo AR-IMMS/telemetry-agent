@@ -63,6 +63,11 @@ type ApprovalRepository interface {
 	CommitApproval(ApprovalCommit) (domain.Instance, uint64, error)
 }
 
+// ContextApprovalRepository commits approval while honoring caller cancellation.
+type ContextApprovalRepository interface {
+	CommitApprovalContext(context.Context, ApprovalCommit) (domain.Instance, uint64, error)
+}
+
 // ApprovalService verifies a fresh candidate before requesting an atomic desired-state mutation.
 type ApprovalService struct {
 	proposals  ProposalRepository
@@ -80,7 +85,15 @@ func (s ApprovalService) Approve(ctx context.Context, request ApprovalRequest) (
 	if ctx == nil || s.proposals == nil || s.repository == nil || request.ProposalID == "" || request.ProposalRevision == 0 {
 		return domain.Instance{}, 0, fmt.Errorf("%w: repository, proposal ID and revision are required", ErrApprovalNotEligible)
 	}
-	proposalList, err := s.proposals.ProposalSnapshot()
+	contextProposals, ok := s.proposals.(ContextProposalRepository)
+	if !ok {
+		return domain.Instance{}, 0, fmt.Errorf("context-aware proposal repository is required")
+	}
+	contextRepository, ok := s.repository.(ContextApprovalRepository)
+	if !ok {
+		return domain.Instance{}, 0, fmt.Errorf("context-aware approval repository is required")
+	}
+	proposalList, err := contextProposals.ProposalSnapshotContext(ctx)
 	if err != nil {
 		return domain.Instance{}, 0, fmt.Errorf("read proposal before approval: %w", err)
 	}
@@ -99,7 +112,7 @@ func (s ApprovalService) Approve(ctx context.Context, request ApprovalRequest) (
 	}
 	if proposal.Status == ProposalApproved {
 		instance := domain.Instance{ID: proposal.ApprovedInstanceID}
-		return s.repository.CommitApproval(ApprovalCommit{
+		return contextRepository.CommitApprovalContext(ctx, ApprovalCommit{
 			ProposalID: proposal.ID, ProposalRevision: proposal.Revision,
 			ExpectedDesiredRevision: request.ExpectedDesiredRevision, ExpectedCandidateDigest: proposal.CandidateDigest,
 			VerifiedCandidateDigest: proposal.ApprovedCandidateDigest, Instance: instance,
@@ -141,7 +154,7 @@ func (s ApprovalService) Approve(ctx context.Context, request ApprovalRequest) (
 	if err := instance.Validate(); err != nil {
 		return domain.Instance{}, 0, fmt.Errorf("validate approved Integration: %w", err)
 	}
-	return s.repository.CommitApproval(ApprovalCommit{
+	return contextRepository.CommitApprovalContext(ctx, ApprovalCommit{
 		ProposalID: proposal.ID, ProposalRevision: proposal.Revision,
 		ExpectedDesiredRevision: request.ExpectedDesiredRevision, ExpectedCandidateDigest: proposal.CandidateDigest,
 		VerifiedCandidateDigest: verified.CandidateDigest, InventoryWriteRevision: verified.InventoryWriteRevision, Instance: instance,

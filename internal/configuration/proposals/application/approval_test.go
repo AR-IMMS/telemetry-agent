@@ -113,8 +113,21 @@ func (r *approvalProposalRepository) ProposalSnapshot() ([]Proposal, error) {
 	return append([]Proposal(nil), r.proposals...), nil
 }
 
+func (r *approvalProposalRepository) ProposalSnapshotContext(ctx context.Context) ([]Proposal, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return r.ProposalSnapshot()
+}
+
 func (*approvalProposalRepository) PutProposal(Proposal, uint64) error              { return nil }
 func (*approvalProposalRepository) DismissProposal(string, uint64, time.Time) error { return nil }
+func (*approvalProposalRepository) PutProposalContext(context.Context, Proposal, uint64) error {
+	return nil
+}
+func (*approvalProposalRepository) DismissProposalContext(context.Context, string, uint64, time.Time) error {
+	return nil
+}
 
 type approvalCandidateVerifier struct {
 	candidate VerifiedCandidate
@@ -136,4 +149,11 @@ func (r *recordingApprovalRepository) CommitApproval(commit ApprovalCommit) (des
 	r.calls++
 	commit.Instance.Revision = 3
 	return commit.Instance, 5, nil
+}
+
+func (r *recordingApprovalRepository) CommitApprovalContext(ctx context.Context, commit ApprovalCommit) (desiredstate.Instance, uint64, error) {
+	if err := ctx.Err(); err != nil {
+		return desiredstate.Instance{}, 0, err
+	}
+	return r.CommitApproval(commit)
 }

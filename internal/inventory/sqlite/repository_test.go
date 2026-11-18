@@ -2,6 +2,7 @@ package sqlite_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
@@ -13,6 +14,28 @@ import (
 	"testing"
 	"time"
 )
+
+func TestInventorySnapshotContextHonorsCancellationBeforeOpeningDatabase(t *testing.T) {
+	opened := false
+	repository := inventorysqlite.NewInventoryRepository(func() (*sql.DB, error) {
+		opened = true
+		return nil, errors.New("database should not be opened")
+	}, &sync.Mutex{})
+	reader, ok := repository.(interface {
+		SnapshotContext(context.Context) (inventorydomain.InventorySnapshot, error)
+	})
+	if !ok {
+		t.Fatal("Inventory SQLite repository does not expose cancellable snapshots")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := reader.SnapshotContext(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("SnapshotContext() error = %v, want context.Canceled", err)
+	}
+	if opened {
+		t.Fatal("canceled inventory snapshot opened its database")
+	}
+}
 
 func TestInventoryRepositoryKeepsFailureEvidenceAndWriteCAS(t *testing.T) {
 	store := sqlitefixture.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))

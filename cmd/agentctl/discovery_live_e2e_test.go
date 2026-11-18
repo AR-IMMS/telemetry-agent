@@ -338,7 +338,7 @@ func TestLiveDatabaseFixturesMatchIntoNeedsInputProposals(t *testing.T) {
 		t.Fatal(err)
 	}
 	matcher := matchingapp.NewMatcher(registry, fixtureCapabilityAssessor{})
-	report, err := matcher.Match(projectInventory(inventory, time.Now().UTC()))
+	report, err := matcher.Match(matchingapp.ProjectInventory(inventory, time.Now().UTC()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -349,7 +349,7 @@ func TestLiveDatabaseFixturesMatchIntoNeedsInputProposals(t *testing.T) {
 			continue
 		}
 		fixtureResults = append(fixtureResults, result)
-		observation, err := proposalObservationFromMatch(result, report.InventoryRevision)
+		observation, err := proposals.ProposalObservationFromMatch(result, report.InventoryRevision)
 		if err != nil {
 			t.Fatal(err)
 		}

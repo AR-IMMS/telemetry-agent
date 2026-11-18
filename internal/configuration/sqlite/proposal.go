@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -21,17 +22,25 @@ func NewProposalRepository(open func() (*sql.DB, error), locker sync.Locker) app
 type proposalSQLite struct{ store database }
 
 func (s proposalSQLite) ProposalSnapshot() ([]proposaldomain.Proposal, error) {
+	return s.ProposalSnapshotContext(context.Background())
+}
+
+// ProposalSnapshotContext reads a consistent proposal snapshot with caller cancellation.
+func (s proposalSQLite) ProposalSnapshotContext(ctx context.Context) ([]proposaldomain.Proposal, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	db, err := s.store.openDatabase()
 	if err != nil {
 		return nil, err
 	}
 	defer db.Close()
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin proposal snapshot: %w", err)
 	}
 	defer tx.Rollback()
-	rows, err := tx.Query(`SELECT proposal_id,provider_id,provider_instance_id,resource_id,integration_id,revision,status,payload FROM integration_proposals ORDER BY proposal_id`)
+	rows, err := tx.QueryContext(ctx, `SELECT proposal_id,provider_id,provider_instance_id,resource_id,integration_id,revision,status,payload FROM integration_proposals ORDER BY proposal_id`)
 	if err != nil {
 		return nil, fmt.Errorf("query monitoring proposals: %w", err)
 	}
@@ -75,6 +84,14 @@ func (s proposalSQLite) ProposalSnapshot() ([]proposaldomain.Proposal, error) {
 }
 
 func (s proposalSQLite) PutProposal(proposal proposaldomain.Proposal, expectedRevision uint64) error {
+	return s.PutProposalContext(context.Background(), proposal, expectedRevision)
+}
+
+// PutProposalContext persists a proposal with expected-revision concurrency and caller cancellation.
+func (s proposalSQLite) PutProposalContext(ctx context.Context, proposal proposaldomain.Proposal, expectedRevision uint64) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := proposaldomain.ValidateProposal(proposal); err != nil {
 		return err
 	}
@@ -97,25 +114,25 @@ func (s proposalSQLite) PutProposal(proposal proposaldomain.Proposal, expectedRe
 		return err
 	}
 	defer db.Close()
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin monitoring proposal update: %w", err)
 	}
 	defer tx.Rollback()
 	if expectedRevision == 0 {
 		var exists int
-		lookupErr := tx.QueryRow(`SELECT 1 FROM integration_proposals WHERE proposal_id=?`, proposal.ID).Scan(&exists)
+		lookupErr := tx.QueryRowContext(ctx, `SELECT 1 FROM integration_proposals WHERE proposal_id=?`, proposal.ID).Scan(&exists)
 		if lookupErr == nil {
 			return proposaldomain.ErrProposalConflict
 		}
 		if !errors.Is(lookupErr, sql.ErrNoRows) {
 			return fmt.Errorf("check monitoring proposal before insert: %w", lookupErr)
 		}
-		_, err = tx.Exec(`INSERT INTO integration_proposals(proposal_id,provider_id,provider_instance_id,resource_id,integration_id,revision,status,payload,updated_at) VALUES(?,?,?,?,?,?,?,?,?)`,
+		_, err = tx.ExecContext(ctx, `INSERT INTO integration_proposals(proposal_id,provider_id,provider_instance_id,resource_id,integration_id,revision,status,payload,updated_at) VALUES(?,?,?,?,?,?,?,?,?)`,
 			proposal.ID, proposal.Identity.Provider, proposal.Identity.ProviderInstance, proposal.Identity.ResourceID, proposal.Identity.IntegrationID,
 			proposal.Revision, proposal.Status, encoded, proposal.UpdatedAt.UTC().Format(time.RFC3339Nano))
 	} else {
-		result, updateErr := tx.Exec(`UPDATE integration_proposals SET revision=?,status=?,payload=?,updated_at=? WHERE proposal_id=? AND revision=?`,
+		result, updateErr := tx.ExecContext(ctx, `UPDATE integration_proposals SET revision=?,status=?,payload=?,updated_at=? WHERE proposal_id=? AND revision=?`,
 			proposal.Revision, proposal.Status, encoded, proposal.UpdatedAt.UTC().Format(time.RFC3339Nano), proposal.ID, expectedRevision)
 		err = updateErr
 		if err == nil {
@@ -136,6 +153,14 @@ func (s proposalSQLite) PutProposal(proposal proposaldomain.Proposal, expectedRe
 }
 
 func (s proposalSQLite) DismissProposal(id string, expectedRevision uint64, at time.Time) error {
+	return s.DismissProposalContext(context.Background(), id, expectedRevision, at)
+}
+
+// DismissProposalContext records a dismissal with caller cancellation.
+func (s proposalSQLite) DismissProposalContext(ctx context.Context, id string, expectedRevision uint64, at time.Time) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if id == "" || expectedRevision == 0 || expectedRevision > math.MaxInt64 || at.IsZero() {
 		return proposaldomain.ErrInvalidProposal
 	}
@@ -149,16 +174,16 @@ func (s proposalSQLite) DismissProposal(id string, expectedRevision uint64, at t
 		return err
 	}
 	defer db.Close()
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin proposal dismissal: %w", err)
 	}
 	defer tx.Rollback()
 	var payload []byte
-	err = tx.QueryRow(`SELECT payload FROM integration_proposals WHERE proposal_id=? AND revision=?`, id, expectedRevision).Scan(&payload)
+	err = tx.QueryRowContext(ctx, `SELECT payload FROM integration_proposals WHERE proposal_id=? AND revision=?`, id, expectedRevision).Scan(&payload)
 	if errors.Is(err, sql.ErrNoRows) {
 		var exists int
-		if lookupErr := tx.QueryRow(`SELECT 1 FROM integration_proposals WHERE proposal_id=?`, id).Scan(&exists); errors.Is(lookupErr, sql.ErrNoRows) {
+		if lookupErr := tx.QueryRowContext(ctx, `SELECT 1 FROM integration_proposals WHERE proposal_id=?`, id).Scan(&exists); errors.Is(lookupErr, sql.ErrNoRows) {
 			return proposaldomain.ErrUnknownProposal
 		} else if lookupErr != nil {
 			return fmt.Errorf("check proposal before dismissal: %w", lookupErr)
@@ -184,7 +209,7 @@ func (s proposalSQLite) DismissProposal(id string, expectedRevision uint64, at t
 	if err != nil {
 		return fmt.Errorf("encode dismissed proposal: %w", err)
 	}
-	result, err := tx.Exec(`UPDATE integration_proposals SET status=?,payload=?,updated_at=? WHERE proposal_id=? AND revision=?`,
+	result, err := tx.ExecContext(ctx, `UPDATE integration_proposals SET status=?,payload=?,updated_at=? WHERE proposal_id=? AND revision=?`,
 		proposal.Status, encoded, proposal.UpdatedAt.Format(time.RFC3339Nano), id, expectedRevision)
 	if err != nil {
 		return fmt.Errorf("persist proposal dismissal: %w", err)

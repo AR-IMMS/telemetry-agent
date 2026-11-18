@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
+	proposalapp "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 	configurationtemplatesdomain "github.com/ar-imms/telemetry-agent/internal/configuration/templates/domain"
 	definitionapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
 	definitionsdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
@@ -22,13 +23,13 @@ func TestResolveApprovalSettingsPreservesLegacyValidationErrors(t *testing.T) {
 		Configuration: map[string]any{"endpoint": ""}, Enabled: true, Source: desiredstatedomain.SourceDiscovery,
 		Binding: &desiredstatedomain.ResourceBinding{Provider: "docker", ProviderInstance: "local", ResourceID: "redis-container"},
 	}
-	if _, err := resolveApprovalSettings(resolver, instance); !errors.Is(err, desiredstatedomain.ErrInvalidInstance) {
+	if _, err := proposalapp.ResolveApprovalSettings(resolver, instance); !errors.Is(err, desiredstatedomain.ErrInvalidInstance) {
 		t.Fatalf("invalid profile settings error = %v, want legacy invalid-instance classification", err)
 	}
 
 	instance.DefinitionID = "unknown-profile"
 	instance.Configuration["endpoint"] = "127.0.0.1:6379"
-	if _, err := resolveApprovalSettings(resolver, instance); !errors.Is(err, definitionsdomain.ErrUnknownDefinition) {
+	if _, err := proposalapp.ResolveApprovalSettings(resolver, instance); !errors.Is(err, definitionsdomain.ErrUnknownDefinition) {
 		t.Fatalf("unknown definition error = %v, want Monitoring's unknown-definition error", err)
 	}
 }
@@ -46,7 +47,7 @@ func TestMonitoringTemplateInputsPreserveLifecycleAndBinding(t *testing.T) {
 			},
 		}},
 	}
-	inputs, err := monitoringTemplateInputs([]configurationtemplatesdomain.Template{template})
+	inputs, err := proposalapp.MonitoringTemplateInputs([]configurationtemplatesdomain.Template{template})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +67,7 @@ func TestMonitoringTemplateInputsPreserveLifecycleAndBinding(t *testing.T) {
 	}
 
 	template.Status = configurationtemplatesdomain.StatusDisabled
-	inputs, err = monitoringTemplateInputs([]configurationtemplatesdomain.Template{template})
+	inputs, err = proposalapp.MonitoringTemplateInputs([]configurationtemplatesdomain.Template{template})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,6 +1,7 @@
 package application
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"sync"
@@ -198,6 +199,13 @@ func (r *memoryProposalRepository) ProposalSnapshot() ([]Proposal, error) {
 	return result, nil
 }
 
+func (r *memoryProposalRepository) ProposalSnapshotContext(ctx context.Context) ([]Proposal, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return r.ProposalSnapshot()
+}
+
 func (r *memoryProposalRepository) PutProposal(proposal Proposal, expectedRevision uint64) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -207,6 +215,13 @@ func (r *memoryProposalRepository) PutProposal(proposal Proposal, expectedRevisi
 	}
 	r.proposals[proposal.ID] = cloneProposal(proposal)
 	return nil
+}
+
+func (r *memoryProposalRepository) PutProposalContext(ctx context.Context, proposal Proposal, expectedRevision uint64) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return r.PutProposal(proposal, expectedRevision)
 }
 
 func (r *memoryProposalRepository) DismissProposal(id string, expectedRevision uint64, at time.Time) error {
@@ -223,4 +238,11 @@ func (r *memoryProposalRepository) DismissProposal(id string, expectedRevision u
 	proposal.UpdatedAt = at
 	r.proposals[id] = proposal
 	return nil
+}
+
+func (r *memoryProposalRepository) DismissProposalContext(ctx context.Context, id string, expectedRevision uint64, at time.Time) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return r.DismissProposal(id, expectedRevision, at)
 }

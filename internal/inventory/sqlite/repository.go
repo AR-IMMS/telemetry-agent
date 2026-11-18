@@ -63,22 +63,30 @@ func (s inventorySQLite) ReadProviderStatuses(ctx context.Context, limit int) ([
 }
 
 func (s inventorySQLite) Snapshot() (domain.InventorySnapshot, error) {
+	return s.SnapshotContext(context.Background())
+}
+
+// SnapshotContext reads a consistent inventory snapshot and honors caller cancellation.
+func (s inventorySQLite) SnapshotContext(ctx context.Context) (domain.InventorySnapshot, error) {
+	if err := ctx.Err(); err != nil {
+		return domain.InventorySnapshot{}, err
+	}
 	db, err := s.store.openDatabase()
 	if err != nil {
 		return domain.InventorySnapshot{}, err
 	}
 	defer db.Close()
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return domain.InventorySnapshot{}, fmt.Errorf("begin inventory snapshot: %w", err)
 	}
 	defer tx.Rollback()
 	var revision, writeRevision int64
-	if err := tx.QueryRow(`SELECT revision,write_revision FROM inventory_meta WHERE id=1`).Scan(&revision, &writeRevision); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT revision,write_revision FROM inventory_meta WHERE id=1`).Scan(&revision, &writeRevision); err != nil {
 		return domain.InventorySnapshot{}, fmt.Errorf("load inventory revision: %w", err)
 	}
 	snapshot := domain.InventorySnapshot{Revision: uint64(revision), WriteRevision: uint64(writeRevision), Resources: []domain.Resource{}, Providers: []domain.ProviderStatus{}}
-	rows, err := tx.Query(`SELECT payload FROM inventory_resources ORDER BY provider_id,provider_instance_id,provider_resource_id`)
+	rows, err := tx.QueryContext(ctx, `SELECT payload FROM inventory_resources ORDER BY provider_id,provider_instance_id,provider_resource_id`)
 	if err != nil {
 		return domain.InventorySnapshot{}, fmt.Errorf("query inventory resources: %w", err)
 	}
@@ -100,7 +108,7 @@ func (s inventorySQLite) Snapshot() (domain.InventorySnapshot, error) {
 		return domain.InventorySnapshot{}, err
 	}
 	rows.Close()
-	statusRows, err := tx.Query(`SELECT payload FROM discovery_provider_status ORDER BY provider_id,provider_instance_id`)
+	statusRows, err := tx.QueryContext(ctx, `SELECT payload FROM discovery_provider_status ORDER BY provider_id,provider_instance_id`)
 	if err != nil {
 		return domain.InventorySnapshot{}, fmt.Errorf("query discovery provider status: %w", err)
 	}

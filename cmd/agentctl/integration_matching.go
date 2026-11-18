@@ -7,12 +7,10 @@ import (
 	"fmt"
 	"io"
 	"runtime"
-	"sort"
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/app"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
-	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
 	matchingapp "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/application"
 	matchingdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
@@ -90,7 +88,7 @@ func runIntegrationMatch(ctx context.Context, args []string, stdout, stderr io.W
 	if catalog, catalogErr := collectorruntime.StaticCatalog(platform); catalogErr == nil {
 		assessor = matchingdomain.NewCatalogCapabilityAssessor(catalog, platform.OS, platform.OS+"/"+platform.Architecture)
 	}
-	report, err := matchingapp.NewMatcher(registry, assessor).Match(projectInventory(snapshot, time.Now().UTC()))
+	report, err := matchingapp.NewMatcher(registry, assessor).Match(matchingapp.ProjectInventory(snapshot, time.Now().UTC()))
 	if err != nil {
 		return integrationCommandError(stderr, "match", err)
 	}
@@ -101,42 +99,6 @@ func runIntegrationMatch(ctx context.Context, args []string, stdout, stderr io.W
 		return integrationCommandError(stderr, "match", err)
 	}
 	return 0
-}
-
-func projectInventory(snapshot inventorydomain.InventorySnapshot, asOf time.Time) matchingapp.MatchSnapshot {
-	resources := make([]matchingapp.MatchResource, 0, len(snapshot.Resources))
-	for _, resource := range snapshot.Resources {
-		attributes := make(map[string]string, len(resource.Attributes))
-		for key, value := range resource.Attributes {
-			attributes[key] = value
-		}
-		endpoints := make([]matchingapp.MatchEndpoint, 0, len(resource.Endpoints))
-		for _, endpoint := range resource.Endpoints {
-			endpoints = append(endpoints, matchingapp.MatchEndpoint{
-				Address: endpoint.Address, Port: endpoint.Port, Protocol: endpoint.Protocol,
-				Scope: string(endpoint.Scope), Provenance: endpoint.Provenance,
-			})
-		}
-		resources = append(resources, matchingapp.MatchResource{
-			Provider: string(resource.Key.Provider), ProviderInstance: string(resource.Key.ProviderInstance),
-			ResourceID: resource.Key.ProviderResourceID, Kind: string(resource.Kind),
-			LifecycleState: resource.LifecycleState, Presence: string(resource.Presence),
-			Attributes: attributes, Endpoints: endpoints, LastSeenAt: resource.LastSeenAt,
-		})
-	}
-	sort.Slice(resources, func(i, j int) bool {
-		if resources[i].Provider != resources[j].Provider {
-			return resources[i].Provider < resources[j].Provider
-		}
-		if resources[i].ProviderInstance != resources[j].ProviderInstance {
-			return resources[i].ProviderInstance < resources[j].ProviderInstance
-		}
-		return resources[i].ResourceID < resources[j].ResourceID
-	})
-	return matchingapp.MatchSnapshot{
-		InventoryRevision: snapshot.Revision, AsOf: asOf,
-		StaleAfter: inventorydomain.DefaultPolicy().StaleAfter, Resources: resources,
-	}
 }
 
 func matchReportView(report matchingapp.MatchReport) integrationMatchOutput {
