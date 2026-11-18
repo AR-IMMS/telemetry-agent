@@ -477,14 +477,11 @@ try {
     $proposalApprovalRuntime = Join-Path $repoRoot 'cmd/agentctl/proposal_approval_runtime.go'
     if (Test-Path -LiteralPath $proposalApprovalRuntime -PathType Leaf) {
         $source = Get-Content -LiteralPath $proposalApprovalRuntime -Raw
-        if ($source -match '"github.com/ar-imms/telemetry-agent/internal/integration"') {
-            $violations.Add('cmd/agentctl/proposal_approval_runtime.go must use Monitoring matching and template application contracts instead of internal/integration')
-        }
-        if ($source -match '"github.com/ar-imms/telemetry-agent/internal/configuration"') {
-            $violations.Add('cmd/agentctl/proposal_approval_runtime.go must use Configuration templates/application instead of the root facade')
+        if ($source -match 'type runtimeProposalRefresher|func \(r runtimeProposalRefresher\) Refresh|type runtimeApprovalVerifier|func \(v runtimeApprovalVerifier\) Verify|func materializableTemplatePairs|func proposalObservationFromMatch|func monitoringTemplateInputs') {
+            $violations.Add('cmd/agentctl/proposal_approval_runtime.go must compose Configuration proposal workflows instead of implementing them')
         }
         foreach ($requiredImport in @(
-            'internal/configuration/templates/application',
+            'internal/configuration/proposals/application',
             'internal/monitoring/matching/application',
             'internal/monitoring/profiles/definitions/application',
             'internal/monitoring/templates/application'
