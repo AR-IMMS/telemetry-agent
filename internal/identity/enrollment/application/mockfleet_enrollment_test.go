@@ -30,9 +30,10 @@ func TestEnrollmentApplicationStoresCredentialFromProvisionalMockFleetExchange(t
 		t.Skip("protected Windows credential-store integration requires an elevated process")
 	}
 	const (
-		agentID     = "10000000-0000-4000-8000-000000000001"
-		nodeID      = "10000000-0000-4000-8000-000000000002"
-		inviteToken = "test-only-invitation"
+		agentID                = "10000000-0000-4000-8000-000000000001"
+		nodeID                 = "10000000-0000-4000-8000-000000000002"
+		inviteToken            = "test-only-invitation"
+		replacementInviteToken = "test-only-replacement-invitation"
 	)
 	fleet := mockfleet.New()
 	if err := fleet.SeedInvitation(inviteToken, nodeID); err != nil {
@@ -113,17 +114,160 @@ func TestEnrollmentApplicationStoresCredentialFromProvisionalMockFleetExchange(t
 	if strings.Contains(attempt.BootstrapCredentialRef, inviteToken) || strings.Contains(attempt.AccessCredentialRef, "mock-credential-") {
 		t.Fatal("credential material appeared in the persisted enrollment references")
 	}
+	if err := fleet.SeedInvitation(replacementInviteToken, nodeID); err != nil {
+		t.Fatalf("seed replacement invitation: %v", err)
+	}
+	replacement, err := service.ReEnroll(ctx, origin, enrollment.EnrollmentPayload{
+		Installation: enrollment.Installation{ID: agentID},
+		Agent:        enrollment.Agent{Version: "test"},
+		Environment:  enrollment.Environment{OS: "linux", Architecture: "amd64"},
+		Metadata: map[string]any{
+			"host_id": "host-evidence",
+		},
+	}, replacementInviteToken)
+	if err != nil {
+		t.Fatalf("replace Agent credential through provisional fixture: %v", err)
+	}
+	replacedAttempt, err := repository.LoadAttempt()
+	if err != nil {
+		t.Fatalf("load replaced enrollment attempt: %v", err)
+	}
+	if replacement.InstallationID != agentID || replacement.Binding.NodeID != nodeID || replacedAttempt.AccessCredentialRef == attempt.AccessCredentialRef {
+		t.Fatalf("replacement = %+v, attempt=%+v; want stable identity/binding and a new credential reference", replacement, replacedAttempt)
+	}
+	if _, err := credentials.Get(attempt.AccessCredentialRef); !errors.Is(err, enrollment.ErrCredentialNotFound) {
+		t.Fatalf("retired credential lookup error = %v, want deleted credential", err)
+	}
+	wantReplacementCredential := "mock-credential-" + replacedAttempt.Payload.AttemptID
+	if got, err := credentials.Get(replacedAttempt.AccessCredentialRef); err != nil || got != wantReplacementCredential {
+		t.Fatalf("replacement credential = %q, err=%v, want protected fixture credential", got, err)
+	}
+	if _, err := credentials.Get(replacedAttempt.BootstrapCredentialRef); !errors.Is(err, enrollment.ErrCredentialNotFound) {
+		t.Fatalf("replacement bootstrap lookup error = %v, want deleted credential", err)
+	}
+	if replacedAttempt.PreviousAccessCredentialRef != "" {
+		t.Fatalf("retired credential reference was not cleared: %q", replacedAttempt.PreviousAccessCredentialRef)
+	}
 	for _, file := range enrollmentDatabaseFiles(t, statePath) {
 		content, err := os.ReadFile(file)
 		if err != nil {
 			t.Fatalf("read enrollment database file %s: %v", file, err)
 		}
-		if bytes.Contains(content, []byte(inviteToken)) || bytes.Contains(content, []byte(wantCredential)) {
+		if bytes.Contains(content, []byte(inviteToken)) || bytes.Contains(content, []byte(replacementInviteToken)) ||
+			bytes.Contains(content, []byte(wantCredential)) || bytes.Contains(content, []byte(wantReplacementCredential)) {
 			clear(content)
 			t.Fatalf("SQLite file %s contains enrollment credential material", file)
 		}
 		clear(content)
 	}
+}
+
+func TestEnrollmentApplicationReplacesCredentialThroughProvisionalMockFleetExchange(t *testing.T) {
+	const (
+		agentID                = "20000000-0000-4000-8000-000000000001"
+		nodeID                 = "20000000-0000-4000-8000-000000000002"
+		inviteToken            = "replacement-test-invitation"
+		replacementInviteToken = "replacement-test-followup-invitation"
+	)
+	fleet := mockfleet.New()
+	for _, token := range []string{inviteToken, replacementInviteToken} {
+		if err := fleet.SeedInvitation(token, nodeID); err != nil {
+			t.Fatalf("seed provisional invitation: %v", err)
+		}
+	}
+	server := httptest.NewServer(fleet)
+	t.Cleanup(server.Close)
+	origin, err := enrollment.ParseCoreOrigin("https://fleet.test.invalid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	statePath := filepath.Join(t.TempDir(), "agent-state.db")
+	parsedAgentID, err := installationid.ParseInstallationID(agentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sqlitefixture.NewIdentityStore(statePath).EnsureInstallationID(parsedAgentID); err != nil {
+		t.Fatalf("initialize Agent installation identity: %v", err)
+	}
+	credentials := make(provisionalEnrollmentCredentialStore)
+	service := enrollment.Service{
+		Repository:  sqlitefixture.NewEnrollmentStore(statePath),
+		Credentials: credentials,
+		Client:      provisionalMockFleetEnrollmentClient{endpoint: server.URL},
+	}
+	payload := enrollment.EnrollmentPayload{
+		Installation: enrollment.Installation{ID: agentID},
+		Agent:        enrollment.Agent{Version: "test"},
+		Environment:  enrollment.Environment{OS: "linux", Architecture: "amd64"},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	first, err := service.Start(ctx, origin, payload, inviteToken)
+	if err != nil {
+		t.Fatalf("initial provisional enrollment: %v", err)
+	}
+	firstAttempt, err := service.Repository.LoadAttempt()
+	if err != nil {
+		t.Fatalf("load initial enrollment attempt: %v", err)
+	}
+	second, err := service.ReEnroll(ctx, origin, payload, replacementInviteToken)
+	if err != nil {
+		t.Fatalf("provisional credential replacement: %v", err)
+	}
+	secondAttempt, err := service.Repository.LoadAttempt()
+	if err != nil {
+		t.Fatalf("load replacement enrollment attempt: %v", err)
+	}
+	if first.InstallationID != agentID || second.InstallationID != agentID ||
+		first.Binding.NodeID != nodeID || second.Binding.NodeID != nodeID {
+		t.Fatalf("enrollment identity/binding changed: first=%+v second=%+v", first, second)
+	}
+	if firstAttempt.AccessCredentialRef == secondAttempt.AccessCredentialRef ||
+		secondAttempt.PreviousAccessCredentialRef != "" {
+		t.Fatalf("credential references were not atomically replaced: first=%+v second=%+v", firstAttempt, secondAttempt)
+	}
+	if _, err := credentials.Get(firstAttempt.AccessCredentialRef); !errors.Is(err, enrollment.ErrCredentialNotFound) {
+		t.Fatalf("retired credential lookup error = %v, want deleted credential", err)
+	}
+	wantCredential := "mock-credential-" + secondAttempt.Payload.AttemptID
+	if got, err := credentials.Get(secondAttempt.AccessCredentialRef); err != nil || got != wantCredential {
+		t.Fatalf("replacement credential = %q, err=%v, want provisional credential", got, err)
+	}
+	for _, file := range enrollmentDatabaseFiles(t, statePath) {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatalf("read enrollment database file %s: %v", file, err)
+		}
+		if bytes.Contains(content, []byte(inviteToken)) || bytes.Contains(content, []byte(replacementInviteToken)) ||
+			bytes.Contains(content, []byte(wantCredential)) {
+			clear(content)
+			t.Fatalf("SQLite file %s contains enrollment credential material", file)
+		}
+		clear(content)
+	}
+}
+
+type provisionalEnrollmentCredentialStore map[string]string
+
+// Put stores fixture credential material outside SQLite for the enrollment test.
+func (s provisionalEnrollmentCredentialStore) Put(reference, value string) error {
+	s[reference] = value
+	return nil
+}
+
+// Get resolves fixture credential material by its opaque reference.
+func (s provisionalEnrollmentCredentialStore) Get(reference string) (string, error) {
+	value, exists := s[reference]
+	if !exists {
+		return "", enrollment.ErrCredentialNotFound
+	}
+	return value, nil
+}
+
+// Delete removes fixture credential material by its opaque reference.
+func (s provisionalEnrollmentCredentialStore) Delete(reference string) error {
+	delete(s, reference)
+	return nil
 }
 
 // provisionalMockFleetEnrollmentClient is test-only glue between the current
