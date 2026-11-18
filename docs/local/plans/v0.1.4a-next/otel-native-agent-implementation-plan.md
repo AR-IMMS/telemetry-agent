@@ -1,6 +1,6 @@
 # OTel-Native Telemetry Agent — Implementation Plan
 
-**Status:** Accepted by the user on 2026-11-18 as the Agent-side implementation baseline, with the approved final amendments. It excludes Fleet Management Server and Core Backend implementation; cross-system production work remains contract-owner dependent. Agent implementation is authorized under the active release Goal.
+**Status:** Under user review. It covers Agent-side implementation only; Fleet Management Server and Core Backend remain external, and cross-system production work remains contract-owner dependent.
 
 **Scope:** Telemetry Agent repository only. Do not implement Fleet Management Server or Core Backend here.
 

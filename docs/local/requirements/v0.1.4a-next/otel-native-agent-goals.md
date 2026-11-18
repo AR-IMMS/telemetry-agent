@@ -1,6 +1,6 @@
 # OTel-Native Telemetry Agent — Goals and Scope
 
-**Status:** Accepted by the user on 2026-11-18 as the Agent-side goals baseline. Fleet Management Server and Core Backend remain external; production integration remains dependent on their approved contracts. Agent implementation is authorized under the active release Goal.
+**Status:** Under user review. Fleet Management Server and Core Backend remain external; production integration remains dependent on their approved contracts.
 
 **Owner:** AR-IMMS Telemetry Agent maintainers.
 
