@@ -16,11 +16,14 @@ func (w runtimeWatcher) verifyPendingGatewayRevision(
 	options supervisor.Options,
 	runFinished <-chan struct{},
 ) error {
-	if w.gatewayRuntime == nil {
+	if ctx.Err() != nil || w.gatewayRuntime == nil {
 		return nil
 	}
-	gateway, err := w.gatewayRuntime.GatewayForGeneration(generation)
+	gateway, err := w.gatewayRuntime.GatewayForGeneration(ctx, generation)
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil
+		}
 		return fmt.Errorf("load Gateway readiness state: %w", err)
 	}
 	if !gateway.NeedsReadiness || gateway.Endpoint != options.GatewayEndpoint {
@@ -46,7 +49,13 @@ func (w runtimeWatcher) verifyPendingGatewayRevision(
 		return nil
 	default:
 	}
-	if err := w.gatewayRuntime.MarkGatewayApplied(generation, options.GatewayEndpoint); err != nil {
+	if ctx.Err() != nil {
+		return nil
+	}
+	if err := w.gatewayRuntime.MarkGatewayApplied(ctx, generation, options.GatewayEndpoint); err != nil {
+		if ctx.Err() != nil {
+			return nil
+		}
 		return fmt.Errorf("commit readiness-confirmed Core Gateway revision: %w", err)
 	}
 	return nil

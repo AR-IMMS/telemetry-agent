@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"io"
 	"os"
 	"strings"
@@ -55,7 +54,7 @@ func runDependencyConfigure(ctx context.Context, args []string, stdout io.Writer
 		return 1
 	}
 
-	state, err := agentstate.NewStore(statePath).Load()
+	state, err := newAgentStateStore(statePath).Load()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			fmt.Fprintln(

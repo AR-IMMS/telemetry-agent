@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ar-imms/telemetry-agent/internal/config"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 )
 
 const renderedConfigPermission = 0640
@@ -97,6 +97,9 @@ func ActivateRenderedConfig(
 			stagedConfigPath,
 			err,
 		)
+	}
+	if err := config.PreserveFileSecurity(targetPath, stagedConfigPath); err != nil {
+		return fmt.Errorf("preserve active Collector configuration security: %w", err)
 	}
 
 	if err := os.Rename(stagedConfigPath, targetPath); err != nil {

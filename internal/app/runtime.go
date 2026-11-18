@@ -10,7 +10,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
-	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation"
@@ -54,19 +54,20 @@ type RuntimeBuilder func(events.Publisher, bootstrap.CommandRunner) (RuntimeComp
 
 // RuntimeOptions provides the stable lifecycle inputs for one Agent Service run.
 type RuntimeOptions struct {
-	StatePath string
-	Teardown  agentlifecycle.DependencyTeardownFunc
-	Reporter  agenthealth.ObservationReporter
-	Runner    bootstrap.CommandRunner
-	Build     RuntimeBuilder
+	StatePath    string
+	Teardown     agentlifecycle.DependencyTeardownFunc
+	Reporter     agenthealth.ObservationReporter
+	Runner       bootstrap.CommandRunner
+	Build        RuntimeBuilder
+	StoreFactory agentlifecycle.RuntimeStoreFactory
 }
 
 // RunRuntime composes one Agent Service runtime, then starts its sole
 // reconciliation loop and optional inventory/proposal/materialization loops.
 // All loops share ctx and are stopped when the service lifecycle returns.
 func RunRuntime(ctx context.Context, options RuntimeOptions) error {
-	if ctx == nil || options.Build == nil {
-		return fmt.Errorf("Agent runtime context and builder are required")
+	if ctx == nil || options.Build == nil || options.StoreFactory == nil {
+		return fmt.Errorf("Agent runtime context, builder, and state store factory are required")
 	}
 	var components RuntimeComponents
 	dispatcher, err := events.NewDispatcher(desiredEventQueueCapacity, func(ctx context.Context, _ events.DesiredConfigurationChanged) error {
@@ -105,6 +106,7 @@ func RunRuntime(ctx context.Context, options RuntimeOptions) error {
 			return runControlLoops(ctx, components)
 		},
 		components.RecordRecoveryFailure,
+		options.StoreFactory,
 	)
 }
 

@@ -13,13 +13,16 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/config"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
 func TestBootstrapPassesOrderedLinuxLayersAndValidationOptions(t *testing.T) {
@@ -336,6 +339,80 @@ func TestRunPassesExplicitStatePathToRuntime(t *testing.T) {
 	}
 }
 
+func TestMonitoringHierarchyAliasesPreserveLegacyUseCaseOutput(t *testing.T) {
+	deps := testDependencies(identity.PlatformInfo{OS: "linux", Architecture: "amd64"})
+	tests := []struct {
+		name    string
+		legacy  []string
+		newPath []string
+	}{
+		{name: "instance configure", legacy: []string{"integration", "configure"}, newPath: []string{"monitoring", "instance", "configure"}},
+		{name: "instance update", legacy: []string{"integration", "update"}, newPath: []string{"monitoring", "instance", "update"}},
+		{name: "instance enable", legacy: []string{"integration", "enable"}, newPath: []string{"monitoring", "instance", "enable"}},
+		{name: "instance disable", legacy: []string{"integration", "disable"}, newPath: []string{"monitoring", "instance", "disable"}},
+		{name: "instance delete", legacy: []string{"integration", "delete"}, newPath: []string{"monitoring", "instance", "delete"}},
+		{name: "instance list", legacy: []string{"integration", "list"}, newPath: []string{"monitoring", "instance", "list"}},
+		{name: "instance inspect", legacy: []string{"integration", "inspect"}, newPath: []string{"monitoring", "instance", "inspect"}},
+		{name: "instance status", legacy: []string{"integration", "status"}, newPath: []string{"monitoring", "instance", "status"}},
+		{name: "instance history", legacy: []string{"integration", "history"}, newPath: []string{"monitoring", "instance", "history"}},
+		{name: "instance retry", legacy: []string{"integration", "retry"}, newPath: []string{"monitoring", "instance", "retry"}},
+		{name: "profile list", legacy: []string{"integration", "catalog", "list"}, newPath: []string{"monitoring", "profile", "list"}},
+		{name: "profile inspect", legacy: []string{"integration", "catalog", "inspect"}, newPath: []string{"monitoring", "profile", "inspect"}},
+		{name: "template create", legacy: []string{"integration", "template", "create"}, newPath: []string{"monitoring", "template", "create"}},
+		{name: "template update", legacy: []string{"integration", "template", "update"}, newPath: []string{"monitoring", "template", "update"}},
+		{name: "template list", legacy: []string{"integration", "template", "list"}, newPath: []string{"monitoring", "template", "list"}},
+		{name: "template inspect", legacy: []string{"integration", "template", "inspect"}, newPath: []string{"monitoring", "template", "inspect"}},
+		{name: "template enable", legacy: []string{"integration", "template", "enable"}, newPath: []string{"monitoring", "template", "enable"}},
+		{name: "template disable", legacy: []string{"integration", "template", "disable"}, newPath: []string{"monitoring", "template", "disable"}},
+		{name: "template delete", legacy: []string{"integration", "template", "delete"}, newPath: []string{"monitoring", "template", "delete"}},
+		{name: "proposal list", legacy: []string{"discovery", "proposals", "list"}, newPath: []string{"monitoring", "proposal", "list"}},
+		{name: "proposal inspect", legacy: []string{"discovery", "proposals", "inspect"}, newPath: []string{"monitoring", "proposal", "inspect"}},
+		{name: "proposal dismiss", legacy: []string{"discovery", "proposals", "dismiss"}, newPath: []string{"monitoring", "proposal", "dismiss"}},
+		{name: "proposal approve", legacy: []string{"discovery", "proposals", "approve"}, newPath: []string{"monitoring", "proposal", "approve"}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			statePath := filepath.Join(t.TempDir(), "state.db")
+			probe := []string{"--state-path", statePath, "--compatibility-probe"}
+			legacyCode, legacyOut, legacyErr := runForTest(t, append(append([]string{}, test.legacy...), probe...), deps)
+			aliasCode, aliasOut, aliasErr := runForTest(t, append(append([]string{}, test.newPath...), probe...), deps)
+			if aliasCode != legacyCode || aliasOut != legacyOut || aliasErr != legacyErr {
+				t.Fatalf("alias result (%d, %q, %q) differs from legacy result (%d, %q, %q)", aliasCode, aliasOut, aliasErr, legacyCode, legacyOut, legacyErr)
+			}
+			if aliasCode == 0 || aliasErr == "" {
+				t.Fatalf("compatibility probe unexpectedly succeeded: exit=%d stdout=%q stderr=%q", aliasCode, aliasOut, aliasErr)
+			}
+		})
+	}
+}
+func TestMonitoringAliasValidListOutputMatchesLegacy(t *testing.T) {
+	deps := testDependencies(identity.PlatformInfo{OS: "linux", Architecture: "amd64"})
+	tests := []struct {
+		name   string
+		legacy []string
+		alias  []string
+	}{
+		{name: "instance list", legacy: []string{"integration", "list"}, alias: []string{"monitoring", "instance", "list"}},
+		{name: "profile list", legacy: []string{"integration", "catalog", "list", "--output", "json"}, alias: []string{"monitoring", "profile", "list", "--output", "json"}},
+		{name: "profile inspect", legacy: []string{"integration", "catalog", "inspect", "--id", "redis", "--version", "1.0.0", "--output", "json"}, alias: []string{"monitoring", "profile", "inspect", "--id", "redis", "--version", "1.0.0", "--output", "json"}},
+		{name: "template list", legacy: []string{"integration", "template", "list"}, alias: []string{"monitoring", "template", "list"}},
+		{name: "proposal list", legacy: []string{"discovery", "proposals", "list"}, alias: []string{"monitoring", "proposal", "list"}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			statePath := filepath.Join(t.TempDir(), "state.db")
+			legacyArgs := append(append([]string{}, test.legacy...), "--state-path", statePath)
+			aliasArgs := append(append([]string{}, test.alias...), "--state-path", statePath)
+			legacyCode, legacyOut, legacyErr := runForTest(t, legacyArgs, deps)
+			aliasCode, aliasOut, aliasErr := runForTest(t, aliasArgs, deps)
+			if aliasCode != legacyCode || aliasOut != legacyOut || aliasErr != legacyErr {
+				t.Fatalf("alias result (%d, %q, %q) differs from legacy result (%d, %q, %q)", aliasCode, aliasOut, aliasErr, legacyCode, legacyOut, legacyErr)
+			}
+		})
+	}
+}
 func TestRunRejectsMissingGatewayEndpoint(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -596,7 +673,7 @@ func TestDependencyMetricsReceiverLayerIncludesOnlyEnabledCurrentPlatform(
 		catalog,
 		"windows",
 		agentstate.State{
-			Dependencies: map[string]agentstate.DependencyState{
+			Dependencies: map[string]dependencydomain.DependencyState{
 				"windows-exporter": {
 					Enabled: true,
 				},
@@ -705,12 +782,12 @@ func TestRunBootstrapPersistsCollectorContextAndManagedReceiverLayer(
 		)
 	}
 
-	state, err := agentstate.NewStore(statePath).Load()
+	state, err := sqlitefixture.NewStore(statePath).Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	wantContext := agentstate.CollectorContext{
+	wantContext := collectordomain.CollectorContext{
 		ConfigRoot:      configRoot,
 		BinaryPath:      `C:\AR-IMMS\otelcol-contrib.exe`,
 		ConfigPath:      configPath,
@@ -770,7 +847,7 @@ func TestRunBootstrapDoesNotPersistCollectorContextWhenBootstrapFails(
 		)
 	}
 
-	_, err := agentstate.NewStore(statePath).Load()
+	_, err := sqlitefixture.NewStore(statePath).Load()
 	if !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("state Load() error = %v, want not-exist error", err)
 	}
@@ -939,6 +1016,9 @@ func TestRunCollectorServesRuntimeHealthSnapshot(
 		&stderr,
 		dependencies{
 			prepareInstallationIdentity: skipInstallationIdentityPreparation,
+			environmentEvidence: func(string) *identity.EnvironmentEvidence {
+				return &identity.EnvironmentEvidence{AgentID: "11111111-2222-4333-8444-555555555555"}
+			},
 			listenStatus: func(
 				network string,
 				address string,
@@ -994,6 +1074,9 @@ func TestRunCollectorServesRuntimeHealthSnapshot(
 			servedSnapshot.CollectorState,
 			agenthealth.CollectorStateStarting,
 		)
+	}
+	if servedSnapshot.EnvironmentEvidence == nil || servedSnapshot.EnvironmentEvidence.AgentID != "11111111-2222-4333-8444-555555555555" {
+		t.Fatalf("served environment evidence = %+v", servedSnapshot.EnvironmentEvidence)
 	}
 
 	if stdout.String() != "Collector stopped\n" {

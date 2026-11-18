@@ -5,7 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
+	installationapp "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/domain"
 )
 
 type repository struct {
@@ -13,7 +14,7 @@ type repository struct {
 }
 
 // New creates an installation identity repository using the supplied database opener.
-func New(open func() (*sql.DB, error)) installationid.InstallationIdentityRepository {
+func New(open func() (*sql.DB, error)) installationapp.InstallationIdentityRepository {
 	return repository{open: open}
 }
 

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 // windowsAgentRemover removes only Agent-owned Windows service and paths.
@@ -18,7 +18,7 @@ type windowsAgentRemover struct {
 // Remove stops the Agent service and deletes only paths recorded as Agent-owned.
 func (r windowsAgentRemover) Remove(
 	ctx context.Context,
-	installation agentstate.AgentInstallation,
+	installation servicedomain.AgentInstallation,
 	statePath string,
 ) error {
 	if ctx == nil {

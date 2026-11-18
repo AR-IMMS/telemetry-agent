@@ -6,8 +6,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 // lhmTeardown applies safe lifecycle actions only to Agent-owned LHM resources.
@@ -21,8 +22,8 @@ type lhmTeardown struct {
 // Teardown disables or uninstalls Agent-owned LHM resources.
 func (t lhmTeardown) Teardown(
 	ctx context.Context,
-	action agentstate.TeardownAction,
-	resources []agentstate.OwnedResource,
+	action dependencydomain.TeardownAction,
+	resources []servicedomain.OwnedResource,
 ) error {
 	if ctx == nil {
 		return fmt.Errorf(
@@ -45,10 +46,10 @@ func (t lhmTeardown) Teardown(
 	}
 
 	switch action {
-	case agentstate.TeardownActionDisable:
+	case dependencydomain.TeardownActionDisable:
 		return t.disableOwnedTask(ctx, resources)
 
-	case agentstate.TeardownActionUninstall:
+	case dependencydomain.TeardownActionUninstall:
 		return t.uninstallOwnedResources(ctx, resources)
 
 	default:
@@ -61,7 +62,7 @@ func (t lhmTeardown) Teardown(
 
 func (t lhmTeardown) disableOwnedTask(
 	ctx context.Context,
-	resources []agentstate.OwnedResource,
+	resources []servicedomain.OwnedResource,
 ) error {
 	if !ownsLHMResource(
 		resources,
@@ -111,7 +112,7 @@ func (t lhmTeardown) disableOwnedTask(
 
 func (t lhmTeardown) uninstallOwnedResources(
 	ctx context.Context,
-	resources []agentstate.OwnedResource,
+	resources []servicedomain.OwnedResource,
 ) error {
 	if t.removeDirectory == nil {
 		return fmt.Errorf(
@@ -189,7 +190,7 @@ func (t lhmTeardown) uninstallOwnedResources(
 }
 
 func ownsLHMResource(
-	resources []agentstate.OwnedResource,
+	resources []servicedomain.OwnedResource,
 	kind string,
 	identifier string,
 ) bool {

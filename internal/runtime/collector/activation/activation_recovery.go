@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/lifecyclelock"
 )
 
 // pendingActivationRecovery restores the prior config when persisted intent
@@ -23,7 +24,7 @@ func (r pendingActivationRecovery) Recover(ctx context.Context) error {
 	if ctx == nil {
 		return fmt.Errorf("activation recovery context is required")
 	}
-	lock, err := agentstate.AcquireLifecycleLock(r.lockPath)
+	lock, err := lifecyclelock.Acquire(r.lockPath)
 	if err != nil {
 		return fmt.Errorf("acquire lifecycle lock for recovery: %w", err)
 	}

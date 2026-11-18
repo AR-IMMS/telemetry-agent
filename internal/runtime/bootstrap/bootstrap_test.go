@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/config"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 )
 

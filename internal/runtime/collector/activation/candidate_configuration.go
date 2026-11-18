@@ -10,10 +10,12 @@ import (
 	"path/filepath"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	activationapp "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/application"
+	activationdomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/domain"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
-	"github.com/ar-imms/telemetry-agent/internal/config"
-	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
 )
 
 // ApplyCollectorCandidate submits a complete S2 candidate to the existing M2
@@ -49,7 +51,7 @@ func ApplyCollectorCandidate(
 		recover: func(path string) error { return bootstrap.RestoreConfigArtifact(options.ConfigPath, path) },
 	}
 	build := func(state agentstate.State) (candidateActivationPlan, error) {
-		values, validationEnvironment, err := candidateGatewayValues(options)
+		values, validationEnvironment, err := candidateGatewayValues(ctx, options)
 		if err != nil {
 			return candidateActivationPlan{}, err
 		}
@@ -68,9 +70,9 @@ func ApplyCollectorCandidate(
 		}
 		if fresh.Fingerprint != request.BaselineFingerprint || fresh.DesiredGeneration != request.ExpectedGeneration {
 			if fresh.Fingerprint != request.BaselineFingerprint {
-				return candidateActivationPlan{}, agentstate.ErrStaleBaseline
+				return candidateActivationPlan{}, activationapp.ErrStaleBaseline
 			}
-			return candidateActivationPlan{}, agentstate.ErrStaleM2Generation
+			return candidateActivationPlan{}, activationapp.ErrStaleM2Generation
 		}
 		if request.Candidate.Platform() != options.Platform {
 			return candidateActivationPlan{}, fmt.Errorf("candidate platform does not match current baseline platform")
@@ -99,7 +101,7 @@ func ApplyCollectorCandidate(
 		}
 		effectiveHash := sha256.Sum256(effectiveIdentity)
 		return candidateActivationPlan{
-			Mapping: agentstate.CandidateMapping{
+			Mapping: activationdomain.CandidateMapping{
 				DesiredSetRevision:    request.DesiredSetRevision,
 				BaselineFingerprint:   request.BaselineFingerprint,
 				CandidateDigest:       request.Candidate.Digest(),
@@ -130,7 +132,7 @@ func candidateDigestMatches(content []byte, expected string) bool {
 	return hex.EncodeToString(digest[:]) == expected
 }
 
-func candidateGatewayValues(options CollectorConfigurationOptions) (map[string]string, []string, error) {
+func candidateGatewayValues(ctx context.Context, options CollectorConfigurationOptions) (map[string]string, []string, error) {
 	environment := append([]string(nil), options.ValidationEnvironment...)
 	values := cloneStringMap(options.RenderValues)
 	if options.GatewayRepository == nil {
@@ -142,7 +144,7 @@ func candidateGatewayValues(options CollectorConfigurationOptions) (map[string]s
 		}
 		return values, environment, nil
 	}
-	gateway, err := options.GatewayRepository.EffectiveGateway()
+	gateway, err := options.GatewayRepository.EffectiveGateway(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("resolve effective Gateway endpoint: %w", err)
 	}

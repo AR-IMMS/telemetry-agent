@@ -75,3 +75,31 @@ func TestApplyStopsAndIdentifiesTheFailingMigration(t *testing.T) {
 		t.Fatalf("Apply() error = %v, want version and name context", err)
 	}
 }
+
+func TestInitializeLedgerAndRecordAppliedAreIdempotent(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	if err := InitializeLedger(db); err != nil {
+		t.Fatal(err)
+	}
+	if err := InitializeLedger(db); err != nil {
+		t.Fatalf("InitializeLedger() second call error = %v", err)
+	}
+	if err := RecordApplied(db, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := RecordApplied(db, 1); err != nil {
+		t.Fatalf("RecordApplied() second call error = %v", err)
+	}
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version=1`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("version 1 rows = %d, want 1", count)
+	}
+}

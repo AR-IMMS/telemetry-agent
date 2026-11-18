@@ -7,9 +7,10 @@ import (
 	"testing"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/config"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
 func TestCleanBaselineSnapshotIncludesManagedReceiversAndFingerprintsLayers(t *testing.T) {
@@ -28,7 +29,7 @@ func TestCleanBaselineSnapshotIncludesManagedReceiversAndFingerprintsLayers(t *t
 	}
 	state := agentstate.State{
 		DesiredGeneration: 7,
-		Dependencies: map[string]agentstate.DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"test-exporter": {Enabled: true},
 		},
 	}

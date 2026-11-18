@@ -1,16 +1,25 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"path/filepath"
 	"testing"
 )
 
+func TestUpdateLockerReturnsSharedProcessLocker(t *testing.T) {
+	first := UpdateLocker()
+	second := UpdateLocker()
+	if first == nil || first != second {
+		t.Fatal("UpdateLocker() must return the same process-wide locker")
+	}
+}
+
 func TestOpenCreatesDirectoryAndAppliesSharedSQLiteDefaults(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "state.db")
 	initialized := false
-	db, err := Open(path, func(db *sql.DB) error {
+	db, err := Open(context.Background(), path, func(db *sql.DB) error {
 		initialized = true
 		_, err := db.Exec(`CREATE TABLE compatibility_probe (value TEXT NOT NULL)`)
 		return err
@@ -45,7 +54,7 @@ func TestOpenCreatesDirectoryAndAppliesSharedSQLiteDefaults(t *testing.T) {
 
 func TestOpenClosesDatabaseWhenInitializationFails(t *testing.T) {
 	want := errors.New("fixture migration failure")
-	if db, err := Open(filepath.Join(t.TempDir(), "state.db"), func(*sql.DB) error { return want }); !errors.Is(err, want) {
+	if db, err := Open(context.Background(), filepath.Join(t.TempDir(), "state.db"), func(*sql.DB) error { return want }); !errors.Is(err, want) {
 		if db != nil {
 			db.Close()
 		}

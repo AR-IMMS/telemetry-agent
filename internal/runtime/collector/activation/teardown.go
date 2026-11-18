@@ -7,6 +7,9 @@ import (
 	"strings"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/lifecyclelock"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 // DependencyTeardownFunc routes one safe dependency teardown action to the
@@ -14,8 +17,8 @@ import (
 type DependencyTeardownFunc func(
 	context.Context,
 	string,
-	agentstate.TeardownAction,
-	[]agentstate.OwnedResource,
+	dependencydomain.TeardownAction,
+	[]servicedomain.OwnedResource,
 ) error
 
 // teardownCoordinator executes teardown actions only after the Collector has
@@ -71,7 +74,7 @@ func (c teardownCoordinator) applyDependency(
 		)
 	}
 	if strings.TrimSpace(c.lockPath) != "" {
-		lock, err := agentstate.AcquireLifecycleLock(c.lockPath)
+		lock, err := lifecyclelock.Acquire(c.lockPath)
 		if err != nil {
 			return fmt.Errorf("acquire lifecycle lock for dependency %q teardown: %w", name, err)
 		}
@@ -92,10 +95,7 @@ func (c teardownCoordinator) applyDependency(
 	}
 
 	if state.OwnsDependency(name) {
-		resources := append(
-			[]agentstate.OwnedResource(nil),
-			dependency.Ownership.Resources...,
-		)
+		resources := state.OwnedDependencyResources(name)
 		if err := c.teardown(ctx, name, pending.Action, resources); err != nil {
 			return fmt.Errorf("teardown dependency %q: %w", name, err)
 		}

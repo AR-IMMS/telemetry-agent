@@ -5,8 +5,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/libre_hardware_monitor/artifacts"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 // installerDependencies groups runtime adapters for one LHM installer.
@@ -76,8 +77,8 @@ const (
 	defaultHealthPoll     = 500 * time.Millisecond
 )
 
-func ownedResources(options Options) []agentstate.OwnedResource {
-	return []agentstate.OwnedResource{
+func ownedResources(options Options) []servicedomain.OwnedResource {
+	return []servicedomain.OwnedResource{
 		{
 			Kind:       "scheduled-task",
 			Identifier: options.TaskName,
@@ -98,7 +99,7 @@ func NewInstaller(
 	options Options,
 	downloader dependency.ArtifactDownloader,
 ) dependency.Installer {
-	artifact := PinnedArtifact()
+	artifact := artifacts.PinnedArtifact()
 	runPowerShell := newPowerShellScriptRunner(runOSProcess)
 
 	return newInstaller(
@@ -115,7 +116,7 @@ func NewInstaller(
 			stageArchive: func(
 				ctx context.Context,
 			) (string, func(), error) {
-				return StageArchive(ctx, artifact, downloader)
+				return artifacts.StageArchive(ctx, artifact, downloader)
 			},
 			installArchive: InstallArchive,
 			writeConfig:    WriteConfig,

@@ -7,14 +7,18 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/config"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	opampdomain "github.com/ar-imms/telemetry-agent/internal/runtime/opamp/domain"
 )
 
 // Options contains the caller-provided inputs for one packaged Agent
@@ -164,6 +168,21 @@ func (i Installer) Install(
 	if previousErr != nil && !errors.Is(previousErr, os.ErrNotExist) {
 		return Layout{}, fmt.Errorf("load Agent state before installation update: %w", previousErr)
 	}
+	previousState = previousState.Clone()
+	bootstrapConfigPath := layout.CollectorConfigurationPath
+	var configStagingDirectory string
+	if previousState.Installation != nil {
+		configDirectory := filepath.Dir(layout.CollectorConfigurationPath)
+		if err := os.MkdirAll(configDirectory, 0755); err != nil {
+			return Layout{}, fmt.Errorf("create Collector configuration directory: %w", err)
+		}
+		configStagingDirectory, err = os.MkdirTemp(configDirectory, ".agent-install-config-")
+		if err != nil {
+			return Layout{}, fmt.Errorf("create staged Collector configuration directory: %w", err)
+		}
+		defer os.RemoveAll(configStagingDirectory)
+		bootstrapConfigPath = filepath.Join(configStagingDirectory, filepath.Base(layout.CollectorConfigurationPath))
+	}
 	opampServerURL, enabled, err := supervisorActivationForInstall(
 		options.OpAMPServerURL,
 		previousState,
@@ -176,7 +195,7 @@ func (i Installer) Install(
 	result, err := i.bootstrap(ctx, bootstrap.Options{
 		Platform:    options.Platform,
 		InstallDir:  layout.CollectorInstallDirectory,
-		ConfigPath:  layout.CollectorConfigurationPath,
+		ConfigPath:  bootstrapConfigPath,
 		ConfigInput: options.ConfigInput,
 		ValidationEnvironment: append(
 			[]string(nil),
@@ -212,21 +231,90 @@ func (i Installer) Install(
 		return Layout{}, fmt.Errorf("stage Agent binary: %w", err)
 	}
 
+	configBackupPath := ""
+	configBackupExists := false
+	if previousState.Installation != nil {
+		configBackupPath = filepath.Join(configStagingDirectory, "previous-collector-config")
+		if _, statErr := os.Stat(layout.CollectorConfigurationPath); statErr == nil {
+			if err := config.PreserveFileSecurity(layout.CollectorConfigurationPath, bootstrapConfigPath); err != nil {
+				if restartErr := service.Install(ctx, layout); restartErr != nil {
+					return Layout{}, errors.Join(
+						fmt.Errorf("preserve previous Collector configuration security: %w", err),
+						fmt.Errorf("restart existing Agent service: %w", restartErr),
+					)
+				}
+				return Layout{}, fmt.Errorf("preserve previous Collector configuration security: %w", err)
+			}
+			if err := os.Rename(layout.CollectorConfigurationPath, configBackupPath); err != nil {
+				if restartErr := service.Install(ctx, layout); restartErr != nil {
+					return Layout{}, errors.Join(
+						fmt.Errorf("preserve previous Collector configuration: %w", err),
+						fmt.Errorf("restart existing Agent service: %w", restartErr),
+					)
+				}
+				return Layout{}, fmt.Errorf("preserve previous Collector configuration: %w", err)
+			}
+			configBackupExists = true
+		} else if !errors.Is(statErr, os.ErrNotExist) {
+			if restartErr := service.Install(ctx, layout); restartErr != nil {
+				return Layout{}, errors.Join(
+					fmt.Errorf("inspect previous Collector configuration: %w", statErr),
+					fmt.Errorf("restart existing Agent service: %w", restartErr),
+				)
+			}
+			return Layout{}, fmt.Errorf("inspect previous Collector configuration: %w", statErr)
+		}
+		if err := os.Rename(bootstrapConfigPath, layout.CollectorConfigurationPath); err != nil {
+			var restoreErr error
+			if configBackupExists {
+				restoreErr = os.Rename(configBackupPath, layout.CollectorConfigurationPath)
+			}
+			if restoreErr != nil {
+				return Layout{}, errors.Join(
+					fmt.Errorf("activate staged Collector configuration: %w", err),
+					fmt.Errorf("restore previous Collector configuration: %w", restoreErr),
+				)
+			}
+			if restartErr := service.Install(ctx, layout); restartErr != nil {
+				return Layout{}, errors.Join(
+					fmt.Errorf("activate staged Collector configuration: %w", err),
+					fmt.Errorf("restart existing Agent service: %w", restartErr),
+				)
+			}
+			return Layout{}, fmt.Errorf("activate staged Collector configuration: %w", err)
+		}
+		result.ConfigPath = layout.CollectorConfigurationPath
+	}
+	restorePreviousConfig := func() error {
+		if previousState.Installation == nil {
+			return nil
+		}
+		if err := os.Remove(layout.CollectorConfigurationPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("remove candidate Collector configuration: %w", err)
+		}
+		if configBackupExists {
+			if err := os.Rename(configBackupPath, layout.CollectorConfigurationPath); err != nil {
+				return fmt.Errorf("restore previous Collector configuration: %w", err)
+			}
+		}
+		return nil
+	}
+
 	_, err = store.Update(func(state *agentstate.State) error {
 		if state.Dependencies == nil {
 			state.Dependencies = make(
-				map[string]agentstate.DependencyState,
+				map[string]dependencydomain.DependencyState,
 			)
 		}
 
-		state.Collector = agentstate.CollectorContext{
+		state.Collector = collectordomain.CollectorContext{
 			ConfigRoot:      options.ConfigRoot,
 			BinaryPath:      result.BinaryPath,
 			ConfigPath:      result.ConfigPath,
 			GatewayEndpoint: options.GatewayEndpoint,
 			HealthEndpoint:  options.HealthEndpoint,
 		}
-		state.Supervisor = agentstate.SupervisorContext{
+		state.Supervisor = opampdomain.SupervisorContext{
 			BinaryPath: supervisorBinaryPath, ConfigurationPath: layout.SupervisorConfigurationPath,
 			StateDirectory: layout.SupervisorStateDirectory, OpAMPServerURL: opampServerURL,
 			Enabled: enabled,
@@ -235,14 +323,61 @@ func (i Installer) Install(
 		return state.RecordAgentInstallation(layout.Installation())
 	})
 	if err != nil {
-		return Layout{}, fmt.Errorf(
-			"persist Agent installation state: %w",
-			err,
-		)
+		persistErr := fmt.Errorf("persist Agent installation state: %w", err)
+		if previousState.Installation != nil {
+			if restoreErr := restorePreviousConfig(); restoreErr != nil {
+				return Layout{}, errors.Join(persistErr, restoreErr)
+			}
+			if restartErr := service.Install(ctx, layout); restartErr != nil {
+				return Layout{}, errors.Join(
+					persistErr,
+					fmt.Errorf("restart existing Agent service after state persistence failure: %w", restartErr),
+				)
+			}
+		}
+		return Layout{}, persistErr
 	}
 
 	if err := service.Install(ctx, layout); err != nil {
-		return Layout{}, fmt.Errorf("install Agent service: %w", err)
+		installErr := fmt.Errorf("install Agent service: %w", err)
+		if previousState.Installation == nil {
+			return Layout{}, installErr
+		}
+
+		stopper, ok := service.(serviceStopper)
+		if !ok {
+			return Layout{}, errors.Join(
+				installErr,
+				fmt.Errorf("stop partially started target Agent service: stop capability is unavailable"),
+			)
+		}
+		if stopErr := stopper.Stop(ctx, layout); stopErr != nil {
+			return Layout{}, errors.Join(
+				installErr,
+				fmt.Errorf("stop partially started target Agent service: %w", stopErr),
+			)
+		}
+		configRestoreErr := restorePreviousConfig()
+		if _, restoreErr := store.Update(func(state *agentstate.State) error {
+			*state = previousState
+			return nil
+		}); restoreErr != nil {
+			return Layout{}, errors.Join(
+				installErr,
+				fmt.Errorf("restore previous Agent state after service start failure: %w", restoreErr),
+				configRestoreErr,
+			)
+		}
+		if configRestoreErr != nil {
+			return Layout{}, errors.Join(installErr, configRestoreErr)
+		}
+		if restartErr := service.Install(ctx, layout); restartErr != nil {
+			return Layout{}, errors.Join(
+				installErr,
+				fmt.Errorf("restart previous Agent service after target start failure: %w", restartErr),
+			)
+		}
+		return Layout{}, installErr
 	}
 
 	return layout, nil

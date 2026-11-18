@@ -105,7 +105,7 @@ jobs:
         run: ./scripts/check-architecture.ps1
 
       - name: Build PR-06 Agent and current Agent for native service lifecycle E2E
-        if: github.event_name == 'pull_request' && (github.event.pull_request.number == 30 || github.event.pull_request.number == 36 || github.event.pull_request.number == 39)
+        if: github.event_name == 'pull_request' && (github.event.pull_request.number == 30 || github.event.pull_request.number == 36 || github.event.pull_request.number == 39 || github.event.pull_request.number == 40)
         shell: pwsh
         run: |
           $legacySource = Join-Path $env:RUNNER_TEMP 'pr07-legacy-source'
@@ -135,7 +135,7 @@ jobs:
           "AR_IMMS_PR07C_SERVICE_EVIDENCE_DIR=$evidenceDirectory" | Add-Content $env:GITHUB_ENV
 
       - name: Native service upgrade, migration, rollback, restart, and uninstall E2E
-        if: github.event_name == 'pull_request' && (github.event.pull_request.number == 30 || github.event.pull_request.number == 36 || github.event.pull_request.number == 39)
+        if: github.event_name == 'pull_request' && (github.event.pull_request.number == 30 || github.event.pull_request.number == 36 || github.event.pull_request.number == 39 || github.event.pull_request.number == 40)
         shell: pwsh
         run: |
           $testBinary = Join-Path $env:RUNNER_TEMP 'pr07-native-service.test'
@@ -164,7 +164,7 @@ jobs:
           }
 
       - name: Upload native service lifecycle evidence
-        if: always() && github.event_name == 'pull_request' && (github.event.pull_request.number == 30 || github.event.pull_request.number == 36 || github.event.pull_request.number == 39)
+        if: always() && github.event_name == 'pull_request' && (github.event.pull_request.number == 30 || github.event.pull_request.number == 36 || github.event.pull_request.number == 39 || github.event.pull_request.number == 40)
         uses: actions/upload-artifact@v6
         with:
           name: pr07c-native-service-${{ runner.os }}
@@ -202,8 +202,14 @@ jobs:
       - name: Test
         run: go test ./... -count=1
 
+      - name: Protected enrollment application with provisional Mock Fleet
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 40
+        env:
+          AR_IMMS_REQUIRE_PROTECTED_ENROLLMENT_TEST: '1'
+        run: go test ./internal/identity/enrollment/application -run '^TestEnrollmentApplicationStoresCredentialFromProvisionalMockFleetExchange$' -count=1 -v
+
       - name: Race-sensitive state and uninstall tests
-        if: github.event_name == 'pull_request' && github.event.pull_request.number == 39
+        if: github.event_name == 'pull_request' && (github.event.pull_request.number == 39 || github.event.pull_request.number == 40)
         run: go test -race ./internal/agentstate ./internal/identity/sqlite ./internal/identity/enrollment/sqlite ./internal/runtime/collector/activation ./cmd/agentctl -count=1
 
       - name: Live Docker Inventory provider E2E
@@ -320,6 +326,22 @@ jobs:
         with:
           name: pr07c-managed-supervisor-${{ runner.os }}
           path: ${{ runner.temp }}/pr07c-evidence/
+          if-no-files-found: warn
+
+      - name: Mock Fleet Supervisor remote-config, rollback, and revocation E2E
+        env:
+          AR_IMMS_PR09_MOCKFLEET_LIVE_E2E: '1'
+          AR_IMMS_PR07A_SUPERVISOR_BINARY: ${{ env.AR_IMMS_PR07A_SUPERVISOR_BINARY }}
+          AR_IMMS_PR05_COLLECTOR_BINARY: ${{ env.OTELCOL_CONTRIB_BINARY }}
+          AR_IMMS_PR09_MOCKFLEET_EVIDENCE_DIR: ${{ runner.temp }}/pr09-mockfleet-evidence
+        run: go test ./cmd/agentctl -run '^TestPR09MockFleetSupervisorConfigAndRollbackE2E$' -count=1 -v
+
+      - name: Upload PR-09 Mock Fleet E2E evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pr09-mockfleet-supervisor-${{ runner.os }}
+          path: ${{ runner.temp }}/pr09-mockfleet-evidence/
           if-no-files-found: warn
 
       - name: Vet

@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/coreapi"
-	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/domain"
 	"github.com/google/uuid"
 	"github.com/open-telemetry/opamp-go/protobufs"
 	"github.com/open-telemetry/opamp-go/server"

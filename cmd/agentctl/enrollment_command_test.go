@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
+	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 )
 
 func TestRunEnrollmentUsesHiddenTokenProviderAndDoesNotPrintCredentials(t *testing.T) {

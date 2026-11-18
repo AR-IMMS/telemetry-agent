@@ -7,81 +7,18 @@ import (
 	"fmt"
 	"os"
 	"time"
-
-	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
-	identityenrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
-	identityinstallationsqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
-	inventorysqlite "github.com/ar-imms/telemetry-agent/internal/inventory/sqlite"
-	operationssqlite "github.com/ar-imms/telemetry-agent/internal/operations/sqlite"
-	sqlitemigrate "github.com/ar-imms/telemetry-agent/internal/platform/sqlite/migrate"
-	activationsqlite "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/sqlite"
 )
 
-// ensureSQLiteSchema registers the existing schema versions with the technical
-// coordinator before any state access. The migration functions retain their
-// SQL and transaction ownership while context adapters are extracted.
-func ensureSQLiteSchema(db *sql.DB) error {
-	configurationMigrations := configurationsqlite.Migrations()
-	migration6, err := migrationForVersion(configurationMigrations, 6)
-	if err != nil {
-		return err
-	}
-	migration9, err := migrationForVersion(configurationMigrations, 9)
-	if err != nil {
-		return err
-	}
-	migration12, err := migrationForVersion(configurationMigrations, 12)
-	if err != nil {
-		return err
-	}
-	migration13, err := migrationForVersion(configurationMigrations, 13)
-	if err != nil {
-		return err
-	}
-	migrations := []sqlitemigrate.Migration{
-		{Version: 1, Name: "Agent state and activation journal", Apply: initializeBaseSchema},
-	}
-	migrations = append(migrations, identityinstallationsqlite.Migrations()...)
-	migrations = append(migrations,
-		sqlitemigrate.Migration{Version: 3, Name: "Core Gateway snapshot", Apply: migrateCoreGatewaySnapshot},
-		sqlitemigrate.Migration{Version: 4, Name: "Core Gateway runtime", Apply: migrateCoreGatewayRuntime},
-	)
-	migrations = append(migrations, identityenrollmentsqlite.Migrations()...)
-	migrations = append(migrations, migration6)
-	migrations = append(migrations, activationsqlite.Migrations()...)
-	migrations = append(migrations, migration9)
-	migrations = append(migrations, inventorysqlite.Migrations()...)
-	migrations = append(migrations, migration12, migration13)
-	migrations = append(migrations, operationssqlite.Migrations()...)
-	return sqlitemigrate.Apply(db, migrations)
-}
-
-func migrationForVersion(migrations []sqlitemigrate.Migration, version int) (sqlitemigrate.Migration, error) {
-	for _, migration := range migrations {
-		if migration.Version == version {
-			return migration, nil
-		}
-	}
-	return sqlitemigrate.Migration{}, fmt.Errorf("Configuration SQLite migration %d is not registered", version)
-}
-
-func initializeBaseSchema(db *sql.DB) error {
+// InitializeAgentStateBaseSchema creates the legacy Agent State payload table.
+// Application migration composition creates the technical ledger, Runtime's
+// activation journal, and records historical version 1 around this callback.
+func InitializeAgentStateBaseSchema(db *sql.DB) error {
 	statements := []string{
-		`CREATE TABLE IF NOT EXISTS schema_migrations (
-			version INTEGER PRIMARY KEY,
-			applied_at TEXT NOT NULL
-		)`,
 		`CREATE TABLE IF NOT EXISTS agent_state (
 			id INTEGER PRIMARY KEY CHECK (id = 1),
 			payload BLOB NOT NULL,
 			updated_at TEXT NOT NULL
 		)`,
-		`CREATE TABLE IF NOT EXISTS activation_journal (
-			generation INTEGER PRIMARY KEY,
-			outcome TEXT NOT NULL,
-			updated_at TEXT NOT NULL
-		)`,
-		`INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (1, CURRENT_TIMESTAMP)`,
 	}
 	for _, statement := range statements {
 		if _, err := db.Exec(statement); err != nil {
@@ -89,6 +26,15 @@ func initializeBaseSchema(db *sql.DB) error {
 		}
 	}
 	return nil
+}
+
+// LoadStateForMigration reads Agent-owned state from the migration transaction
+// without committing or changing the transaction boundary.
+func LoadStateForMigration(tx *sql.Tx) (State, error) {
+	if tx == nil {
+		return State{}, fmt.Errorf("Agent migration transaction is required")
+	}
+	return loadSQLiteState(tx)
 }
 
 // importLegacyState imports JSON only when the database has no state row.
@@ -138,49 +84,3 @@ func (s SQLiteStore) importLegacyState(db *sql.DB) error {
 
 // recordActivationTransition journals only changes to the activated revision.
 // A lower revision represents restoring the previously activated generation.
-func recordActivationTransition(
-	tx *sql.Tx,
-	previous State,
-	current State,
-) error {
-	outcome := ""
-	generation := current.ActivatedGeneration
-	switch {
-	case current.ActivatedGeneration > previous.ActivatedGeneration:
-		outcome = "activated"
-	case current.ActivatedGeneration < previous.ActivatedGeneration:
-		outcome = "rolled_back"
-		generation = previous.ActivatedGeneration
-	}
-	if outcome == "" {
-		return nil
-	}
-	var candidate *CandidateMapping
-	if current.PendingActivation != nil && current.PendingActivation.Generation == generation {
-		candidate = current.PendingActivation.Candidate
-	}
-	if candidate == nil && previous.PendingActivation != nil && previous.PendingActivation.Generation == generation {
-		candidate = previous.PendingActivation.Candidate
-	}
-	if candidate != nil {
-		mapping := *candidate
-		mapping.Outcome = outcome
-		if outcome == "activated" {
-			mapping.Stage = "activation"
-		} else {
-			mapping.Stage = "rollback"
-			mapping.RecoveryResult = "recovered"
-		}
-		return writeCandidateJournal(tx, generation, mapping)
-	}
-	if _, err := tx.Exec(
-		`INSERT INTO activation_journal (generation, outcome, updated_at) VALUES (?, ?, ?)
-		 ON CONFLICT(generation) DO UPDATE SET outcome = excluded.outcome, updated_at = excluded.updated_at`,
-		generation,
-		outcome,
-		time.Now().UTC().Format(time.RFC3339Nano),
-	); err != nil {
-		return fmt.Errorf("record configuration activation: %w", err)
-	}
-	return nil
-}

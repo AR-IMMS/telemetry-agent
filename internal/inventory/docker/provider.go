@@ -12,14 +12,16 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ar-imms/telemetry-agent/internal/inventory"
+	"github.com/ar-imms/telemetry-agent/internal/contracts/monitoring"
+	"github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
+	"github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
 	"github.com/distribution/reference"
 	"github.com/moby/moby/api/types/container"
 	moby "github.com/moby/moby/client"
 )
 
 const (
-	providerID    = inventory.ProviderID("docker")
+	providerID    = domain.ProviderID("docker")
 	maxContainers = 10000
 )
 
@@ -27,6 +29,8 @@ const (
 type engineClient interface {
 	ContainerList(context.Context, moby.ContainerListOptions) (moby.ContainerListResult, error)
 }
+
+var _ application.DiscoveryProvider = (*Provider)(nil)
 
 type containerInspector interface {
 	ContainerInspect(context.Context, string, moby.ContainerInspectOptions) (moby.ContainerInspectResult, error)
@@ -45,7 +49,7 @@ type ContainerInspection struct {
 
 // Provider observes one explicitly configured local Docker Engine.
 type Provider struct {
-	instance inventory.ProviderInstanceID
+	instance domain.ProviderInstanceID
 	client   engineClient
 }
 
@@ -69,14 +73,14 @@ func newProvider(endpoint, goos string, httpClient *http.Client) (*Provider, err
 		return nil, fmt.Errorf("configure Docker Engine client")
 	}
 	sum := sha256.Sum256([]byte(endpoint))
-	return &Provider{instance: inventory.ProviderInstanceID("local-" + hex.EncodeToString(sum[:8])), client: api}, nil
+	return &Provider{instance: domain.ProviderInstanceID("local-" + hex.EncodeToString(sum[:8])), client: api}, nil
 }
 
 // ID returns the provider type.
-func (p *Provider) ID() inventory.ProviderID { return providerID }
+func (p *Provider) ID() domain.ProviderID { return providerID }
 
 // InstanceID returns a stable, non-reversible identifier for the configured endpoint.
-func (p *Provider) InstanceID() inventory.ProviderInstanceID { return p.instance }
+func (p *Provider) InstanceID() domain.ProviderInstanceID { return p.instance }
 
 // InspectContainer reads only bounded public runtime fields for an exact full Docker ID.
 func (p *Provider) InspectContainer(ctx context.Context, containerID string) (ContainerInspection, error) {
@@ -129,26 +133,26 @@ func (p *Provider) InspectContainer(ctx context.Context, containerID string) (Co
 }
 
 // Discover returns a complete snapshot of running and stopped containers.
-func (p *Provider) Discover(ctx context.Context) (inventory.ProviderSnapshot, error) {
+func (p *Provider) Discover(ctx context.Context) (domain.ProviderSnapshot, error) {
 	if ctx == nil {
-		return inventory.ProviderSnapshot{}, fmt.Errorf("Docker discovery context is required")
+		return domain.ProviderSnapshot{}, fmt.Errorf("Docker discovery context is required")
 	}
 	result, err := p.client.ContainerList(ctx, moby.ContainerListOptions{All: true})
 	if err != nil {
-		return inventory.ProviderSnapshot{}, err
+		return domain.ProviderSnapshot{}, err
 	}
 	if len(result.Items) > maxContainers {
-		return inventory.ProviderSnapshot{}, fmt.Errorf("Docker container limit exceeded")
+		return domain.ProviderSnapshot{}, fmt.Errorf("Docker container limit exceeded")
 	}
-	resources := make([]inventory.ResourceObservation, 0, len(result.Items))
+	resources := make([]domain.ResourceObservation, 0, len(result.Items))
 	for _, item := range result.Items {
 		observation, err := mapContainer(item)
 		if err != nil {
-			return inventory.ProviderSnapshot{}, err
+			return domain.ProviderSnapshot{}, err
 		}
 		resources = append(resources, observation)
 	}
-	return inventory.ProviderSnapshot{
+	return domain.ProviderSnapshot{
 		ProviderID: providerID, ProviderInstanceID: p.instance,
 		Complete: true, Resources: resources,
 	}, nil
@@ -177,15 +181,15 @@ func validateLocalEndpoint(endpoint, goos string) error {
 	return nil
 }
 
-func mapContainer(item container.Summary) (inventory.ResourceObservation, error) {
+func mapContainer(item container.Summary) (domain.ResourceObservation, error) {
 	if item.ID == "" || len(item.ID) > 256 {
-		return inventory.ResourceObservation{}, fmt.Errorf("Docker returned an invalid container ID")
+		return domain.ResourceObservation{}, fmt.Errorf("Docker returned an invalid container ID")
 	}
 	state := strings.ToLower(string(item.State))
 	switch state {
 	case "created", "restarting", "running", "removing", "paused", "exited", "dead":
 	default:
-		return inventory.ResourceObservation{}, fmt.Errorf("Docker returned an unsupported container state")
+		return domain.ResourceObservation{}, fmt.Errorf("Docker returned an unsupported container state")
 	}
 	name := ""
 	names := append([]string(nil), item.Names...)
@@ -193,35 +197,35 @@ func mapContainer(item container.Summary) (inventory.ResourceObservation, error)
 	if len(names) > 0 {
 		name = strings.TrimPrefix(names[0], "/")
 		if len(name) > 256 {
-			return inventory.ResourceObservation{}, fmt.Errorf("Docker container name exceeds limit")
+			return domain.ResourceObservation{}, fmt.Errorf("Docker container name exceeds limit")
 		}
 	}
 	attributes := make(map[string]string)
 	if len(item.Labels) > 256 {
-		return inventory.ResourceObservation{}, fmt.Errorf("Docker label count exceeds limit")
+		return domain.ResourceObservation{}, fmt.Errorf("Docker label count exceeds limit")
 	}
 	for key, value := range item.Labels {
 		if !allowedLabel(key) {
 			continue
 		}
 		if len(value) > 1024 {
-			return inventory.ResourceObservation{}, fmt.Errorf("allowlisted Docker label exceeds limit")
+			return domain.ResourceObservation{}, fmt.Errorf("allowlisted Docker label exceeds limit")
 		}
 		attributes["label."+key] = value
 	}
 	imageAttributes, err := normalizedImageAttributes(item.Image)
 	if err != nil {
-		return inventory.ResourceObservation{}, err
+		return domain.ResourceObservation{}, err
 	}
 	for key, value := range imageAttributes {
 		attributes[key] = value
 	}
 	endpoints, err := mapEndpoints(item)
 	if err != nil {
-		return inventory.ResourceObservation{}, err
+		return domain.ResourceObservation{}, err
 	}
-	return inventory.ResourceObservation{
-		ProviderResourceID: item.ID, Kind: inventory.ResourceContainer,
+	return domain.ResourceObservation{
+		ProviderResourceID: item.ID, Kind: domain.ResourceContainer,
 		DisplayName: name, LifecycleState: state, Attributes: attributes, Endpoints: endpoints,
 	}, nil
 }
@@ -252,16 +256,16 @@ func allowedLabel(key string) bool {
 	switch key {
 	case "com.docker.compose.project", "com.docker.compose.service", "com.docker.compose.version",
 		"org.opencontainers.image.title", "org.opencontainers.image.version",
-		inventory.DockerLabelMonitoringEnabled, inventory.DockerLabelMonitoringProfile, inventory.DockerLabelWorkloadID,
-		inventory.DockerLabelMonitoringPort:
+		monitoring.DockerLabelEnabled, monitoring.DockerLabelProfile, monitoring.DockerLabelWorkloadID,
+		monitoring.DockerLabelPort:
 		return true
 	default:
 		return false
 	}
 }
 
-func mapEndpoints(item container.Summary) ([]inventory.Endpoint, error) {
-	endpoints := make([]inventory.Endpoint, 0, len(item.Ports)*2)
+func mapEndpoints(item container.Summary) ([]domain.Endpoint, error) {
+	endpoints := make([]domain.Endpoint, 0, len(item.Ports)*2)
 	type networkEndpoint struct {
 		name, address string
 		priority      int
@@ -289,28 +293,28 @@ func mapEndpoints(item container.Summary) ([]inventory.Endpoint, error) {
 			return nil, fmt.Errorf("Docker returned an invalid container port")
 		}
 		for _, network := range networkAddresses {
-			endpoints = append(endpoints, inventory.Endpoint{
+			endpoints = append(endpoints, domain.Endpoint{
 				Address: network.address, NetworkName: network.name, NetworkPriority: network.priority, Port: port.PrivatePort, ContainerPort: port.PrivatePort, Protocol: protocol,
-				Scope: inventory.EndpointContainer, Provenance: "container_network",
+				Scope: domain.EndpointContainer, Provenance: "container_network",
 			})
 		}
 		if len(networkAddresses) == 0 {
-			endpoints = append(endpoints, inventory.Endpoint{
+			endpoints = append(endpoints, domain.Endpoint{
 				Port: port.PrivatePort, ContainerPort: port.PrivatePort, Protocol: protocol,
-				Scope: inventory.EndpointContainer, Provenance: "exposed_port",
+				Scope: domain.EndpointContainer, Provenance: "exposed_port",
 			})
 		}
 		if port.PublicPort > 0 && port.IP.IsValid() {
-			endpoints = append(endpoints, inventory.Endpoint{
+			endpoints = append(endpoints, domain.Endpoint{
 				Address: port.IP.String(), Port: port.PublicPort, ContainerPort: port.PrivatePort, Protocol: protocol,
-				Scope: inventory.EndpointHost, Provenance: "published_port",
+				Scope: domain.EndpointHost, Provenance: "published_port",
 			})
 		}
 	}
 	if len(item.Ports) == 0 {
 		for _, network := range networkAddresses {
-			endpoints = append(endpoints, inventory.Endpoint{
-				Address: network.address, NetworkName: network.name, NetworkPriority: network.priority, Scope: inventory.EndpointContainer, Provenance: "network_address",
+			endpoints = append(endpoints, domain.Endpoint{
+				Address: network.address, NetworkName: network.name, NetworkPriority: network.priority, Scope: domain.EndpointContainer, Provenance: "network_address",
 			})
 		}
 	}

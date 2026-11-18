@@ -3,11 +3,10 @@ package nodeexporter
 import (
 	"context"
 	"fmt"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"path/filepath"
 	"strings"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 )
 
 // nodeExporterEnabler starts the Agent-owned Node Exporter systemd unit.
@@ -19,7 +18,7 @@ type nodeExporterEnabler struct {
 // Enable restores systemd enablement and starts the owned Node Exporter unit.
 func (e nodeExporterEnabler) Enable(
 	ctx context.Context,
-	resources []agentstate.OwnedResource,
+	resources []servicedomain.OwnedResource,
 ) error {
 	if ctx == nil {
 		return fmt.Errorf("Node Exporter enable context is required")

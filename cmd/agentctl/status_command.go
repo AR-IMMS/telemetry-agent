@@ -61,7 +61,7 @@ func runHealthReport(
 		"local Agent status endpoint",
 	)
 
-	if err := flags.Parse(args); err != nil {
+	if err := parseCompatibilityFlags(flags, args); err != nil {
 		flags.Usage()
 
 		return 2

@@ -3,16 +3,15 @@ package main
 import (
 	"crypto/rand"
 	"fmt"
-	"strings"
+	installationapp "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
+	"strings"
 )
 
 // prepareAgentInstallationIdentity loads operational state before asking the
 // Identity module to initialize or validate the durable installation UUID.
 func prepareAgentInstallationIdentity(statePath string) error {
-	state, err := agentstate.NewStore(statePath).Load()
+	state, err := newAgentStateStore(statePath).Load()
 	if err != nil {
 		return fmt.Errorf("load Agent state before identity initialization: %w", err)
 	}
@@ -23,8 +22,8 @@ func prepareAgentInstallationIdentity(statePath string) error {
 		strings.TrimSpace(collector.HealthEndpoint) == "" {
 		return fmt.Errorf("Agent operational state has incomplete Collector context")
 	}
-	if _, err := installationid.EnsureInstallationIdentity(
-		agentstate.NewIdentityStore(statePath),
+	if _, err := installationapp.EnsureInstallationIdentity(
+		newAgentIdentityStore(statePath),
 		rand.Reader,
 	); err != nil {
 		return fmt.Errorf("prepare Agent installation identity: %w", err)

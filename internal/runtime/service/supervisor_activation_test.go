@@ -1,9 +1,11 @@
 package agentinstallation
 
 import (
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"testing"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	opampdomain "github.com/ar-imms/telemetry-agent/internal/runtime/opamp/domain"
 )
 
 func TestSupervisorActivationDefaultsNewInstallsToSupervisor(t *testing.T) {
@@ -14,11 +16,11 @@ func TestSupervisorActivationDefaultsNewInstallsToSupervisor(t *testing.T) {
 	if gotURL, enabled, err := supervisorActivationForInstall(endpoint, agentstate.State{}, false); gotURL != endpoint || !enabled || err != nil {
 		t.Fatalf("fresh default install = (%q, %t), error %v; want Supervisor enabled", gotURL, enabled, err)
 	}
-	managed := agentstate.State{Installation: &agentstate.AgentInstallation{}, Supervisor: agentstate.SupervisorContext{OpAMPServerURL: endpoint, Enabled: true}}
+	managed := agentstate.State{Installation: &servicedomain.AgentInstallation{}, Supervisor: opampdomain.SupervisorContext{OpAMPServerURL: endpoint, Enabled: true}}
 	if gotURL, enabled, err := supervisorActivationForInstall("", managed, false); gotURL != endpoint || !enabled || err != nil {
 		t.Fatalf("managed upgrade without endpoint = (%q, %t), error %v; want existing owner preserved", gotURL, enabled, err)
 	}
-	legacy := agentstate.State{Installation: &agentstate.AgentInstallation{}}
+	legacy := agentstate.State{Installation: &servicedomain.AgentInstallation{}}
 	if gotURL, enabled, err := supervisorActivationForInstall("", legacy, false); gotURL != "" || enabled || err != nil {
 		t.Fatalf("legacy upgrade without endpoint = (%q, %t), error %v; want legacy owner preserved", gotURL, enabled, err)
 	}

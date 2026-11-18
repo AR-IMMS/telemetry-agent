@@ -9,19 +9,20 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/inventory"
+	"github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
+	"github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
 )
 
 // NewInventoryRepository creates the Inventory SQLite adapter over the shared database.
-func NewInventoryRepository(open func() (*sql.DB, error), locker sync.Locker) inventory.InventoryRepository {
+func NewInventoryRepository(open func() (*sql.DB, error), locker sync.Locker) application.InventoryRepository {
 	return inventorySQLite{store: database{open: open, locker: locker}}
 }
 
 type inventorySQLite struct{ store database }
 
-func (s inventorySQLite) ReadProviderStatuses(ctx context.Context, limit int) ([]inventory.ProviderStatus, bool, error) {
-	if limit <= 0 || limit > inventory.MaxProviderStatusReadLimit {
-		return nil, false, fmt.Errorf("provider status read limit must be between 1 and %d", inventory.MaxProviderStatusReadLimit)
+func (s inventorySQLite) ReadProviderStatuses(ctx context.Context, limit int) ([]domain.ProviderStatus, bool, error) {
+	if limit <= 0 || limit > application.MaxProviderStatusReadLimit {
+		return nil, false, fmt.Errorf("provider status read limit must be between 1 and %d", application.MaxProviderStatusReadLimit)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, false, err
@@ -36,7 +37,7 @@ func (s inventorySQLite) ReadProviderStatuses(ctx context.Context, limit int) ([
 		return nil, false, fmt.Errorf("query discovery provider status: %w", err)
 	}
 	defer rows.Close()
-	statuses := make([]inventory.ProviderStatus, 0, limit)
+	statuses := make([]domain.ProviderStatus, 0, limit)
 	truncated := false
 	for rows.Next() {
 		if len(statuses) == limit {
@@ -47,7 +48,7 @@ func (s inventorySQLite) ReadProviderStatuses(ctx context.Context, limit int) ([
 		if err := rows.Scan(&payload); err != nil {
 			return nil, false, err
 		}
-		var status inventory.ProviderStatus
+		var status domain.ProviderStatus
 		if err := json.Unmarshal(payload, &status); err != nil {
 			return nil, false, fmt.Errorf("decode discovery provider status: %w", err)
 		}
@@ -61,74 +62,82 @@ func (s inventorySQLite) ReadProviderStatuses(ctx context.Context, limit int) ([
 	return statuses, truncated, nil
 }
 
-func (s inventorySQLite) Snapshot() (inventory.InventorySnapshot, error) {
+func (s inventorySQLite) Snapshot() (domain.InventorySnapshot, error) {
+	return s.SnapshotContext(context.Background())
+}
+
+// SnapshotContext reads a consistent inventory snapshot and honors caller cancellation.
+func (s inventorySQLite) SnapshotContext(ctx context.Context) (domain.InventorySnapshot, error) {
+	if err := ctx.Err(); err != nil {
+		return domain.InventorySnapshot{}, err
+	}
 	db, err := s.store.openDatabase()
 	if err != nil {
-		return inventory.InventorySnapshot{}, err
+		return domain.InventorySnapshot{}, err
 	}
 	defer db.Close()
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return inventory.InventorySnapshot{}, fmt.Errorf("begin inventory snapshot: %w", err)
+		return domain.InventorySnapshot{}, fmt.Errorf("begin inventory snapshot: %w", err)
 	}
 	defer tx.Rollback()
 	var revision, writeRevision int64
-	if err := tx.QueryRow(`SELECT revision,write_revision FROM inventory_meta WHERE id=1`).Scan(&revision, &writeRevision); err != nil {
-		return inventory.InventorySnapshot{}, fmt.Errorf("load inventory revision: %w", err)
+	if err := tx.QueryRowContext(ctx, `SELECT revision,write_revision FROM inventory_meta WHERE id=1`).Scan(&revision, &writeRevision); err != nil {
+		return domain.InventorySnapshot{}, fmt.Errorf("load inventory revision: %w", err)
 	}
-	snapshot := inventory.InventorySnapshot{Revision: uint64(revision), WriteRevision: uint64(writeRevision), Resources: []inventory.Resource{}, Providers: []inventory.ProviderStatus{}}
-	rows, err := tx.Query(`SELECT payload FROM inventory_resources ORDER BY provider_id,provider_instance_id,provider_resource_id`)
+	snapshot := domain.InventorySnapshot{Revision: uint64(revision), WriteRevision: uint64(writeRevision), Resources: []domain.Resource{}, Providers: []domain.ProviderStatus{}}
+	rows, err := tx.QueryContext(ctx, `SELECT payload FROM inventory_resources ORDER BY provider_id,provider_instance_id,provider_resource_id`)
 	if err != nil {
-		return inventory.InventorySnapshot{}, fmt.Errorf("query inventory resources: %w", err)
+		return domain.InventorySnapshot{}, fmt.Errorf("query inventory resources: %w", err)
 	}
 	for rows.Next() {
 		var payload []byte
 		if err := rows.Scan(&payload); err != nil {
 			rows.Close()
-			return inventory.InventorySnapshot{}, err
+			return domain.InventorySnapshot{}, err
 		}
-		var resource inventory.Resource
+		var resource domain.Resource
 		if err := json.Unmarshal(payload, &resource); err != nil {
 			rows.Close()
-			return inventory.InventorySnapshot{}, fmt.Errorf("decode inventory resource: %w", err)
+			return domain.InventorySnapshot{}, fmt.Errorf("decode inventory resource: %w", err)
 		}
 		snapshot.Resources = append(snapshot.Resources, resource)
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
-		return inventory.InventorySnapshot{}, err
+		return domain.InventorySnapshot{}, err
 	}
 	rows.Close()
-	statusRows, err := tx.Query(`SELECT payload FROM discovery_provider_status ORDER BY provider_id,provider_instance_id`)
+	statusRows, err := tx.QueryContext(ctx, `SELECT payload FROM discovery_provider_status ORDER BY provider_id,provider_instance_id`)
 	if err != nil {
-		return inventory.InventorySnapshot{}, fmt.Errorf("query discovery provider status: %w", err)
+		return domain.InventorySnapshot{}, fmt.Errorf("query discovery provider status: %w", err)
 	}
 	for statusRows.Next() {
 		var payload []byte
 		if err := statusRows.Scan(&payload); err != nil {
 			statusRows.Close()
-			return inventory.InventorySnapshot{}, err
+			return domain.InventorySnapshot{}, err
 		}
-		var status inventory.ProviderStatus
+		var status domain.ProviderStatus
 		if err := json.Unmarshal(payload, &status); err != nil {
 			statusRows.Close()
-			return inventory.InventorySnapshot{}, fmt.Errorf("decode discovery provider status: %w", err)
+			return domain.InventorySnapshot{}, fmt.Errorf("decode discovery provider status: %w", err)
 		}
 		snapshot.Providers = append(snapshot.Providers, status)
 	}
 	if err := statusRows.Err(); err != nil {
 		statusRows.Close()
-		return inventory.InventorySnapshot{}, err
+		return domain.InventorySnapshot{}, err
 	}
 	statusRows.Close()
 	if err := tx.Commit(); err != nil {
-		return inventory.InventorySnapshot{}, fmt.Errorf("commit inventory snapshot read: %w", err)
+		return domain.InventorySnapshot{}, fmt.Errorf("commit inventory snapshot read: %w", err)
 	}
 	return snapshot, nil
 }
 
-func (s inventorySQLite) CommitProviderSnapshot(expectedWriteRevision uint64, snapshot inventory.ProviderSnapshot, resources []inventory.Resource, materialChange bool) error {
-	normalized, err := inventory.NormalizeSnapshot(snapshot)
+func (s inventorySQLite) CommitProviderSnapshot(expectedWriteRevision uint64, snapshot domain.ProviderSnapshot, resources []domain.Resource, materialChange bool) error {
+	normalized, err := domain.NormalizeSnapshot(snapshot)
 	if err != nil {
 		return err
 	}
@@ -163,7 +172,7 @@ func (s inventorySQLite) CommitProviderSnapshot(expectedWriteRevision uint64, sn
 		return fmt.Errorf("load inventory write revision for update: %w", err)
 	}
 	if uint64(currentWriteRevision) != expectedWriteRevision {
-		return inventory.ErrSnapshotConflict
+		return application.ErrSnapshotConflict
 	}
 	now := normalized.ObservedAt.UTC().Format(time.RFC3339Nano)
 	if _, err := tx.Exec(`DELETE FROM inventory_resources WHERE provider_id=? AND provider_instance_id=?`, normalized.ProviderID, normalized.ProviderInstanceID); err != nil {
@@ -179,7 +188,7 @@ func (s inventorySQLite) CommitProviderSnapshot(expectedWriteRevision uint64, sn
 			return fmt.Errorf("persist inventory resource: %w", err)
 		}
 	}
-	status := inventory.ProviderStatus{
+	status := domain.ProviderStatus{
 		ProviderID: normalized.ProviderID, ProviderInstanceID: normalized.ProviderInstanceID,
 		Enabled: true, LastAttemptAt: nowTime(normalized.ObservedAt), LastSuccessAt: nowTime(normalized.ObservedAt),
 		ResourceCount: len(normalized.Resources),
@@ -205,7 +214,7 @@ func (s inventorySQLite) CommitProviderSnapshot(expectedWriteRevision uint64, sn
 		if err != nil {
 			return fmt.Errorf("check inventory revision update: %w", err)
 		}
-		return inventory.ErrSnapshotConflict
+		return application.ErrSnapshotConflict
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit inventory update: %w", err)
@@ -213,7 +222,7 @@ func (s inventorySQLite) CommitProviderSnapshot(expectedWriteRevision uint64, sn
 	return nil
 }
 
-func (s inventorySQLite) RecordProviderFailure(status inventory.ProviderStatus) error {
+func (s inventorySQLite) RecordProviderFailure(status domain.ProviderStatus) error {
 	if status.ProviderID == "" || status.ProviderInstanceID == "" || status.LastErrorCode == "" {
 		return fmt.Errorf("provider failure identity and safe error code are required")
 	}
@@ -235,7 +244,7 @@ func (s inventorySQLite) RecordProviderFailure(status inventory.ProviderStatus) 
 	var existing []byte
 	err = tx.QueryRow(`SELECT payload FROM discovery_provider_status WHERE provider_id=? AND provider_instance_id=?`, status.ProviderID, status.ProviderInstanceID).Scan(&existing)
 	if err == nil {
-		var previous inventory.ProviderStatus
+		var previous domain.ProviderStatus
 		if err := json.Unmarshal(existing, &previous); err != nil {
 			return fmt.Errorf("decode previous provider status: %w", err)
 		}

@@ -9,9 +9,9 @@ import (
 	"os"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/config"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 )
 
 // CleanBaselineSnapshot contains the ordered M2 render inputs and their
@@ -111,7 +111,13 @@ func cleanBaselineInput(platform identity.PlatformInfo, catalog dependency.Catal
 	if len(layers) == 0 {
 		return config.RenderInput{}, fmt.Errorf("clean configuration baseline requires at least one layer")
 	}
-	receivers, err := catalog.CollectorReceivers(platform.OS, state)
+	enabledDependencies := make(dependency.EnabledSet, len(state.Dependencies))
+	for name, dependencyState := range state.Dependencies {
+		if dependencyState.Enabled {
+			enabledDependencies[name] = struct{}{}
+		}
+	}
+	receivers, err := catalog.CollectorReceivers(platform.OS, enabledDependencies)
 	if err != nil {
 		return config.RenderInput{}, fmt.Errorf("resolve managed dependency receivers: %w", err)
 	}

@@ -7,6 +7,10 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/lifecyclelock"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 func TestTeardownCoordinatorExecutesAppliedOwnedDisable(
@@ -16,42 +20,34 @@ func TestTeardownCoordinatorExecutesAppliedOwnedDisable(
 		filepath.Join(t.TempDir(), "state.json"),
 	)
 
-	if err := store.Save(agentstate.State{
+	if err := store.Save(stateWithDependencyOwnership(t, agentstate.State{
 		DesiredGeneration:   4,
 		ActivatedGeneration: 4,
 		AppliedGeneration:   4,
-		Dependencies: map[string]agentstate.DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {
 				Enabled: false,
-				Ownership: &agentstate.OwnershipRecord{
-					Resources: []agentstate.OwnedResource{
-						{
-							Kind:       "systemd-service",
-							Identifier: "ar-imms-node-exporter.service",
-						},
-					},
-				},
-				PendingTeardown: &agentstate.PendingTeardown{
-					Action:     agentstate.TeardownActionDisable,
+				PendingTeardown: &dependencydomain.PendingTeardown{
+					Action:     dependencydomain.TeardownActionDisable,
 					Generation: 4,
 				},
 			},
 		},
-	}); err != nil {
+	}, "node-exporter", []servicedomain.OwnedResource{{Kind: "systemd-service", Identifier: "ar-imms-node-exporter.service"}})); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
 
 	var gotName string
-	var gotAction agentstate.TeardownAction
-	var gotResources []agentstate.OwnedResource
+	var gotAction dependencydomain.TeardownAction
+	var gotResources []servicedomain.OwnedResource
 
 	coordinator := teardownCoordinator{
 		store: store,
 		teardown: func(
 			ctx context.Context,
 			name string,
-			action agentstate.TeardownAction,
-			resources []agentstate.OwnedResource,
+			action dependencydomain.TeardownAction,
+			resources []servicedomain.OwnedResource,
 		) error {
 			gotName = name
 			gotAction = action
@@ -68,7 +64,7 @@ func TestTeardownCoordinatorExecutesAppliedOwnedDisable(
 	if gotName != "node-exporter" {
 		t.Fatalf("teardown name = %q, want node-exporter", gotName)
 	}
-	if gotAction != agentstate.TeardownActionDisable {
+	if gotAction != dependencydomain.TeardownActionDisable {
 		t.Fatalf(
 			"teardown action = %q, want disable",
 			gotAction,
@@ -101,20 +97,17 @@ func TestTeardownCoordinatorDoesNotHoldStateLockDuringExternalTeardown(
 	t *testing.T,
 ) {
 	store := agentstate.NewFileStore(filepath.Join(t.TempDir(), "state.json"))
-	if err := store.Save(agentstate.State{
+	if err := store.Save(stateWithDependencyOwnership(t, agentstate.State{
 		DesiredGeneration: 1,
 		AppliedGeneration: 1,
-		Dependencies: map[string]agentstate.DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {
-				Ownership: &agentstate.OwnershipRecord{Resources: []agentstate.OwnedResource{{
-					Kind: "service", Identifier: "node-exporter",
-				}}},
-				PendingTeardown: &agentstate.PendingTeardown{
-					Action: agentstate.TeardownActionDisable, Generation: 1,
+				PendingTeardown: &dependencydomain.PendingTeardown{
+					Action: dependencydomain.TeardownActionDisable, Generation: 1,
 				},
 			},
 		},
-	}); err != nil {
+	}, "node-exporter", []servicedomain.OwnedResource{{Kind: "service", Identifier: "node-exporter"}})); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
 
@@ -129,7 +122,7 @@ func TestTeardownCoordinatorDoesNotHoldStateLockDuringExternalTeardown(
 	applyDone := make(chan error, 1)
 	coordinator := teardownCoordinator{
 		store: store,
-		teardown: func(context.Context, string, agentstate.TeardownAction, []agentstate.OwnedResource) error {
+		teardown: func(context.Context, string, dependencydomain.TeardownAction, []servicedomain.OwnedResource) error {
 			close(teardownStarted)
 			<-releaseTeardown
 			return nil
@@ -170,19 +163,16 @@ func TestTeardownSerializesWithDependencyReenable(t *testing.T) {
 	root := t.TempDir()
 	configPath := filepath.Join(root, "otel.yaml")
 	store := agentstate.NewFileStore(filepath.Join(root, "state.json"))
-	if err := store.Save(agentstate.State{
-		Collector:         agentstate.CollectorContext{ConfigPath: configPath},
+	if err := store.Save(stateWithDependencyOwnership(t, agentstate.State{
+		Collector:         collectordomain.CollectorContext{ConfigPath: configPath},
 		DesiredGeneration: 1,
 		AppliedGeneration: 1,
-		Dependencies: map[string]agentstate.DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {
-				Ownership: &agentstate.OwnershipRecord{Resources: []agentstate.OwnedResource{{
-					Kind: "service", Identifier: "node-exporter",
-				}}},
-				PendingTeardown: &agentstate.PendingTeardown{Action: agentstate.TeardownActionDisable, Generation: 1},
+				PendingTeardown: &dependencydomain.PendingTeardown{Action: dependencydomain.TeardownActionDisable, Generation: 1},
 			},
 		},
-	}); err != nil {
+	}, "node-exporter", []servicedomain.OwnedResource{{Kind: "service", Identifier: "node-exporter"}})); err != nil {
 		t.Fatal(err)
 	}
 	started := make(chan struct{})
@@ -190,7 +180,7 @@ func TestTeardownSerializesWithDependencyReenable(t *testing.T) {
 	coordinator := teardownCoordinator{
 		store:    store,
 		lockPath: configPath + ".lifecycle",
-		teardown: func(context.Context, string, agentstate.TeardownAction, []agentstate.OwnedResource) error {
+		teardown: func(context.Context, string, dependencydomain.TeardownAction, []servicedomain.OwnedResource) error {
 			close(started)
 			<-release
 			return nil
@@ -205,7 +195,7 @@ func TestTeardownSerializesWithDependencyReenable(t *testing.T) {
 	}
 	reenableDone := make(chan error, 1)
 	go func() {
-		lock, err := agentstate.AcquireLifecycleLock(configPath + ".lifecycle")
+		lock, err := lifecyclelock.Acquire(configPath + ".lifecycle")
 		if err != nil {
 			reenableDone <- err
 			return

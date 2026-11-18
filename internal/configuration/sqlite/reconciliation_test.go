@@ -10,6 +10,10 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation/contracts"
 	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
+	activationapp "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/application"
+	activationdomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/domain"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
 func TestReconciliationRepositoryPersistsBudgetBackoffAndExplicitRetry(t *testing.T) {
@@ -214,8 +218,8 @@ func TestReconciliationRepositoryPersistsLKGRecoveryFailure(t *testing.T) {
 
 func TestReconciliationDiagnosticsMigrationPreservesRuntimeAndCandidateHistory(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	store := agentstate.NewSQLiteStore(path)
-	want := agentstate.State{DesiredGeneration: 37, ActivatedGeneration: 36, AppliedGeneration: 35, Dependencies: map[string]agentstate.DependencyState{"node-exporter": {Enabled: true}}}
+	store := sqlitefixture.NewSQLiteStore(path)
+	want := agentstate.State{DesiredGeneration: 37, ActivatedGeneration: 36, AppliedGeneration: 35, Dependencies: map[string]dependencydomain.DependencyState{"node-exporter": {Enabled: true}}}
 	if err := store.Save(want); err != nil {
 		t.Fatal(err)
 	}
@@ -272,7 +276,7 @@ func TestReconciliationDiagnosticsMigrationPreservesRuntimeAndCandidateHistory(t
 
 func newReconciliationRepository(t *testing.T, now *time.Time) (agentstate.SQLiteStore, contracts.Repository) {
 	t.Helper()
-	store := agentstate.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := sqlitefixture.NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	db, err := store.OpenDatabase()
 	if err != nil {
 		t.Fatal(err)
@@ -284,11 +288,11 @@ func newReconciliationRepository(t *testing.T, now *time.Time) (agentstate.SQLit
 	return store, repository
 }
 
-func candidateAdmission(revision, generation uint64, baseline, digest string) agentstate.CandidateAdmission {
-	return agentstate.CandidateAdmission{
+func candidateAdmission(revision, generation uint64, baseline, digest string) activationapp.CandidateAdmissionRequest {
+	return activationapp.CandidateAdmissionRequest{
 		DesiredSetRevision: revision, ExpectedGeneration: generation,
 		ExpectedFingerprint: baseline, VerifiedFingerprint: baseline, RecoveryPath: "recovery.yaml",
-		Mapping: agentstate.CandidateMapping{
+		Mapping: activationdomain.CandidateMapping{
 			DesiredSetRevision: revision, BaselineFingerprint: baseline, CandidateDigest: digest,
 			EffectiveConfigDigest: "effective-" + digest, CollectorVersion: "0.160.0",
 			ManifestVersion: "test", Platform: "windows/amd64",

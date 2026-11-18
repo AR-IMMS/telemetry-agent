@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,13 +12,16 @@ import (
 	"testing"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
-	"github.com/ar-imms/telemetry-agent/internal/config"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
-	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
-	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
-	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
+	installationapp "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
+
+	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
+	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
+	definitionsdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
+	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	collectorruntime "github.com/ar-imms/telemetry-agent/internal/runtime/collector"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 )
 
 func TestPinnedCollectorValidatesNativeDockerRedisProfile(t *testing.T) {
@@ -42,7 +46,7 @@ func TestPinnedCollectorValidatesNativeDockerRedisProfile(t *testing.T) {
 	if platform.OS == "windows" {
 		dockerEndpoint = "npipe:////./pipe/docker_engine"
 	}
-	profileLayer, receiverNames, err := monitoringprofile.DefaultRegistry().DockerCollectorLayer(platform.OS, dockerEndpoint, "11111111-2222-4333-8444-555555555555")
+	profileLayer, receiverNames, err := collectorruntime.DockerMonitoringLayer(collectorMonitoringProfiles(monitoringdomain.DefaultRegistry().Profiles()), platform.OS, dockerEndpoint, "11111111-2222-4333-8444-555555555555")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +123,7 @@ profiles:
 	if err := os.WriteFile(filepath.Join(profilesDir, "test.yaml"), []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	registry, err := monitoringprofile.LoadDirectory(root)
+	registry, err := loadMonitoringProfiles(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +139,7 @@ profiles:
 	if platform.OS == "windows" {
 		dockerEndpoint = "npipe:////./pipe/docker_engine"
 	}
-	profileLayer, receiverNames, err := registry.DockerCollectorLayer(platform.OS, dockerEndpoint, "11111111-2222-4333-8444-555555555555")
+	profileLayer, receiverNames, err := collectorruntime.DockerMonitoringLayer(collectorMonitoringProfiles(registry.Profiles()), platform.OS, dockerEndpoint, "11111111-2222-4333-8444-555555555555")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +173,7 @@ func TestNativeMonitoringInputsAcceptPinnedPostgreSQLProfileCapability(t *testin
 	t.Setenv("AR_IMMS_PG_USER", "metrics_reader")
 	t.Setenv("AR_IMMS_PG_PASSWORD", "test-only-secret")
 	statePath := filepath.Join(t.TempDir(), "state.db")
-	installationID, err := installationid.EnsureInstallationIdentity(agentstate.NewIdentityStore(statePath), rand.Reader)
+	installationID, err := installationapp.EnsureInstallationIdentity(sqlitefixture.NewIdentityStore(statePath), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,13 +187,13 @@ func TestNativeMonitoringInputsAcceptPinnedPostgreSQLProfileCapability(t *testin
 		dockerEndpoint = "npipe:////./pipe/docker_engine"
 	}
 	t.Setenv(dockerDiscoveryEndpointEnv, dockerEndpoint)
-	postgres := monitoringprofile.Profile{
-		ID: "postgres", Provider: "docker", MatchLabels: map[string]string{monitoringprofile.LabelMonitoringEnabled: "true", monitoringprofile.LabelMonitoringProfile: "postgres"},
-		RequiredCapabilities: []string{monitoringprofile.PostgresqlCapability}, ReceiverType: "postgresql", CollectionInterval: "10s",
-		EndpointStrategies: []monitoringprofile.EndpointStrategy{{ID: "alternate_port", OS: platform.OS, When: "alternate_port > 0 and port == 5432", Endpoint: "127.0.0.1:`alternate_port`", Scope: inventoryctx.EndpointHost, Provenance: "published_port", TargetPort: 5432, Priority: 100}},
-		Settings:           monitoringprofile.ReceiverSettings{UsernameEnv: "AR_IMMS_PG_USER", PasswordEnv: "AR_IMMS_PG_PASSWORD"},
+	postgres := monitoringdomain.Profile{
+		ID: "postgres", Provider: "docker", MatchLabels: map[string]string{monitoringdomain.LabelMonitoringEnabled: "true", monitoringdomain.LabelMonitoringProfile: "postgres"},
+		RequiredCapabilities: []string{monitoringdomain.PostgresqlCapability}, ReceiverType: "postgresql", CollectionInterval: "10s",
+		EndpointStrategies: []monitoringdomain.EndpointStrategy{{ID: "alternate_port", OS: platform.OS, When: "alternate_port > 0 and port == 5432", Endpoint: "127.0.0.1:`alternate_port`", Scope: monitoringdomain.EndpointHost, Provenance: "published_port", TargetPort: 5432, Priority: 100}},
+		Settings:           monitoringdomain.ReceiverSettings{UsernameEnv: "AR_IMMS_PG_USER", PasswordEnv: "AR_IMMS_PG_PASSWORD"},
 	}
-	registry, err := monitoringprofile.NewRegistry(postgres)
+	registry, err := monitoringdomain.NewRegistry(postgres)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,70 +203,70 @@ func TestNativeMonitoringInputsAcceptPinnedPostgreSQLProfileCapability(t *testin
 }
 
 type nativeOwnershipInventory struct {
-	snapshot inventoryctx.InventorySnapshot
+	snapshot inventorydomain.InventorySnapshot
 	err      error
 }
 
-func (i nativeOwnershipInventory) Snapshot() (inventoryctx.InventorySnapshot, error) {
+func (i nativeOwnershipInventory) Snapshot() (inventorydomain.InventorySnapshot, error) {
 	return i.snapshot, i.err
 }
 
 type nativeOwnershipDelegate struct {
 	calls        int
-	contribution integration.Contribution
+	contribution definitionsdomain.Contribution
 }
 
-func (d *nativeOwnershipDelegate) Resolve(instance integration.IntegrationInstance) (integration.ResolvedInstance, error) {
+func (d *nativeOwnershipDelegate) ResolveWithContribution(instance desiredstatedomain.Instance) (desiredstatedomain.Instance, definitionsdomain.Contribution, error) {
 	d.calls++
-	return integration.ResolvedInstance{Instance: instance, Contribution: d.contribution}, nil
+	return instance, d.contribution, nil
 }
 
 func TestNativeOwnershipResolverDelegatesExactlyOneReceiverOwner(t *testing.T) {
-	intent, err := integration.NewComponentIntent("redis", map[string]any{"endpoint": "127.0.0.1:16379"})
+	intent, err := definitionsdomain.NewComponentIntent("redis", map[string]any{"endpoint": "127.0.0.1:16379"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	delegate := &nativeOwnershipDelegate{contribution: integration.NewContribution([]integration.ComponentIntent{intent})}
-	resource := inventoryctx.Resource{
-		Key: inventoryctx.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-a"},
+	delegate := &nativeOwnershipDelegate{contribution: definitionsdomain.NewContribution([]definitionsdomain.ComponentIntent{intent})}
+	resource := inventorydomain.Resource{
+		Key: inventorydomain.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-a"},
 		Attributes: map[string]string{
 			"label.ar-imms.monitoring.enabled": "true", "label.ar-imms.monitoring.profile": "redis",
 		},
 	}
 	resolver := nativeOwnershipResolver{
-		delegate: delegate, inventory: nativeOwnershipInventory{snapshot: inventoryctx.InventorySnapshot{Resources: []inventoryctx.Resource{resource}}},
-		profiles: monitoringprofile.DefaultRegistry(), enabled: true,
+		delegate: delegate, inventory: nativeOwnershipInventory{snapshot: inventorydomain.InventorySnapshot{Resources: []inventorydomain.Resource{resource}}},
+		profiles: monitoringdomain.DefaultRegistry(), enabled: true,
 	}
 	resolved, err := resolver.Resolve(nativeBoundRedisInstance("container-a"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if delegate.calls != 1 || len(resolved.Contribution.Intents()) != 0 {
-		t.Fatalf("native target receiver ownership calls=%d contribution=%v; want one validation and no Agent receiver", delegate.calls, resolved.Contribution.Intents())
+	if delegate.calls != 1 || len(resolved.Intents()) != 0 {
+		t.Fatalf("native target receiver ownership calls=%d contribution=%v; want one validation and no Agent receiver", delegate.calls, resolved.Intents())
 	}
 }
 
 func TestNativeOwnershipResolverKeepsLegacyAndUnmatchedTargetsAgentOwned(t *testing.T) {
-	intent, err := integration.NewComponentIntent("redis", map[string]any{"endpoint": "127.0.0.1:16379"})
+	intent, err := definitionsdomain.NewComponentIntent("redis", map[string]any{"endpoint": "127.0.0.1:16379"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, resource := range map[string]inventoryctx.Resource{
-		"unlabelled":       {Key: inventoryctx.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-a"}},
-		"different target": {Key: inventoryctx.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-b"}, Attributes: map[string]string{"label.ar-imms.monitoring.enabled": "true", "label.ar-imms.monitoring.profile": "redis"}},
+	for name, resource := range map[string]inventorydomain.Resource{
+		"unlabelled":       {Key: inventorydomain.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-a"}},
+		"different target": {Key: inventorydomain.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: "container-b"}, Attributes: map[string]string{"label.ar-imms.monitoring.enabled": "true", "label.ar-imms.monitoring.profile": "redis"}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			delegate := &nativeOwnershipDelegate{contribution: integration.NewContribution([]integration.ComponentIntent{intent})}
+			delegate := &nativeOwnershipDelegate{contribution: definitionsdomain.NewContribution([]definitionsdomain.ComponentIntent{intent})}
 			resolver := nativeOwnershipResolver{
-				delegate: delegate, inventory: nativeOwnershipInventory{snapshot: inventoryctx.InventorySnapshot{Resources: []inventoryctx.Resource{resource}}},
-				profiles: monitoringprofile.DefaultRegistry(), enabled: true,
+				delegate: delegate, inventory: nativeOwnershipInventory{snapshot: inventorydomain.InventorySnapshot{Resources: []inventorydomain.Resource{resource}}},
+				profiles: monitoringdomain.DefaultRegistry(), enabled: true,
 			}
 			resolved, err := resolver.Resolve(nativeBoundRedisInstance("container-a"))
 			if err != nil {
 				t.Fatal(err)
 			}
-			if delegate.calls != 1 || len(resolved.Contribution.Intents()) != 1 {
-				t.Fatalf("Agent-owned target contribution=%v calls=%d", resolved.Contribution.Intents(), delegate.calls)
+			if delegate.calls != 1 || len(resolved.Intents()) != 1 {
+				t.Fatalf("Agent-owned target contribution=%v calls=%d", resolved.Intents(), delegate.calls)
 			}
 		})
 	}
@@ -272,7 +276,7 @@ func TestNativeOwnershipResolverFailsClosedWhenInventoryCannotBeRead(t *testing.
 	delegate := &nativeOwnershipDelegate{}
 	resolver := nativeOwnershipResolver{
 		delegate: delegate, inventory: nativeOwnershipInventory{err: errors.New("inventory unavailable")},
-		profiles: monitoringprofile.DefaultRegistry(), enabled: true,
+		profiles: monitoringdomain.DefaultRegistry(), enabled: true,
 	}
 	if _, err := resolver.Resolve(nativeBoundRedisInstance("container-a")); err == nil {
 		t.Fatal("Resolve() succeeded without ownership evidence")
@@ -282,10 +286,10 @@ func TestNativeOwnershipResolverFailsClosedWhenInventoryCannotBeRead(t *testing.
 	}
 }
 
-func nativeBoundRedisInstance(resourceID string) integration.IntegrationInstance {
-	return integration.IntegrationInstance{
+func nativeBoundRedisInstance(resourceID string) desiredstatedomain.Instance {
+	return desiredstatedomain.Instance{
 		ID: "redis-instance", DefinitionID: "redis", DefinitionVersion: "1.0.0",
 		Configuration: map[string]any{"endpoint": "127.0.0.1:16379"}, Enabled: true,
-		Binding: &integration.ResourceBinding{Provider: "docker", ProviderInstance: "local", ResourceID: resourceID},
+		Binding: &desiredstatedomain.ResourceBinding{Provider: "docker", ProviderInstance: "local", ResourceID: resourceID},
 	}
 }

@@ -5,14 +5,15 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 func TestServiceEnableRoutesOwnedResources(
 	t *testing.T,
 ) {
 	ctx := context.Background()
-	resources := []agentstate.OwnedResource{
+	resources := []servicedomain.OwnedResource{
 		{
 			Kind:       "systemd-unit",
 			Identifier: "/etc/systemd/system/ar-imms-node-exporter.service",
@@ -35,14 +36,14 @@ func TestServiceEnableRoutesOwnedResources(
 			},
 			Teardown: func(
 				context.Context,
-				agentstate.TeardownAction,
-				[]agentstate.OwnedResource,
+				dependencydomain.TeardownAction,
+				[]servicedomain.OwnedResource,
 			) error {
 				return nil
 			},
 			Enable: func(
 				gotContext context.Context,
-				gotResources []agentstate.OwnedResource,
+				gotResources []servicedomain.OwnedResource,
 			) error {
 				calls++
 
@@ -95,8 +96,8 @@ func TestServiceEnableRejectsMissingEnabler(
 			},
 			Teardown: func(
 				context.Context,
-				agentstate.TeardownAction,
-				[]agentstate.OwnedResource,
+				dependencydomain.TeardownAction,
+				[]servicedomain.OwnedResource,
 			) error {
 				return nil
 			},
@@ -112,7 +113,7 @@ func TestServiceEnableRejectsMissingEnabler(
 	}).Enable(
 		context.Background(),
 		"node-exporter",
-		[]agentstate.OwnedResource{
+		[]servicedomain.OwnedResource{
 			{
 				Kind:       "systemd-unit",
 				Identifier: "/etc/systemd/system/ar-imms-node-exporter.service",

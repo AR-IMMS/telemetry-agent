@@ -8,8 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 // nodeExporterTeardown applies safe lifecycle actions to resources owned by the
@@ -25,8 +26,8 @@ type nodeExporterTeardown struct {
 // Teardown disables or uninstalls only recorded Node Exporter resources.
 func (t nodeExporterTeardown) Teardown(
 	ctx context.Context,
-	action agentstate.TeardownAction,
-	resources []agentstate.OwnedResource,
+	action dependencydomain.TeardownAction,
+	resources []servicedomain.OwnedResource,
 ) error {
 	if ctx == nil {
 		return fmt.Errorf(
@@ -47,10 +48,10 @@ func (t nodeExporterTeardown) Teardown(
 	}
 
 	switch action {
-	case agentstate.TeardownActionDisable:
+	case dependencydomain.TeardownActionDisable:
 		return t.disable(ctx, resources)
 
-	case agentstate.TeardownActionUninstall:
+	case dependencydomain.TeardownActionUninstall:
 		return t.uninstall(ctx, resources)
 
 	default:
@@ -63,7 +64,7 @@ func (t nodeExporterTeardown) Teardown(
 
 func (t nodeExporterTeardown) disable(
 	ctx context.Context,
-	resources []agentstate.OwnedResource,
+	resources []servicedomain.OwnedResource,
 ) error {
 	if !ownsSystemdUnit(resources, t.options.ServicePath) {
 		return fmt.Errorf(
@@ -95,7 +96,7 @@ func (t nodeExporterTeardown) disable(
 
 func (t nodeExporterTeardown) uninstall(
 	ctx context.Context,
-	resources []agentstate.OwnedResource,
+	resources []servicedomain.OwnedResource,
 ) error {
 	if t.removeUnit == nil {
 		return fmt.Errorf(
@@ -146,7 +147,7 @@ func (t nodeExporterTeardown) uninstall(
 }
 
 func ownsSystemdUnit(
-	resources []agentstate.OwnedResource,
+	resources []servicedomain.OwnedResource,
 	servicePath string,
 ) bool {
 	servicePath = strings.TrimSpace(servicePath)
@@ -162,7 +163,7 @@ func ownsSystemdUnit(
 }
 
 func ownsDirectory(
-	resources []agentstate.OwnedResource,
+	resources []servicedomain.OwnedResource,
 	directory string,
 ) bool {
 	directory = strings.TrimSpace(directory)

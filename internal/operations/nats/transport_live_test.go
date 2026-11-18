@@ -5,6 +5,18 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
+	credentialstore "github.com/ar-imms/telemetry-agent/internal/identity/credentials"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/domain"
+	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
+	operations "github.com/ar-imms/telemetry-agent/internal/operations/command"
+	operationsdocker "github.com/ar-imms/telemetry-agent/internal/operations/dockeradapter"
+	"github.com/ar-imms/telemetry-agent/internal/operations/handlers"
+	operationssqlite "github.com/ar-imms/telemetry-agent/internal/operations/sqlite"
+	"github.com/ar-imms/telemetry-agent/internal/operations/testsupport/mockcore"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
+	"github.com/nats-io/nats.go/jetstream"
 	"io"
 	"net/http"
 	"os"
@@ -15,19 +27,6 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
-	credentialstore "github.com/ar-imms/telemetry-agent/internal/identity/credentials"
-	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
-	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
-	operations "github.com/ar-imms/telemetry-agent/internal/operations/command"
-	operationsdocker "github.com/ar-imms/telemetry-agent/internal/operations/dockeradapter"
-	"github.com/ar-imms/telemetry-agent/internal/operations/handlers"
-	operationssqlite "github.com/ar-imms/telemetry-agent/internal/operations/sqlite"
-	"github.com/ar-imms/telemetry-agent/internal/operations/testsupport/mockcore"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
-	"github.com/nats-io/nats.go/jetstream"
 )
 
 func TestLiveJetStreamOperationsE2E(t *testing.T) {
@@ -87,8 +86,8 @@ func TestLiveJetStreamOperationsE2E(t *testing.T) {
 	defer mock.Close()
 
 	statePath := filepath.Join(t.TempDir(), "agent.db")
-	store := agentstate.NewSQLiteStore(statePath)
-	committed, err := agentstate.NewIdentityStore(statePath).EnsureInstallationID(installationID)
+	store := sqlitefixture.NewSQLiteStore(statePath)
+	committed, err := sqlitefixture.NewIdentityStore(statePath).EnsureInstallationID(installationID)
 	if err != nil || committed.String() != installation {
 		t.Fatalf("persist test identity=%s err=%v", committed.String(), err)
 	}

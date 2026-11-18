@@ -12,6 +12,8 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
 func TestRunDependencyDisablePassesExplicitStatePathToManagedLifecycle(
@@ -162,14 +164,14 @@ func TestRunDependencyPendingListsScheduledTeardowns(
 	t *testing.T,
 ) {
 	statePath := filepath.Join(t.TempDir(), "state.json")
-	store := agentstate.NewStore(statePath)
+	store := sqlitefixture.NewStore(statePath)
 
 	_, err := store.Update(func(state *agentstate.State) error {
 		state.AppliedGeneration = 6
-		state.Dependencies = map[string]agentstate.DependencyState{
+		state.Dependencies = map[string]dependencydomain.DependencyState{
 			"windows-exporter": {
-				PendingTeardown: &agentstate.PendingTeardown{
-					Action:     agentstate.TeardownActionUninstall,
+				PendingTeardown: &dependencydomain.PendingTeardown{
+					Action:     dependencydomain.TeardownActionUninstall,
 					Generation: 7,
 				},
 			},
@@ -275,10 +277,10 @@ func TestRunDependencyConfigureAppliesOnlyChangedManagedDependencies(
 	t *testing.T,
 ) {
 	statePath := filepath.Join(t.TempDir(), "state.json")
-	store := agentstate.NewStore(statePath)
+	store := sqlitefixture.NewStore(statePath)
 
 	_, err := store.Update(func(state *agentstate.State) error {
-		state.Dependencies = map[string]agentstate.DependencyState{
+		state.Dependencies = map[string]dependencydomain.DependencyState{
 			"windows-exporter": {
 				Enabled: true,
 			},
@@ -396,10 +398,10 @@ func TestRunDependencyConfigureCancellationDoesNotManageDependencies(
 	t *testing.T,
 ) {
 	statePath := filepath.Join(t.TempDir(), "state.json")
-	store := agentstate.NewStore(statePath)
+	store := sqlitefixture.NewStore(statePath)
 
 	_, err := store.Update(func(state *agentstate.State) error {
-		state.Dependencies = map[string]agentstate.DependencyState{
+		state.Dependencies = map[string]dependencydomain.DependencyState{
 			"windows-exporter": {
 				Enabled: true,
 			},
@@ -466,10 +468,10 @@ func TestRunDependencyConfigureSkipsUnchangedManagedDependencies(
 	t *testing.T,
 ) {
 	statePath := filepath.Join(t.TempDir(), "state.json")
-	store := agentstate.NewStore(statePath)
+	store := sqlitefixture.NewStore(statePath)
 
 	_, err := store.Update(func(state *agentstate.State) error {
-		state.Dependencies = map[string]agentstate.DependencyState{
+		state.Dependencies = map[string]dependencydomain.DependencyState{
 			"windows-exporter": {
 				Enabled: true,
 			},

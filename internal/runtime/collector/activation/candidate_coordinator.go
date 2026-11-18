@@ -8,16 +8,18 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	activationapp "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/application"
+	activationdomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 )
 
 type candidateLifecycleRepository interface {
-	AdmitCandidate(agentstate.CandidateAdmission) (agentstate.CandidateAdmissionResult, error)
+	AdmitCandidate(activationapp.CandidateAdmissionRequest) (activationapp.AdmissionResult, error)
 	CompleteCandidateFailure(uint64, string, string, string) error
 }
 
 type candidateActivationPlan struct {
-	Mapping     agentstate.CandidateMapping
+	Mapping     activationdomain.CandidateMapping
 	Content     []byte
 	Environment []string
 }
@@ -47,7 +49,7 @@ func (c configurationCoordinator) ApplyCandidate(
 			return fmt.Errorf("load Agent state before candidate admission: %w", err)
 		}
 		if state.DesiredGeneration != request.ExpectedGeneration {
-			return agentstate.ErrStaleM2Generation
+			return activationapp.ErrStaleM2Generation
 		}
 		plan, err := build(state)
 		if err != nil {
@@ -60,7 +62,7 @@ func (c configurationCoordinator) ApplyCandidate(
 		if err != nil {
 			return fmt.Errorf("prepare candidate recovery artifact: %w", err)
 		}
-		admission, err := repository.AdmitCandidate(agentstate.CandidateAdmission{
+		admission, err := repository.AdmitCandidate(activationapp.CandidateAdmissionRequest{
 			DesiredSetRevision:  request.DesiredSetRevision,
 			ExpectedGeneration:  request.ExpectedGeneration,
 			ExpectedFingerprint: request.BaselineFingerprint,

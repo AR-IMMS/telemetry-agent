@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/ar-imms/telemetry-agent/internal/config"
+	identity "github.com/ar-imms/telemetry-agent/internal/identity/host"
 )
 
 // ErrStaleCandidate reports that the desired state or baseline changed before candidate admission.
@@ -17,16 +17,37 @@ var ErrInvalidCandidate = errors.New("invalid Collector candidate")
 // consumed by reconciliation. It excludes the generated Integration candidate
 // and lifecycle readiness overlay.
 type BaselineSnapshot struct {
-	Input             config.RenderInput
+	Input             RenderInput
 	DesiredGeneration uint64
 	Fingerprint       string
+}
+
+// Layer identifies one ordered Runtime-owned Collector YAML input file.
+type Layer struct {
+	Name string
+	Path string
+}
+
+// InlineLayer identifies an in-memory Collector document composed with file-backed layers.
+type InlineLayer struct {
+	Name     string
+	Document map[string]any
+}
+
+// RenderInput is the cross-context request for a deterministic Collector configuration candidate.
+// Configuration composes this value; Runtime owns its YAML interpretation and execution.
+type RenderInput struct {
+	Platform     identity.PlatformInfo
+	Layers       []Layer
+	InlineLayers []InlineLayer
+	Values       map[string]string
 }
 
 // BaselineReader returns a clean baseline render input with the generation and
 // fingerprint observed while building it. It does not promise a cross-store
 // read transaction; CandidateApplier rechecks freshness before admission.
 type BaselineReader interface {
-	Snapshot() (BaselineSnapshot, error)
+	Snapshot(context.Context) (BaselineSnapshot, error)
 }
 
 // CandidateApplyRequest binds one immutable compiled candidate to the desired

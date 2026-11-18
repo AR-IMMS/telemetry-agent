@@ -3,12 +3,11 @@ package nodeexporter
 import (
 	"context"
 	"fmt"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 )
 
 // archiveStager prepares a verified archive and returns its cleanup function.
@@ -116,7 +115,7 @@ func (i freshInstaller) Install(
 
 	return dependency.InstallResult{
 		Name: "node-exporter",
-		OwnedResources: []agentstate.OwnedResource{
+		OwnedResources: []servicedomain.OwnedResource{
 			{
 				Kind:       "systemd-unit",
 				Identifier: i.options.ServicePath,

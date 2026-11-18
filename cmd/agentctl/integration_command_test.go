@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation"
 	reconciliationcontracts "github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation/contracts"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
 func TestIntegrationStatusDoesNotInferHealthOrDelivery(t *testing.T) {
@@ -49,7 +49,7 @@ func TestIntegrationConfigureRejectsSecretSettingsWithoutEchoingThem(t *testing.
 	if code != 1 || strings.Contains(stderr.String(), "super-secret-value") {
 		t.Fatalf("configure exit=%d stderr=%q", code, stderr.String())
 	}
-	snapshot, err := agentstate.NewSQLiteStore(path).IntegrationRepository().Snapshot()
+	snapshot, err := newTestDesiredStateRepository(sqlitefixture.NewSQLiteStore(path)).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestIntegrationDisablePreservesSettingsAndNoOpRevision(t *testing.T) {
 	if !strings.Contains(stdout.String(), "Desired Integration disable: id=redis-a instance_revision=2 desired_set_revision=2") {
 		t.Fatalf("disable output=%q", stdout.String())
 	}
-	snapshot, err := agentstate.NewSQLiteStore(path).IntegrationRepository().Snapshot()
+	snapshot, err := newTestDesiredStateRepository(sqlitefixture.NewSQLiteStore(path)).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestIntegrationDisablePreservesSettingsAndNoOpRevision(t *testing.T) {
 	if code := runIntegration(context.Background(), []string{"disable", "--state-path", path, "--id", "redis-a", "--expected-revision", "2"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("repeat disable exit=%d stderr=%q", code, stderr.String())
 	}
-	snapshot, err = agentstate.NewSQLiteStore(path).IntegrationRepository().Snapshot()
+	snapshot, err = newTestDesiredStateRepository(sqlitefixture.NewSQLiteStore(path)).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestIntegrationUpdateWithoutEnabledFlagPreservesStoredEnabledState(t *testi
 	if code := runIntegration(context.Background(), update, &stdout, &stderr); code != 0 {
 		t.Fatalf("update exit=%d stderr=%q", code, stderr.String())
 	}
-	snapshot, err := agentstate.NewSQLiteStore(path).IntegrationRepository().Snapshot()
+	snapshot, err := newTestDesiredStateRepository(sqlitefixture.NewSQLiteStore(path)).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}

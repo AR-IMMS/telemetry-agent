@@ -5,8 +5,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 )
 
 func TestCatalogListReturnsSupportedDefinitionsSortedByDisplayName(
@@ -252,15 +250,9 @@ func TestCatalogReturnsReceiverForEnabledCurrentPlatformDependency(
 
 	got, err := catalog.CollectorReceivers(
 		"linux",
-		agentstate.State{
-			Dependencies: map[string]agentstate.DependencyState{
-				"node-exporter": {
-					Enabled: true,
-				},
-				"windows-exporter": {
-					Enabled: true,
-				},
-			},
+		EnabledSet{
+			"node-exporter":    {},
+			"windows-exporter": {},
 		},
 	)
 	if err != nil {

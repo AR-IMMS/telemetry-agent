@@ -5,7 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 func TestLHMTeardownDisablesOwnedScheduledTask(t *testing.T) {
@@ -28,8 +29,8 @@ func TestLHMTeardownDisablesOwnedScheduledTask(t *testing.T) {
 
 	err := teardown.Teardown(
 		context.Background(),
-		agentstate.TeardownActionDisable,
-		[]agentstate.OwnedResource{
+		dependencydomain.TeardownActionDisable,
+		[]servicedomain.OwnedResource{
 			{
 				Kind:       "scheduled-task",
 				Identifier: options.TaskName,
@@ -115,8 +116,8 @@ func TestLHMTeardownUninstallsOwnedResources(t *testing.T) {
 
 	err := teardown.Teardown(
 		context.Background(),
-		agentstate.TeardownActionUninstall,
-		[]agentstate.OwnedResource{
+		dependencydomain.TeardownActionUninstall,
+		[]servicedomain.OwnedResource{
 			{
 				Kind:       "scheduled-task",
 				Identifier: options.TaskName,

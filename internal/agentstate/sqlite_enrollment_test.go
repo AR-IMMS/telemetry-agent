@@ -8,21 +8,22 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
+	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
 func TestSQLiteEnrollmentAttemptSurvivesRestartWithoutSecrets(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
 	identityID := mustInstallationID(t, "5baf0cba-cf5a-4d39-a3d4-e76263b70810")
-	if _, err := NewIdentityStore(path).EnsureInstallationID(identityID); err != nil {
+	if _, err := newTestIdentityStore(path).EnsureInstallationID(identityID); err != nil {
 		t.Fatal(err)
 	}
-	store := NewEnrollmentStore(path)
+	store := newTestEnrollmentStore(path)
 	attempt := pendingEnrollmentAttempt(identityID.String(), "10000000-0000-4000-8000-000000000001")
 	if err := store.CreateAttempt(attempt); err != nil {
 		t.Fatalf("CreateAttempt() error = %v", err)
 	}
-	restarted := NewEnrollmentStore(path)
+	restarted := newTestEnrollmentStore(path)
 	got, err := restarted.LoadAttempt()
 	if err != nil {
 		t.Fatalf("LoadAttempt() error = %v", err)
@@ -42,16 +43,16 @@ func TestSQLiteEnrollmentAttemptSurvivesRestartWithoutSecrets(t *testing.T) {
 func TestSQLiteEnrollmentAttemptChangesAreScopedAndConcurrentCreateIsSerialized(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
 	identityID := mustInstallationID(t, "5baf0cba-cf5a-4d39-a3d4-e76263b70810")
-	if _, err := NewIdentityStore(path).EnsureInstallationID(identityID); err != nil {
+	if _, err := newTestIdentityStore(path).EnsureInstallationID(identityID); err != nil {
 		t.Fatal(err)
 	}
-	state := State{DesiredGeneration: 4, Dependencies: map[string]DependencyState{
+	state := State{DesiredGeneration: 4, Dependencies: map[string]dependencydomain.DependencyState{
 		"redis": {Enabled: true},
 	}}
-	if err := NewSQLiteStore(path).Save(state); err != nil {
+	if err := newTestSQLiteStore(path).Save(state); err != nil {
 		t.Fatal(err)
 	}
-	storeA, storeB := NewEnrollmentStore(path), NewEnrollmentStore(path)
+	storeA, storeB := newTestEnrollmentStore(path), newTestEnrollmentStore(path)
 	attempts := []enrollment.Attempt{
 		pendingEnrollmentAttempt(identityID.String(), "10000000-0000-4000-8000-000000000006"),
 		pendingEnrollmentAttempt(identityID.String(), "10000000-0000-4000-8000-000000000007"),
@@ -93,7 +94,7 @@ func TestSQLiteEnrollmentAttemptChangesAreScopedAndConcurrentCreateIsSerialized(
 	if err := storeA.CompleteAttempt(loaded.Payload.AttemptID, result, "credential-ref"); err != nil {
 		t.Fatalf("CompleteAttempt() error = %v", err)
 	}
-	current, err := NewStore(path).Load()
+	current, err := newTestStore(path).Load()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,10 +114,10 @@ func TestSQLiteEnrollmentReEnrollmentRetainsPriorBindingUntilReplacementComplete
 	path := filepath.Join(t.TempDir(), "state.db")
 	installationID := "5baf0cba-cf5a-4d39-a3d4-e76263b70810"
 	parsedID := mustInstallationID(t, installationID)
-	if _, err := NewIdentityStore(path).EnsureInstallationID(parsedID); err != nil {
+	if _, err := newTestIdentityStore(path).EnsureInstallationID(parsedID); err != nil {
 		t.Fatal(err)
 	}
-	store := NewEnrollmentStore(path)
+	store := newTestEnrollmentStore(path)
 	previous := pendingEnrollmentAttempt(installationID, "10000000-0000-4000-8000-000000000008")
 	if err := store.CreateAttempt(previous); err != nil {
 		t.Fatal(err)

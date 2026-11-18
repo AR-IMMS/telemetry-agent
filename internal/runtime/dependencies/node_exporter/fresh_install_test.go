@@ -3,13 +3,12 @@ package nodeexporter
 import (
 	"context"
 	"errors"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 )
 
 func TestFreshInstallerPublishesStartsAndChecksNodeExporter(
@@ -77,7 +76,7 @@ func TestFreshInstallerPublishesStartsAndChecksNodeExporter(
 	wantResult := dependency.InstallResult{
 		Name:   "node-exporter",
 		Reused: false,
-		OwnedResources: []agentstate.OwnedResource{
+		OwnedResources: []servicedomain.OwnedResource{
 			{
 				Kind:       "systemd-unit",
 				Identifier: "/etc/systemd/system/ar-imms-node-exporter.service",

@@ -13,10 +13,13 @@ import (
 	"strings"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/configuration"
+	"github.com/ar-imms/telemetry-agent/internal/app"
+	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
+	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation"
 	reconciliationcontracts "github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation/contracts"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
+	definitionapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
+	agentservice "github.com/ar-imms/telemetry-agent/internal/runtime/service"
 )
 
 func writeIntegrationHelp(w io.Writer) {
@@ -46,7 +49,7 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 	}
 	flags := flag.NewFlagSet("integration "+command, flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	statePath := flags.String("state-path", agentstate.DefaultPath(), "persistent Agent state path")
+	statePath := flags.String("state-path", agentservice.DefaultStatePath(), "persistent Agent state path")
 	id := flags.String("id", "", "Integration instance ID")
 	definition := flags.String("definition", "", "exact definition ID")
 	version := flags.String("version", "", "exact definition version")
@@ -54,7 +57,7 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 	enabled := flags.Bool("enabled", true, "enable created or updated instance")
 	expected := flags.Uint64("expected-revision", 0, "expected instance revision")
 	limit := flags.Int("limit", 20, "history limit (1-100)")
-	if err := flags.Parse(args[1:]); err != nil {
+	if err := parseCompatibilityFlags(flags, args[1:]); err != nil {
 		return 2
 	}
 	if strings.TrimSpace(*statePath) == "" {
@@ -67,13 +70,13 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 	if err := ctx.Err(); err != nil {
 		return integrationCommandError(stderr, command, err)
 	}
-	stateStore := agentstate.NewStore(*statePath)
-	store, ok := stateStore.(agentstate.SQLiteStore)
+	stateStore := newAgentStateStore(*statePath)
+	_, ok := stateStore.(agentstate.SQLiteStore)
 	if !ok {
 		return integrationCommandError(stderr, command, fmt.Errorf("SQLite state store is required"))
 	}
-	repository := store.IntegrationRepository()
-	diagnostics := store.ReconciliationRepository()
+	repository := app.NewDesiredStateRepository(*statePath)
+	diagnostics := app.NewReconciliationRepository(*statePath)
 	switch command {
 	case "configure", "update":
 		if *id == "" || *definition == "" || *version == "" {
@@ -97,16 +100,16 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 		if err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
-		service := configuration.NewIntegrationService(integration.NewResolver(registry), repository)
-		instance := integration.IntegrationInstance{ID: *id, DefinitionID: *definition, DefinitionVersion: *version, Configuration: values, Enabled: *enabled}
-		var stored integration.IntegrationInstance
+		service := desiredstateapp.NewService(app.NewMonitoringDesiredStateResolver(definitionapp.NewResolver(registry)), repository)
+		instance := desiredstatedomain.Instance{ID: *id, DefinitionID: *definition, DefinitionVersion: *version, Configuration: values, Enabled: *enabled}
+		var stored desiredstatedomain.Instance
 		var revision uint64
 		if command == "update" && !flagProvided(args[1:], "--enabled") {
 			stored, revision, err = service.PutPreservingEnabled(instance, *expected)
 		} else {
 			stored, revision, err = service.Put(instance, *expected)
 		}
-		if errors.Is(err, configuration.ErrIntegrationNotFound) {
+		if errors.Is(err, desiredstateapp.ErrInstanceNotFound) {
 			err = sql.ErrNoRows
 		}
 		if err != nil {
@@ -130,9 +133,9 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 		if err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
-		service := configuration.NewIntegrationService(integration.NewResolver(registry), repository)
+		service := desiredstateapp.NewService(app.NewMonitoringDesiredStateResolver(definitionapp.NewResolver(registry)), repository)
 		stored, revision, err := service.SetEnabled(*id, command == "enable", *expected)
-		if errors.Is(err, configuration.ErrIntegrationNotFound) {
+		if errors.Is(err, desiredstateapp.ErrInstanceNotFound) {
 			err = sql.ErrNoRows
 		}
 		if err != nil {
@@ -179,7 +182,7 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 			if baselineErr != nil {
 				return integrationCommandError(stderr, command, baselineErr)
 			}
-			baseline, baselineErr := currentBaseline.Snapshot()
+			baseline, baselineErr := currentBaseline.Snapshot(ctx)
 			if baselineErr != nil {
 				return integrationCommandError(stderr, command, baselineErr)
 			}

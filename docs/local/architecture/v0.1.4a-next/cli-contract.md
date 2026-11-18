@@ -1,17 +1,17 @@
 # `agentctl` CLI Contract — v0.1.4a-next
 
-**Status:** PROPOSED / REVIEW REQUIRED<br>
+**Status:** Compatibility and CLI foundation decisions APPROVED (2026-11-17); remaining new command behavior and machine-readable contracts remain PROPOSED / REVIEW REQUIRED<br>
 **Target release:** `v0.1.4a-next`<br>
 **Scope:** Engineer-facing CLI UX, backward compatibility, command ownership, PR implementation mapping.<br>
-**Source of current commands:** repository command inventory supplied for review; exact flags and JSON output must be verified against source HEAD before implementation.
+**Source of current commands:** PR-01 baseline plus current `cmd/agentctl` handlers and `internal/cli` command tree; verify exact flags and output against the source revision being changed.
 
-> This document defines target CLI behavior, **not shipped functionality**. Do not change implementation PR plans solely to match this file. All commands below labeled **NEW** are proposals.
+> The compatibility-first command hierarchy and interactive/settings constraints recorded below are approved. Other commands labeled **NEW**, machine-readable schemas, and business behavior without an explicit approval remain proposals; this document does not make them shipped functionality.
 
 ## 1. UX principles
 
 1. Primary journey: **Install → Enroll → Monitor → Diagnose → Configure → Operate**.
 2. Default workflow hides Collector YAML, receiver matching internals, and SQLite tables. Advanced commands remain available.
-3. Keep existing commands/flags/output and `--state-path` semantics compatible during migration; use aliases/warnings before removal.
+3. Preserve existing commands, flags, output shapes, exit codes, `--state-path`, and revision/CAS semantics. Add only exact aliases to existing use cases; both routes must share the same handler path. Do not remove or deprecate commands or add business behavior without separate approval.
 4. Commands that mutate state report actual committed/applied results, never assume activation or OTLP delivery from request acceptance.
 5. Linux `systemd` and Windows SCM use the same public engineer-facing CLI where possible; OS-specific service internals are documented explicitly.
 6. Never expose enrollment secrets, OpAMP credentials, tokens, or unredacted diagnostic secrets in human or JSON output.
@@ -27,7 +27,7 @@ agentctl inventory
 agentctl discovery
 agentctl status
 agentctl enroll
-agentctl service         # Windows dispatcher entrypoint; missing in root help
+agentctl service         # Windows-only internal dispatcher; identified in root help
 agentctl install
 agentctl uninstall
 agentctl help
@@ -41,6 +41,16 @@ agentctl discovery proposals {list,inspect,dismiss,approve}
 ```
 
 **Existing concurrency contracts:** integration/template writes use revision safeguards (`--expected-revision` where applicable); proposal approval requires `--revision` and `--expected-desired-revision`. Preserve these while old commands remain operational. Verify precise option applicability against source.
+
+**Approved implementation decisions (2026-11-17):**
+
+- Build the new command hierarchy with Cobra and pflag. New hierarchy entries are exact aliases to existing application use cases; retain legacy routes and compare output and exit status in compatibility tests.
+- Use Viper behind the CLI settings boundary for existing flag-backed values only. Environment variables and preference files remain disabled until their names, precedence, and paths are approved. Command handlers must not depend on Viper so those sources can be added later without rewriting handlers.
+- Use Huh only in explicitly interactive TTY flows. Keep credential collection on its existing protected input path, and preserve noninteractive behavior for automation. Retain Bubble Tea for advanced TUI flows where justified instead of implementing the same interaction twice.
+- Keep CLI preferences separate from Agent desired state and protected credentials.
+- Defer removals, deprecations, new local mutations, Agent service controls, and config-sync behavior until separately approved.
+
+**Implemented foundation (2026-11-18):** Inventory parsing and output now live in `internal/cli/commands/inventory`; `cmd/agentctl` supplies repository, profile, health-evidence, and platform adapters at the composition boundary. The compatibility flag resolver lives in `internal/cli/settings`, an independent settings package usable by command capabilities without importing the CLI command registry. Monitoring aliases are composed by `internal/cli/commands/monitoring` and forward unchanged arguments, streams, context, and handler exit codes to existing routes. Dependency catalog-list, lifecycle-status, and pending-teardown presentation now live in `internal/cli/commands/dependency`; the executable supplies Runtime's existing catalog/status queries and projects managed/pending dependency data from Agent state, while argument validation, state loading, and legacy dispatch remain in `cmd/agentctl`. Root help identifies the existing Windows-only `service` dispatcher. Existing command behavior remains covered by capability, alias-parity, and executable regression tests. This extraction does not imply that the proposed CLI hierarchy beyond these implemented groups is complete.
 
 ## 3. Target CLI hierarchy
 
@@ -58,12 +68,10 @@ agentctl
 │   ├── list | inspect | status      KEEP
 │   └── refresh                     NEW: request fresh observation cycle
 ├── monitoring                      NEW
-│   ├── list | inspect | explain
-│   ├── profile
-│   │   ├── list | inspect
-│   │   ├── validate
-│   │   └── apply
-│   └── reconcile
+│   ├── instance {create | configure | update | enable | disable | delete | list | inspect | status | history | retry | match}
+│   ├── profile {list | inspect}
+│   ├── template {create | update | list | inspect | enable | disable | delete}
+│   └── proposal {list | inspect | dismiss | approve}
 ├── config                          NEW
 │   ├── show | validate | history
 │   └── sync
@@ -203,3 +211,7 @@ Minimum requirements: exact immutable target/container identity, preflight valid
 5. Whether `inventory refresh` should refresh Agent inventory only, OTel observer config, or both; default proposal is **Agent inventory only**, since OTel owns its own observation lifecycle.
 
 **Related docs:** [Architecture overview](architecture-overview.md), [Context boundaries](context-boundaries.md), [Source structure](source-structure.md), [Migration roadmap](../../plans/v0.1.4a-next/migration-roadmap.md).
+
+## 12. Verified command-tree ownership
+
+`internal/cli/commands/dependency` owns construction of the existing `dependency` Cobra group and its seven operation aliases (`list`, `install`, `status`, `pending`, `configure`, `disable`, and `uninstall`). `internal/cli/commands/inventory` owns the existing `inventory` group and its `list`, `inspect`, and `status` aliases. `internal/cli/commands/health` owns the existing top-level `status` and `doctor` Cobra nodes. Each constructor forwards the original command path, remaining arguments (including legacy flags), context, output streams, and exit code through the existing dispatcher to the same handlers. Legacy flags and handlers remain the source of behavior; aliases do not duplicate use cases. These are ownership extractions only and do not add command behavior or change public contracts. See the PR-09.5 report for commit-level verification.

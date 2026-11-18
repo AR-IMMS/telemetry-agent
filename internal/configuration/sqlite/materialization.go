@@ -9,14 +9,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/configuration"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
+	desiredapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
+	desiredstate "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
+	materializationapp "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/application"
+	materializationdomain "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/domain"
+	templatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/templates/domain"
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 )
 
 // NewMaterializationRepository creates the projection adapter over the shared database.
 // The opener and write lock are required; repository operations return an error if either is missing.
-func NewMaterializationRepository(open func() (*sql.DB, error), locker sync.Locker) configuration.MaterializationRepository {
+func NewMaterializationRepository(open func() (*sql.DB, error), locker sync.Locker) materializationapp.Repository {
 	return materializationSQLite{store: database{open: open, locker: locker}}
 }
 
@@ -25,7 +28,7 @@ func NewMaterializationRepository(open func() (*sql.DB, error), locker sync.Lock
 // The opener and write lock are required; the publisher may be nil.
 func NewMaterializationRepositoryWithEvents(open func() (*sql.DB, error), locker sync.Locker, publisher interface {
 	Publish(events.DesiredConfigurationChanged) error
-}) configuration.MaterializationRepository {
+}) materializationapp.Repository {
 	return materializationSQLite{store: database{open: open, locker: locker}, publisher: publisher}
 }
 
@@ -36,7 +39,7 @@ type materializationSQLite struct {
 	}
 }
 
-func (s materializationSQLite) ApplyTemplateProjection(batch configuration.MaterializationBatch) (uint64, error) {
+func (s materializationSQLite) ApplyTemplateProjection(batch materializationdomain.Batch) (uint64, error) {
 	if err := validateMaterializationBatch(batch); err != nil {
 		return 0, err
 	}
@@ -108,34 +111,11 @@ func (s materializationSQLite) ApplyTemplateProjection(batch configuration.Mater
 	return revision, nil
 }
 
-func validateMaterializationBatch(batch configuration.MaterializationBatch) error {
-	if batch.ExpectedInventoryWriteRevision == 0 || batch.ExpectedInventoryWriteRevision > uint64(^uint64(0)>>1) ||
-		batch.ExpectedTemplateSetRevision > uint64(^uint64(0)>>1) || batch.ExpectedDesiredSetRevision > uint64(^uint64(0)>>1) {
-		return configuration.ErrInvalidMaterialization
-	}
-	seen := make(map[string]struct{}, len(batch.Upsert)+len(batch.Suspend))
-	for _, instance := range batch.Upsert {
-		if instance.Source != integration.SourceTemplate || !instance.Enabled || instance.Revision != 0 || integration.ValidateInstance(instance) != nil {
-			return configuration.ErrInvalidMaterialization
-		}
-		if _, duplicate := seen[instance.ID]; duplicate {
-			return configuration.ErrInvalidMaterialization
-		}
-		seen[instance.ID] = struct{}{}
-	}
-	for _, id := range batch.Suspend {
-		if id == "" {
-			return configuration.ErrInvalidMaterialization
-		}
-		if _, duplicate := seen[id]; duplicate {
-			return configuration.ErrInvalidMaterialization
-		}
-		seen[id] = struct{}{}
-	}
-	return nil
+func validateMaterializationBatch(batch materializationdomain.Batch) error {
+	return materializationdomain.ValidateBatch(batch)
 }
 
-func checkMaterializationRevisions(tx *sql.Tx, batch configuration.MaterializationBatch) error {
+func checkMaterializationRevisions(tx *sql.Tx, batch materializationdomain.Batch) error {
 	var inventoryRevision int64
 	if err := tx.QueryRow(`SELECT write_revision FROM inventory_meta WHERE id=1`).Scan(&inventoryRevision); err != nil {
 		return fmt.Errorf("read inventory revision for materialization: %w", err)
@@ -149,12 +129,12 @@ func checkMaterializationRevisions(tx *sql.Tx, batch configuration.Materializati
 		return err
 	}
 	if uint64(inventoryRevision) != batch.ExpectedInventoryWriteRevision || templates != batch.ExpectedTemplateSetRevision || desired != batch.ExpectedDesiredSetRevision {
-		return configuration.ErrMaterializationConflict
+		return materializationdomain.ErrMaterializationConflict
 	}
 	return nil
 }
 
-func upsertMaterializedInstance(tx *sql.Tx, instance integration.IntegrationInstance) (bool, error) {
+func upsertMaterializedInstance(tx *sql.Tx, instance desiredstate.Instance) (bool, error) {
 	var stored []byte
 	var current uint64
 	err := tx.QueryRow(`SELECT payload,revision FROM integration_instances WHERE instance_id=?`, instance.ID).Scan(&stored, &current)
@@ -162,12 +142,12 @@ func upsertMaterializedInstance(tx *sql.Tx, instance integration.IntegrationInst
 		return false, fmt.Errorf("read generated Integration instance: %w", err)
 	}
 	if err == nil {
-		var existing integration.IntegrationInstance
+		var existing desiredstate.Instance
 		if err := json.Unmarshal(stored, &existing); err != nil {
 			return false, fmt.Errorf("decode generated Integration instance: %w", err)
 		}
 		if !sameTemplateInstanceOwner(existing, instance) {
-			return false, configuration.ErrTemplateOwnedInstance
+			return false, desiredapp.ErrTemplateOwnedInstance
 		}
 		if sameMaterializedIntent(existing, instance) {
 			return false, nil
@@ -190,22 +170,22 @@ func upsertMaterializedInstance(tx *sql.Tx, instance integration.IntegrationInst
 	return true, nil
 }
 
-func validateMaterializedTemplate(tx *sql.Tx, instance integration.IntegrationInstance) error {
+func validateMaterializedTemplate(tx *sql.Tx, instance desiredstate.Instance) error {
 	var payload []byte
 	var revision uint64
 	if err := tx.QueryRow(`SELECT payload,revision FROM integration_templates WHERE template_id=?`, instance.TemplateID).Scan(&payload, &revision); err != nil {
 		return fmt.Errorf("read owning Integration Template: %w", err)
 	}
-	var template integration.IntegrationTemplate
+	var template templatedomain.Template
 	if err := json.Unmarshal(payload, &template); err != nil {
 		return fmt.Errorf("decode owning Integration Template: %w", err)
 	}
-	if err := integration.ValidateIntegrationTemplate(template); err != nil {
+	if err := template.Validate(); err != nil {
 		return fmt.Errorf("validate owning Integration Template: %w", err)
 	}
 	if template.Owner != instance.TemplateOwner || template.Revision != revision || template.Revision != instance.TemplateRevision ||
-		template.Status != integration.TemplateEnabled || template.DefinitionID != instance.DefinitionID {
-		return configuration.ErrMaterializationConflict
+		template.Status != templatedomain.StatusEnabled || template.DefinitionID != instance.DefinitionID {
+		return materializationdomain.ErrMaterializationConflict
 	}
 	return nil
 }
@@ -220,12 +200,12 @@ func suspendMaterializedInstance(tx *sql.Tx, id string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("read Integration instance for suspension: %w", err)
 	}
-	var instance integration.IntegrationInstance
+	var instance desiredstate.Instance
 	if err := json.Unmarshal(payload, &instance); err != nil {
 		return false, fmt.Errorf("decode Integration instance for suspension: %w", err)
 	}
-	if instance.Source != integration.SourceTemplate {
-		return false, configuration.ErrTemplateOwnedInstance
+	if instance.Source != desiredstate.SourceTemplate {
+		return false, desiredapp.ErrTemplateOwnedInstance
 	}
 	if !instance.Enabled {
 		return false, nil
@@ -246,13 +226,13 @@ func suspendMaterializedInstance(tx *sql.Tx, id string) (bool, error) {
 	return true, nil
 }
 
-func sameTemplateInstanceOwner(existing, requested integration.IntegrationInstance) bool {
-	return existing.Source == integration.SourceTemplate && existing.TemplateOwner == requested.TemplateOwner &&
+func sameTemplateInstanceOwner(existing, requested desiredstate.Instance) bool {
+	return existing.Source == desiredstate.SourceTemplate && existing.TemplateOwner == requested.TemplateOwner &&
 		existing.TemplateID == requested.TemplateID && existing.DefinitionID == requested.DefinitionID &&
 		existing.Binding != nil && requested.Binding != nil && *existing.Binding == *requested.Binding
 }
 
-func sameMaterializedIntent(existing, requested integration.IntegrationInstance) bool {
+func sameMaterializedIntent(existing, requested desiredstate.Instance) bool {
 	existing.Revision, requested.Revision = 0, 0
 	left, leftErr := json.Marshal(existing)
 	right, rightErr := json.Marshal(requested)

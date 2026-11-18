@@ -3,6 +3,7 @@ package agentlifecycle
 import (
 	"context"
 	"errors"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"net"
 	"os"
 	"path/filepath"
@@ -12,15 +13,37 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	monitoringprofile "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
+	activationapp "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/application"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
-	"github.com/ar-imms/telemetry-agent/internal/config"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
-	"github.com/ar-imms/telemetry-agent/internal/identity/host"
-	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 )
+
+func runtimeProfileInputs(profiles []monitoringprofile.Profile) []contracts.DockerMonitoringProfile {
+	result := make([]contracts.DockerMonitoringProfile, 0, len(profiles))
+	for _, profile := range profiles {
+		converted := contracts.DockerMonitoringProfile{
+			ID: profile.ID, Provider: profile.Provider, MatchLabels: profile.MatchLabels,
+			RequiredCapabilities: profile.RequiredCapabilities, ReceiverType: profile.ReceiverType,
+			CollectionInterval: profile.CollectionInterval,
+			Settings:           contracts.DockerReceiverSettings{MetricsPath: profile.Settings.MetricsPath, UsernameEnv: profile.Settings.UsernameEnv, PasswordEnv: profile.Settings.PasswordEnv, TLSCAFile: profile.Settings.TLSCAFile},
+		}
+		for _, strategy := range profile.EndpointStrategies {
+			converted.EndpointStrategies = append(converted.EndpointStrategies, contracts.DockerEndpointStrategy{
+				ID: strategy.ID, OS: strategy.OS, When: strategy.When, Endpoint: strategy.Endpoint,
+				Scope: string(strategy.Scope), Provenance: strategy.Provenance, TargetPort: strategy.TargetPort,
+				TargetPortLabel: strategy.TargetPortLabel, PrivatePortVariable: strategy.PrivatePortVariable, Priority: strategy.Priority,
+			})
+		}
+		result = append(result, converted)
+	}
+	return result
+}
 
 func TestApplyCollectorCandidateUsesExistingLifecycleAndWaitsForReadiness(t *testing.T) {
 	store, request, options, activePath, _ := candidateFixture(t)
@@ -97,7 +120,7 @@ func TestApplyCollectorCandidateRejectsChangedBaselineBeforeAdmission(t *testing
 		t.Fatal("Collector validation ran for a stale baseline")
 		return bootstrap.CommandResult{}
 	})
-	if _, err := ApplyCollectorCandidate(context.Background(), store, request, options); !errors.Is(err, agentstate.ErrStaleCandidate) {
+	if _, err := ApplyCollectorCandidate(context.Background(), store, request, options); !errors.Is(err, activationapp.ErrStaleCandidate) {
 		t.Fatalf("ApplyCollectorCandidate() error = %v, want stale candidate", err)
 	}
 	state, err := store.Load()
@@ -193,7 +216,7 @@ func TestPinnedInvalidNativeProfileCandidateRestoresPreviousConfiguration(t *tes
 	if options.Platform.OS == "windows" {
 		dockerEndpoint = "npipe:////./pipe/docker_engine"
 	}
-	layer, receiverNames, err := monitoringprofile.DefaultRegistry().DockerCollectorLayer(options.Platform.OS, dockerEndpoint, "core-node-123")
+	layer, receiverNames, err := collectorruntime.DockerMonitoringLayer(runtimeProfileInputs(monitoringprofile.DefaultRegistry().Profiles()), options.Platform.OS, dockerEndpoint, "core-node-123")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +296,7 @@ func TestPinnedNativeProfileActivationFailureRollsBackToLKG(t *testing.T) {
 	if options.Platform.OS == "windows" {
 		dockerEndpoint = "npipe:////./pipe/ar-imms-pr05-missing-docker"
 	}
-	layer, receiverNames, err := monitoringprofile.DefaultRegistry().DockerCollectorLayer(options.Platform.OS, dockerEndpoint, "core-node-123")
+	layer, receiverNames, err := collectorruntime.DockerMonitoringLayer(runtimeProfileInputs(monitoringprofile.DefaultRegistry().Profiles()), options.Platform.OS, dockerEndpoint, "core-node-123")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -391,7 +414,7 @@ service:
 		t.Fatal(err)
 	}
 	statePath := filepath.Join(t.TempDir(), "state.db")
-	store := agentstate.NewSQLiteStore(statePath)
+	store := sqlitefixture.NewSQLiteStore(statePath)
 	if _, err := store.Update(func(*agentstate.State) error { return nil }); err != nil {
 		t.Fatal(err)
 	}

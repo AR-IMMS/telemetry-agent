@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
+	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	"github.com/ar-imms/telemetry-agent/internal/coreapi"
-	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
-	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/domain"
 )
 
 const managementPrefix = "/api/v1/agent-management/"

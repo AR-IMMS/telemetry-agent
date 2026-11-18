@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 	"io"
 	"os"
-	"sort"
 	"strings"
+
+	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	dependencycommands "github.com/ar-imms/telemetry-agent/internal/cli/commands/dependency"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
 func runDependencyStatus(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, deps dependencies) int {
@@ -33,19 +34,14 @@ func runDependencyStatus(ctx context.Context, args []string, stdout io.Writer, s
 	}
 
 	if deps.listDependencyStatuses == nil {
-		fmt.Fprintln(
-			stderr,
-			"dependency status: lister is not configured",
-		)
-
-		return 1
+		return dependencycommands.Status(ctx, stdout, stderr, nil, nil)
 	}
 
 	state := agentstate.State{
-		Dependencies: make(map[string]agentstate.DependencyState),
+		Dependencies: make(map[string]dependencydomain.DependencyState),
 	}
 
-	loadedState, err := agentstate.NewStore(statePath).Load()
+	loadedState, err := newAgentStateStore(statePath).Load()
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
 			fmt.Fprintf(
@@ -60,74 +56,12 @@ func runDependencyStatus(ctx context.Context, args []string, stdout io.Writer, s
 		state = loadedState
 	}
 
-	results, err := deps.listDependencyStatuses(ctx)
-	if err != nil {
-		fmt.Fprintf(stderr, "dependency status: %v\n", err)
-
-		return 1
+	managedNames := make(map[string]struct{}, len(state.Dependencies))
+	for name := range state.Dependencies {
+		managedNames[strings.ToLower(strings.TrimSpace(name))] = struct{}{}
 	}
 
-	fmt.Fprintln(stdout, "Dependency status:")
-
-	for _, result := range results {
-		if result.InspectionError != nil {
-			fmt.Fprintf(
-				stdout,
-				"- %s: unknown (%v)\n",
-				result.Definition.Name,
-				result.InspectionError,
-			)
-
-			continue
-		}
-
-		name := strings.ToLower(
-			strings.TrimSpace(result.Definition.Name),
-		)
-		_, managed := state.Dependencies[name]
-
-		if result.Status.Availability == dependency.AvailabilityDisabled &&
-			!managed {
-			fmt.Fprintf(
-				stdout,
-				"- %s: not installed\n",
-				result.Definition.Name,
-			)
-
-			continue
-		}
-
-		condition := string(result.Status.Health)
-		if result.Status.Drifted {
-			condition += ", drifted"
-		}
-
-		metricsEndpoint := strings.TrimSpace(
-			result.Definition.MetricsEndpoint,
-		)
-		if metricsEndpoint == "" {
-			fmt.Fprintf(
-				stdout,
-				"- %s: %s (%s)\n",
-				result.Definition.Name,
-				result.Status.Availability,
-				condition,
-			)
-
-			continue
-		}
-
-		fmt.Fprintf(
-			stdout,
-			"- %s: %s (%s) — metrics: %s\n",
-			result.Definition.Name,
-			result.Status.Availability,
-			condition,
-			metricsEndpoint,
-		)
-	}
-
-	return 0
+	return dependencycommands.Status(ctx, stdout, stderr, deps.listDependencyStatuses, managedNames)
 
 }
 
@@ -152,7 +86,7 @@ func runDependencyPending(ctx context.Context, args []string, stdout io.Writer, 
 		return 2
 	}
 
-	store := agentstate.NewStore(statePath)
+	store := newAgentStateStore(statePath)
 
 	state, err := store.Load()
 	if err != nil {
@@ -167,35 +101,17 @@ func runDependencyPending(ctx context.Context, args []string, stdout io.Writer, 
 		return 1
 	}
 
-	names = make([]string, 0, len(state.Dependencies))
+	pendingTeardowns := make([]dependencycommands.PendingTeardown, 0, len(state.Dependencies))
 	for name, dependency := range state.Dependencies {
 		if dependency.PendingTeardown != nil {
-			names = append(names, name)
+			pendingTeardowns = append(pendingTeardowns, dependencycommands.PendingTeardown{
+				Name:       name,
+				Action:     string(dependency.PendingTeardown.Action),
+				Generation: dependency.PendingTeardown.Generation,
+			})
 		}
 	}
 
-	if len(names) == 0 {
-		fmt.Fprintln(stdout, "No pending dependency teardowns.")
-
-		return 0
-	}
-
-	sort.Strings(names)
-
-	fmt.Fprintln(stdout, "Pending dependency teardowns:")
-	for _, name := range names {
-		pending := state.Dependencies[name].PendingTeardown
-
-		fmt.Fprintf(
-			stdout,
-			"- %s: %s, generation %d (applied generation: %d)\n",
-			name,
-			pending.Action,
-			pending.Generation,
-			state.AppliedGeneration,
-		)
-	}
-
-	return 0
+	return dependencycommands.PendingTeardowns(stdout, pendingTeardowns, state.AppliedGeneration)
 
 }

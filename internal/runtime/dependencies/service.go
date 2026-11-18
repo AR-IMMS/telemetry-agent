@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 // Service coordinates dependency lookup, platform checks, and installation.
@@ -148,7 +149,7 @@ func (s Service) ListStatus(
 func (s Service) Enable(
 	ctx context.Context,
 	name string,
-	resources []agentstate.OwnedResource,
+	resources []servicedomain.OwnedResource,
 ) error {
 	normalizedName := strings.ToLower(strings.TrimSpace(name))
 
@@ -191,8 +192,8 @@ func (s Service) Enable(
 func (s Service) Teardown(
 	ctx context.Context,
 	name string,
-	action agentstate.TeardownAction,
-	resources []agentstate.OwnedResource,
+	action dependencydomain.TeardownAction,
+	resources []servicedomain.OwnedResource,
 ) error {
 	normalizedName := strings.ToLower(strings.TrimSpace(name))
 

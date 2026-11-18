@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 var ErrInstalledAgentCannotUninstall = errors.New(
@@ -16,7 +16,7 @@ var ErrInstalledAgentCannotUninstall = errors.New(
 // running from the Agent binary that is about to be removed.
 func ValidateExternalUninstaller(
 	currentExecutable string,
-	installation agentstate.AgentInstallation,
+	installation servicedomain.AgentInstallation,
 ) error {
 	currentExecutable = strings.TrimSpace(currentExecutable)
 	if currentExecutable == "" {

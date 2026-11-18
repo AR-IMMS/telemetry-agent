@@ -4,15 +4,20 @@ import (
 	"context"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 )
 
 // NewInstaller wires the production effects for a packaged Agent installation.
 func NewInstaller(
 	downloader bootstrap.Downloader,
 	runner bootstrap.CommandRunner,
+	stateStoreFactory func(string) agentstate.Repository,
 ) Installer {
+	var newStateStore func(string) stateStore
+	if stateStoreFactory != nil {
+		newStateStore = func(path string) stateStore { return stateStoreFactory(path) }
+	}
 	return Installer{
 		layoutFor:       DefaultLayout,
 		copyAgentBinary: CopyAgentBinary,
@@ -33,9 +38,7 @@ func NewInstaller(
 			}
 			return result.BinaryPath, nil
 		},
-		newStateStore: func(path string) stateStore {
-			return agentstate.NewStore(path)
-		},
-		serviceFor: newDefaultServiceInstaller,
+		newStateStore: newStateStore,
+		serviceFor:    newDefaultServiceInstaller,
 	}
 }

@@ -12,10 +12,15 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/config"
-	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
+	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/lifecyclelock"
+	opampdomain "github.com/ar-imms/telemetry-agent/internal/runtime/opamp/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 func TestRuntimeWatcherMarksLaunchGenerationAppliedAfterCollectorReady(
@@ -183,13 +188,13 @@ func TestRuntimeLaunchSnapshotWaitsForConfigActivationLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := store.Save(agentstate.State{
-		Collector:           agentstate.CollectorContext{ConfigPath: configPath},
+		Collector:           collectordomain.CollectorContext{ConfigPath: configPath},
 		ActivatedGeneration: 1,
-		Dependencies:        map[string]agentstate.DependencyState{},
+		Dependencies:        map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	lock, err := agentstate.AcquireLifecycleLock(configPath + ".lifecycle")
+	lock, err := lifecyclelock.Acquire(configPath + ".lifecycle")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +222,7 @@ func TestRuntimeLaunchSnapshotWaitsForConfigActivationLock(t *testing.T) {
 	}
 	done := make(chan launchResult, 1)
 	go func() {
-		state, options, cleanup, err := watcher.prepareLaunch()
+		state, options, cleanup, err := watcher.prepareLaunch(context.Background())
 		cleanup()
 		done <- launchResult{state: state, path: options.ConfigPath, readinessToken: options.ReadinessBody, err: err}
 	}()
@@ -262,7 +267,7 @@ func TestRuntimeLaunchSnapshotWaitsForConfigActivationLock(t *testing.T) {
 
 func TestRuntimeLaunchUsesGatewayForActivatedGeneration(t *testing.T) {
 	store := agentstate.NewFileStore(filepath.Join(t.TempDir(), "state.json"))
-	if err := store.Save(agentstate.State{ActivatedGeneration: 8, Dependencies: map[string]agentstate.DependencyState{}}); err != nil {
+	if err := store.Save(agentstate.State{ActivatedGeneration: 8, Dependencies: map[string]dependencydomain.DependencyState{}}); err != nil {
 		t.Fatal(err)
 	}
 	watcher := runtimeWatcher{
@@ -272,7 +277,7 @@ func TestRuntimeLaunchUsesGatewayForActivatedGeneration(t *testing.T) {
 		}},
 		options: supervisor.Options{GatewayEndpoint: "bootstrap.example:4317"},
 	}
-	_, options, cleanup, err := watcher.prepareLaunch()
+	_, options, cleanup, err := watcher.prepareLaunch(context.Background())
 	defer cleanup()
 	if err != nil {
 		t.Fatal(err)
@@ -291,7 +296,7 @@ func TestRuntimeLaunchAddsGenerationReadinessToLegacyConfigSnapshot(t *testing.T
 		t.Fatal(err)
 	}
 	store := agentstate.NewFileStore(filepath.Join(root, "state.json"))
-	if err := store.Save(agentstate.State{ActivatedGeneration: 2, Dependencies: map[string]agentstate.DependencyState{}}); err != nil {
+	if err := store.Save(agentstate.State{ActivatedGeneration: 2, Dependencies: map[string]dependencydomain.DependencyState{}}); err != nil {
 		t.Fatal(err)
 	}
 	watcher := runtimeWatcher{
@@ -308,7 +313,7 @@ func TestRuntimeLaunchAddsGenerationReadinessToLegacyConfigSnapshot(t *testing.T
 			return launchPath, func() {}, nil
 		},
 	}
-	_, options, cleanup, err := watcher.prepareLaunch()
+	_, options, cleanup, err := watcher.prepareLaunch(context.Background())
 	defer cleanup()
 	if err != nil {
 		t.Fatal(err)
@@ -330,6 +335,27 @@ func TestRuntimeLaunchAddsGenerationReadinessToLegacyConfigSnapshot(t *testing.T
 	}
 }
 
+func TestVerifyPendingGatewayRevisionReturnsGracefullyWhenCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	repository := &cancelAwareGatewayRuntime{
+		fakeGatewayRuntimeRepository: fakeGatewayRuntimeRepository{
+			resolved: coreconfig.RuntimeGateway{
+				Endpoint: "core.example:4317", Revision: 11, Generation: 1, NeedsReadiness: true,
+			},
+		},
+	}
+	watcher := runtimeWatcher{gatewayRuntime: repository}
+	err := watcher.verifyPendingGatewayRevision(ctx, 1, supervisor.Options{
+		GatewayEndpoint: "core.example:4317",
+	}, make(chan struct{}))
+	if err != nil {
+		t.Fatalf("canceled readiness check returned error: %v", err)
+	}
+	if repository.applied {
+		t.Fatal("canceled readiness check marked the Gateway revision applied")
+	}
+}
 func TestRuntimeWatcherConfirmsUnchangedGatewayRevisionWithoutRestart(t *testing.T) {
 	root := t.TempDir()
 	configPath := filepath.Join(root, "otel.yaml")
@@ -339,10 +365,10 @@ func TestRuntimeWatcherConfirmsUnchangedGatewayRevisionWithoutRestart(t *testing
 	}
 	store := agentstate.NewFileStore(filepath.Join(root, "state.json"))
 	if err := store.Save(agentstate.State{
-		Collector:           agentstate.CollectorContext{ConfigPath: configPath},
+		Collector:           collectordomain.CollectorContext{ConfigPath: configPath},
 		DesiredGeneration:   1,
 		ActivatedGeneration: 1,
-		Dependencies:        map[string]agentstate.DependencyState{},
+		Dependencies:        map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -433,23 +459,23 @@ type pendingGatewayRuntime struct {
 	marks   chan uint64
 }
 
-func (r *pendingGatewayRuntime) AcceptGatewaySnapshot(coreconfig.GatewaySnapshot) (coreconfig.Acceptance, error) {
+func (r *pendingGatewayRuntime) AcceptGatewaySnapshot(context.Context, coreconfig.GatewaySnapshot) (coreconfig.Acceptance, error) {
 	return coreconfig.Acceptance{}, nil
 }
 
-func (r *pendingGatewayRuntime) EffectiveGateway() (coreconfig.EffectiveGateway, error) {
+func (r *pendingGatewayRuntime) EffectiveGateway(context.Context) (coreconfig.EffectiveGateway, error) {
 	return coreconfig.EffectiveGateway{}, nil
 }
 
-func (r *pendingGatewayRuntime) GatewayForGeneration(uint64) (coreconfig.RuntimeGateway, error) {
+func (r *pendingGatewayRuntime) GatewayForGeneration(context.Context, uint64) (coreconfig.RuntimeGateway, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.gateway, nil
 }
 
-func (r *pendingGatewayRuntime) MarkGatewayActivated(uint64) error { return nil }
+func (r *pendingGatewayRuntime) MarkGatewayActivated(context.Context, uint64) error { return nil }
 
-func (r *pendingGatewayRuntime) MarkGatewayApplied(generation uint64, _ string) error {
+func (r *pendingGatewayRuntime) MarkGatewayApplied(_ context.Context, generation uint64, _ string) error {
 	_, err := r.store.Update(func(state *agentstate.State) error {
 		return state.MarkGenerationApplied(generation)
 	})
@@ -471,26 +497,48 @@ func (r *pendingGatewayRuntime) setPendingRevision(revision uint64) {
 	r.gateway.NeedsReadiness = true
 }
 
+type cancelAwareGatewayRuntime struct {
+	fakeGatewayRuntimeRepository
+	applied bool
+}
+
+func (r *cancelAwareGatewayRuntime) GatewayForGeneration(ctx context.Context, generation uint64) (coreconfig.RuntimeGateway, error) {
+	if err := ctx.Err(); err != nil {
+		return coreconfig.RuntimeGateway{}, err
+	}
+	return r.fakeGatewayRuntimeRepository.GatewayForGeneration(ctx, generation)
+}
+
+func (r *cancelAwareGatewayRuntime) MarkGatewayApplied(ctx context.Context, _ uint64, _ string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	r.applied = true
+	return nil
+}
+
 type fakeGatewayRuntimeRepository struct {
 	resolved coreconfig.RuntimeGateway
 	applied  []any
 }
 
-func (r fakeGatewayRuntimeRepository) AcceptGatewaySnapshot(coreconfig.GatewaySnapshot) (coreconfig.Acceptance, error) {
+func (r fakeGatewayRuntimeRepository) AcceptGatewaySnapshot(context.Context, coreconfig.GatewaySnapshot) (coreconfig.Acceptance, error) {
 	return coreconfig.Acceptance{}, nil
 }
 
-func (r fakeGatewayRuntimeRepository) EffectiveGateway() (coreconfig.EffectiveGateway, error) {
+func (r fakeGatewayRuntimeRepository) EffectiveGateway(context.Context) (coreconfig.EffectiveGateway, error) {
 	return coreconfig.EffectiveGateway{}, nil
 }
 
-func (r fakeGatewayRuntimeRepository) GatewayForGeneration(uint64) (coreconfig.RuntimeGateway, error) {
+func (r fakeGatewayRuntimeRepository) GatewayForGeneration(context.Context, uint64) (coreconfig.RuntimeGateway, error) {
 	return r.resolved, nil
 }
 
-func (r fakeGatewayRuntimeRepository) MarkGatewayActivated(uint64) error { return nil }
+func (r fakeGatewayRuntimeRepository) MarkGatewayActivated(context.Context, uint64) error { return nil }
 
-func (r fakeGatewayRuntimeRepository) MarkGatewayApplied(uint64, string) error { return nil }
+func (r fakeGatewayRuntimeRepository) MarkGatewayApplied(context.Context, uint64, string) error {
+	return nil
+}
 
 func TestRuntimeWatcherRestartsWhenActivationAdvancesBeforeReadinessAcknowledgement(
 	t *testing.T,
@@ -616,7 +664,7 @@ func TestRuntimeWatcherRestartsCollectorForNewActivatedGeneration(
 	if err := store.Save(agentstate.State{
 		DesiredGeneration:   1,
 		ActivatedGeneration: 1,
-		Dependencies:        map[string]agentstate.DependencyState{},
+		Dependencies:        map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
@@ -742,7 +790,7 @@ func TestRuntimeWatcherAppliesTeardownsAfterLaunchGenerationIsApplied(
 		DesiredGeneration:   3,
 		ActivatedGeneration: 3,
 		AppliedGeneration:   2,
-		Dependencies:        map[string]agentstate.DependencyState{},
+		Dependencies:        map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
@@ -804,7 +852,7 @@ func TestRuntimeWatcherCancelsLaunchBeforeReturningReadinessError(
 	if err := store.Save(agentstate.State{
 		DesiredGeneration:   1,
 		ActivatedGeneration: 1,
-		Dependencies:        map[string]agentstate.DependencyState{},
+		Dependencies:        map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
@@ -857,28 +905,20 @@ func TestRuntimeWatcherCompletesPendingUninstallAfterCollectorReady(
 		filepath.Join(t.TempDir(), "state.json"),
 	)
 
-	if err := store.Save(agentstate.State{
+	if err := store.Save(stateWithDependencyOwnership(t, agentstate.State{
 		DesiredGeneration:   3,
 		ActivatedGeneration: 3,
 		AppliedGeneration:   2,
-		Dependencies: map[string]agentstate.DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"windows-exporter": {
 				Enabled: false,
-				Ownership: &agentstate.OwnershipRecord{
-					Resources: []agentstate.OwnedResource{
-						{
-							Kind:       "windows-service",
-							Identifier: "windows_exporter",
-						},
-					},
-				},
-				PendingTeardown: &agentstate.PendingTeardown{
-					Action:     agentstate.TeardownActionUninstall,
+				PendingTeardown: &dependencydomain.PendingTeardown{
+					Action:     dependencydomain.TeardownActionUninstall,
 					Generation: 3,
 				},
 			},
 		},
-	}); err != nil {
+	}, "windows-exporter", []servicedomain.OwnedResource{{Kind: "windows-service", Identifier: "windows_exporter"}})); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
 
@@ -889,19 +929,19 @@ func TestRuntimeWatcherCompletesPendingUninstallAfterCollectorReady(
 		teardown: func(
 			ctx context.Context,
 			name string,
-			action agentstate.TeardownAction,
-			resources []agentstate.OwnedResource,
+			action dependencydomain.TeardownAction,
+			resources []servicedomain.OwnedResource,
 		) error {
 			teardownCalls++
 
 			if name != "windows-exporter" {
 				t.Fatalf("teardown name = %q, want windows-exporter", name)
 			}
-			if action != agentstate.TeardownActionUninstall {
+			if action != dependencydomain.TeardownActionUninstall {
 				t.Fatalf(
 					"teardown action = %q, want %q",
 					action,
-					agentstate.TeardownActionUninstall,
+					dependencydomain.TeardownActionUninstall,
 				)
 			}
 			if len(resources) != 1 ||
@@ -967,8 +1007,8 @@ func TestRuntimeWatcherReportsHealthySnapshotAfterCollectorReady(
 		DesiredGeneration:   3,
 		ActivatedGeneration: 3,
 		AppliedGeneration:   2,
-		Supervisor:          agentstate.SupervisorContext{Enabled: true},
-		Dependencies:        map[string]agentstate.DependencyState{},
+		Supervisor:          opampdomain.SupervisorContext{Enabled: true},
+		Dependencies:        map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
@@ -1046,7 +1086,7 @@ func TestRuntimeWatcherReportsFailedSnapshotWhenCollectorExitsWithError(
 		DesiredGeneration:   3,
 		ActivatedGeneration: 3,
 		AppliedGeneration:   3,
-		Dependencies:        map[string]agentstate.DependencyState{},
+		Dependencies:        map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
@@ -1113,7 +1153,7 @@ func TestRuntimeWatcherRestartsWhenCollectorStopsCleanlyAfterNewGenerationActiva
 	if err := store.Save(agentstate.State{
 		DesiredGeneration:   1,
 		ActivatedGeneration: 1,
-		Dependencies:        map[string]agentstate.DependencyState{},
+		Dependencies:        map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}

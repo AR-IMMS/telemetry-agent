@@ -8,13 +8,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals"
+	proposals "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
 func TestSQLiteProposalRepositoryCASDismissAndRestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	store := NewSQLiteStore(path)
-	repository := store.ProposalRepository()
+	store := newTestSQLiteStore(path)
+	repository := newTestProposalRepository(store)
 	proposal := sqliteProposalFixture(t)
 	if err := repository.PutProposal(proposal, 0); err != nil {
 		t.Fatal(err)
@@ -28,7 +29,7 @@ func TestSQLiteProposalRepositoryCASDismissAndRestart(t *testing.T) {
 	if err := repository.PutProposal(stale, 2); !errors.Is(err, proposals.ErrProposalConflict) {
 		t.Fatalf("stale insert error = %v", err)
 	}
-	proposalList, err := NewSQLiteStore(path).ProposalRepository().ProposalSnapshot()
+	proposalList, err := newTestProposalRepository(newTestSQLiteStore(path)).ProposalSnapshot()
 	if err != nil || len(proposalList) != 1 || proposalList[0].Revision != 1 || proposalList[0].CandidateDigest != proposal.CandidateDigest {
 		t.Fatalf("recovered proposals=%+v err=%v", proposalList, err)
 	}
@@ -48,7 +49,7 @@ func TestSQLiteProposalRepositoryCASDismissAndRestart(t *testing.T) {
 }
 
 func TestSQLiteProposalRepositoryConcurrentCreateHasSingleWinner(t *testing.T) {
-	repository := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db")).ProposalRepository()
+	repository := newTestProposalRepository(newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db")))
 	proposal := sqliteProposalFixture(t)
 	start := make(chan struct{})
 	results := make(chan error, 2)
@@ -81,7 +82,7 @@ func TestSQLiteProposalRepositoryConcurrentCreateHasSingleWinner(t *testing.T) {
 }
 
 func TestSQLiteNeedsInputProposalPersistsWithoutCandidateConfiguration(t *testing.T) {
-	repository := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db")).ProposalRepository()
+	repository := newTestProposalRepository(newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db")))
 	proposal := sqliteProposalFixture(t)
 	proposal.Status = proposals.ProposalNeedsInput
 	proposal.CandidateDigest = ""
@@ -104,16 +105,16 @@ func TestSQLiteNeedsInputProposalPersistsWithoutCandidateConfiguration(t *testin
 
 func TestMonitoringProposalMigrationFromV11PreservesExistingState(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	store := NewSQLiteStore(path)
-	want := State{DesiredGeneration: 8, ActivatedGeneration: 7, AppliedGeneration: 7, Dependencies: map[string]DependencyState{"host": {Enabled: true}}}
+	store := newTestSQLiteStore(path)
+	want := State{DesiredGeneration: 8, ActivatedGeneration: 7, AppliedGeneration: 7, Dependencies: map[string]dependencydomain.DependencyState{"host": {Enabled: true}}}
 	if err := store.Save(want); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := store.IntegrationRepository().Put(integrationInstance("cache", "localhost:6379"), 0); err != nil {
+	if _, _, err := newTestDesiredStateRepository(store).Put(integrationInstance("cache", "localhost:6379"), 0); err != nil {
 		t.Fatal(err)
 	}
 	providerSnapshot, resources := inventoryFixture(time.Now().UTC(), "container-a")
-	if err := store.InventoryRepository().CommitProviderSnapshot(0, providerSnapshot, resources, true); err != nil {
+	if err := newTestInventoryRepository(store).CommitProviderSnapshot(0, providerSnapshot, resources, true); err != nil {
 		t.Fatal(err)
 	}
 	db, err := store.open()
@@ -125,15 +126,15 @@ func TestMonitoringProposalMigrationFromV11PreservesExistingState(t *testing.T) 
 		t.Fatal(err)
 	}
 	db.Close()
-	restarted := NewSQLiteStore(path)
-	if _, err := restarted.ProposalRepository().ProposalSnapshot(); err != nil {
+	restarted := newTestSQLiteStore(path)
+	if _, err := newTestProposalRepository(restarted).ProposalSnapshot(); err != nil {
 		t.Fatal(err)
 	}
 	state, err := restarted.Load()
 	if err != nil || state.DesiredGeneration != want.DesiredGeneration || state.ActivatedGeneration != want.ActivatedGeneration || state.AppliedGeneration != want.AppliedGeneration || !state.Dependencies["host"].Enabled {
 		t.Fatalf("M2 state after migration=%+v err=%v", state, err)
 	}
-	snapshot, err := restarted.IntegrationRepository().Snapshot()
+	snapshot, err := newTestDesiredStateRepository(restarted).Snapshot()
 	if err != nil || snapshot.Revision != 1 || len(snapshot.Instances) != 1 {
 		t.Fatalf("Integration state after migration=%+v err=%v", snapshot, err)
 	}

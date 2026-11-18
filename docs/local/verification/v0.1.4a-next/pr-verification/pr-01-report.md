@@ -24,7 +24,7 @@ PR-01 completed in the isolated worktree and PR #20 is merged. The user's Window
 
 ## Contract baseline applied
 
-- Actual `agentctl help` output and exit code are captured in [`pr-01-baseline.md`](pr-01-baseline.md). It lists current commands; `service` is routed in source but omitted from root help. `agentctl --help` currently exits 2. PR-01 leaves both behaviors unchanged.
+- The PR-01 baseline's `agentctl help` output and exit code are captured in [`pr-01-baseline.md`](pr-01-baseline.md). At that historical checkpoint it listed the then-current commands; `service` was routed in source but omitted from root help, and `agentctl --help` exited 2. PR-01 left both behaviors unchanged. PR-09.5h later added Cobra help and monitoring aliases; consult the PR-09.5 report for current behavior.
 - Existing `--state-path`, revision/CAS options, integration/template commands, output behavior, and old CLI test coverage remain compatibility constraints.
 - The SQLite migration ledger is unchanged; source tests assert migration version 13. No migration or table change was made.
 - The Collector manifest remains at `otelcol-contrib` 0.160.0 with per-artifact SHA256 validation. No Collector configuration or dependency changes were made.
@@ -43,7 +43,7 @@ PR-01 completed in the isolated worktree and PR #20 is merged. The user's Window
 | `gofmt -d internal/agenthealth/doc.go` | Windows worktree | No formatting diff | No output | PASS |
 | `git diff --check` | Isolated worktree | No whitespace errors | No errors | PASS |
 | Markdown link scan | Release docs + entrypoints; full `docs/` audit | New/updated release-doc paths resolve | Scoped: 33 Markdown files / 60 local links, 0 broken; 2 shared-submodule links unavailable. Full audit: 101 files / 137 local links, 4 pre-existing broken historical links and the same 2 unavailable shared links | PARTIAL |
-| `go run ./cmd/agentctl help` and `go run ./cmd/agentctl --help` | Windows worktree | Capture existing command output and exit behavior | `help`: exit 0; `--help`: exit 2, unknown command. Output is in `pr-01-baseline.md` | PASS |
+| `go run ./cmd/agentctl help` and `go run ./cmd/agentctl --help` | Windows worktree at PR-01 baseline | Capture then-existing command output and exit behavior | `help`: exit 0; `--help`: exit 2, unknown command. Output is in `pr-01-baseline.md`; help behavior was later updated in PR-09.5h | PASS (historical baseline) |
 | GitHub Actions PR checks | `https://github.com/AR-IMMS/telemetry-agent/pull/20` | Ubuntu and Windows matrix: manifest probe, architecture guard, tests, vet, build | Both jobs passed for head `0f9096044c558441f73432d3dc5016085c51bdd4`; new report-sync commit requires rerun | PASS for recorded head; final head pending |
 | Read shared coding policy | GitHub at pinned target gitlink; original checkout | Read and compare policy | Policy at `c4cd59a9bcaaf0735c3107424f1be98fc498670a` was reviewed and matches the text previously read in the original checkout; it is consistent with the local supplement. Original submodule worktree status remains unverified | PARTIAL |
 | GitHub CLI checks | `gh` in user Windows environment | CLI authentication and repo/API access | `gh api user --jq .login` returned `iSenity1812`; `gh auth status` and `gh repo view` succeeded | PASS |

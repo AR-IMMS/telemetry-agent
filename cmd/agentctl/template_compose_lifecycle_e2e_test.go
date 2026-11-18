@@ -13,11 +13,17 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
-	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
+	templatesconfigdomain "github.com/ar-imms/telemetry-agent/internal/configuration/templates/domain"
 	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
+	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
+	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
 const composeLifecycleE2EEnv = "AR_IMMS_S4_COMPOSE_LIFECYCLE_E2E"
@@ -71,14 +77,14 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 		t.Fatal(err)
 	}
 	configPath := filepath.Join(root, "agent", "otel.yaml")
-	store := agentstate.NewSQLiteStore(statePath)
+	store := sqlitefixture.NewSQLiteStore(statePath)
 	initial := agentstate.State{
-		Collector: agentstate.CollectorContext{
+		Collector: collectordomain.CollectorContext{
 			ConfigRoot: configRoot, BinaryPath: binary, ConfigPath: configPath,
 			GatewayEndpoint: "127.0.0.1:4317", HealthEndpoint: defaultHealthEndpoint,
 		},
 		DesiredGeneration: 1, ActivatedGeneration: 1, AppliedGeneration: 1,
-		Dependencies: map[string]agentstate.DependencyState{},
+		Dependencies: map[string]dependencydomain.DependencyState{},
 	}
 	if err := store.Save(initial); err != nil {
 		t.Fatal(err)
@@ -87,7 +93,7 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	baselineSnapshot, err := baseline.Snapshot()
+	baselineSnapshot, err := baseline.Snapshot(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +124,7 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	coordinator, err := inventoryctx.NewCoordinator(store.InventoryRepository(), []inventoryctx.DiscoveryProvider{provider}, inventoryctx.DefaultPolicy(), 5*time.Second)
+	coordinator, err := inventoryapp.NewCoordinator(sqlitefixture.NewInventoryRepositoryFromStore(store), []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), 5*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +132,7 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runDiscoveryCycle := func() inventoryctx.InventorySnapshot {
+	runDiscoveryCycle := func() inventorydomain.InventorySnapshot {
 		t.Helper()
 		cycle, err := coordinator.DiscoverOnce(ctx)
 		if err != nil || !cycle.Succeeded() {
@@ -135,7 +141,7 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 		if err := materializer.Refresh(ctx); err != nil {
 			t.Fatal(err)
 		}
-		inventory, err := store.InventoryRepository().Snapshot()
+		inventory, err := sqlitefixture.NewInventoryRepositoryFromStore(store).Snapshot()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -169,7 +175,7 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 	startService := func(runtimeCtx context.Context) chan error {
 		done := make(chan error, 1)
 		go func(done chan<- error, serviceCtx context.Context) {
-			done <- runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, agentstate.TeardownAction, []agentstate.OwnedResource) error {
+			done <- runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, dependencydomain.TeardownAction, []servicedomain.OwnedResource) error {
 				return nil
 			}, nil, bootstrap.OSCommandRunner{})
 		}(done, runtimeCtx)
@@ -199,7 +205,7 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 	}
 
 	// A normal restart keeps Docker's container identity and the generated instance.
-	beforeRestart, err := store.IntegrationRepository().Snapshot()
+	beforeRestart, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +215,7 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 	}
 	restartInventory := runDiscoveryCycle()
 	_ = restartInventory
-	afterRestart, err := store.IntegrationRepository().Snapshot()
+	afterRestart, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil || afterRestart.Revision != beforeRestart.Revision {
 		t.Fatalf("unchanged container restart changed generated desired state: before=%d after=%d before_instances=%+v after_instances=%+v err=%v", beforeRestart.Revision, afterRestart.Revision, beforeRestart.Instances, afterRestart.Instances, err)
 	}
@@ -226,8 +232,8 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 		t.Fatalf("Compose recreation reused Docker container ID %q", oldA)
 	}
 	firstMissInventory := runDiscoveryCycle()
-	assertComposePresence(t, firstMissInventory, oldA, inventoryctx.PresencePresent, 1)
-	assertComposePresence(t, firstMissInventory, newA, inventoryctx.PresencePresent, 0)
+	assertComposePresence(t, firstMissInventory, oldA, inventorydomain.PresencePresent, 1)
+	assertComposePresence(t, firstMissInventory, newA, inventorydomain.PresencePresent, 0)
 	assertComposeDesired(t, store, []string{oldA, newA, stableB}, true)
 	assertEnabledComposeTemplateResources(t, store, []string{oldA, newA, stableB})
 	afterRestartState, err := store.Load()
@@ -241,7 +247,7 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 	t.Logf("measured permitted first-miss overlap: old=%s and new=%s both active in applied generation=%d", oldA, newA, overlapState.AppliedGeneration)
 
 	secondMissInventory := runDiscoveryCycle()
-	assertComposePresence(t, secondMissInventory, oldA, inventoryctx.PresenceMissing, 2)
+	assertComposePresence(t, secondMissInventory, oldA, inventorydomain.PresenceMissing, 2)
 	assertComposeDesired(t, store, []string{newA, stableB}, true)
 	assertEnabledComposeTemplateResources(t, store, []string{newA, stableB})
 	finalState, finalConfig := waitForRedisReceiverCount(t, ctx, serviceDone, store, configPath, overlapState.AppliedGeneration, 2)
@@ -260,8 +266,8 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 		t.Fatalf("--force-recreate reused Docker container ID %q", stableB)
 	}
 	forceFirstMiss := runDiscoveryCycle()
-	assertComposePresence(t, forceFirstMiss, stableB, inventoryctx.PresencePresent, 1)
-	assertComposePresence(t, forceFirstMiss, newB, inventoryctx.PresencePresent, 0)
+	assertComposePresence(t, forceFirstMiss, stableB, inventorydomain.PresencePresent, 1)
+	assertComposePresence(t, forceFirstMiss, newB, inventorydomain.PresencePresent, 0)
 	assertComposeDesired(t, store, []string{newA, stableB, newB}, true)
 	assertEnabledComposeTemplateResources(t, store, []string{newA, stableB, newB})
 	forceOverlapState, forceOverlapConfig := waitForRedisReceiverCount(t, ctx, serviceDone, store, configPath, finalState.AppliedGeneration, 3)
@@ -271,7 +277,7 @@ func TestLiveComposeRedisLifecycleConvergesWithoutGhostInstances(t *testing.T) {
 	t.Logf("measured force-recreate first-miss overlap: old=%s and new=%s active in applied generation=%d", stableB, newB, forceOverlapState.AppliedGeneration)
 
 	forceSecondMiss := runDiscoveryCycle()
-	assertComposePresence(t, forceSecondMiss, stableB, inventoryctx.PresenceMissing, 2)
+	assertComposePresence(t, forceSecondMiss, stableB, inventorydomain.PresenceMissing, 2)
 	assertComposeDesired(t, store, []string{stableB}, false)
 	assertComposeDesired(t, store, []string{newA, newB}, true)
 	assertEnabledComposeTemplateResources(t, store, []string{newA, newB})
@@ -420,14 +426,14 @@ func dockerContextEndpoint() (string, error) {
 	return endpoint, nil
 }
 
-func composeProjectRedisTemplate(id, project string) integration.IntegrationTemplate {
+func composeProjectRedisTemplate(id, project string) templatesconfigdomain.Template {
 	template := redisRuntimeTemplate()
 	template.ID = id
 	template.Selector.ExactAttributes["label.com.docker.compose.project"] = project
 	return template
 }
 
-func assertComposeInventory(t *testing.T, snapshot inventoryctx.InventorySnapshot, project, redisID string, dependencies bool) {
+func assertComposeInventory(t *testing.T, snapshot inventorydomain.InventorySnapshot, project, redisID string, dependencies bool) {
 	t.Helper()
 	foundRedis, foundPostgres, foundPython := false, false, false
 	for _, resource := range snapshot.Resources {
@@ -436,11 +442,11 @@ func assertComposeInventory(t *testing.T, snapshot inventoryctx.InventorySnapsho
 		}
 		switch {
 		case resource.Key.ProviderResourceID == redisID:
-			foundRedis = resource.Presence == inventoryctx.PresencePresent
+			foundRedis = resource.Presence == inventorydomain.PresencePresent
 		case resource.Attributes["container.image.repository"] == "docker.io/library/postgres":
-			foundPostgres = resource.Presence == inventoryctx.PresencePresent
+			foundPostgres = resource.Presence == inventorydomain.PresencePresent
 		case resource.Attributes["container.image.repository"] == "docker.io/library/python":
-			foundPython = resource.Presence == inventoryctx.PresencePresent
+			foundPython = resource.Presence == inventorydomain.PresencePresent
 		}
 	}
 	if !foundRedis || (dependencies && (!foundPostgres || !foundPython)) {
@@ -448,7 +454,7 @@ func assertComposeInventory(t *testing.T, snapshot inventoryctx.InventorySnapsho
 	}
 }
 
-func assertComposePresence(t *testing.T, snapshot inventoryctx.InventorySnapshot, resourceID string, want inventoryctx.Presence, missingSnapshots uint32) {
+func assertComposePresence(t *testing.T, snapshot inventorydomain.InventorySnapshot, resourceID string, want inventorydomain.Presence, missingSnapshots uint32) {
 	t.Helper()
 	for _, resource := range snapshot.Resources {
 		if resource.Key.ProviderResourceID == resourceID {
@@ -463,7 +469,7 @@ func assertComposePresence(t *testing.T, snapshot inventoryctx.InventorySnapshot
 
 func assertComposeDesired(t *testing.T, store agentstate.SQLiteStore, resourceIDs []string, enabled bool) {
 	t.Helper()
-	snapshot, err := store.IntegrationRepository().Snapshot()
+	snapshot, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -473,7 +479,7 @@ func assertComposeDesired(t *testing.T, store agentstate.SQLiteStore, resourceID
 	}
 	found := make(map[string]bool, len(resourceIDs))
 	for _, instance := range snapshot.Instances {
-		if instance.Source != integration.SourceTemplate || instance.Binding == nil {
+		if instance.Source != desiredstatedomain.SourceTemplate || instance.Binding == nil {
 			continue
 		}
 		if _, ok := wanted[instance.Binding.ResourceID]; ok {
@@ -493,13 +499,13 @@ func assertEnabledComposeTemplateResources(t *testing.T, store agentstate.SQLite
 	for _, id := range resourceIDs {
 		wanted[id] = struct{}{}
 	}
-	snapshot, err := store.IntegrationRepository().Snapshot()
+	snapshot, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
 	seen := make(map[string]struct{}, len(wanted))
 	for _, instance := range snapshot.Instances {
-		if instance.Source != integration.SourceTemplate || !instance.Enabled || instance.Binding == nil ||
+		if instance.Source != desiredstatedomain.SourceTemplate || !instance.Enabled || instance.Binding == nil ||
 			(instance.TemplateID != "redis-project-a" && instance.TemplateID != "redis-project-b") {
 			continue
 		}
@@ -515,7 +521,7 @@ func assertEnabledComposeTemplateResources(t *testing.T, store agentstate.SQLite
 
 func composeTemplateEndpoints(t *testing.T, store agentstate.SQLiteStore, resourceIDs []string) map[string]string {
 	t.Helper()
-	snapshot, err := store.IntegrationRepository().Snapshot()
+	snapshot, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -525,7 +531,7 @@ func composeTemplateEndpoints(t *testing.T, store agentstate.SQLiteStore, resour
 	}
 	endpoints := make(map[string]string, len(resourceIDs))
 	for _, instance := range snapshot.Instances {
-		if instance.Source != integration.SourceTemplate || !instance.Enabled || instance.Binding == nil {
+		if instance.Source != desiredstatedomain.SourceTemplate || !instance.Enabled || instance.Binding == nil {
 			continue
 		}
 		if _, ok := wanted[instance.Binding.ResourceID]; !ok {

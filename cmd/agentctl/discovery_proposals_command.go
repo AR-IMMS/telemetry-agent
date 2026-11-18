@@ -9,9 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
+	"github.com/ar-imms/telemetry-agent/internal/app"
+	"github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
+	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
+	agentservice "github.com/ar-imms/telemetry-agent/internal/runtime/service"
 )
 
 func runDiscovery(ctx context.Context, args []string, stdout, stderr io.Writer) int {
@@ -40,12 +41,12 @@ func runDiscoveryProposals(ctx context.Context, args []string, stdout, stderr io
 	command := args[0]
 	flags := flag.NewFlagSet("discovery proposals "+command, flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	statePath := flags.String("state-path", agentstate.DefaultPath(), "persistent Agent state path")
+	statePath := flags.String("state-path", agentservice.DefaultStatePath(), "persistent Agent state path")
 	id := flags.String("id", "", "stable proposal ID")
 	revision := flags.Uint64("revision", 0, "expected proposal revision")
 	desiredRevision := flags.Uint64("expected-desired-revision", 0, "expected desired Integration set revision")
 	inputs := flags.String("input", "", "non-secret proposal inputs as comma-separated name=value pairs")
-	if err := flags.Parse(args[1:]); err != nil {
+	if err := parseCompatibilityFlags(flags, args[1:]); err != nil {
 		return 2
 	}
 	if flags.NArg() != 0 || strings.TrimSpace(*statePath) == "" {
@@ -54,8 +55,7 @@ func runDiscoveryProposals(ctx context.Context, args []string, stdout, stderr io
 	if err := ctx.Err(); err != nil {
 		return integrationCommandError(stderr, "discovery proposals "+command, err)
 	}
-	store := agentstate.NewSQLiteStore(*statePath)
-	proposalRepo := store.ProposalRepository()
+	proposalRepo := app.NewProposalRepository(*statePath)
 	switch command {
 	case "list":
 		items, err := proposalRepo.ProposalSnapshot()
@@ -81,12 +81,12 @@ func runDiscoveryProposals(ctx context.Context, args []string, stdout, stderr io
 				return 0
 			}
 		}
-		return integrationCommandError(stderr, command, proposals.ErrUnknownProposal)
+		return integrationCommandError(stderr, command, application.ErrUnknownProposal)
 	case "dismiss":
 		if *id == "" || *revision == 0 {
 			return usageDiscovery(stderr, "dismiss requires --id and --revision")
 		}
-		manager := proposals.NewProposalManager(proposalRepo)
+		manager := application.NewProposalManager(proposalRepo)
 		if err := manager.Dismiss(*id, *revision, time.Now().UTC()); err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
@@ -106,7 +106,7 @@ func runDiscoveryProposals(ctx context.Context, args []string, stdout, stderr io
 		if err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
-		instance, nextRevision, err := service.Approve(ctx, proposals.ApprovalRequest{
+		instance, nextRevision, err := service.Approve(ctx, application.ApprovalRequest{
 			ProposalID: *id, ProposalRevision: *revision, ExpectedDesiredRevision: *desiredRevision, Inputs: values,
 		})
 		if err != nil {
@@ -141,9 +141,9 @@ func parseProposalInputs(raw string) (map[string]any, error) {
 		}
 		values[name] = strings.TrimSpace(value)
 	}
-	if err := integration.ValidateInstance(integration.IntegrationInstance{
+	if err := (domain.Instance{
 		ID: "proposal-input", DefinitionID: "redis", DefinitionVersion: "1.0.0", Configuration: values,
-	}); err != nil {
+	}).Validate(); err != nil {
 		return nil, fmt.Errorf("--input must contain only non-secret settings")
 	}
 	return values, nil

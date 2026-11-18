@@ -7,19 +7,22 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/configuration/proposals"
-	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
+	proposals "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
+	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
+	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
 func TestPersistedInventoryToProposalAndExplicitApproval(t *testing.T) {
 	statePath := t.TempDir() + "/state.db"
-	store := agentstate.NewSQLiteStore(statePath)
-	before := agentstate.State{DesiredGeneration: 4, ActivatedGeneration: 3, AppliedGeneration: 3, Dependencies: map[string]agentstate.DependencyState{"host": {Enabled: true}}}
+	store := sqlitefixture.NewSQLiteStore(statePath)
+	before := agentstate.State{DesiredGeneration: 4, ActivatedGeneration: 3, AppliedGeneration: 3, Dependencies: map[string]dependencydomain.DependencyState{"host": {Enabled: true}}}
 	if err := store.Save(before); err != nil {
 		t.Fatal(err)
 	}
 	provider := staticRedisInventoryProvider{}
-	coordinator, err := inventoryctx.NewCoordinator(store.InventoryRepository(), []inventoryctx.DiscoveryProvider{provider}, inventoryctx.DefaultPolicy(), time.Second)
+	coordinator, err := inventoryapp.NewCoordinator(sqlitefixture.NewInventoryRepositoryFromStore(store), []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +36,7 @@ func TestPersistedInventoryToProposalAndExplicitApproval(t *testing.T) {
 	if err := refresher.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	proposalList, err := store.ProposalRepository().ProposalSnapshot()
+	proposalList, err := sqlitefixture.NewProposalRepositoryFromStore(store).ProposalSnapshot()
 	if err != nil || len(proposalList) != 1 || proposalList[0].Status != proposals.ProposalPending {
 		t.Fatalf("proposal snapshot=%+v err=%v", proposalList, err)
 	}
@@ -45,7 +48,7 @@ func TestPersistedInventoryToProposalAndExplicitApproval(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("approval command code=%d stderr=%s", code, stderr.String())
 	}
-	desired, err := store.IntegrationRepository().Snapshot()
+	desired, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil || desired.Revision != 1 || len(desired.Instances) != 1 {
 		t.Fatalf("desired snapshot=%+v err=%v", desired, err)
 	}
@@ -64,16 +67,16 @@ func TestPersistedInventoryToProposalAndExplicitApproval(t *testing.T) {
 
 type staticRedisInventoryProvider struct{}
 
-func (staticRedisInventoryProvider) ID() inventoryctx.ProviderID                 { return "docker" }
-func (staticRedisInventoryProvider) InstanceID() inventoryctx.ProviderInstanceID { return "local" }
-func (staticRedisInventoryProvider) Discover(context.Context) (inventoryctx.ProviderSnapshot, error) {
+func (staticRedisInventoryProvider) ID() inventorydomain.ProviderID                 { return "docker" }
+func (staticRedisInventoryProvider) InstanceID() inventorydomain.ProviderInstanceID { return "local" }
+func (staticRedisInventoryProvider) Discover(context.Context) (inventorydomain.ProviderSnapshot, error) {
 	at := time.Now().UTC()
-	return inventoryctx.ProviderSnapshot{
+	return inventorydomain.ProviderSnapshot{
 		ProviderID: "docker", ProviderInstanceID: "local", Complete: true, ObservedAt: at,
-		Resources: []inventoryctx.ResourceObservation{{
-			ProviderResourceID: "redis-container", Kind: inventoryctx.ResourceContainer, DisplayName: "redis-fixture", LifecycleState: "running",
+		Resources: []inventorydomain.ResourceObservation{{
+			ProviderResourceID: "redis-container", Kind: inventorydomain.ResourceContainer, DisplayName: "redis-fixture", LifecycleState: "running",
 			Attributes: map[string]string{"container.image.repository": "docker.io/library/redis"},
-			Endpoints:  []inventoryctx.Endpoint{{Address: "127.0.0.1", Port: 6379, Protocol: "tcp", Scope: inventoryctx.EndpointHost, Provenance: "published_port"}},
+			Endpoints:  []inventorydomain.Endpoint{{Address: "127.0.0.1", Port: 6379, Protocol: "tcp", Scope: inventorydomain.EndpointHost, Provenance: "published_port"}},
 		}},
 	}, nil
 }

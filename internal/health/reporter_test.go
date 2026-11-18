@@ -5,7 +5,12 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	runtimecontracts "github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 )
+
+var _ runtimecontracts.ObservationReporter = (*Reporter)(nil)
+var _ runtimecontracts.CollectorOutputReporter = (*Reporter)(nil)
 
 func TestReporterReturnsLatestEvaluatedSnapshot(t *testing.T) {
 	reporter := NewReporter(RuntimeObservation{

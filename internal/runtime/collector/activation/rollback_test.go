@@ -7,9 +7,12 @@ import (
 	"testing"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
-	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
-	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
 func TestRollbackUnappliedConfigurationRestoresCommittedArtifact(t *testing.T) {
@@ -28,7 +31,7 @@ func TestRollbackUnappliedConfigurationRestoresCommittedArtifact(t *testing.T) {
 		DesiredGeneration:   2,
 		ActivatedGeneration: 2,
 		AppliedGeneration:   1,
-		Dependencies:        map[string]agentstate.DependencyState{},
+		Dependencies:        map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatalf("save state: %v", err)
 	}
@@ -63,17 +66,17 @@ func TestRollbackRestoresCollectorConfigAndGatewayEndpointPair(t *testing.T) {
 	if err := os.WriteFile(recoveryPath, []byte("candidate: bootstrap\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	sqliteStore := agentstate.NewSQLiteStore(statePath)
+	sqliteStore := sqlitefixture.NewSQLiteStore(statePath)
 	var store agentstate.Repository = sqliteStore
 	if err := sqliteStore.Save(agentstate.State{
-		Collector: agentstate.CollectorContext{
+		Collector: collectordomain.CollectorContext{
 			ConfigPath:      configPath,
 			GatewayEndpoint: "bootstrap.example:4317",
 		},
 		DesiredGeneration:   4,
 		ActivatedGeneration: 4,
 		AppliedGeneration:   3,
-		Dependencies:        map[string]agentstate.DependencyState{},
+		Dependencies:        map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -81,11 +84,11 @@ func TestRollbackRestoresCollectorConfigAndGatewayEndpointPair(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := agentstate.NewIdentityStore(statePath).EnsureInstallationID(id); err != nil {
+	if _, err := sqlitefixture.NewIdentityStore(statePath).EnsureInstallationID(id); err != nil {
 		t.Fatal(err)
 	}
-	gateway := agentstate.NewCoreGatewayStore(statePath)
-	accepted, err := gateway.AcceptGatewaySnapshot(coreconfig.GatewaySnapshot{
+	gateway := sqlitefixture.NewCoreGatewayStore(statePath)
+	accepted, err := gateway.AcceptGatewaySnapshot(context.Background(), coreconfig.GatewaySnapshot{
 		InstallationID: id.String(),
 		Revision:       9,
 		Endpoint:       "core.example:4317",
@@ -122,11 +125,11 @@ func TestRollbackRestoresCollectorConfigAndGatewayEndpointPair(t *testing.T) {
 	if state.DesiredGeneration != accepted.Generation || state.ActivatedGeneration != state.AppliedGeneration || state.PendingActivation != nil {
 		t.Fatalf("state after rollback = %+v", state)
 	}
-	effective, err := gateway.EffectiveGateway()
+	effective, err := gateway.EffectiveGateway(context.Background())
 	if err != nil || effective.Owner != coreconfig.CoreOwner || effective.Revision != 9 || effective.Endpoint != "core.example:4317" {
 		t.Fatalf("accepted desired Gateway after rollback = %+v, %v", effective, err)
 	}
-	runtime, err := gateway.GatewayForGeneration(state.ActivatedGeneration)
+	runtime, err := gateway.GatewayForGeneration(context.Background(), state.ActivatedGeneration)
 	if err != nil || runtime.Endpoint != "bootstrap.example:4317" {
 		t.Fatalf("runtime Gateway after rollback = %+v, %v", runtime, err)
 	}

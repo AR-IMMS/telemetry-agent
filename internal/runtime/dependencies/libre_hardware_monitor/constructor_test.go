@@ -2,13 +2,12 @@ package librehardwaremonitor
 
 import (
 	"context"
-	"io"
 	"reflect"
 	"testing"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 func TestNewInstallerComposesAdminReconcileAndFreshInstall(t *testing.T) {
@@ -79,7 +78,7 @@ func TestNewInstallerComposesAdminReconcileAndFreshInstall(t *testing.T) {
 
 	wantResult := dependency.InstallResult{
 		Name: "libre-hardware-monitor",
-		OwnedResources: []agentstate.OwnedResource{
+		OwnedResources: []servicedomain.OwnedResource{
 			{
 				Kind:       "scheduled-task",
 				Identifier: DefaultOptions().TaskName,
@@ -118,13 +117,7 @@ func TestNewInstallerComposesAdminReconcileAndFreshInstall(t *testing.T) {
 func TestNewInstallerReturnsDependencyInstaller(t *testing.T) {
 	installer := NewInstaller(
 		DefaultOptions(),
-		testDownloader(func(
-			ctx context.Context,
-			url string,
-			writer io.Writer,
-		) error {
-			return nil
-		}),
+		nil,
 	)
 
 	if installer == nil {

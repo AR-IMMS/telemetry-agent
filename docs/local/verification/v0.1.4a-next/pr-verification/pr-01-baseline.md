@@ -4,6 +4,8 @@
 **Platform:** Windows workspace, amd64<br>
 **Purpose:** capture compatibility evidence before PR-01 source changes. This records observed behavior only; it does not define new CLI behavior.
 
+This file records the CLI as it existed at the PR-01 baseline. Its `--help` exit behavior and root command list are historical and were later extended by the approved PR-09.5h Cobra help and monitoring aliases; this artifact remains unchanged as baseline evidence.
+
 ## Root help observation
 
 Command: `go run ./cmd/agentctl help`<br>

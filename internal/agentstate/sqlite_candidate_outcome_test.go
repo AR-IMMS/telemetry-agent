@@ -8,7 +8,7 @@ import (
 )
 
 func TestCandidateOutcomeReaderUsesRuntimeJournalAndAppliedGeneration(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	if _, err := store.Update(func(state *State) error { state.DesiredGeneration = 4; return nil }); err != nil {
 		t.Fatal(err)
 	}

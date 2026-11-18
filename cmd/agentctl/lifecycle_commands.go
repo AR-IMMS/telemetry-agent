@@ -5,13 +5,16 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/service"
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/config"
-	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"io"
 	"os"
 	"strings"
+
+	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/service"
+	agentservice "github.com/ar-imms/telemetry-agent/internal/runtime/service"
 )
 
 func runInstall(
@@ -54,7 +57,7 @@ func runInstall(
 		"Collector validation timeout",
 	)
 
-	if err := flags.Parse(args); err != nil {
+	if err := parseCompatibilityFlags(flags, args); err != nil {
 		flags.Usage()
 
 		return 2
@@ -123,7 +126,7 @@ func runInstall(
 		return 1
 	}
 
-	stateStore := agentstate.NewStore(layout.StatePath)
+	stateStore := newAgentStateStore(layout.StatePath)
 	state, err := stateStore.Load()
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
@@ -133,7 +136,7 @@ func runInstall(
 		}
 
 		state = agentstate.State{
-			Dependencies: make(map[string]agentstate.DependencyState),
+			Dependencies: make(map[string]dependencydomain.DependencyState),
 		}
 	}
 
@@ -183,6 +186,7 @@ func runInstall(
 		installAgent = agentinstallation.NewInstaller(
 			deps.downloader,
 			deps.runner,
+			newAgentStateStore,
 		).Install
 	}
 
@@ -240,7 +244,7 @@ func runUninstall(
 
 	statePath := flags.String(
 		"state-path",
-		agentstate.DefaultPath(),
+		agentservice.DefaultStatePath(),
 		"Agent lifecycle state path",
 	)
 	timeout := flags.Duration(
@@ -249,7 +253,7 @@ func runUninstall(
 		"maximum time to wait for safe dependency teardown",
 	)
 
-	if err := flags.Parse(args); err != nil {
+	if err := parseCompatibilityFlags(flags, args); err != nil {
 		flags.Usage()
 
 		return 2

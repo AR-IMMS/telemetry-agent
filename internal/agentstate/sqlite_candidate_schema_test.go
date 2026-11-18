@@ -3,13 +3,17 @@ package agentstate
 import (
 	"database/sql"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	remoteconfigsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig/sqlite"
 	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
 	identityenrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
 	identityinstallationsqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
+	activationsqlite "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/sqlite"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
 func TestCandidateJournalMigrationPreservesVersionSixLifecycleState(t *testing.T) {
@@ -30,13 +34,22 @@ func TestCandidateJournalMigrationPreservesVersionSixLifecycleState(t *testing.T
 		}
 	}
 	configurationMigrations := configurationsqlite.Migrations()
+	gatewayMigrations := remoteconfigsqlite.Migrations()
+	runtimeGatewayMigration := activationsqlite.CoreGatewayRuntimeMigration(
+		func(*sql.Tx) (activationsqlite.GatewayMigrationState, error) {
+			return activationsqlite.GatewayMigrationState{}, os.ErrNotExist
+		},
+		func(*sql.Tx) (activationsqlite.AcceptedGatewaySnapshot, bool, error) {
+			return activationsqlite.AcceptedGatewaySnapshot{}, false, nil
+		},
+	)
 	if len(configurationMigrations) == 0 || configurationMigrations[0].Version != 6 {
 		t.Fatalf("Configuration migration registry does not start at version 6: %+v", configurationMigrations)
 	}
 	for _, migrate := range []func(*sql.DB) error{
 		identityinstallationsqlite.Migrations()[0].Apply,
-		migrateCoreGatewaySnapshot,
-		migrateCoreGatewayRuntime,
+		gatewayMigrations[0].Apply,
+		runtimeGatewayMigration.Apply,
 		identityenrollmentsqlite.Migrations()[0].Apply,
 		configurationMigrations[0].Apply,
 	} {
@@ -44,7 +57,7 @@ func TestCandidateJournalMigrationPreservesVersionSixLifecycleState(t *testing.T
 			t.Fatalf("build version 6 fixture: %v", err)
 		}
 	}
-	legacyState := State{DesiredGeneration: 8, ActivatedGeneration: 7, AppliedGeneration: 7, Dependencies: map[string]DependencyState{"node-exporter": {Enabled: true}}}
+	legacyState := State{DesiredGeneration: 8, ActivatedGeneration: 7, AppliedGeneration: 7, Dependencies: map[string]dependencydomain.DependencyState{"node-exporter": {Enabled: true}}}
 	encoded, err := json.Marshal(legacyState)
 	if err != nil {
 		t.Fatal(err)
@@ -59,7 +72,7 @@ func TestCandidateJournalMigrationPreservesVersionSixLifecycleState(t *testing.T
 		t.Fatal(err)
 	}
 
-	store := NewSQLiteStore(path)
+	store := newTestSQLiteStore(path)
 	if _, err := store.Load(); err != nil {
 		t.Fatalf("open version 6 database through version 8 migration: %v", err)
 	}

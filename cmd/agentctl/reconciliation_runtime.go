@@ -7,17 +7,20 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/app"
-	"github.com/ar-imms/telemetry-agent/internal/config"
 	"github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation"
-	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
+	reconciliationcontracts "github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation/contracts"
+	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
+	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
-	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
+	definitionapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
+	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	"github.com/ar-imms/telemetry-agent/internal/platform/events"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation"
+	activationapp "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/application"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	runtimecontracts "github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 )
@@ -28,7 +31,7 @@ type runtimeBaseline struct {
 	dependencies   dependency.Catalog
 	layers         []config.Layer
 	gateways       coreconfig.GatewayRepository
-	profiles       monitoringprofile.Registry
+	profiles       monitoringdomain.Registry
 	baselineInputs func() ([]config.InlineLayer, []string, error)
 }
 
@@ -38,7 +41,7 @@ var (
 )
 
 func newRuntimeBaseline(statePath string) (runtimeBaseline, error) {
-	store := agentstate.NewStore(statePath)
+	store := newAgentStateStore(statePath)
 	state, err := store.Load()
 	if err != nil {
 		return runtimeBaseline{}, err
@@ -55,7 +58,7 @@ func newRuntimeBaseline(statePath string) (runtimeBaseline, error) {
 	if err != nil {
 		return runtimeBaseline{}, err
 	}
-	profiles, err := monitoringprofile.LoadDirectory(state.Collector.ConfigRoot)
+	profiles, err := loadMonitoringProfiles(state.Collector.ConfigRoot)
 	if err != nil {
 		return runtimeBaseline{}, fmt.Errorf("load local monitoring profiles: %w", err)
 	}
@@ -64,7 +67,7 @@ func newRuntimeBaseline(statePath string) (runtimeBaseline, error) {
 		platform:     platform,
 		dependencies: dependencies,
 		layers:       layers,
-		gateways:     agentstate.NewCoreGatewayStore(statePath),
+		gateways:     newAgentCoreGatewayStore(statePath),
 		profiles:     profiles,
 		baselineInputs: func() ([]config.InlineLayer, []string, error) {
 			return nativeDockerMonitoringInputsWithProfiles(statePath, platform.OS, profiles)
@@ -72,12 +75,12 @@ func newRuntimeBaseline(statePath string) (runtimeBaseline, error) {
 	}, nil
 }
 
-func (b runtimeBaseline) Snapshot() (reconciliation.BaselineSnapshot, error) {
+func (b runtimeBaseline) Snapshot(ctx context.Context) (reconciliation.BaselineSnapshot, error) {
 	state, err := b.store.Load()
 	if err != nil {
 		return reconciliation.BaselineSnapshot{}, err
 	}
-	gateway, err := b.gateways.EffectiveGateway()
+	gateway, err := b.gateways.EffectiveGateway(ctx)
 	if err != nil {
 		return reconciliation.BaselineSnapshot{}, err
 	}
@@ -107,7 +110,7 @@ type runtimeCandidateApplier struct {
 
 type runtimeCandidateCompiler struct{ compiler collectorruntime.Compiler }
 
-func (c runtimeCandidateCompiler) Compile(input config.RenderInput, resolved []integration.ResolvedInstance) (runtimecontracts.Candidate, error) {
+func (c runtimeCandidateCompiler) Compile(input config.RenderInput, resolved []runtimecontracts.ResolvedContribution) (runtimecontracts.Candidate, error) {
 	candidate, err := c.compiler.Compile(input, resolved)
 	return candidate, classifyRuntimeCandidateError(err)
 }
@@ -136,7 +139,7 @@ func classifyRuntimeCandidateError(err error) error {
 
 func (a runtimeCandidateApplier) ApplyCandidate(ctx context.Context, request reconciliation.CandidateApplyRequest) (reconciliation.CandidateActivationOutcome, error) {
 	outcome, err := agentlifecycle.ApplyCollectorCandidate(ctx, a.store, request, a.options)
-	if errors.Is(err, agentstate.ErrStaleCandidate) {
+	if errors.Is(err, activationapp.ErrStaleCandidate) {
 		return outcome, runtimecontracts.ErrStaleCandidate
 	}
 	return outcome, err
@@ -148,7 +151,7 @@ func newRuntimeReconciliationController(statePath string, runner bootstrap.Comma
 		return nil, nil, err
 	}
 	store := baseline.store
-	sqliteStore, ok := store.(agentstate.SQLiteStore)
+	_, ok := store.(agentstate.SQLiteStore)
 	if !ok {
 		return nil, nil, fmt.Errorf("Agent SQLite store is required for reconciliation")
 	}
@@ -170,13 +173,26 @@ func newRuntimeReconciliationController(statePath string, runner bootstrap.Comma
 	if nativeErr != nil {
 		return nil, nil, fmt.Errorf("resolve native monitoring ownership: %w", nativeErr)
 	}
-	resolver := nativeOwnershipResolver{delegate: integration.NewResolver(registry), inventory: sqliteStore.InventoryRepository(), profiles: profiles, enabled: len(nativeLayers) > 0}
+	resolver := nativeOwnershipResolver{delegate: app.NewMonitoringDesiredStateResolver(definitionapp.NewResolver(registry)), inventory: app.NewInventoryRepository(statePath), profiles: profiles, enabled: len(nativeLayers) > 0}
 	options := agentlifecycle.CollectorConfigurationOptions{Platform: baseline.platform, Catalog: baseline.dependencies, Layers: baseline.layers, AdditionalBaselineInputs: additionalBaselineInputs, BinaryPath: state.Collector.BinaryPath, ConfigPath: state.Collector.ConfigPath, ValidationEnvironment: []string{"OTEL_GATEWAY_ENDPOINT=" + state.Collector.GatewayEndpoint}, Runner: runner, GatewayRepository: baseline.gateways}
-	attempts := agentstate.NewSQLiteAttemptsFromStore(sqliteStore)
-	controller := &reconciliation.Controller{Desired: sqliteStore.IntegrationRepository(), Baseline: baseline, Resolver: resolver, Compiler: runtimeCandidateCompiler{compiler: collectorruntime.NewCompiler(collectorCatalog)}, Validator: func(ctx context.Context, candidate runtimecontracts.Candidate) error {
+	reconciliationRepository := app.NewReconciliationRepository(statePath)
+	recordRecoveryFailure := func(state agentstate.State) error {
+		if state.PendingActivation == nil || state.PendingActivation.Candidate == nil {
+			return fmt.Errorf("pending candidate recovery evidence is required")
+		}
+		pending := state.PendingActivation
+		mapping := pending.Candidate
+		return reconciliationRepository.RecordRecoveryFailure(reconciliationcontracts.RecoveryFailure{
+			DesiredRevision:     mapping.DesiredSetRevision,
+			BaselineFingerprint: mapping.BaselineFingerprint,
+			CandidateDigest:     mapping.CandidateDigest,
+			Generation:          pending.Generation,
+		})
+	}
+	controller := &reconciliation.Controller{Desired: app.NewDesiredStateRepository(statePath), Baseline: baseline, Resolver: resolver, Compiler: runtimeCandidateCompiler{compiler: collectorruntime.NewCompiler(collectorCatalog)}, Validator: func(ctx context.Context, candidate runtimecontracts.Candidate) error {
 		return (runtimeCandidateValidator{runner: runner, binary: state.Collector.BinaryPath, env: options.ValidationEnvironment}).Validate(ctx, candidate)
-	}, Applier: runtimeCandidateApplier{store: store, options: options}, Attempts: attempts, Outcomes: attempts}
-	return controller, attempts.RecordRecoveryFailure, nil
+	}, Applier: runtimeCandidateApplier{store: store, options: options}, Attempts: reconciliationRepository, Outcomes: reconciliationRepository}
+	return controller, recordRecoveryFailure, nil
 }
 
 func runRuntimeWithReconciliation(ctx context.Context, statePath string, teardown dependencyTeardownFunc, reporter agenthealth.ObservationReporter, runner bootstrap.CommandRunner) error {
@@ -185,6 +201,9 @@ func runRuntimeWithReconciliation(ctx context.Context, statePath string, teardow
 		Teardown:  teardown,
 		Reporter:  reporter,
 		Runner:    runner,
+		StoreFactory: func(path string) (agentstate.Repository, coreconfig.GatewayRuntimeRepository, enrollment.AttemptRepository) {
+			return newAgentStateStore(path), newAgentCoreGatewayStore(path), newAgentEnrollmentStore(path)
+		},
 		Build: func(publisher events.Publisher, commandRunner bootstrap.CommandRunner) (app.RuntimeComponents, error) {
 			controller, recordRecoveryFailure, err := newRuntimeReconciliationController(statePath, commandRunner)
 			if err != nil {

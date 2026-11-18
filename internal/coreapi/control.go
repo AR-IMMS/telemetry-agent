@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
-	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
+	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/domain"
 )
 
 const agentManagementPath = "/api/v1/agent-management"

@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	credentialstore "github.com/ar-imms/telemetry-agent/internal/identity/credentials"
-	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/opamp"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/process"
+	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/opamp"
+	opampdomain "github.com/ar-imms/telemetry-agent/internal/runtime/opamp/domain"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/process"
 )
 
 const managedSupervisorStartupTimeout = 30 * time.Second
@@ -24,20 +24,23 @@ var errSupervisorCredentialChanged = errors.New("Supervisor credential changed")
 
 // runManagedSupervisor starts the sole Collector owner for one activated
 // configuration snapshot and binds readiness to that exact snapshot.
-func runManagedSupervisor(ctx context.Context, statePath string, managed agentstate.SupervisorContext, collector supervisor.Options) error {
+func runManagedSupervisor(ctx context.Context, statePath string, managed opampdomain.SupervisorContext, collector supervisor.Options, attemptRepository enrollment.AttemptRepository) error {
+	if attemptRepository == nil {
+		return fmt.Errorf("Supervisor enrollment repository is required")
+	}
 	for {
-		credentialReference, err := currentSupervisorCredentialReference(statePath)
+		credentialReference, err := currentSupervisorCredentialReference(attemptRepository)
 		if err != nil {
 			return err
 		}
-		err = runManagedSupervisorOnce(ctx, statePath, credentialReference, managed, collector)
+		err = runManagedSupervisorOnce(ctx, statePath, credentialReference, managed, collector, attemptRepository)
 		if !errors.Is(err, errSupervisorCredentialChanged) {
 			return err
 		}
 	}
 }
 
-func runManagedSupervisorOnce(ctx context.Context, statePath, credentialReference string, managed agentstate.SupervisorContext, collector supervisor.Options) error {
+func runManagedSupervisorOnce(ctx context.Context, statePath, credentialReference string, managed opampdomain.SupervisorContext, collector supervisor.Options, attemptRepository enrollment.AttemptRepository) error {
 	if !managed.Enabled || strings.TrimSpace(managed.BinaryPath) == "" || strings.TrimSpace(managed.OpAMPServerURL) == "" || strings.TrimSpace(managed.StateDirectory) == "" {
 		return fmt.Errorf("enabled OpAMP Supervisor runtime context is incomplete")
 	}
@@ -95,7 +98,7 @@ func runManagedSupervisorOnce(ctx context.Context, statePath, credentialReferenc
 	credentialChanged := make(chan struct{}, 1)
 	credentialWatchContext, cancelCredentialWatch := context.WithCancel(processContext)
 	defer cancelCredentialWatch()
-	go watchSupervisorCredential(credentialWatchContext, statePath, credentialReference, credentialChanged)
+	go watchSupervisorCredential(credentialWatchContext, attemptRepository, credentialReference, credentialChanged)
 	readinessDone := make(chan error, 1)
 	go func() {
 		readinessDone <- waitForManagedCollectorReadiness(processContext, collector.HealthEndpoint, collector.ReadinessBody, managedSupervisorStartupTimeout)
@@ -160,8 +163,8 @@ func runManagedSupervisorOnce(ctx context.Context, statePath, credentialReferenc
 	}
 }
 
-func currentSupervisorCredentialReference(statePath string) (string, error) {
-	attempt, err := agentstate.NewEnrollmentStore(statePath).LoadAttempt()
+func currentSupervisorCredentialReference(repository enrollment.AttemptRepository) (string, error) {
+	attempt, err := repository.LoadAttempt()
 	if errors.Is(err, enrollment.ErrNoAttempt) {
 		return "", nil
 	}
@@ -177,7 +180,7 @@ func currentSupervisorCredentialReference(statePath string) (string, error) {
 	return "", nil
 }
 
-func watchSupervisorCredential(ctx context.Context, statePath, initialReference string, changed chan<- struct{}) {
+func watchSupervisorCredential(ctx context.Context, repository enrollment.AttemptRepository, initialReference string, changed chan<- struct{}) {
 	ticker := time.NewTicker(managedCredentialPollInterval)
 	defer ticker.Stop()
 	for {
@@ -185,7 +188,7 @@ func watchSupervisorCredential(ctx context.Context, statePath, initialReference 
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			current, err := currentSupervisorCredentialReference(statePath)
+			current, err := currentSupervisorCredentialReference(repository)
 			if err == nil && current != initialReference {
 				select {
 				case changed <- struct{}{}:

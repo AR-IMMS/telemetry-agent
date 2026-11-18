@@ -1,5 +1,7 @@
-// Package contracts defines consumer-owned ports and DTOs for reconciliation
-// to request runtime candidate application and consume clean baseline snapshots.
-// It has no orchestration, persistence, Collector execution, or platform side
-// effects; the Runtime context supplies adapters for these contracts.
+// Package contracts defines narrow DTOs shared at Runtime Collector seams:
+// reconciliation candidate application, clean-baseline snapshots, stable
+// desired-instance identifiers paired with Monitoring contributions for
+// Collector configuration projection, and Collector lifecycle evidence
+// consumed by Health. It owns no policy, orchestration, persistence, Collector
+// process, or platform side effects.
 package contracts

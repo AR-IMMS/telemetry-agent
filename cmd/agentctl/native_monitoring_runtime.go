@@ -3,18 +3,17 @@ package main
 import (
 	"errors"
 	"fmt"
+	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
+	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
+	definitionsdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
+	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	"os"
 	"runtime"
 	"strings"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
-	"github.com/ar-imms/telemetry-agent/internal/config"
-	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
-	"github.com/ar-imms/telemetry-agent/internal/identity/host"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
-	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
-	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
 )
 
 // nativeDockerMonitoringInputs opts into OTel-native profile discovery only
@@ -23,11 +22,11 @@ func nativeDockerMonitoringInputs(statePath, osName string) ([]config.InlineLaye
 	if strings.TrimSpace(os.Getenv(dockerDiscoveryEndpointEnv)) == "" {
 		return nil, nil, nil
 	}
-	state, err := agentstate.NewStore(statePath).Load()
+	state, err := newAgentStateStore(statePath).Load()
 	if err != nil {
 		return nil, nil, fmt.Errorf("load Collector config root for native Docker monitoring: %w", err)
 	}
-	profiles, err := monitoringprofile.LoadDirectory(state.Collector.ConfigRoot)
+	profiles, err := loadMonitoringProfiles(state.Collector.ConfigRoot)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -38,19 +37,19 @@ func nativeDockerMonitoringInputsWithConfigRoot(statePath, osName, configRoot st
 	if strings.TrimSpace(os.Getenv(dockerDiscoveryEndpointEnv)) == "" {
 		return nil, nil, nil
 	}
-	profiles, err := monitoringprofile.LoadDirectory(configRoot)
+	profiles, err := loadMonitoringProfiles(configRoot)
 	if err != nil {
 		return nil, nil, err
 	}
 	return nativeDockerMonitoringInputsWithProfiles(statePath, osName, profiles)
 }
 
-func nativeDockerMonitoringInputsWithProfiles(statePath, osName string, profiles monitoringprofile.Registry) ([]config.InlineLayer, []string, error) {
+func nativeDockerMonitoringInputsWithProfiles(statePath, osName string, profiles monitoringdomain.Registry) ([]config.InlineLayer, []string, error) {
 	endpoint := strings.TrimSpace(os.Getenv(dockerDiscoveryEndpointEnv))
 	if endpoint == "" {
 		return nil, nil, nil
 	}
-	attempt, err := agentstate.NewEnrollmentStore(statePath).LoadAttempt()
+	attempt, err := newAgentEnrollmentStore(statePath).LoadAttempt()
 	if errors.Is(err, enrollment.ErrNoAttempt) || err == nil && (attempt.Status != enrollment.AttemptRegistered || attempt.Result == nil) {
 		return nil, nil, nil
 	}
@@ -76,7 +75,7 @@ func nativeDockerMonitoringInputsWithProfiles(statePath, osName string, profiles
 			}
 		}
 	}
-	layer, receivers, err := profiles.DockerCollectorLayer(strings.ToLower(osName), endpoint, nodeID)
+	layer, receivers, err := collectorruntime.DockerMonitoringLayer(collectorMonitoringProfiles(profiles.Profiles()), strings.ToLower(osName), endpoint, nodeID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -84,25 +83,26 @@ func nativeDockerMonitoringInputsWithProfiles(statePath, osName string, profiles
 }
 
 type nativeOwnershipResolver struct {
-	delegate  resolver
+	delegate  contributionResolver
 	inventory interface {
-		Snapshot() (inventoryctx.InventorySnapshot, error)
+		Snapshot() (inventorydomain.InventorySnapshot, error)
 	}
-	profiles monitoringprofile.Registry
+	profiles monitoringdomain.Registry
 	enabled  bool
 }
 
-type resolver interface {
-	Resolve(integration.IntegrationInstance) (integration.ResolvedInstance, error)
+type contributionResolver interface {
+	ResolveWithContribution(desiredstatedomain.Instance) (desiredstatedomain.Instance, definitionsdomain.Contribution, error)
 }
 
-func (r nativeOwnershipResolver) Resolve(instance integration.IntegrationInstance) (integration.ResolvedInstance, error) {
+func (r nativeOwnershipResolver) Resolve(instance desiredstatedomain.Instance) (definitionsdomain.Contribution, error) {
 	if !r.enabled || instance.Binding == nil {
-		return r.delegate.Resolve(instance)
+		_, contribution, err := r.delegate.ResolveWithContribution(instance)
+		return contribution, err
 	}
 	snapshot, err := r.inventory.Snapshot()
 	if err != nil {
-		return integration.ResolvedInstance{}, fmt.Errorf("read inventory for native receiver ownership: %w", err)
+		return definitionsdomain.Contribution{}, fmt.Errorf("read inventory for native receiver ownership: %w", err)
 	}
 	for _, resource := range snapshot.Resources {
 		binding := instance.Binding
@@ -110,16 +110,17 @@ func (r nativeOwnershipResolver) Resolve(instance integration.IntegrationInstanc
 			continue
 		}
 		if profile, matched := r.profiles.Match(string(resource.Key.Provider), resource.Attributes); matched && profile.ID == instance.DefinitionID {
-			resolved, err := r.delegate.Resolve(instance)
+			_, _, err := r.delegate.ResolveWithContribution(instance)
 			if err != nil {
-				return integration.ResolvedInstance{}, err
+				return definitionsdomain.Contribution{}, err
 			}
-			return integration.ResolvedInstance{Instance: resolved.Instance, Contribution: integration.NewContribution(nil)}, nil
+			return definitionsdomain.Contribution{}, nil
 		}
 	}
-	return r.delegate.Resolve(instance)
+	_, contribution, err := r.delegate.ResolveWithContribution(instance)
+	return contribution, err
 }
 
 var _ interface {
-	Resolve(integration.IntegrationInstance) (integration.ResolvedInstance, error)
+	Resolve(desiredstatedomain.Instance) (definitionsdomain.Contribution, error)
 } = nativeOwnershipResolver{}

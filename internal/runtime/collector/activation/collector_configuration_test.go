@@ -8,11 +8,12 @@ import (
 	"testing"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
-	"github.com/ar-imms/telemetry-agent/internal/config"
-	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
 func TestCollectorConfigurationActivatorActivatesEnabledReceivers(
@@ -114,7 +115,7 @@ service:
 	err = activator.Activate(
 		context.Background(),
 		agentstate.State{
-			Dependencies: map[string]agentstate.DependencyState{
+			Dependencies: map[string]dependencydomain.DependencyState{
 				"windows-exporter": {
 					Enabled: true,
 				},
@@ -217,11 +218,11 @@ func (r *gatewayValidationRunner) Run(_ context.Context, command bootstrap.Comma
 
 type gatewayRepositoryStub struct{ endpoint string }
 
-func (r gatewayRepositoryStub) AcceptGatewaySnapshot(coreconfig.GatewaySnapshot) (coreconfig.Acceptance, error) {
+func (r gatewayRepositoryStub) AcceptGatewaySnapshot(context.Context, coreconfig.GatewaySnapshot) (coreconfig.Acceptance, error) {
 	return coreconfig.Acceptance{}, nil
 }
 
-func (r gatewayRepositoryStub) EffectiveGateway() (coreconfig.EffectiveGateway, error) {
+func (r gatewayRepositoryStub) EffectiveGateway(context.Context) (coreconfig.EffectiveGateway, error) {
 	return coreconfig.EffectiveGateway{Owner: coreconfig.CoreOwner, Endpoint: r.endpoint, Generation: 1}, nil
 }
 
@@ -305,7 +306,7 @@ service:
 
 	_, err = store.Update(func(state *agentstate.State) error {
 		state.DesiredGeneration = 6
-		state.Dependencies = map[string]agentstate.DependencyState{
+		state.Dependencies = map[string]dependencydomain.DependencyState{
 			"windows-exporter": {
 				Enabled: true,
 			},

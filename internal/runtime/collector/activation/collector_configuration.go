@@ -6,11 +6,11 @@ import (
 	"strings"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
-	"github.com/ar-imms/telemetry-agent/internal/config"
-	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 )
 
 // collectorConfigurationActivator renders and activates the Collector
@@ -79,7 +79,7 @@ func (a collectorConfigurationActivator) Activate(
 
 	validationEnvironment := append([]string(nil), a.validationEnvironment...)
 	if a.gatewayRepository != nil {
-		gateway, err := a.gatewayRepository.EffectiveGateway()
+		gateway, err := a.gatewayRepository.EffectiveGateway(ctx)
 		if err != nil {
 			return fmt.Errorf("resolve effective Gateway endpoint for configuration validation: %w", err)
 		}
@@ -170,7 +170,7 @@ func ApplyDesiredConfiguration(
 		if err != nil {
 			return fmt.Errorf("load activated state for Core Gateway mapping: %w", err)
 		}
-		if err := gatewayRuntime.MarkGatewayActivated(state.ActivatedGeneration); err != nil {
+		if err := gatewayRuntime.MarkGatewayActivated(ctx, state.ActivatedGeneration); err != nil {
 			return fmt.Errorf("record activated Core Gateway revision: %w", err)
 		}
 	}

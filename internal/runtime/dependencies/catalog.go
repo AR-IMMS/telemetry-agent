@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 )
+
+// EnabledSet contains normalized dependency names that are enabled in desired
+// state. It does not report installation health or resource ownership.
+type EnabledSet map[string]struct{}
 
 // Catalog provides one source of truth for built-in dependency definitions
 // and their concrete installers.
@@ -100,14 +102,13 @@ func (c Catalog) List(osName string) []Definition {
 // dependencies supported by the supplied operating system.
 func (c Catalog) CollectorReceivers(
 	osName string,
-	state agentstate.State,
+	enabledDependencies EnabledSet,
 ) ([]string, error) {
 	definitions := c.List(osName)
 	receivers := make([]string, 0, len(definitions))
 
 	for _, definition := range definitions {
-		dependencyState, enabled := state.Dependencies[definition.Name]
-		if !enabled || !dependencyState.Enabled {
+		if _, enabled := enabledDependencies[definition.Name]; !enabled {
 			continue
 		}
 

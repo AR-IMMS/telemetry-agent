@@ -3,6 +3,9 @@ package agentstate
 import (
 	"reflect"
 	"testing"
+
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 func TestStateEnableDependencyMarksDependencyEnabledAndAdvancesGeneration(
@@ -10,7 +13,7 @@ func TestStateEnableDependencyMarksDependencyEnabledAndAdvancesGeneration(
 ) {
 	state := State{
 		DesiredGeneration: 3,
-		Dependencies: map[string]DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {
 				Enabled: false,
 			},
@@ -40,7 +43,7 @@ func TestStateEnableDependencyDoesNotAdvanceGenerationWhenAlreadyEnabled(
 ) {
 	state := State{
 		DesiredGeneration: 3,
-		Dependencies: map[string]DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {
 				Enabled: true,
 			},
@@ -67,7 +70,7 @@ func TestStateDisableDependencyMarksDependencyDisabledAndAdvancesGeneration(
 ) {
 	state := State{
 		DesiredGeneration: 7,
-		Dependencies: map[string]DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"windows-exporter": {
 				Enabled: true,
 			},
@@ -117,7 +120,7 @@ func TestStateDisableDependencySchedulesTeardownForNewGeneration(
 ) {
 	state := State{
 		DesiredGeneration: 10,
-		Dependencies: map[string]DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {
 				Enabled: true,
 			},
@@ -133,11 +136,11 @@ func TestStateDisableDependencySchedulesTeardownForNewGeneration(
 	if pending == nil {
 		t.Fatal("PendingTeardown = nil, want disable teardown")
 	}
-	if pending.Action != TeardownActionDisable {
+	if pending.Action != dependencydomain.TeardownActionDisable {
 		t.Fatalf(
 			"PendingTeardown Action = %q, want %q",
 			pending.Action,
-			TeardownActionDisable,
+			dependencydomain.TeardownActionDisable,
 		)
 	}
 	if pending.Generation != 11 {
@@ -153,7 +156,7 @@ func TestStateRequestUninstallDisablesDependencyAndSchedulesUninstall(
 ) {
 	state := State{
 		DesiredGeneration: 12,
-		Dependencies: map[string]DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"libre-hardware-monitor": {
 				Enabled: true,
 			},
@@ -181,11 +184,11 @@ func TestStateRequestUninstallDisablesDependencyAndSchedulesUninstall(
 	if dependency.PendingTeardown == nil {
 		t.Fatal("PendingTeardown = nil, want uninstall teardown")
 	}
-	if dependency.PendingTeardown.Action != TeardownActionUninstall {
+	if dependency.PendingTeardown.Action != dependencydomain.TeardownActionUninstall {
 		t.Fatalf(
 			"PendingTeardown Action = %q, want %q",
 			dependency.PendingTeardown.Action,
-			TeardownActionUninstall,
+			dependencydomain.TeardownActionUninstall,
 		)
 	}
 	if dependency.PendingTeardown.Generation != 13 {
@@ -202,11 +205,11 @@ func TestStateCompleteUninstallRemovesDependencyAfterAcknowledgement(
 	state := State{
 		DesiredGeneration: 4,
 		AppliedGeneration: 4,
-		Dependencies: map[string]DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"windows-exporter": {
 				Enabled: false,
-				PendingTeardown: &PendingTeardown{
-					Action:     TeardownActionUninstall,
+				PendingTeardown: &dependencydomain.PendingTeardown{
+					Action:     dependencydomain.TeardownActionUninstall,
 					Generation: 4,
 				},
 			},
@@ -227,14 +230,14 @@ func TestStateRecordsOwnedResourcesWithoutChangingGeneration(
 ) {
 	state := State{
 		DesiredGeneration: 9,
-		Dependencies: map[string]DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {
 				Enabled: true,
 			},
 		},
 	}
 
-	resources := []OwnedResource{
+	resources := []servicedomain.OwnedResource{
 		{
 			Kind:       "systemd-unit",
 			Identifier: "/etc/systemd/system/ar-imms-node-exporter.service",
@@ -249,14 +252,14 @@ func TestStateRecordsOwnedResourcesWithoutChangingGeneration(
 		t.Fatalf("RecordOwnership() error = %v", err)
 	}
 
-	ownership := state.Dependencies["node-exporter"].Ownership
-	if ownership == nil {
+	ownership := state.OwnedDependencyResources("node-exporter")
+	if len(ownership) == 0 {
 		t.Fatal("Ownership = nil, want recorded ownership")
 	}
-	if !reflect.DeepEqual(ownership.Resources, resources) {
+	if !reflect.DeepEqual(ownership, resources) {
 		t.Fatalf(
 			"Ownership Resources = %#v, want %#v",
-			ownership.Resources,
+			ownership,
 			resources,
 		)
 	}
@@ -272,19 +275,15 @@ func TestStateReportsDependencyOwnedOnlyWithRecordedResources(
 	t *testing.T,
 ) {
 	state := State{
-		Dependencies: map[string]DependencyState{
-			"windows-exporter": {
-				Ownership: &OwnershipRecord{
-					Resources: []OwnedResource{
-						{
-							Kind:       "windows-service",
-							Identifier: "windows_exporter",
-						},
-					},
-				},
-			},
-			"node-exporter": {},
+		Dependencies: map[string]dependencydomain.DependencyState{
+			"windows-exporter": {},
+			"node-exporter":    {},
 		},
+	}
+	if err := state.RecordOwnership("windows-exporter", []servicedomain.OwnedResource{{
+		Kind: "windows-service", Identifier: "windows_exporter",
+	}}); err != nil {
+		t.Fatalf("RecordOwnership() error = %v", err)
 	}
 
 	if !state.OwnsDependency(" WINDOWS-EXPORTER ") {
@@ -300,7 +299,7 @@ func TestFileStoreUpdatePersistsOneStateMutation(t *testing.T) {
 
 	if err := store.Save(State{
 		DesiredGeneration: 2,
-		Dependencies: map[string]DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {
 				Enabled: true,
 			},
@@ -411,11 +410,11 @@ func TestStateRollsBackUnappliedActivationToAppliedGeneration(t *testing.T) {
 func TestStateEnableDependencyCancelsPendingTeardown(t *testing.T) {
 	state := State{
 		DesiredGeneration: 7,
-		Dependencies: map[string]DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {
 				Enabled: false,
-				PendingTeardown: &PendingTeardown{
-					Action:     TeardownActionDisable,
+				PendingTeardown: &dependencydomain.PendingTeardown{
+					Action:     dependencydomain.TeardownActionDisable,
 					Generation: 7,
 				},
 			},
@@ -456,7 +455,7 @@ func TestRequestUninstallFromDisabledDependencyAdvancesGeneration(
 		DesiredGeneration:   6,
 		ActivatedGeneration: 6,
 		AppliedGeneration:   6,
-		Dependencies: map[string]DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"windows-exporter": {
 				Enabled: false,
 			},
@@ -481,11 +480,11 @@ func TestRequestUninstallFromDisabledDependencyAdvancesGeneration(
 	if dependency.PendingTeardown == nil {
 		t.Fatal("PendingTeardown = nil, want uninstall teardown")
 	}
-	if dependency.PendingTeardown.Action != TeardownActionUninstall {
+	if dependency.PendingTeardown.Action != dependencydomain.TeardownActionUninstall {
 		t.Fatalf(
 			"PendingTeardown.Action = %q, want %q",
 			dependency.PendingTeardown.Action,
-			TeardownActionUninstall,
+			dependencydomain.TeardownActionUninstall,
 		)
 	}
 	if dependency.PendingTeardown.Generation != 7 {
@@ -501,11 +500,11 @@ func TestRecordAgentInstallationStoresConcreteOwnership(
 ) {
 	state := State{}
 
-	installation := AgentInstallation{
+	installation := servicedomain.AgentInstallation{
 		Platform:    "windows",
 		ServiceName: "ar-imms-telemetry-agent",
-		Ownership: OwnershipRecord{
-			Resources: []OwnedResource{
+		Ownership: servicedomain.OwnershipRecord{
+			Resources: []servicedomain.OwnedResource{
 				{
 					Kind:       "windows-service",
 					Identifier: "ar-imms-telemetry-agent",
@@ -554,7 +553,7 @@ func TestStateRequestUninstallsSchedulesBatchForOneGeneration(
 ) {
 	state := State{
 		DesiredGeneration: 12,
-		Dependencies: map[string]DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {
 				Enabled: true,
 			},
@@ -599,12 +598,12 @@ func TestStateRequestUninstallsSchedulesBatchForOneGeneration(
 		if dependency.PendingTeardown == nil {
 			t.Fatalf("%s PendingTeardown = nil", name)
 		}
-		if dependency.PendingTeardown.Action != TeardownActionUninstall {
+		if dependency.PendingTeardown.Action != dependencydomain.TeardownActionUninstall {
 			t.Fatalf(
 				"%s PendingTeardown.Action = %q, want %q",
 				name,
 				dependency.PendingTeardown.Action,
-				TeardownActionUninstall,
+				dependencydomain.TeardownActionUninstall,
 			)
 		}
 		if dependency.PendingTeardown.Generation != 13 {

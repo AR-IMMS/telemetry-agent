@@ -1,0 +1,171 @@
+package redis
+
+import (
+	"fmt"
+	"net"
+	"net/netip"
+	"strconv"
+	"strings"
+	"time"
+
+	matchingdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/domain"
+	definitions "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
+)
+
+const (
+	definitionID           = "redis"
+	definitionVersion      = "1.0.0"
+	redisMetricsCapability = "otel.receiver.redis.metrics"
+)
+
+// Definition returns the versioned Redis metrics definition registered by the
+// Agent composition root on platforms with a verified Redis receiver.
+func Definition() definitions.Definition {
+	return definitions.Definition{
+		ID:       definitionID,
+		Version:  definitionVersion,
+		Validate: validateConfiguration,
+		TemplateSettingRules: map[string]definitions.TemplateSettingRule{
+			"endpoint": {
+				Type: "string", Description: "Redis host and port without URL or credential syntax.", Required: true,
+				Constraints:          []string{"valid DNS hostname or IP address", "port must be between 1 and 65535"},
+				AllowResourceBinding: true,
+				Validate:             validateEndpointSetting,
+			},
+			"collection_interval": {
+				Type: "string", Description: "Interval at which Redis metrics are collected.",
+				Constraints: []string{"must be a positive Go duration"},
+				Default:     "10s", DefaultOverridable: true,
+				Validate: validateCollectionInterval,
+			},
+		},
+		Matching: &matchingdomain.MatchingDefinition{
+			Selector: &matchingdomain.MatchSelector{
+				ResourceKinds: []string{"container"}, LifecycleStates: []string{"running"},
+				ExactAttributes: map[string]string{"container.image.repository": "docker.io/library/redis"},
+			},
+			BuildCandidate:       buildDiscoveredCandidate,
+			RequiredCapabilities: []string{redisMetricsCapability},
+		},
+		Contribute: func(settings map[string]any) (definitions.Contribution, error) {
+			if err := validateConfiguration(settings); err != nil {
+				return definitions.Contribution{}, fmt.Errorf("validate Redis settings: %w", err)
+			}
+			componentConfig := map[string]any{
+				"endpoint": settings["endpoint"],
+				// The receiver disables these identifying resource attributes by
+				// default. Enable them so multiple instances remain distinguishable.
+				"resource_attributes": map[string]any{
+					"server.address": map[string]any{"enabled": true},
+					"server.port":    map[string]any{"enabled": true},
+				},
+			}
+			if interval, exists := settings["collection_interval"]; exists {
+				componentConfig["collection_interval"] = interval
+			}
+			intent, err := definitions.NewComponentIntent(redisMetricsCapability, componentConfig)
+			if err != nil {
+				return definitions.Contribution{}, err
+			}
+			return definitions.NewContribution([]definitions.ComponentIntent{intent}), nil
+		},
+	}
+}
+
+func buildDiscoveredCandidate(resource matchingdomain.MatchResource) (matchingdomain.CandidateBuild, error) {
+	endpoints := make(map[string]matchingdomain.MatchEndpoint)
+	for _, endpoint := range resource.Endpoints {
+		if endpoint.Scope != "host" || endpoint.Provenance != "published_port" || endpoint.Protocol != "tcp" || endpoint.Port == 0 {
+			continue
+		}
+		address, err := netip.ParseAddr(endpoint.Address)
+		if err != nil || !address.IsLoopback() {
+			continue
+		}
+		key := net.JoinHostPort(address.String(), strconv.Itoa(int(endpoint.Port)))
+		endpoints[key] = endpoint
+	}
+	if len(endpoints) != 1 {
+		return matchingdomain.CandidateBuild{
+			RequiredInputs: []matchingdomain.RequiredInput{{Name: "endpoint", Reason: "a unique loopback host-published TCP endpoint is required"}},
+		}, nil
+	}
+	for endpoint := range endpoints {
+		return matchingdomain.CandidateBuild{
+			Settings: map[string]any{"endpoint": endpoint},
+			Evidence: []matchingdomain.MatchEvidence{{Code: "endpoint_selected", Source: "host/published_port/tcp", Value: endpoint}},
+		}, nil
+	}
+	return matchingdomain.CandidateBuild{}, fmt.Errorf("no usable endpoint")
+}
+
+func validateConfiguration(configuration map[string]any) error {
+	if len(configuration) < 1 || len(configuration) > 2 {
+		return fmt.Errorf("Redis settings require endpoint and optional collection_interval")
+	}
+	endpoint, exists := configuration["endpoint"]
+	if !exists {
+		return fmt.Errorf("Redis settings require endpoint and optional collection_interval")
+	}
+	if err := validateEndpointSetting(endpoint); err != nil {
+		return err
+	}
+	if intervalValue, exists := configuration["collection_interval"]; exists {
+		if err := validateCollectionInterval(intervalValue); err != nil {
+			return fmt.Errorf("Redis collection_interval %w", err)
+		}
+	}
+	for key := range configuration {
+		if key != "endpoint" && key != "collection_interval" {
+			return fmt.Errorf("unsupported Redis setting %q", key)
+		}
+	}
+	return nil
+}
+
+func validateEndpointSetting(value any) error {
+	endpoint, ok := value.(string)
+	if !ok || endpoint == "" || strings.TrimSpace(endpoint) != endpoint || strings.ContainsAny(endpoint, "/?#@") {
+		return fmt.Errorf("must be host:port without URL or credential syntax")
+	}
+	host, portText, err := net.SplitHostPort(endpoint)
+	if err != nil || !validHost(host) {
+		return fmt.Errorf("must be a valid host:port")
+	}
+	port, err := strconv.Atoi(portText)
+	if err != nil || port < 1 || port > 65535 {
+		return fmt.Errorf("port must be between 1 and 65535")
+	}
+	return nil
+}
+
+func validateCollectionInterval(value any) error {
+	intervalText, ok := value.(string)
+	interval, err := time.ParseDuration(intervalText)
+	if !ok || err != nil || interval <= 0 {
+		return fmt.Errorf("must be a positive Go duration")
+	}
+	return nil
+}
+
+func validHost(host string) bool {
+	if host == "" || strings.TrimSpace(host) != host {
+		return false
+	}
+	if net.ParseIP(host) != nil {
+		return true
+	}
+	for _, label := range strings.Split(host, ".") {
+		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, char := range label {
+			if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') ||
+				(char >= '0' && char <= '9') || char == '-' {
+				continue
+			}
+			return false
+		}
+	}
+	return true
+}

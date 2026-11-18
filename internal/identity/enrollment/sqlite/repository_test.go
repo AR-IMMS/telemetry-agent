@@ -1,25 +1,24 @@
 package sqlite_test
 
 import (
+	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
+	enrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/domain"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"path/filepath"
 	"reflect"
 	"sync"
 	"testing"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
-	enrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
-	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
 )
 
 func TestRepositorySharesOperationalDatabaseAndCompatibilityFacade(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "agent-state.db")
-	store := agentstate.NewSQLiteStore(path)
+	store := sqlitefixture.NewSQLiteStore(path)
 	installationID, err := installationid.ParseInstallationID("5baf0cba-cf5a-4d39-a3d4-e76263b70810")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := agentstate.NewIdentityStore(path).EnsureInstallationID(installationID); err != nil {
+	if _, err := sqlitefixture.NewIdentityStore(path).EnsureInstallationID(installationID); err != nil {
 		t.Fatalf("initialize installation identity: %v", err)
 	}
 	locker := &sync.Mutex{}
@@ -47,7 +46,7 @@ func TestRepositorySharesOperationalDatabaseAndCompatibilityFacade(t *testing.T)
 		t.Fatalf("reopened attempt = %+v, want %+v", got, attempt)
 	}
 
-	compatibilityRepository := agentstate.NewEnrollmentStore(path)
+	compatibilityRepository := sqlitefixture.NewEnrollmentStore(path)
 	got, err = compatibilityRepository.LoadAttempt()
 	if err != nil || !reflect.DeepEqual(got, attempt) {
 		t.Fatalf("compatibility facade attempt = %+v, err=%v; want %+v", got, err, attempt)

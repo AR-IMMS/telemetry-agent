@@ -39,7 +39,7 @@ func runService(
 		"persistent Agent state path",
 	)
 
-	if err := flags.Parse(args); err != nil {
+	if err := parseCompatibilityFlags(flags, args); err != nil {
 		flags.Usage()
 
 		return 2

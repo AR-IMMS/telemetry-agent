@@ -20,9 +20,14 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
-	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
+	installationapp "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	opampdomain "github.com/ar-imms/telemetry-agent/internal/runtime/opamp/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
 const applicationProfilesE2EEnv = "AR_IMMS_PR06_APPLICATION_PROFILE_E2E"
@@ -97,10 +102,10 @@ func TestLiveDockerApplicationProfilesDeliverOTLP(t *testing.T) {
 
 	statePath := filepath.Join(root, "state.db")
 	configPath := filepath.Join(root, "agent", "otel.yaml")
-	store := agentstate.NewSQLiteStore(statePath)
+	store := sqlitefixture.NewSQLiteStore(statePath)
 	testState := agentstate.State{
-		Collector:         agentstate.CollectorContext{ConfigRoot: configRoot, BinaryPath: binary, ConfigPath: configPath, GatewayEndpoint: sinkEndpoint, HealthEndpoint: defaultHealthEndpoint},
-		DesiredGeneration: 1, ActivatedGeneration: 1, AppliedGeneration: 1, Dependencies: map[string]agentstate.DependencyState{},
+		Collector:         collectordomain.CollectorContext{ConfigRoot: configRoot, BinaryPath: binary, ConfigPath: configPath, GatewayEndpoint: sinkEndpoint, HealthEndpoint: defaultHealthEndpoint},
+		DesiredGeneration: 1, ActivatedGeneration: 1, AppliedGeneration: 1, Dependencies: map[string]dependencydomain.DependencyState{},
 	}
 	if os.Getenv(pr07aSupervisorProfileParityEnv) == "1" {
 		supervisorBinary := strings.TrimSpace(os.Getenv("AR_IMMS_PR07A_SUPERVISOR_BINARY"))
@@ -108,7 +113,7 @@ func TestLiveDockerApplicationProfilesDeliverOTLP(t *testing.T) {
 			t.Fatal("AR_IMMS_PR07A_SUPERVISOR_BINARY is required for Agent-managed profile parity")
 		}
 		credentialsDir := filepath.Join(filepath.Dir(statePath), "credentials")
-		testState.Supervisor = agentstate.SupervisorContext{
+		testState.Supervisor = opampdomain.SupervisorContext{
 			BinaryPath:        supervisorBinary,
 			ConfigurationPath: filepath.Join(credentialsDir, "opamp-supervisor.yaml"),
 			StateDirectory:    filepath.Join(credentialsDir, "opamp-supervisor-state"),
@@ -119,7 +124,7 @@ func TestLiveDockerApplicationProfilesDeliverOTLP(t *testing.T) {
 	if err := store.Save(testState); err != nil {
 		t.Fatal(err)
 	}
-	installationID, err := installationid.EnsureInstallationIdentity(agentstate.NewIdentityStore(statePath), rand.Reader)
+	installationID, err := installationapp.EnsureInstallationIdentity(sqlitefixture.NewIdentityStore(statePath), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +137,7 @@ func TestLiveDockerApplicationProfilesDeliverOTLP(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	initial, err := baseline.Snapshot()
+	initial, err := baseline.Snapshot(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +155,9 @@ func TestLiveDockerApplicationProfilesDeliverOTLP(t *testing.T) {
 	collectorLogs := &nativeCollectorLogReporter{health: agenthealth.NewReporter(agenthealth.RuntimeObservation{CollectorState: agenthealth.CollectorStateStarting})}
 	serviceCtx, stopService := context.WithCancel(ctx)
 	serviceDone := startRuntimeE2E(func() error {
-		return runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, agentstate.TeardownAction, []agentstate.OwnedResource) error { return nil }, collectorLogs, bootstrap.OSCommandRunner{})
+		return runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, dependencydomain.TeardownAction, []servicedomain.OwnedResource) error {
+			return nil
+		}, collectorLogs, bootstrap.OSCommandRunner{})
 	})
 	runtimeStopped := false
 	t.Cleanup(func() {
@@ -175,7 +182,7 @@ func TestLiveDockerApplicationProfilesDeliverOTLP(t *testing.T) {
 		t.Logf("PR06_OTLP_DELIVERED metric=%s resource_id=%s node_id=%s", metric, resourceID, nodeID)
 	}
 	assertNativeReceiverUniqueness(t, collectorLogs.output())
-	desired, err := store.IntegrationRepository().Snapshot()
+	desired, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}

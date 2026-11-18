@@ -1,0 +1,160 @@
+package sqlitefixture
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+
+	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/app/migrations"
+	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
+	materializationapp "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/application"
+	proposalapp "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
+	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
+	remoteconfigsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig/sqlite"
+	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
+	templatesapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
+	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
+	enrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
+	installation "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
+	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
+	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
+	inventorysqlite "github.com/ar-imms/telemetry-agent/internal/inventory/sqlite"
+	"github.com/ar-imms/telemetry-agent/internal/platform/events"
+	platformsqlite "github.com/ar-imms/telemetry-agent/internal/platform/sqlite"
+	sqlitemigrate "github.com/ar-imms/telemetry-agent/internal/platform/sqlite/migrate"
+	activationsqlite "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/sqlite"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/lifecyclelock"
+)
+
+// NewSQLiteStore returns a fixture store using the production migration registry.
+func NewSQLiteStore(path string) agentstate.SQLiteStore {
+	return agentstate.NewSQLiteStoreWithGatewayApplied(path, initialize, remoteconfigsqlite.MarkGatewayAppliedInTransaction)
+}
+
+// NewInventoryRepositoryFromStore constructs an Inventory adapter over a test
+// store while sharing the production SQLite transaction lock.
+func NewInventoryRepositoryFromStore(store agentstate.SQLiteStore) inventoryapp.InventoryRepository {
+	return inventorysqlite.NewInventoryRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
+}
+
+// NewProposalRepositoryFromStore constructs a Configuration adapter over a
+// test store while sharing the production SQLite transaction lock.
+func NewProposalRepositoryFromStore(store agentstate.SQLiteStore) proposalapp.ProposalRepository {
+	return configurationsqlite.NewProposalRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
+}
+
+// NewApprovalRepositoryFromStore constructs the atomic Configuration approval
+// adapter over a test store with the shared production SQLite lock.
+func NewApprovalRepositoryFromStore(store agentstate.SQLiteStore) proposalapp.ApprovalRepository {
+	return configurationsqlite.NewApprovalRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
+}
+
+// NewDesiredStateRepositoryFromStore constructs a Configuration adapter over a
+// test store while sharing the production SQLite transaction lock.
+func NewDesiredStateRepositoryFromStore(store agentstate.SQLiteStore) desiredstateapp.Repository {
+	return configurationsqlite.NewIntegrationRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
+}
+
+// NewTemplateRepositoryFromStore constructs a Configuration adapter over a
+// test store while sharing the production SQLite transaction lock.
+func NewTemplateRepositoryFromStore(store agentstate.SQLiteStore) templatesapp.Repository {
+	return configurationsqlite.NewTemplateRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
+}
+
+// NewMaterializationRepositoryFromStore constructs a Configuration adapter
+// over a test store with the shared production SQLite transaction lock.
+func NewMaterializationRepositoryFromStore(store agentstate.SQLiteStore) materializationapp.Repository {
+	return configurationsqlite.NewMaterializationRepository(store.OpenDatabase, platformsqlite.UpdateLocker())
+}
+
+// NewMaterializationRepositoryWithEventsFromStore adds the post-commit wakeup
+// publisher to a Configuration adapter over a test store.
+func NewMaterializationRepositoryWithEventsFromStore(store agentstate.SQLiteStore, publisher events.Publisher) materializationapp.Repository {
+	return configurationsqlite.NewMaterializationRepositoryWithEvents(store.OpenDatabase, platformsqlite.UpdateLocker(), publisher)
+}
+
+// NewStore returns a fixture Agent state repository.
+func NewStore(path string) agentstate.Repository {
+	return agentstate.NewStoreWithGatewayApplied(path, initialize, remoteconfigsqlite.MarkGatewayAppliedInTransaction)
+}
+
+// NewIdentityStore returns a fixture Installation Identity repository.
+func NewIdentityStore(path string) installation.InstallationIdentityRepository {
+	store := agentstate.NewSQLiteStoreForPath(path, initialize)
+	return identitysqlite.New(store.OpenDatabase)
+}
+
+// NewEnrollmentStore returns a fixture Enrollment repository.
+func NewEnrollmentStore(path string) enrollment.AttemptRepository {
+	store := agentstate.NewSQLiteStoreForPath(path, initialize)
+	return enrollmentsqlite.New(store.OpenDatabase, platformsqlite.UpdateLocker())
+}
+
+// NewCoreGatewayStore returns a fixture Core Gateway runtime repository.
+func NewCoreGatewayStore(path string) coreconfig.GatewayRuntimeRepository {
+	store := NewSQLiteStore(path)
+	return remoteconfigsqlite.New(func(ctx context.Context) (*sql.DB, error) {
+		return store.OpenDatabaseContext(ctx)
+	}, platformsqlite.UpdateLocker(), remoteconfigsqlite.StateAccess{
+		BeginSnapshotAcceptance: func() (func(), error) {
+			state, err := store.Load()
+			if err != nil {
+				return nil, fmt.Errorf("load Agent state before Core Gateway acceptance: %w", err)
+			}
+			if state.Collector.ConfigPath == "" {
+				return nil, nil
+			}
+			lifecycleLock, err := lifecyclelock.Acquire(state.Collector.ConfigPath + ".lifecycle")
+			if err != nil {
+				return nil, fmt.Errorf("acquire lifecycle lock for Core Gateway acceptance: %w", err)
+			}
+			return func() { _ = lifecycleLock.Close() }, nil
+		},
+		ReadInstallationID: func(tx *sql.Tx) (string, bool, error) {
+			id, initialized, err := identitysqlite.ReadInstallationID(tx)
+			return id.String(), initialized, err
+		},
+		Read: func(tx *sql.Tx) (remoteconfigsqlite.AgentState, error) {
+			state, err := agentstate.LoadStateForMigration(tx)
+			if err != nil {
+				return remoteconfigsqlite.AgentState{}, err
+			}
+			return remoteconfigsqlite.AgentState{
+				BootstrapEndpoint: state.Collector.GatewayEndpoint,
+				DesiredGeneration: state.DesiredGeneration, ActivatedGeneration: state.ActivatedGeneration,
+				AppliedGeneration: state.AppliedGeneration,
+			}, nil
+		},
+		SetDesiredGeneration:  agentstate.SetDesiredGenerationInTransaction,
+		MarkGenerationApplied: agentstate.MarkGenerationAppliedInTransaction,
+	})
+}
+
+func initialize(db *sql.DB) error {
+	registry, err := migrations.BuildAgentRegistry(migrations.Hooks{
+		InitializeAgentState: agentstate.InitializeAgentStateBaseSchema,
+		ReadAgentState: func(tx *sql.Tx) (remoteconfigsqlite.AgentState, error) {
+			state, err := agentstate.LoadStateForMigration(tx)
+			if err != nil {
+				return remoteconfigsqlite.AgentState{}, err
+			}
+			return remoteconfigsqlite.AgentState{
+				BootstrapEndpoint:   state.Collector.GatewayEndpoint,
+				DesiredGeneration:   state.DesiredGeneration,
+				ActivatedGeneration: state.ActivatedGeneration,
+				AppliedGeneration:   state.AppliedGeneration,
+			}, nil
+		},
+		ReadAcceptedGatewaySnapshot: func(tx *sql.Tx) (activationsqlite.AcceptedGatewaySnapshot, bool, error) {
+			snapshot, exists, err := remoteconfigsqlite.ReadSnapshot(tx)
+			return activationsqlite.AcceptedGatewaySnapshot{
+				Revision: snapshot.Revision, Endpoint: snapshot.Endpoint, Generation: snapshot.Generation,
+			}, exists, err
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("compose test SQLite migrations: %w", err)
+	}
+	return sqlitemigrate.Apply(db, registry)
+}

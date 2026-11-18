@@ -19,6 +19,36 @@ type Migration struct {
 	Apply func(*sql.DB) error
 }
 
+// InitializeLedger creates the technical migration ledger used by ordered
+// migrations. It leaves business tables and migration ordering to composition.
+func InitializeLedger(db *sql.DB) error {
+	if db == nil {
+		return fmt.Errorf("SQLite migration database is required")
+	}
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
+		version INTEGER PRIMARY KEY,
+		applied_at TEXT NOT NULL
+	)`); err != nil {
+		return fmt.Errorf("initialize SQLite migration ledger: %w", err)
+	}
+	return nil
+}
+
+// RecordApplied records one completed migration in the technical ledger. The
+// caller retains responsibility for its transaction boundary and SQL order.
+func RecordApplied(db *sql.DB, version int) error {
+	if db == nil {
+		return fmt.Errorf("SQLite migration database is required")
+	}
+	if version < 1 {
+		return fmt.Errorf("SQLite migration version must be positive")
+	}
+	if _, err := db.Exec(`INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (?, CURRENT_TIMESTAMP)`, version); err != nil {
+		return fmt.Errorf("record SQLite migration version %d: %w", version, err)
+	}
+	return nil
+}
+
 // Apply validates the complete registry, then runs migrations in registration
 // order. It does not sort, skip, wrap in transactions, or own domain SQL. The
 // first application error stops execution and retains its cause for errors.Is.

@@ -18,12 +18,17 @@ import (
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
-	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
-	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
-	inventoryctx "github.com/ar-imms/telemetry-agent/internal/inventory"
-	"github.com/ar-imms/telemetry-agent/internal/monitoringprofile"
+	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
+	installationapp "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
+	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
+	profilesapplication "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/application"
+	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
 const nativeMonitoringRuntimeE2EEnv = "AR_IMMS_PR05_NATIVE_RUNTIME_E2E"
@@ -66,15 +71,15 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 		t.Fatal(err)
 	}
 	configPath := filepath.Join(root, "agent", "otel.yaml")
-	store := agentstate.NewSQLiteStore(statePath)
+	store := sqlitefixture.NewSQLiteStore(statePath)
 	if err := store.Save(agentstate.State{
-		Collector:         agentstate.CollectorContext{ConfigRoot: configRoot, BinaryPath: binary, ConfigPath: configPath, GatewayEndpoint: sinkEndpoint, HealthEndpoint: defaultHealthEndpoint},
+		Collector:         collectordomain.CollectorContext{ConfigRoot: configRoot, BinaryPath: binary, ConfigPath: configPath, GatewayEndpoint: sinkEndpoint, HealthEndpoint: defaultHealthEndpoint},
 		DesiredGeneration: 1, ActivatedGeneration: 1, AppliedGeneration: 1,
-		Dependencies: map[string]agentstate.DependencyState{},
+		Dependencies: map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	installationID, err := installationid.EnsureInstallationIdentity(agentstate.NewIdentityStore(statePath), rand.Reader)
+	installationID, err := installationapp.EnsureInstallationIdentity(sqlitefixture.NewIdentityStore(statePath), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +91,7 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	snapshot, err := baseline.Snapshot()
+	snapshot, err := baseline.Snapshot(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +158,7 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 	if len(probeCycle.ProviderResults) != 1 || probeCycle.ProviderResults[0].ErrorCode != "" {
 		t.Fatalf("Agent Docker discovery preflight result=%+v", probeCycle.ProviderResults)
 	}
-	probeInventory, err := agentstate.NewSQLiteStore(probeStatePath).InventoryRepository().Snapshot()
+	probeInventory, err := sqlitefixture.NewInventoryRepositoryFromStore(sqlitefixture.NewSQLiteStore(probeStatePath)).Snapshot()
 	if err != nil {
 		t.Fatalf("read Agent Docker discovery preflight inventory: %v", err)
 	}
@@ -168,7 +173,9 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 	serviceDone := make(chan error, 1)
 	collectorLogs := &nativeCollectorLogReporter{health: agenthealth.NewReporter(agenthealth.RuntimeObservation{CollectorState: agenthealth.CollectorStateStarting})}
 	go func() {
-		serviceDone <- runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, agentstate.TeardownAction, []agentstate.OwnedResource) error { return nil }, collectorLogs, bootstrap.OSCommandRunner{})
+		serviceDone <- runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, dependencydomain.TeardownAction, []servicedomain.OwnedResource) error {
+			return nil
+		}, collectorLogs, bootstrap.OSCommandRunner{})
 	}()
 	t.Cleanup(func() {
 		stopService()
@@ -184,14 +191,14 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 	if duplicates := nativeDuplicateMetricSamples(sinkOutput.String()); len(duplicates) > 0 {
 		t.Fatalf("duplicate Redis OTLP points detected: %v", duplicates)
 	}
-	inventory, err := store.InventoryRepository().Snapshot()
+	inventory, err := sqlitefixture.NewInventoryRepositoryFromStore(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, resourceID := range []string{firstID, secondID, fourthID} {
 		found := false
 		for _, resource := range inventory.Resources {
-			if resource.Key.ProviderResourceID == resourceID && resource.Presence == inventoryctx.PresencePresent && resource.Attributes["label.ar-imms.monitoring.enabled"] == "true" {
+			if resource.Key.ProviderResourceID == resourceID && resource.Presence == inventorydomain.PresencePresent && resource.Attributes["label.ar-imms.monitoring.enabled"] == "true" {
 				found = true
 				break
 			}
@@ -200,9 +207,9 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 			t.Fatalf("Agent inventory did not retain discovered opted-in Docker resource %q", resourceID)
 		}
 	}
-	var unpublished inventoryctx.Resource
+	var unpublished inventorydomain.Resource
 	for _, resource := range inventory.Resources {
-		if resource.Key.ProviderResourceID == thirdID && resource.Presence == inventoryctx.PresencePresent {
+		if resource.Key.ProviderResourceID == thirdID && resource.Presence == inventorydomain.PresencePresent {
 			unpublished = resource
 			break
 		}
@@ -210,13 +217,13 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 	if unpublished.Key.ProviderResourceID == "" {
 		t.Fatalf("unpublished Redis container %q was not retained in inventory", thirdID)
 	}
-	diagnostic := monitoringprofile.DiagnoseEndpoint(monitoringprofile.RedisProfile(), runtime.GOOS, unpublished.Endpoints, nil)
-	if runtime.GOOS == "windows" && diagnostic.State != monitoringprofile.EndpointMissing {
+	diagnostic := profilesapplication.DiagnoseEndpoint(monitoringdomain.RedisProfile(), runtime.GOOS, monitoringEndpointEvidence(unpublished.Endpoints), nil)
+	if runtime.GOOS == "windows" && diagnostic.State != profilesapplication.EndpointMissing {
 		t.Fatalf("unpublished Windows endpoint diagnosis=%+v, want missing without host mapping", diagnostic)
 	}
 	if runtime.GOOS == "linux" {
 		want := expectedNativeNetworkEndpoint(unpublished.Endpoints)
-		if diagnostic.State != monitoringprofile.EndpointResolved || diagnostic.Endpoint.NetworkName != want.NetworkName || diagnostic.Endpoint.Address != want.Address {
+		if diagnostic.State != profilesapplication.EndpointResolved || diagnostic.Endpoint.NetworkName != want.NetworkName || diagnostic.Endpoint.Address != want.Address {
 			t.Fatalf("multi-network endpoint diagnosis=%+v, want deterministic priority/name selection %+v", diagnostic, want)
 		}
 	}
@@ -228,7 +235,7 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	desiredBeforeChurn, err := store.IntegrationRepository().Snapshot()
+	desiredBeforeChurn, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +275,7 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 			t.Fatalf("pause Redis to induce an isolated scrape failure: %v\n%s", err, output)
 		}
 		waitForNativeCollectorFailure(t, serviceDone, collectorLogs, "redis/alternate_port", fmt.Sprintf("127.0.0.1:%d", secondPort))
-		inventory, err := store.InventoryRepository().Snapshot()
+		inventory, err := sqlitefixture.NewInventoryRepositoryFromStore(store).Snapshot()
 		if err != nil {
 			t.Fatalf("read Agent inventory after induced scrape failure: %v", err)
 		}
@@ -277,8 +284,8 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 			if resource.Key.ProviderResourceID != secondID {
 				continue
 			}
-			diagnostic := monitoringprofile.DiagnoseEndpointWithAttributes(monitoringprofile.RedisProfile(), runtime.GOOS, resource.Endpoints, collectorScrapeEvidenceFromSnapshot(collectorLogs.health.Snapshot()), resource.Attributes)
-			if diagnostic.State != monitoringprofile.EndpointUnreachable || diagnostic.EvidenceTime.IsZero() {
+			diagnostic := profilesapplication.DiagnoseEndpointWithAttributes(monitoringdomain.RedisProfile(), runtime.GOOS, monitoringEndpointEvidence(resource.Endpoints), collectorScrapeEvidenceFromSnapshot(collectorLogs.health.Snapshot()), resource.Attributes)
+			if diagnostic.State != profilesapplication.EndpointUnreachable || diagnostic.EvidenceTime.IsZero() {
 				t.Fatalf("live endpoint failure diagnosis=%+v, want unreachable with timestamped OTel evidence", diagnostic)
 			}
 			foundDiagnostic = true
@@ -293,9 +300,9 @@ func TestLiveNativeDockerRedisProfileDeliversOTLP(t *testing.T) {
 	}
 }
 
-func inventoryHasResource(snapshot inventoryctx.InventorySnapshot, resourceID string) bool {
+func inventoryHasResource(snapshot inventorydomain.InventorySnapshot, resourceID string) bool {
 	for _, resource := range snapshot.Resources {
-		if resource.Key.ProviderResourceID == resourceID && resource.Presence == inventoryctx.PresencePresent {
+		if resource.Key.ProviderResourceID == resourceID && resource.Presence == inventorydomain.PresencePresent {
 			return true
 		}
 	}
@@ -324,7 +331,7 @@ func verifyNativeDockerRecovery(t *testing.T, ctx context.Context, manager strin
 	if output, err := exec.CommandContext(ctx, "docker", "stop", manager).CombinedOutput(); err != nil {
 		t.Fatalf("stop isolated Docker Engine manager: %v\n%s", err, output)
 	}
-	outageAt := waitForNativeProviderOutage(t, ctx, store.InventoryRepository())
+	outageAt := waitForNativeProviderOutage(t, ctx, sqlitefixture.NewInventoryRepositoryFromStore(store))
 	if missing := nativeInventoryMissingResources(store, resourceIDs...); len(missing) != 0 {
 		t.Fatalf("Agent inventory did not preserve present Redis resources during failed Docker observations: %v", missing)
 	}
@@ -341,7 +348,7 @@ func verifyNativeDockerRecovery(t *testing.T, ctx context.Context, manager strin
 			t.Fatalf("start monitored Redis after daemon recovery: %v\n%s", err, output)
 		}
 	}
-	waitForNativeProviderRecovery(t, ctx, store.InventoryRepository(), outageAt)
+	waitForNativeProviderRecovery(t, ctx, sqlitefixture.NewInventoryRepositoryFromStore(store), outageAt)
 	waitForNativeInventoryPresent(t, ctx, store, resourceIDs...)
 	waitForNativeNewMetrics(t, ctx, serviceDone, sink, pointCounts)
 	stateAfter, err := store.Load()
@@ -386,7 +393,7 @@ func restoreNativeDockerSocketAccess(ctx context.Context, manager string) error 
 }
 
 func waitForNativeProviderOutage(t *testing.T, ctx context.Context, repository interface {
-	Snapshot() (inventoryctx.InventorySnapshot, error)
+	Snapshot() (inventorydomain.InventorySnapshot, error)
 }) time.Time {
 	t.Helper()
 	deadline := time.NewTimer(70 * time.Second)
@@ -414,7 +421,7 @@ func waitForNativeProviderOutage(t *testing.T, ctx context.Context, repository i
 }
 
 func waitForNativeProviderRecovery(t *testing.T, ctx context.Context, repository interface {
-	Snapshot() (inventoryctx.InventorySnapshot, error)
+	Snapshot() (inventorydomain.InventorySnapshot, error)
 }, outageAt time.Time) {
 	t.Helper()
 	deadline := time.NewTimer(70 * time.Second)
@@ -489,7 +496,7 @@ func waitForNativeInventoryPresent(t *testing.T, ctx context.Context, store agen
 }
 
 func nativeInventoryRecoveryDiagnostic(store agentstate.SQLiteStore, resourceIDs ...string) string {
-	snapshot, err := store.InventoryRepository().Snapshot()
+	snapshot, err := sqlitefixture.NewInventoryRepositoryFromStore(store).Snapshot()
 	if err != nil {
 		return "inventory_snapshot_error=" + err.Error()
 	}
@@ -515,11 +522,11 @@ func nativeInventoryContainsAll(store agentstate.SQLiteStore, resourceIDs ...str
 }
 
 func nativeInventoryMissingResources(store agentstate.SQLiteStore, resourceIDs ...string) []string {
-	snapshot, err := store.InventoryRepository().Snapshot()
+	snapshot, err := sqlitefixture.NewInventoryRepositoryFromStore(store).Snapshot()
 	if err != nil {
 		return []string{"inventory_snapshot_error=" + err.Error()}
 	}
-	presence := make(map[string]inventoryctx.Presence, len(resourceIDs))
+	presence := make(map[string]inventorydomain.Presence, len(resourceIDs))
 	for _, resourceID := range resourceIDs {
 		presence[resourceID] = "absent"
 	}
@@ -530,7 +537,7 @@ func nativeInventoryMissingResources(store agentstate.SQLiteStore, resourceIDs .
 	}
 	var missing []string
 	for resourceID, state := range presence {
-		if state != inventoryctx.PresencePresent {
+		if state != inventorydomain.PresencePresent {
 			missing = append(missing, fmt.Sprintf("%s=%s", resourceID, state))
 		}
 	}
@@ -651,10 +658,10 @@ func nativeRedisPublishedPort(t *testing.T, ctx context.Context, name string, pr
 	return port
 }
 
-func expectedNativeNetworkEndpoint(endpoints []inventoryctx.Endpoint) inventoryctx.Endpoint {
-	candidates := make([]inventoryctx.Endpoint, 0)
+func expectedNativeNetworkEndpoint(endpoints []inventorydomain.Endpoint) inventorydomain.Endpoint {
+	candidates := make([]inventorydomain.Endpoint, 0)
 	for _, endpoint := range endpoints {
-		if endpoint.Scope == inventoryctx.EndpointContainer && endpoint.Provenance == "container_network" && endpoint.ContainerPort == 6379 {
+		if endpoint.Scope == inventorydomain.EndpointContainer && endpoint.Provenance == "container_network" && endpoint.ContainerPort == 6379 {
 			candidates = append(candidates, endpoint)
 		}
 	}
@@ -665,7 +672,7 @@ func expectedNativeNetworkEndpoint(endpoints []inventoryctx.Endpoint) inventoryc
 		return candidates[i].NetworkName < candidates[j].NetworkName
 	})
 	if len(candidates) == 0 {
-		return inventoryctx.Endpoint{}
+		return inventorydomain.Endpoint{}
 	}
 	return candidates[0]
 }
@@ -732,7 +739,7 @@ func nativeDockerNetworkCount(t *testing.T, ctx context.Context, name string) in
 func seedRegisteredEnrollment(t *testing.T, statePath, installationID, nodeID string) {
 	t.Helper()
 	attemptID := "11111111-2222-4333-8444-555555555555"
-	repository := agentstate.NewEnrollmentStore(statePath)
+	repository := sqlitefixture.NewEnrollmentStore(statePath)
 	attempt := enrollment.Attempt{
 		Payload: enrollment.EnrollmentPayload{
 			AttemptID: attemptID, Installation: enrollment.Installation{ID: installationID},

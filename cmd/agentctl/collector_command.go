@@ -4,16 +4,19 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/config"
-	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
-	"github.com/ar-imms/telemetry-agent/internal/identity/host"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 	"io"
 	"net"
 	"path/filepath"
 	"strings"
+
+	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	agentservice "github.com/ar-imms/telemetry-agent/internal/runtime/service"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 func runCollector(
@@ -34,11 +37,11 @@ func runCollector(
 
 	statePath := flags.String(
 		"state-path",
-		agentstate.DefaultPath(),
+		agentservice.DefaultStatePath(),
 		"persistent Agent state path",
 	)
 
-	if err := flags.Parse(args); err != nil {
+	if err := parseCompatibilityFlags(flags, args); err != nil {
 		flags.Usage()
 
 		return 2
@@ -92,7 +95,7 @@ func runCollectorRuntime(
 	if runRuntimeWithHealth == nil {
 		runRuntime := deps.runCollectorRuntime
 		if runRuntime == nil {
-			runRuntime = agentlifecycle.RunCollectorRuntime
+			runRuntime = runAgentCollectorRuntime
 		}
 
 		runRuntimeWithHealth = func(
@@ -128,10 +131,15 @@ func runCollectorRuntime(
 	if deps.healthEvidenceSources != nil {
 		evidenceSources = deps.healthEvidenceSources(statePath)
 	}
-	reporter := agenthealth.NewReporterWithEvidenceSources(
+	var environmentEvidence *identity.EnvironmentEvidence
+	if deps.environmentEvidence != nil {
+		environmentEvidence = deps.environmentEvidence(statePath)
+	}
+	reporter := agenthealth.NewReporterWithEnvironmentEvidence(
 		agenthealth.RuntimeObservation{
 			CollectorState: agenthealth.CollectorStateStarting,
 		},
+		environmentEvidence,
 		evidenceSources...,
 	)
 
@@ -187,7 +195,13 @@ func dependencyMetricsReceiverLayer(
 	state agentstate.State,
 	additional ...string,
 ) (config.InlineLayer, error) {
-	managedReceivers, err := catalog.CollectorReceivers(osName, state)
+	enabledDependencies := make(dependency.EnabledSet, len(state.Dependencies))
+	for name, dependencyState := range state.Dependencies {
+		if dependencyState.Enabled {
+			enabledDependencies[name] = struct{}{}
+		}
+	}
+	managedReceivers, err := catalog.CollectorReceivers(osName, enabledDependencies)
 	if err != nil {
 		return config.InlineLayer{}, err
 	}
@@ -204,8 +218,8 @@ func dependencyMetricsReceiverLayer(
 func defaultDependencyTeardown(
 	ctx context.Context,
 	name string,
-	action agentstate.TeardownAction,
-	resources []agentstate.OwnedResource,
+	action dependencydomain.TeardownAction,
+	resources []servicedomain.OwnedResource,
 ) error {
 	platform, err := identity.CollectPlatformInfo()
 	if err != nil {

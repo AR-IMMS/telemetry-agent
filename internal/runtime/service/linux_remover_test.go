@@ -2,10 +2,9 @@ package agentinstallation
 
 import (
 	"context"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"reflect"
 	"testing"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 )
 
 func TestLinuxAgentRemoverRemovesOwnedResourcesWithDataLast(
@@ -45,12 +44,12 @@ func TestLinuxAgentRemoverRemovesOwnedResourcesWithDataLast(
 
 	err := remover.Remove(
 		context.Background(),
-		agentstate.AgentInstallation{
+		servicedomain.AgentInstallation{
 			Platform:    "linux",
 			ServiceName: "ar-imms-telemetry-agent",
 			BinaryPath:  "/opt/ar-imms/telemetry-agent/agentctl",
-			Ownership: agentstate.OwnershipRecord{
-				Resources: []agentstate.OwnedResource{
+			Ownership: servicedomain.OwnershipRecord{
+				Resources: []servicedomain.OwnedResource{
 					{
 						Kind:       "systemd-service",
 						Identifier: "ar-imms-telemetry-agent",
@@ -120,11 +119,11 @@ func TestLinuxAgentRemoverRefusesMissingOwnedDataDirectory(
 
 	err := remover.Remove(
 		context.Background(),
-		agentstate.AgentInstallation{
+		servicedomain.AgentInstallation{
 			Platform:    "linux",
 			ServiceName: "ar-imms-telemetry-agent",
-			Ownership: agentstate.OwnershipRecord{
-				Resources: []agentstate.OwnedResource{
+			Ownership: servicedomain.OwnershipRecord{
+				Resources: []servicedomain.OwnedResource{
 					{
 						Kind:       "systemd-service",
 						Identifier: "ar-imms-telemetry-agent",

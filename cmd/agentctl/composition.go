@@ -3,7 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"net"
+	"net/http"
+	"os"
+	"time"
+
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
@@ -13,12 +17,9 @@ import (
 	librehardwaremonitor "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/libre_hardware_monitor"
 	nodeexporter "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/node_exporter"
 	windowsexporter "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/windows_exporter"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/service"
+	agentinstallation "github.com/ar-imms/telemetry-agent/internal/runtime/service"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"io"
-	"net"
-	"net/http"
-	"os"
-	"time"
 )
 
 const (
@@ -55,6 +56,7 @@ type dependencies struct {
 	listenStatus                  statusListenerFunc
 	serveStatus                   statusServerRunFunc
 	healthEvidenceSources         func(string) []agenthealth.EvidenceSource
+	environmentEvidence           func(string) *identity.EnvironmentEvidence
 	runCollectorRuntimeWithHealth collectorRuntimeHealthRunFunc
 	fetchHealthStatus             healthStatusFetchFunc
 	agentInstallationLayout       func(
@@ -145,6 +147,7 @@ func defaultDependencies() dependencies {
 	agentInstaller := agentinstallation.NewInstaller(
 		downloader,
 		runner,
+		newAgentStateStore,
 	)
 
 	agentUninstaller := newManagedAgentUninstaller(
@@ -188,7 +191,7 @@ func defaultDependencies() dependencies {
 			runDependencyMultiSelectProgram(os.Stdin),
 		),
 		listDependencyStatuses:      defaultListDependencyStatuses,
-		runCollectorRuntime:         agentlifecycle.RunCollectorRuntime,
+		runCollectorRuntime:         runAgentCollectorRuntime,
 		prepareInstallationIdentity: prepareAgentInstallationIdentity,
 		runEnrollment:               runAgentEnrollment,
 		readBootstrapToken:          readBootstrapToken,
@@ -207,6 +210,7 @@ func defaultDependencies() dependencies {
 		listenStatus:          net.Listen,
 		serveStatus:           agenthealth.ServeStatus,
 		healthEvidenceSources: newAgentHealthEvidenceSources,
+		environmentEvidence:   newAgentEnvironmentEvidence,
 		runCollectorRuntimeWithHealth: func(ctx context.Context, statePath string, teardown dependencyTeardownFunc, reporter agenthealth.ObservationReporter) error {
 			return runRuntimeWithReconciliation(ctx, statePath, teardown, reporter, runner)
 		},
@@ -395,7 +399,7 @@ func defaultInstallDependency(
 func defaultEnableDependency(
 	ctx context.Context,
 	name string,
-	resources []agentstate.OwnedResource,
+	resources []servicedomain.OwnedResource,
 ) error {
 	platform, err := identity.CollectPlatformInfo()
 	if err != nil {

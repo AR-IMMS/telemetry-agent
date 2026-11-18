@@ -4,12 +4,13 @@ import (
 	"context"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 func TestServiceTeardownRoutesSupportedDependency(t *testing.T) {
-	var gotAction agentstate.TeardownAction
-	var gotResources []agentstate.OwnedResource
+	var gotAction dependencydomain.TeardownAction
+	var gotResources []servicedomain.OwnedResource
 
 	catalog, err := NewCatalog([]Integration{
 		{
@@ -30,8 +31,8 @@ func TestServiceTeardownRoutesSupportedDependency(t *testing.T) {
 			},
 			Teardown: func(
 				ctx context.Context,
-				action agentstate.TeardownAction,
-				resources []agentstate.OwnedResource,
+				action dependencydomain.TeardownAction,
+				resources []servicedomain.OwnedResource,
 			) error {
 				gotAction = action
 				gotResources = resources
@@ -49,7 +50,7 @@ func TestServiceTeardownRoutesSupportedDependency(t *testing.T) {
 		OS:      "linux",
 	}
 
-	resources := []agentstate.OwnedResource{
+	resources := []servicedomain.OwnedResource{
 		{
 			Kind:       "systemd-service",
 			Identifier: "ar-imms-node-exporter.service",
@@ -59,13 +60,13 @@ func TestServiceTeardownRoutesSupportedDependency(t *testing.T) {
 	if err := service.Teardown(
 		context.Background(),
 		"node-exporter",
-		agentstate.TeardownActionDisable,
+		dependencydomain.TeardownActionDisable,
 		resources,
 	); err != nil {
 		t.Fatalf("Teardown() error = %v", err)
 	}
 
-	if gotAction != agentstate.TeardownActionDisable {
+	if gotAction != dependencydomain.TeardownActionDisable {
 		t.Fatalf(
 			"teardown action = %q, want disable",
 			gotAction,

@@ -10,10 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	credentialstore "github.com/ar-imms/telemetry-agent/internal/identity/credentials"
-	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
+	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
 	"github.com/ar-imms/telemetry-agent/internal/inventory/docker"
@@ -23,6 +22,7 @@ import (
 	operationsnats "github.com/ar-imms/telemetry-agent/internal/operations/nats"
 	operationssqlite "github.com/ar-imms/telemetry-agent/internal/operations/sqlite"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/lifecyclelock"
 )
 
 const (
@@ -71,10 +71,10 @@ func (r *managedOperationsRunner) Run(ctx context.Context) error {
 	if ctx == nil || r == nil || r.runner == nil || r.journal == nil || r.lockPath == "" {
 		return fmt.Errorf("Operations runtime runner, journal, lock path, and context are required")
 	}
-	var lock agentstate.LifecycleLock
+	var lock lifecyclelock.Lock
 	for ctx.Err() == nil {
 		var err error
-		lock, err = agentstate.AcquireLifecycleLock(r.lockPath)
+		lock, err = lifecyclelock.Acquire(r.lockPath)
 		if err == nil {
 			break
 		}
@@ -121,7 +121,7 @@ func newRuntimeOperationsRunner(statePath string, reporter agenthealth.Observati
 	if url == "" {
 		return nil
 	}
-	store := agentstate.NewSQLiteStore(statePath)
+	store := newAgentSQLiteStore(statePath)
 	db, err := store.OpenDatabase()
 	if err != nil {
 		log.Printf("Remote Operations disabled code=operations_identity_unavailable")

@@ -12,6 +12,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"net"
 	"net/http"
@@ -27,14 +28,19 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/coreapi"
 	credentialstore "github.com/ar-imms/telemetry-agent/internal/identity/credentials"
-	"github.com/ar-imms/telemetry-agent/internal/identity/enrollment"
+	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
-	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation"
+	installationapp "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
 	"github.com/ar-imms/telemetry-agent/internal/mockcore"
 	"github.com/ar-imms/telemetry-agent/internal/opampserver"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	opampdomain "github.com/ar-imms/telemetry-agent/internal/runtime/opamp/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
 // TestManagedSupervisorEnrollmentAndRemoteGatewayE2E is the managed-runtime
@@ -95,7 +101,7 @@ func TestManagedSupervisorEnrollmentAndRemoteGatewayE2E(t *testing.T) {
 	)
 	const nodeID = "33333333-4444-4555-8666-777777777777"
 	statePath := filepath.Join(root, "agent-state.db")
-	installationID, err := installationid.EnsureInstallationIdentity(agentstate.NewIdentityStore(statePath), rand.Reader)
+	installationID, err := installationapp.EnsureInstallationIdentity(sqlitefixture.NewIdentityStore(statePath), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,8 +180,9 @@ func TestManagedSupervisorEnrollmentAndRemoteGatewayE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	service := enrollment.Service{
-		Repository:  agentstate.NewEnrollmentStore(statePath),
-		Credentials: credentialstore.New(statePath), Client: coreapi.NewEnrollmentClient(),
+		Repository:  enrollmentAttemptRepositoryTrace{AttemptRepository: sqlitefixture.NewEnrollmentStore(statePath), t: t},
+		Credentials: enrollmentCredentialStoreTrace{CredentialStore: credentialstore.New(statePath), t: t},
+		Client:      coreapi.NewEnrollmentClient(),
 	}
 	result, err := service.Start(ctx, origin, enrollment.EnrollmentPayload{
 		Installation: enrollment.Installation{ID: installationID.String()},
@@ -188,7 +195,7 @@ func TestManagedSupervisorEnrollmentAndRemoteGatewayE2E(t *testing.T) {
 	if result.InstallationID != installationID.String() || result.Binding.NodeID != nodeID {
 		t.Fatalf("enrollment identity result = %+v", result)
 	}
-	attempt, err := agentstate.NewEnrollmentStore(statePath).LoadAttempt()
+	attempt, err := sqlitefixture.NewEnrollmentStore(statePath).LoadAttempt()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,14 +254,14 @@ service:
 		t.Fatalf("validate Collector config: %v\n%s\nconfig:\n%s", err, output, collectorYAML)
 	}
 	endpoint := "wss://" + opampListenEndpoint + "/v1/opamp"
-	managed := agentstate.SupervisorContext{
+	managed := opampdomain.SupervisorContext{
 		BinaryPath:        supervisorPath,
 		ConfigurationPath: filepath.Join(root, "credentials", "opamp-supervisor.yaml"),
 		StateDirectory:    filepath.Join(root, "credentials", "opamp-supervisor-state"),
 		OpAMPServerURL:    endpoint, ServerCAFile: serverCAFile, Enabled: true,
 	}
-	if _, err := agentstate.NewStore(statePath).Update(func(state *agentstate.State) error {
-		state.Collector = agentstate.CollectorContext{
+	if _, err := sqlitefixture.NewStore(statePath).Update(func(state *agentstate.State) error {
+		state.Collector = collectordomain.CollectorContext{
 			BinaryPath: collectorPath, ConfigPath: collectorConfig,
 			GatewayEndpoint: initialEndpoint, HealthEndpoint: healthEndpoint,
 		}
@@ -280,9 +287,11 @@ service:
 			t.Errorf("Agent-managed runtime process tree did not stop during cleanup")
 		}
 	})
-	noOpTeardown := func(context.Context, string, agentstate.TeardownAction, []agentstate.OwnedResource) error { return nil }
+	noOpTeardown := func(context.Context, string, dependencydomain.TeardownAction, []servicedomain.OwnedResource) error {
+		return nil
+	}
 	go func() {
-		runtimeDone <- RunCollectorRuntimeWithReconciliation(runContext, statePath, noOpTeardown, nil, nil, nil)
+		runtimeDone <- RunCollectorRuntimeWithReconciliation(runContext, statePath, noOpTeardown, nil, nil, nil, testRuntimeStoreFactory)
 	}()
 	waitForSupervisorRuntimeReadiness(t, ctx, runtimeDone, healthEndpoint)
 	waitForSupervisorSinkTelemetry(t, ctx, runtimeDone, initialSink)
@@ -298,7 +307,7 @@ service:
 		t.Fatal("local configuration fixture did not change the hostmetrics interval")
 	}
 	localCandidate, localOptions := managedRuntimeCandidate(t, statePath, collectorPath, collectorConfig, managedCandidateBaselinePath(root), []byte(localBaseline))
-	managedState := agentstate.NewSQLiteStore(statePath)
+	managedState := sqlitefixture.NewSQLiteStore(statePath)
 	localPriorPIDs := waitForManagedProcessCount(t, ctx, runtimeDone, collectorPath, root, 1)
 	localSinkBytes := len(initialSink.String())
 	localOutcome, err := ApplyCollectorCandidate(ctx, managedState, localCandidate, localOptions)
@@ -377,7 +386,7 @@ service:
 	runtimeDone = make(chan error, 1)
 	runtimeStopped = false
 	go func() {
-		runtimeDone <- RunCollectorRuntimeWithReconciliation(runContext, statePath, noOpTeardown, nil, nil, nil)
+		runtimeDone <- RunCollectorRuntimeWithReconciliation(runContext, statePath, noOpTeardown, nil, nil, nil, testRuntimeStoreFactory)
 	}()
 	waitForSupervisorRuntimeReadiness(t, ctx, runtimeDone, healthEndpoint)
 	recoverySinkBytes := len(initialSink.String())
@@ -398,7 +407,7 @@ service:
 	}, replacementBootstrap); err != nil {
 		t.Fatalf("replace Agent credential through actual re-enrollment: %v", err)
 	}
-	replacementAttempt, err := agentstate.NewEnrollmentStore(statePath).LoadAttempt()
+	replacementAttempt, err := sqlitefixture.NewEnrollmentStore(statePath).LoadAttempt()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -502,7 +511,7 @@ service:
 		t.Fatalf("restart OpAMP server: %v", err)
 	}
 	managed.OpAMPServerURL = "wss://" + opamp.Addr().String() + "/v1/opamp"
-	if _, err := agentstate.NewStore(statePath).Update(func(state *agentstate.State) error {
+	if _, err := sqlitefixture.NewStore(statePath).Update(func(state *agentstate.State) error {
 		state.Supervisor = managed
 		return nil
 	}); err != nil {
@@ -512,7 +521,7 @@ service:
 	runtimeDone = make(chan error, 1)
 	runtimeStopped = false
 	go func() {
-		runtimeDone <- RunCollectorRuntimeWithReconciliation(runContext, statePath, noOpTeardown, nil, nil, nil)
+		runtimeDone <- RunCollectorRuntimeWithReconciliation(runContext, statePath, noOpTeardown, nil, nil, nil, testRuntimeStoreFactory)
 	}()
 	waitForSupervisorRuntimeReadiness(t, ctx, runtimeDone, healthEndpoint)
 	waitForSupervisorCorePolicy(t, ctx, runtimeDone, core, 4)
@@ -604,7 +613,7 @@ service:
 	runtimeDone = make(chan error, 1)
 	runtimeStopped = false
 	go func() {
-		runtimeDone <- RunCollectorRuntimeWithReconciliation(runContext, statePath, noOpTeardown, nil, nil, nil)
+		runtimeDone <- RunCollectorRuntimeWithReconciliation(runContext, statePath, noOpTeardown, nil, nil, nil, testRuntimeStoreFactory)
 	}()
 	waitForSupervisorRuntimeReadiness(t, ctx, runtimeDone, healthEndpoint)
 	lkgSinkBytes := len(rotatedSink.String())
@@ -629,6 +638,36 @@ service:
 	t.Logf("verified enrollment identity=%s Node=%s; offline Agent-managed fallback delivered before OpAMP connected; authenticated reconnect applied policy revisions=1,2,3,4,5; replacement credential revoked the prior bearer; durable revision-3 publication resolved after Mock Core restart; restarted OpAMP and Agent runtime applied revision 4; revision-5 rollback re-attributed the prior applied hash and continued OTLP delivery", result.InstallationID, result.Binding.NodeID)
 }
 
+type enrollmentAttemptRepositoryTrace struct {
+	enrollment.AttemptRepository
+	t *testing.T
+}
+
+func (r enrollmentAttemptRepositoryTrace) CompleteAttempt(attemptID string, result enrollment.EnrollmentResult, credentialRef string) error {
+	err := r.AttemptRepository.CompleteAttempt(attemptID, result, credentialRef)
+	if err != nil {
+		r.t.Logf("enrollment completion persistence failed: %v", err)
+	}
+	return err
+}
+
+type enrollmentCredentialStoreTrace struct {
+	enrollment.CredentialStore
+	t *testing.T
+}
+
+func (s enrollmentCredentialStoreTrace) Put(reference, value string) error {
+	err := s.CredentialStore.Put(reference, value)
+	if err != nil {
+		kind := "bootstrap"
+		if strings.HasPrefix(reference, "enrollment/agent/") {
+			kind = "Agent access"
+		}
+		s.t.Logf("enrollment %s credential persistence failed: %v", kind, err)
+	}
+	return err
+}
+
 func managedRuntimeEnrollmentHandler(t *testing.T, corePointer *atomic.Pointer[mockcore.Server], accessToken, replacementToken, bootstrapToken, replacementBootstrap, nodeID string) http.Handler {
 	t.Helper()
 	enrollmentCount := 0
@@ -639,11 +678,13 @@ func managedRuntimeEnrollmentHandler(t *testing.T, corePointer *atomic.Pointer[m
 			return
 		}
 		if request.URL.Path != "/api/v1/agent-enrollments" || request.Method != http.MethodPost {
+			t.Logf("delegating enrollment fixture request: method=%s path=%s", request.Method, request.URL.Path)
 			core.ServeHTTP(writer, request)
 			return
 		}
-		var input enrollment.EnrollmentRequest
-		if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+		input, err := decodeManagedRuntimeEnrollmentRequest(request.Body)
+		if err != nil {
+			t.Logf("enrollment fixture could not decode Core wire request: %v", err)
 			http.Error(writer, "invalid enrollment request", http.StatusUnauthorized)
 			return
 		}
@@ -651,11 +692,13 @@ func managedRuntimeEnrollmentHandler(t *testing.T, corePointer *atomic.Pointer[m
 		switch enrollmentCount {
 		case 0:
 			if input.BootstrapToken != bootstrapToken {
+				t.Log("initial enrollment fixture bootstrap token mismatch")
 				http.Error(writer, "invalid enrollment request", http.StatusUnauthorized)
 				return
 			}
 		case 1:
 			if input.BootstrapToken != replacementBootstrap {
+				t.Log("replacement enrollment fixture bootstrap token mismatch")
 				http.Error(writer, "invalid replacement enrollment request", http.StatusUnauthorized)
 				return
 			}
@@ -683,9 +726,88 @@ func managedRuntimeEnrollmentHandler(t *testing.T, corePointer *atomic.Pointer[m
 		}
 		writer.Header().Set("Content-Type", "application/json")
 		writer.WriteHeader(http.StatusCreated)
-		_ = json.NewEncoder(writer).Encode(map[string]any{"data": response, "meta": map[string]string{"request_id": "pr07c-e2e-request"}})
+		data := map[string]any{
+			"enrollment_id": response.EnrollmentID, "installation_id": response.InstallationID,
+			"binding": map[string]any{
+				"id": response.Binding.ID, "node_id": response.Binding.NodeID, "status": response.Binding.Status,
+			},
+			"credential": map[string]any{"type": response.Credential.Type, "access_token": response.Credential.AccessToken},
+			"control_plane": map[string]any{
+				"base_url": response.ControlPlane.BaseURL, "poll_interval_seconds": response.ControlPlane.PollIntervalSeconds,
+			},
+		}
+		_ = json.NewEncoder(writer).Encode(map[string]any{"data": data, "meta": map[string]string{"request_id": "pr07c-e2e-request"}})
 		enrollmentCount++
 	})
+}
+
+type managedRuntimeEnrollmentRequest struct {
+	BootstrapToken string `json:"bootstrap_token"`
+	enrollment.EnrollmentPayload
+}
+
+func decodeManagedRuntimeEnrollmentRequest(reader io.Reader) (managedRuntimeEnrollmentRequest, error) {
+	var input managedRuntimeEnrollmentRequest
+	err := json.NewDecoder(reader).Decode(&input)
+	return input, err
+}
+
+func TestDecodeManagedRuntimeEnrollmentRequestUsesCoreWireJSON(t *testing.T) {
+	input, err := decodeManagedRuntimeEnrollmentRequest(strings.NewReader(`{"bootstrap_token":"bootstrap-secret","enrollment_attempt_id":"attempt-1","installation":{"id":"installation-1"},"agent":{"version":"test"},"environment":{"os":"windows","architecture":"amd64"}}`))
+	if err != nil {
+		t.Fatalf("decode managed runtime enrollment request: %v", err)
+	}
+	if input.BootstrapToken != "bootstrap-secret" {
+		t.Fatalf("decoded bootstrap token = %q", input.BootstrapToken)
+	}
+	if input.AttemptID != "attempt-1" || input.Installation.ID != "installation-1" {
+		t.Fatalf("decoded enrollment payload = %+v", input.EnrollmentPayload)
+	}
+}
+
+func TestManagedRuntimeEnrollmentHandlerAcceptsCoreWireRequest(t *testing.T) {
+	const (
+		bootstrapToken = "fixture-bootstrap-token"
+		nodeID         = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+	)
+	core, err := mockcore.New(mockcore.ProvisionedInstallation{
+		AccessToken: "fixture-agent-token", InstallationID: "11111111-2222-4333-8444-555555555555",
+		NodeID: nodeID, Policy: coreapi.DesiredGatewayPolicy{
+			SchemaVersion: "ar-imms/gateway-policy/v1", Revision: 1, GatewayEndpoint: "127.0.0.1:4317",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	corePointer := &atomic.Pointer[mockcore.Server]{}
+	corePointer.Store(core)
+	handler := managedRuntimeEnrollmentHandler(t, corePointer, "fixture-agent-token", "replacement-agent-token", bootstrapToken, "replacement-bootstrap-token", nodeID)
+	server := httptest.NewTLSServer(handler)
+	defer server.Close()
+	previousTransport := http.DefaultTransport
+	http.DefaultTransport = server.Client().Transport
+	t.Cleanup(func() {
+		http.DefaultTransport = previousTransport
+	})
+	origin, err := enrollment.ParseCoreOrigin(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := coreapi.NewEnrollmentClient().Enroll(context.Background(), origin, enrollment.EnrollmentRequest{
+		BootstrapToken: bootstrapToken,
+		EnrollmentPayload: enrollment.EnrollmentPayload{
+			AttemptID:    "22222222-3333-4444-8555-666666666666",
+			Installation: enrollment.Installation{ID: "11111111-2222-4333-8444-555555555555"},
+			Agent:        enrollment.Agent{Version: "test"},
+			Environment:  enrollment.Environment{OS: "windows", Architecture: "amd64"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Core enrollment client rejected fixture response: %v", err)
+	}
+	if response.InstallationID != "11111111-2222-4333-8444-555555555555" || response.Binding.NodeID != nodeID || response.Credential.AccessToken != "fixture-agent-token" {
+		t.Fatalf("decoded Core enrollment response = %+v", response)
+	}
 }
 
 func newManagedRuntimeTestCertificate(t *testing.T) (tls.Certificate, []byte) {

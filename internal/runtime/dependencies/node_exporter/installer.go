@@ -5,7 +5,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/ar-imms/telemetry-agent/internal/config"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 )
 
 // Options controls the Agent-owned Node Exporter installation.

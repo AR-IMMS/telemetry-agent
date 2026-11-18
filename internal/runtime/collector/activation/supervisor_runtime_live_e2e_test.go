@@ -17,10 +17,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
+	opampdomain "github.com/ar-imms/telemetry-agent/internal/runtime/opamp/domain"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
 func TestManagedSupervisorRuntimeDeliversOTLP(t *testing.T) {
@@ -94,7 +95,7 @@ service:
 	}
 
 	statePath := filepath.Join(root, "state.db")
-	managed := agentstate.SupervisorContext{
+	managed := opampdomain.SupervisorContext{
 		BinaryPath:        supervisorPath,
 		ConfigurationPath: filepath.Join(root, "credentials", "opamp-supervisor.yaml"),
 		StateDirectory:    filepath.Join(root, "credentials", "opamp-supervisor-state"),
@@ -116,7 +117,9 @@ service:
 	}
 	runContext, stopRuntime := context.WithCancel(ctx)
 	runtimeDone := make(chan error, 1)
-	go func() { runtimeDone <- runManagedSupervisor(runContext, statePath, managed, options) }()
+	go func() {
+		runtimeDone <- runManagedSupervisor(runContext, statePath, managed, options, sqlitefixture.NewEnrollmentStore(statePath))
+	}()
 	waitForSupervisorRuntimeReadiness(t, ctx, runtimeDone, healthEndpoint)
 	waitForSupervisorSinkTelemetry(t, ctx, runtimeDone, sink)
 	stopRuntime()

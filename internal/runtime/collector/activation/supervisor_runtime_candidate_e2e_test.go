@@ -3,6 +3,7 @@ package agentlifecycle
 import (
 	"context"
 	"fmt"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -10,12 +11,12 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
-	"github.com/ar-imms/telemetry-agent/internal/config"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
-	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 )
 
 func managedRuntimeCandidate(
@@ -35,13 +36,13 @@ func managedRuntimeCandidate(
 	if err != nil {
 		t.Fatalf("create empty managed dependency catalog: %v", err)
 	}
-	store := agentstate.NewSQLiteStore(statePath)
+	store := sqlitefixture.NewSQLiteStore(statePath)
 	state, err := store.Load()
 	if err != nil {
 		t.Fatalf("load Agent state for local candidate: %v", err)
 	}
-	gatewayRepository := agentstate.NewCoreGatewayStore(statePath)
-	gateway, err := gatewayRepository.EffectiveGateway()
+	gatewayRepository := sqlitefixture.NewCoreGatewayStore(statePath)
+	gateway, err := gatewayRepository.EffectiveGateway(context.Background())
 	if err != nil {
 		t.Fatalf("resolve current Gateway for local candidate: %v", err)
 	}

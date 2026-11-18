@@ -2,10 +2,9 @@ package agentinstallation
 
 import (
 	"context"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"reflect"
 	"testing"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 )
 
 func TestWindowsAgentRemoverRemovesOwnedResourcesWithDataLast(
@@ -40,12 +39,12 @@ func TestWindowsAgentRemoverRemovesOwnedResourcesWithDataLast(
 
 	err := remover.Remove(
 		context.Background(),
-		agentstate.AgentInstallation{
+		servicedomain.AgentInstallation{
 			Platform:    "windows",
 			ServiceName: "ar-imms-telemetry-agent",
 			BinaryPath:  `C:\Program Files\AR-IMMS\Telemetry Agent\agentctl.exe`,
-			Ownership: agentstate.OwnershipRecord{
-				Resources: []agentstate.OwnedResource{
+			Ownership: servicedomain.OwnershipRecord{
+				Resources: []servicedomain.OwnedResource{
 					{
 						Kind:       "windows-service",
 						Identifier: "ar-imms-telemetry-agent",
