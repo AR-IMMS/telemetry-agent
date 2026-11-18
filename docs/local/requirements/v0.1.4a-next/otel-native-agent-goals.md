@@ -144,7 +144,8 @@ The Fleet Management Server and the official OpAMP Supervisor are distinct produ
 6. Preserve current usable state until the target owner is operational. If rollback is unsafe, fail visibly and preserve state rather than silently changing the selector.
 7. Preserve credential protection, installation identity and SQLite contents across migration.
 8. Require actual pinned-Supervisor composition/rollback and OTLP evidence before claiming native Fleet cutover.
-9. Keep legacy source only while explicit legacy compatibility/rollback depends on it; later removal needs usage, state and CLI evidence.
+9. Full Fleet Inventory & Health reporting is independent from configuration cutover; only endpoint observations required by the effective Collector configuration are cutover prerequisites.
+10. Keep legacy source only while explicit legacy compatibility/rollback depends on it; later removal needs usage, state and CLI evidence.
 
 ## Definition of Done
 
