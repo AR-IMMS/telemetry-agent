@@ -112,6 +112,10 @@ func TestRevokedEnrollmentCredentialDisconnectsAndRejectsOpAMPSession(t *testing
 	stopCancel()
 	clientStopped = true
 
+	// The OpAMP client may retry between revocation and Stop completing. Count
+	// the explicit reconnect relative to the current total instead of assuming
+	// no automatic retry reached the fixture.
+	rejectedBeforeReconnect := server.rejectedConnections()
 	reconnectURL := "http" + strings.TrimPrefix(server.urlString(), "ws")
 	reconnect, err := http.NewRequestWithContext(ctx, http.MethodGet, reconnectURL, nil)
 	if err != nil {
@@ -126,7 +130,7 @@ func TestRevokedEnrollmentCredentialDisconnectsAndRejectsOpAMPSession(t *testing
 	if response.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("revoked credential reconnect status = %d; want %d", response.StatusCode, http.StatusUnauthorized)
 	}
-	if got := server.rejectedConnections(); got != 1 {
-		t.Fatalf("rejected OpAMP connections = %d; want 1", got)
+	if got := server.rejectedConnections(); got != rejectedBeforeReconnect+1 {
+		t.Fatalf("rejected OpAMP connections = %d; want %d after explicit reconnect", got, rejectedBeforeReconnect+1)
 	}
 }
