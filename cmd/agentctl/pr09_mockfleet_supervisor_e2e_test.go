@@ -170,6 +170,12 @@ func TestPR09MockFleetSupervisorConfigAndRollbackE2E(t *testing.T) {
 		case <-time.After(10 * time.Second):
 			t.Errorf("Supervisor and managed Collector did not stop")
 		}
+		if runtime.GOOS == "windows" {
+			stateDirectory := filepath.Join(root, "supervisor-state")
+			if err := waitPR09MockFleetStateDirectoryRelease(stateDirectory, 10*time.Second); err != nil {
+				t.Errorf("Supervisor state directory remained locked after process-tree cleanup: %v", err)
+			}
+		}
 	})
 
 	waitPR07ASinkContains(t, ctx, done, sinkBOutput, "hostmetrics", "Mock Fleet remote-config OTLP")
@@ -222,6 +228,24 @@ func TestPR09MockFleetSupervisorConfigAndRollbackE2E(t *testing.T) {
 		})
 	}
 	t.Logf("remote_config_sha256=%x invalid_config_sha256=%x sinks=verified production_fleet_interop=NOT_VERIFIED", goodHash, invalidHash)
+}
+
+func waitPR09MockFleetStateDirectoryRelease(directory string, timeout time.Duration) error {
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	var lastErr error
+	for {
+		if lastErr = os.RemoveAll(directory); lastErr == nil {
+			return nil
+		}
+		select {
+		case <-deadline.C:
+			return fmt.Errorf("remove %s after process cleanup: %w", directory, lastErr)
+		case <-ticker.C:
+		}
+	}
 }
 
 func waitPR09MockFleetStatus(t *testing.T, ctx context.Context, done <-chan error, fleet *mockfleet.Server, agentID string, status protobufs.RemoteConfigStatuses, hash []byte) {
