@@ -238,10 +238,16 @@ func (i Installer) Install(
 		return state.RecordAgentInstallation(layout.Installation())
 	})
 	if err != nil {
-		return Layout{}, fmt.Errorf(
-			"persist Agent installation state: %w",
-			err,
-		)
+		persistErr := fmt.Errorf("persist Agent installation state: %w", err)
+		if previousState.Installation != nil {
+			if restartErr := service.Install(ctx, layout); restartErr != nil {
+				return Layout{}, errors.Join(
+					persistErr,
+					fmt.Errorf("restart existing Agent service after state persistence failure: %w", restartErr),
+				)
+			}
+		}
+		return Layout{}, persistErr
 	}
 
 	if err := service.Install(ctx, layout); err != nil {

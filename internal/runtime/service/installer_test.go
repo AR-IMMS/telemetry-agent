@@ -2,6 +2,7 @@ package agentinstallation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -275,6 +276,67 @@ func TestInstallerExplicitLegacyRollbackDisablesManagedSupervisor(t *testing.T) 
 	}
 }
 
+func TestInstallerRestartsExistingServiceWhenStatePersistenceFails(t *testing.T) {
+	platform := identity.PlatformInfo{OS: "linux", Architecture: "amd64"}
+	persistErr := fmt.Errorf("state database unavailable")
+	store := &recordingStateStore{
+		state: agentstate.State{
+			Installation: &servicedomain.AgentInstallation{},
+			Dependencies: map[string]dependencydomain.DependencyState{},
+		},
+		updateErr: persistErr,
+	}
+	serviceRunning := true
+	var serviceSteps []string
+	installer := Installer{
+		layoutFor: DefaultLayout,
+		copyAgentBinary: func(context.Context, string, string) error {
+			serviceSteps = append(serviceSteps, "copy")
+			if serviceRunning {
+				t.Fatal("Agent binary was replaced while the installed service was running")
+			}
+			return nil
+		},
+		bootstrap: func(context.Context, bootstrap.Options) (bootstrap.Result, error) {
+			return bootstrap.Result{BinaryPath: "/collector", ConfigPath: "/collector.yaml"}, nil
+		},
+		installSupervisor: func(context.Context, string, identity.PlatformInfo) (string, error) {
+			return "", nil
+		},
+		newStateStore: func(string) stateStore { return store },
+		serviceFor: func(Layout) (serviceInstaller, error) {
+			return stoppingServiceInstaller{
+				stop: func(context.Context, Layout) error {
+					serviceSteps = append(serviceSteps, "stop")
+					serviceRunning = false
+					return nil
+				},
+				install: func(context.Context, Layout) error {
+					serviceSteps = append(serviceSteps, "restart")
+					serviceRunning = true
+					return nil
+				},
+			}, nil
+		},
+	}
+
+	_, err := installer.Install(context.Background(), Options{
+		Platform: platform, SourceBinaryPath: "/tmp/agentctl", ConfigRoot: "/etc/ar-imms",
+		GatewayEndpoint: "127.0.0.1:4317", HealthEndpoint: "http://127.0.0.1:13133",
+		DisableSupervisor: true, ConfigInput: config.RenderInput{Platform: platform},
+		ValidationTimeout: time.Second,
+	})
+	if !errors.Is(err, persistErr) {
+		t.Fatalf("Install() error = %v, want wrapped state persistence error", err)
+	}
+	if serviceRunning != true {
+		t.Fatal("existing Agent service remained stopped after state persistence failed")
+	}
+	if !reflect.DeepEqual(serviceSteps, []string{"stop", "copy", "restart"}) {
+		t.Fatalf("service and binary sequence = %v, want stop, copy, restart", serviceSteps)
+	}
+}
+
 type stoppingServiceInstaller struct {
 	stop    func(context.Context, Layout) error
 	install func(context.Context, Layout) error
@@ -289,8 +351,9 @@ func (s stoppingServiceInstaller) Install(ctx context.Context, layout Layout) er
 }
 
 type recordingStateStore struct {
-	state   agentstate.State
-	loadErr error
+	state     agentstate.State
+	loadErr   error
+	updateErr error
 }
 
 func (s *recordingStateStore) Load() (agentstate.State, error) { return s.state, s.loadErr }
@@ -298,6 +361,9 @@ func (s *recordingStateStore) Load() (agentstate.State, error) { return s.state,
 func (s *recordingStateStore) Update(
 	update agentstate.StateMutation,
 ) (agentstate.State, error) {
+	if s.updateErr != nil {
+		return agentstate.State{}, s.updateErr
+	}
 	if err := update(&s.state); err != nil {
 		return agentstate.State{}, err
 	}
