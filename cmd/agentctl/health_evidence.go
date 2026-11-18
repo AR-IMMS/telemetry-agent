@@ -2,15 +2,62 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"time"
+
 	"github.com/ar-imms/telemetry-agent/internal/app"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
+	identityhost "github.com/ar-imms/telemetry-agent/internal/identity/host"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/domain"
+	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
 	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
 	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
-	"time"
 )
 
 const dependencyEvidenceTimeout = 5 * time.Second
+
+// newAgentEnvironmentEvidence reads the persisted installation ID and local
+// host evidence without creating identity or asserting Core topology.
+func newAgentEnvironmentEvidence(statePath string) *identityhost.EnvironmentEvidence {
+	installationID := installationid.InstallationID{}
+	var identityErr error
+	if _, err := os.Stat(statePath); err != nil {
+		identityErr = err
+	} else {
+		db, err := app.NewAgentSQLiteStore(statePath).OpenDatabase()
+		if err != nil {
+			identityErr = err
+		} else {
+			var initialized bool
+			installationID, initialized, identityErr = identitysqlite.ReadInstallationID(db)
+			closeErr := db.Close()
+			if identityErr == nil && closeErr != nil {
+				identityErr = closeErr
+			}
+			if identityErr == nil && !initialized {
+				identityErr = fmt.Errorf("Agent installation identity is not initialized")
+			}
+		}
+	}
+
+	evidence := identityhost.CollectEnvironmentEvidence(installationID)
+	if identityErr != nil {
+		evidence.AgentID = ""
+		evidence.Evidence = append(evidence.Evidence, identityhost.EnvironmentFact{
+			Source: "agent-installation-id", Outcome: identityhost.EvidenceOutcomeUnavailable,
+			Confidence: identityhost.EvidenceConfidenceUnknown, ObservedAt: evidence.ObservedAt,
+			Reason: "persisted installation identity is unavailable",
+		})
+		return &evidence
+	}
+	evidence.Evidence = append(evidence.Evidence, identityhost.EnvironmentFact{
+		Source: "agent-installation-id", Outcome: identityhost.EvidenceOutcomeObserved,
+		Confidence: identityhost.EvidenceConfidenceVerified, ObservedAt: evidence.ObservedAt,
+	})
+	return &evidence
+}
 
 func newAgentHealthEvidenceSources(statePath string) []agenthealth.EvidenceSource {
 	var inventory inventoryapp.ProviderStatusReader

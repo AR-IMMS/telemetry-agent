@@ -131,10 +131,15 @@ func runCollectorRuntime(
 	if deps.healthEvidenceSources != nil {
 		evidenceSources = deps.healthEvidenceSources(statePath)
 	}
-	reporter := agenthealth.NewReporterWithEvidenceSources(
+	var environmentEvidence *identity.EnvironmentEvidence
+	if deps.environmentEvidence != nil {
+		environmentEvidence = deps.environmentEvidence(statePath)
+	}
+	reporter := agenthealth.NewReporterWithEnvironmentEvidence(
 		agenthealth.RuntimeObservation{
 			CollectorState: agenthealth.CollectorStateStarting,
 		},
+		environmentEvidence,
 		evidenceSources...,
 	)
 

@@ -56,6 +56,7 @@ type dependencies struct {
 	listenStatus                  statusListenerFunc
 	serveStatus                   statusServerRunFunc
 	healthEvidenceSources         func(string) []agenthealth.EvidenceSource
+	environmentEvidence           func(string) *identity.EnvironmentEvidence
 	runCollectorRuntimeWithHealth collectorRuntimeHealthRunFunc
 	fetchHealthStatus             healthStatusFetchFunc
 	agentInstallationLayout       func(
@@ -209,6 +210,7 @@ func defaultDependencies() dependencies {
 		listenStatus:          net.Listen,
 		serveStatus:           agenthealth.ServeStatus,
 		healthEvidenceSources: newAgentHealthEvidenceSources,
+		environmentEvidence:   newAgentEnvironmentEvidence,
 		runCollectorRuntimeWithHealth: func(ctx context.Context, statePath string, teardown dependencyTeardownFunc, reporter agenthealth.ObservationReporter) error {
 			return runRuntimeWithReconciliation(ctx, statePath, teardown, reporter, runner)
 		},

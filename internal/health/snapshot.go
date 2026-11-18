@@ -3,6 +3,7 @@ package health
 import (
 	"time"
 
+	identityhost "github.com/ar-imms/telemetry-agent/internal/identity/host"
 	runtimecontracts "github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 )
 
@@ -32,6 +33,9 @@ type RuntimeObservation = runtimecontracts.RuntimeObservation
 type Snapshot struct {
 	Status     Status     `json:"status"`
 	Assessment Assessment `json:"assessment"`
+	// EnvironmentEvidence is local, non-authoritative identity evidence. It is
+	// omitted when the Agent runtime has no environment source configured.
+	EnvironmentEvidence *identityhost.EnvironmentEvidence `json:"environmentEvidence,omitempty"`
 
 	CollectorState      CollectorState     `json:"collectorState"`
 	DesiredGeneration   uint64             `json:"desiredGeneration"`

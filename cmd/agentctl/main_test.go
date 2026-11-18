@@ -1016,6 +1016,9 @@ func TestRunCollectorServesRuntimeHealthSnapshot(
 		&stderr,
 		dependencies{
 			prepareInstallationIdentity: skipInstallationIdentityPreparation,
+			environmentEvidence: func(string) *identity.EnvironmentEvidence {
+				return &identity.EnvironmentEvidence{AgentID: "11111111-2222-4333-8444-555555555555"}
+			},
 			listenStatus: func(
 				network string,
 				address string,
@@ -1071,6 +1074,9 @@ func TestRunCollectorServesRuntimeHealthSnapshot(
 			servedSnapshot.CollectorState,
 			agenthealth.CollectorStateStarting,
 		)
+	}
+	if servedSnapshot.EnvironmentEvidence == nil || servedSnapshot.EnvironmentEvidence.AgentID != "11111111-2222-4333-8444-555555555555" {
+		t.Fatalf("served environment evidence = %+v", servedSnapshot.EnvironmentEvidence)
 	}
 
 	if stdout.String() != "Collector stopped\n" {

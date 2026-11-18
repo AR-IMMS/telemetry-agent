@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	identityhost "github.com/ar-imms/telemetry-agent/internal/identity/host"
 	runtimecontracts "github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 )
 
@@ -40,6 +41,7 @@ type Reporter struct {
 	mu              sync.RWMutex
 	observation     RuntimeObservation
 	snapshot        Snapshot
+	environment     *identityhost.EnvironmentEvidence
 	evidenceSources []EvidenceSource
 }
 
@@ -59,8 +61,19 @@ func NewReporter(observation RuntimeObservation) *Reporter {
 // NewReporterWithEvidenceSources creates a Reporter that adds read-only owner
 // evidence to each snapshot without changing runtime observation ownership.
 func NewReporterWithEvidenceSources(observation RuntimeObservation, sources ...EvidenceSource) *Reporter {
+	return NewReporterWithEnvironmentEvidence(observation, nil, sources...)
+}
+
+// NewReporterWithEnvironmentEvidence creates a Reporter that includes a copied
+// local identity/environment snapshot alongside the existing health evidence.
+func NewReporterWithEnvironmentEvidence(
+	observation RuntimeObservation,
+	environment *identityhost.EnvironmentEvidence,
+	sources ...EvidenceSource,
+) *Reporter {
 	reporter := NewReporter(observation)
 	reporter.evidenceSources = append([]EvidenceSource(nil), sources...)
+	reporter.environment = cloneEnvironmentEvidence(environment)
 	return reporter
 }
 
@@ -118,10 +131,12 @@ func (r *Reporter) SnapshotContext(ctx context.Context) Snapshot {
 	observation := r.observation
 	failures := append([]CollectorFailure(nil), r.snapshot.CollectorFailures...)
 	sources := append([]EvidenceSource(nil), r.evidenceSources...)
+	environment := cloneEnvironmentEvidence(r.environment)
 	r.mu.RUnlock()
 
 	now := time.Now().UTC()
 	snapshot := EvaluateAt(observation, now)
+	snapshot.EnvironmentEvidence = environment
 	snapshot.CollectorFailures = failures
 	applyCollectorFailureEvidence(&snapshot)
 	for _, source := range sources {
@@ -133,6 +148,16 @@ func (r *Reporter) SnapshotContext(ctx context.Context) Snapshot {
 	refreshAssessmentState(now, &snapshot.Assessment)
 
 	return snapshot
+}
+
+func cloneEnvironmentEvidence(evidence *identityhost.EnvironmentEvidence) *identityhost.EnvironmentEvidence {
+	if evidence == nil {
+		return nil
+	}
+
+	cloned := *evidence
+	cloned.Evidence = append([]identityhost.EnvironmentFact(nil), evidence.Evidence...)
+	return &cloned
 }
 
 func upsertComponentEvidence(assessment *Assessment, evidence ComponentEvidence) {
