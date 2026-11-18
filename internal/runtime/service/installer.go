@@ -251,7 +251,40 @@ func (i Installer) Install(
 	}
 
 	if err := service.Install(ctx, layout); err != nil {
-		return Layout{}, fmt.Errorf("install Agent service: %w", err)
+		installErr := fmt.Errorf("install Agent service: %w", err)
+		if previousState.Installation == nil {
+			return Layout{}, installErr
+		}
+
+		stopper, ok := service.(serviceStopper)
+		if !ok {
+			return Layout{}, errors.Join(
+				installErr,
+				fmt.Errorf("stop partially started target Agent service: stop capability is unavailable"),
+			)
+		}
+		if stopErr := stopper.Stop(ctx, layout); stopErr != nil {
+			return Layout{}, errors.Join(
+				installErr,
+				fmt.Errorf("stop partially started target Agent service: %w", stopErr),
+			)
+		}
+		if _, restoreErr := store.Update(func(state *agentstate.State) error {
+			*state = previousState
+			return nil
+		}); restoreErr != nil {
+			return Layout{}, errors.Join(
+				installErr,
+				fmt.Errorf("restore previous Agent state after service start failure: %w", restoreErr),
+			)
+		}
+		if restartErr := service.Install(ctx, layout); restartErr != nil {
+			return Layout{}, errors.Join(
+				installErr,
+				fmt.Errorf("restart previous Agent service after target start failure: %w", restartErr),
+			)
+		}
+		return Layout{}, installErr
 	}
 
 	return layout, nil
