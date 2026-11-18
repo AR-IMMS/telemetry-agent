@@ -192,10 +192,13 @@ func TestPR09MockFleetSupervisorConfigAndRollbackE2E(t *testing.T) {
 	waitPR09MockFleetStatus(t, ctx, done, fleet, agentID, protobufs.RemoteConfigStatuses_RemoteConfigStatuses_APPLIED, goodHash[:])
 	waitPR07ASinkGrowth(t, ctx, done, sinkBOutput, bytesBeforeFailure, "OTLP after Supervisor automatic rollback")
 
+	rejectedBeforeRevocation := opampServer.RejectedConnectionCount()
 	if err := fleet.RevokeCredential(issued.CredentialID); err != nil {
 		t.Fatalf("revoke fixture-issued Supervisor credential: %v", err)
 	}
 	waitPR09MockFleetSessionsClosed(t, ctx, fleet, agentID)
+	waitPR09MockFleetRejectedReconnect(t, ctx, done, opampServer, rejectedBeforeRevocation)
+	t.Log("supervisor_reconnect_after_revocation=REJECTED")
 	reconnectURL := "http" + strings.TrimPrefix(opampServer.Endpoint(), "ws")
 	reconnectRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, reconnectURL, nil)
 	if err != nil {
@@ -213,7 +216,7 @@ func TestPR09MockFleetSupervisorConfigAndRollbackE2E(t *testing.T) {
 
 	if evidenceDir := strings.TrimSpace(os.Getenv(pr09MockFleetEvidenceEnv)); evidenceDir != "" {
 		writePR07AEvidence(t, evidenceDir, map[string]string{
-			"test-summary.txt": fmt.Sprintf("environment=%s/%s\nsupervisor=v0.160.0\ncollector=v0.160.0\ncredential=Agent credential store; raw token omitted\nremote_config_sha256=%x\ninvalid_config_sha256=%x\nremote_config_otlp=PASS\nautomatic_rollback=PASS\nrollback_otlp=PASS\nactive_session_revocation=PASS\nrevoked_reconnect=HTTP_401\nproduction_fleet_core_interop=NOT_VERIFIED\n", runtime.GOOS, runtime.GOARCH, goodHash, invalidHash),
+			"test-summary.txt": fmt.Sprintf("environment=%s/%s\nsupervisor=v0.160.0\ncollector=v0.160.0\ncredential=Agent credential store; raw token omitted\nremote_config_sha256=%x\ninvalid_config_sha256=%x\nremote_config_otlp=PASS\nautomatic_rollback=PASS\nrollback_otlp=PASS\nactive_session_revocation=PASS\nsupervisor_reconnect_after_revocation=REJECTED\nrevoked_reconnect=HTTP_401\nproduction_fleet_core_interop=NOT_VERIFIED\n", runtime.GOOS, runtime.GOARCH, goodHash, invalidHash),
 			"supervisor.log":   tailPR07ATestOutput(collectorOutput.String(), 160),
 			"sink-a.log":       tailPR07ATestOutput(sinkAOutput.String(), 60),
 			"sink-b.log":       tailPR07ATestOutput(sinkBOutput.String(), 100),
@@ -251,6 +254,21 @@ func waitPR09MockFleetSessionsClosed(t *testing.T, ctx context.Context, fleet *m
 		case <-ctx.Done():
 			t.Fatalf("fixture credential revocation left %d active OpAMP sessions", fleet.ActiveOpAMPSessions(agentID))
 		case <-ticker.C:
+		}
+	}
+}
+
+func waitPR09MockFleetRejectedReconnect(t *testing.T, ctx context.Context, done <-chan error, server *mockfleet.OpAMPServer, rejectedBeforeRevocation int) {
+	t.Helper()
+	deadline := time.NewTicker(100 * time.Millisecond)
+	defer deadline.Stop()
+	for server.RejectedConnectionCount() <= rejectedBeforeRevocation {
+		select {
+		case err := <-done:
+			t.Fatalf("Supervisor exited before retrying with its revoked credential: %v", err)
+		case <-ctx.Done():
+			t.Fatal("Supervisor did not attempt an OpAMP reconnect after credential revocation")
+		case <-deadline.C:
 		}
 	}
 }

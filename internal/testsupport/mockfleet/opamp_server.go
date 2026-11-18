@@ -141,6 +141,11 @@ func (f *OpAMPServer) rejectedConnections() int {
 	return len(f.rejected)
 }
 
+// RejectedConnectionCount reports failed fixture authentication attempts.
+func (f *OpAMPServer) RejectedConnectionCount() int {
+	return f.rejectedConnections()
+}
+
 func (f *OpAMPServer) recordRejected() {
 	select {
 	case f.rejected <- struct{}{}:
