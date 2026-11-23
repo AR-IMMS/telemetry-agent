@@ -53,6 +53,7 @@ try {
         "$modulePath/internal/configuration/remoteconfig/sqlite",
         "$modulePath/internal/identity/credentials",
         "$modulePath/internal/identity/enrollment/sqlite",
+        "$modulePath/internal/identity/fleetenrollment/sqlite",
         "$modulePath/internal/identity/sqlite",
         "$modulePath/internal/inventory/docker",
         "$modulePath/internal/inventory/sqlite",
