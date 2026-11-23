@@ -266,8 +266,8 @@ func TestReconciliationDiagnosticsMigrationPreservesRuntimeAndCandidateHistory(t
 	}
 	defer db.Close()
 	var version, mappings int
-	if err := db.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil || version != 14 {
-		t.Fatalf("schema version=%d err=%v want 14", version, err)
+	if err := db.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil || version != 15 {
+		t.Fatalf("schema version=%d err=%v want 15", version, err)
 	}
 	if err := db.QueryRow(`SELECT COUNT(*) FROM activation_journal WHERE candidate_digest='digest' AND outcome='applied'`).Scan(&mappings); err != nil || mappings != 1 {
 		t.Fatalf("candidate journal mappings=%d err=%v", mappings, err)

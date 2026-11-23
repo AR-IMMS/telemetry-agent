@@ -72,8 +72,8 @@ func TestPreMovePopulatedDatabaseSurvivesOpenAndReopen(t *testing.T) {
 		if err := db.Close(); err != nil {
 			t.Fatal(err)
 		}
-		if version != 14 {
-			t.Fatalf("open %d schema version=%d, want 14", open, version)
+		if version != 15 {
+			t.Fatalf("open %d schema version=%d, want 15", open, version)
 		}
 	}
 }

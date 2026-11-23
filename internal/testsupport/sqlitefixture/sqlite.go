@@ -16,6 +16,8 @@ import (
 	templatesapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	enrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
+	fleetenrollment "github.com/ar-imms/telemetry-agent/internal/identity/fleetenrollment/application"
+	fleetenrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/fleetenrollment/sqlite"
 	installation "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
 	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
 	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
@@ -89,6 +91,12 @@ func NewIdentityStore(path string) installation.InstallationIdentityRepository {
 func NewEnrollmentStore(path string) enrollment.AttemptRepository {
 	store := agentstate.NewSQLiteStoreForPath(path, initialize)
 	return enrollmentsqlite.New(store.OpenDatabase, platformsqlite.UpdateLocker())
+}
+
+// NewFleetEnrollmentStore returns a fixture Fleet enrollment repository.
+func NewFleetEnrollmentStore(path string) fleetenrollment.AttemptRepository {
+	store := agentstate.NewSQLiteStoreForPath(path, initialize)
+	return fleetenrollmentsqlite.New(store.OpenDatabase, platformsqlite.UpdateLocker())
 }
 
 // NewCoreGatewayStore returns a fixture Core Gateway runtime repository.

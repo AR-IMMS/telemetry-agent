@@ -7,6 +7,7 @@ import (
 	remoteconfigsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig/sqlite"
 	configurationsqlite "github.com/ar-imms/telemetry-agent/internal/configuration/sqlite"
 	identityenrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
+	fleetenrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/fleetenrollment/sqlite"
 	identityinstallationsqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
 	inventorysqlite "github.com/ar-imms/telemetry-agent/internal/inventory/sqlite"
 	operationssqlite "github.com/ar-imms/telemetry-agent/internal/operations/sqlite"
@@ -89,6 +90,7 @@ func BuildAgentRegistry(hooks Hooks) ([]migrate.Migration, error) {
 	registry = append(registry, inventorysqlite.Migrations()...)
 	registry = append(registry, migration12, migration13)
 	registry = append(registry, operationssqlite.Migrations()...)
+	registry = append(registry, fleetenrollmentsqlite.Migrations()...)
 	return registry, nil
 }
 

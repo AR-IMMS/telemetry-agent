@@ -88,7 +88,7 @@ func TestSQLiteTemplateMutationRollbackAndMigrationCompatibility(t *testing.T) {
 		t.Fatalf("M1/M2 state changed during migration/use: %+v err=%v", loaded, err)
 	}
 	var version int
-	if err := dbQueryVersion(t, path, &version); err != nil || version != 14 {
+	if err := dbQueryVersion(t, path, &version); err != nil || version != 15 {
 		t.Fatalf("schema version=%d err=%v", version, err)
 	}
 }
@@ -153,7 +153,7 @@ func TestSQLiteTemplateMigrationFromV12PreservesPopulatedOperationalTables(t *te
 		t.Fatalf("Installation Identity after migration initialized=%d id=%s err=%v", initialized, identityValue, err)
 	}
 	var maxVersion int
-	if err := reopened.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&maxVersion); err != nil || maxVersion != 14 {
+	if err := reopened.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&maxVersion); err != nil || maxVersion != 15 {
 		t.Fatalf("schema version=%d err=%v", maxVersion, err)
 	}
 }

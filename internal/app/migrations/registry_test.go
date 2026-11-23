@@ -37,6 +37,7 @@ func TestBuildAgentRegistryPreservesContiguousContextOwnedVersions(t *testing.T)
 		{12, "Monitoring proposals"},
 		{13, "Integration templates"},
 		{14, "Operations execution and outbox"},
+		{15, "Fleet enrollment attempts"},
 	}
 	if len(registry) != len(want) {
 		t.Fatalf("migration registry length=%d, want %d", len(registry), len(want))

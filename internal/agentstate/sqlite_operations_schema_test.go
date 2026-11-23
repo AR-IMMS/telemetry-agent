@@ -13,14 +13,14 @@ func TestOperationsMigrationAddsExecutionJournalAndOutbox(t *testing.T) {
 	}
 	defer db.Close()
 	var version int
-	if err := db.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil || version != 14 {
-		t.Fatalf("schema version=%d err=%v, want 14", version, err)
+	if err := db.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil || version != 15 {
+		t.Fatalf("schema version=%d err=%v, want 15", version, err)
 	}
 	rows, err := db.Query(`SELECT version FROM schema_migrations ORDER BY version`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for want := 1; want <= 14; want++ {
+	for want := 1; want <= 15; want++ {
 		if !rows.Next() {
 			rows.Close()
 			t.Fatalf("migration registry ended before version %d", want)
@@ -42,7 +42,7 @@ func TestOperationsMigrationAddsExecutionJournalAndOutbox(t *testing.T) {
 			t.Fatal(err)
 		}
 		rows.Close()
-		t.Fatalf("unexpected migration version %d after 14", extra)
+		t.Fatalf("unexpected migration version %d after 15", extra)
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()

@@ -17,6 +17,8 @@ import (
 	templatesapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	enrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/sqlite"
+	fleetenrollment "github.com/ar-imms/telemetry-agent/internal/identity/fleetenrollment/application"
+	fleetenrollmentsqlite "github.com/ar-imms/telemetry-agent/internal/identity/fleetenrollment/sqlite"
 	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
 	identitysqlite "github.com/ar-imms/telemetry-agent/internal/identity/sqlite"
 	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
@@ -52,6 +54,12 @@ func NewInstallationIdentityStore(path string) installationid.InstallationIdenti
 func NewEnrollmentAttemptStore(path string) enrollment.AttemptRepository {
 	store := agentstate.NewSQLiteStoreForPath(path, initializeAgentSQLiteSchema)
 	return enrollmentsqlite.New(store.OpenDatabase, platformsqlite.UpdateLocker())
+}
+
+// NewFleetEnrollmentAttemptStore constructs Fleet's secret-free registration adapter.
+func NewFleetEnrollmentAttemptStore(path string) fleetenrollment.AttemptRepository {
+	store := agentstate.NewSQLiteStoreForPath(path, initializeAgentSQLiteSchema)
+	return fleetenrollmentsqlite.New(store.OpenDatabase, platformsqlite.UpdateLocker())
 }
 
 // NewInventoryRepository constructs the Inventory-owned SQLite adapter using
