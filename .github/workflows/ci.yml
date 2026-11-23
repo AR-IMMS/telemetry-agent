@@ -208,6 +208,12 @@ jobs:
           AR_IMMS_REQUIRE_PROTECTED_ENROLLMENT_TEST: '1'
         run: go test ./internal/identity/enrollment/application -run '^TestEnrollmentApplicationStoresCredentialFromProvisionalMockFleetExchange$' -count=1 -v
 
+      - name: Fleet enrollment production CLI with protected Windows credentials
+        if: runner.os == 'Windows'
+        env:
+          AR_IMMS_REQUIRE_PROTECTED_ENROLLMENT_TEST: '1'
+        run: go test ./cmd/agentctl -run '^TestRunEnrollmentFleetProductionPathPersistsAndExplicitlyProvisions$' -count=1 -v
+
       - name: Race-sensitive state and uninstall tests
         if: github.event_name == 'pull_request' && (github.event.pull_request.number == 39 || github.event.pull_request.number == 40)
         run: go test -race ./internal/agentstate ./internal/identity/sqlite ./internal/identity/enrollment/sqlite ./internal/runtime/collector/activation ./cmd/agentctl -count=1

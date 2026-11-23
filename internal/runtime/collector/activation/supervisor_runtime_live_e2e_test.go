@@ -118,7 +118,7 @@ service:
 	runContext, stopRuntime := context.WithCancel(ctx)
 	runtimeDone := make(chan error, 1)
 	go func() {
-		runtimeDone <- runManagedSupervisor(runContext, statePath, managed, options, sqlitefixture.NewEnrollmentStore(statePath))
+		runtimeDone <- runManagedSupervisor(runContext, statePath, managed, options, sqlitefixture.NewEnrollmentStore(statePath), sqlitefixture.NewFleetEnrollmentStore(statePath))
 	}()
 	waitForSupervisorRuntimeReadiness(t, ctx, runtimeDone, healthEndpoint)
 	waitForSupervisorSinkTelemetry(t, ctx, runtimeDone, sink)

@@ -50,6 +50,9 @@ type dependencies struct {
 	runCollectorRuntime           collectorRuntimeRunFunc
 	prepareInstallationIdentity   func(string) error
 	runEnrollment                 enrollmentRunFunc
+	runFleetEnrollment            fleetEnrollmentRunFunc
+	readFleetInvitationToken      func(io.Writer) (string, error)
+	provisionFleetSupervisor      fleetSupervisorProvisionFunc
 	readBootstrapToken            func(io.Writer) (string, error)
 	teardownDependency            dependencyTeardownFunc
 	configureDependencies         dependencyConfigureFunc
@@ -194,6 +197,9 @@ func defaultDependencies() dependencies {
 		runCollectorRuntime:         runAgentCollectorRuntime,
 		prepareInstallationIdentity: prepareAgentInstallationIdentity,
 		runEnrollment:               runAgentEnrollment,
+		runFleetEnrollment:          runAgentFleetEnrollment,
+		readFleetInvitationToken:    readFleetInvitationToken,
+		provisionFleetSupervisor:    provisionFleetSupervisor,
 		readBootstrapToken:          readBootstrapToken,
 		configureDependencies: newTerminalDependencyConfigurer(
 			func() bool {

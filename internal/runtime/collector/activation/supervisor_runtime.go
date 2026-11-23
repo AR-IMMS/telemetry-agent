@@ -11,6 +11,8 @@ import (
 
 	credentialstore "github.com/ar-imms/telemetry-agent/internal/identity/credentials"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
+	fleetenrollment "github.com/ar-imms/telemetry-agent/internal/identity/fleetenrollment/application"
+	fleetdomain "github.com/ar-imms/telemetry-agent/internal/identity/fleetenrollment/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/opamp"
 	opampdomain "github.com/ar-imms/telemetry-agent/internal/runtime/opamp/domain"
@@ -24,23 +26,23 @@ var errSupervisorCredentialChanged = errors.New("Supervisor credential changed")
 
 // runManagedSupervisor starts the sole Collector owner for one activated
 // configuration snapshot and binds readiness to that exact snapshot.
-func runManagedSupervisor(ctx context.Context, statePath string, managed opampdomain.SupervisorContext, collector supervisor.Options, attemptRepository enrollment.AttemptRepository) error {
+func runManagedSupervisor(ctx context.Context, statePath string, managed opampdomain.SupervisorContext, collector supervisor.Options, attemptRepository enrollment.AttemptRepository, fleetRepository fleetenrollment.AttemptRepository) error {
 	if attemptRepository == nil {
 		return fmt.Errorf("Supervisor enrollment repository is required")
 	}
 	for {
-		credentialReference, err := currentSupervisorCredentialReference(attemptRepository)
+		credentialReference, err := currentSupervisorCredentialReference(attemptRepository, fleetRepository, managed.OpAMPServerURL)
 		if err != nil {
 			return err
 		}
-		err = runManagedSupervisorOnce(ctx, statePath, credentialReference, managed, collector, attemptRepository)
+		err = runManagedSupervisorOnce(ctx, statePath, credentialReference, managed, collector, attemptRepository, fleetRepository)
 		if !errors.Is(err, errSupervisorCredentialChanged) {
 			return err
 		}
 	}
 }
 
-func runManagedSupervisorOnce(ctx context.Context, statePath, credentialReference string, managed opampdomain.SupervisorContext, collector supervisor.Options, attemptRepository enrollment.AttemptRepository) error {
+func runManagedSupervisorOnce(ctx context.Context, statePath, credentialReference string, managed opampdomain.SupervisorContext, collector supervisor.Options, attemptRepository enrollment.AttemptRepository, fleetRepository fleetenrollment.AttemptRepository) error {
 	if !managed.Enabled || strings.TrimSpace(managed.BinaryPath) == "" || strings.TrimSpace(managed.OpAMPServerURL) == "" || strings.TrimSpace(managed.StateDirectory) == "" {
 		return fmt.Errorf("enabled OpAMP Supervisor runtime context is incomplete")
 	}
@@ -98,7 +100,7 @@ func runManagedSupervisorOnce(ctx context.Context, statePath, credentialReferenc
 	credentialChanged := make(chan struct{}, 1)
 	credentialWatchContext, cancelCredentialWatch := context.WithCancel(processContext)
 	defer cancelCredentialWatch()
-	go watchSupervisorCredential(credentialWatchContext, attemptRepository, credentialReference, credentialChanged)
+	go watchSupervisorCredential(credentialWatchContext, attemptRepository, fleetRepository, managed.OpAMPServerURL, credentialReference, credentialChanged)
 	readinessDone := make(chan error, 1)
 	go func() {
 		readinessDone <- waitForManagedCollectorReadiness(processContext, collector.HealthEndpoint, collector.ReadinessBody, managedSupervisorStartupTimeout)
@@ -163,13 +165,22 @@ func runManagedSupervisorOnce(ctx context.Context, statePath, credentialReferenc
 	}
 }
 
-func currentSupervisorCredentialReference(repository enrollment.AttemptRepository) (string, error) {
+func currentSupervisorCredentialReference(repository enrollment.AttemptRepository, fleetRepository fleetenrollment.AttemptRepository, opampEndpoint string) (string, error) {
+	if fleetRepository != nil {
+		attempt, err := fleetRepository.LoadAttempt()
+		if err == nil && attempt.Status == fleetdomain.AttemptRegistered && attempt.Result != nil && strings.TrimSpace(attempt.Result.OpAMPEndpoint) == strings.TrimSpace(opampEndpoint) {
+			return attempt.CredentialRef, nil
+		}
+		if err != nil && !errors.Is(err, fleetenrollment.ErrNoAttempt) {
+			return "", fmt.Errorf("load Fleet credential reference for Supervisor: %w", err)
+		}
+	}
 	attempt, err := repository.LoadAttempt()
 	if errors.Is(err, enrollment.ErrNoAttempt) {
 		return "", nil
 	}
 	if err != nil {
-		return "", fmt.Errorf("load enrollment credential reference for Supervisor: %w", err)
+		return "", fmt.Errorf("load Core enrollment credential reference for Supervisor: %w", err)
 	}
 	if attempt.AccessCredentialRef != "" && attempt.Status == enrollment.AttemptRegistered {
 		return attempt.AccessCredentialRef, nil
@@ -180,7 +191,7 @@ func currentSupervisorCredentialReference(repository enrollment.AttemptRepositor
 	return "", nil
 }
 
-func watchSupervisorCredential(ctx context.Context, repository enrollment.AttemptRepository, initialReference string, changed chan<- struct{}) {
+func watchSupervisorCredential(ctx context.Context, repository enrollment.AttemptRepository, fleetRepository fleetenrollment.AttemptRepository, opampEndpoint, initialReference string, changed chan<- struct{}) {
 	ticker := time.NewTicker(managedCredentialPollInterval)
 	defer ticker.Stop()
 	for {
@@ -188,7 +199,7 @@ func watchSupervisorCredential(ctx context.Context, repository enrollment.Attemp
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			current, err := currentSupervisorCredentialReference(repository)
+			current, err := currentSupervisorCredentialReference(repository, fleetRepository, opampEndpoint)
 			if err == nil && current != initialReference {
 				select {
 				case changed <- struct{}{}:
@@ -199,7 +210,6 @@ func watchSupervisorCredential(ctx context.Context, repository enrollment.Attemp
 		}
 	}
 }
-
 func waitForManagedCollectorReadiness(ctx context.Context, endpoint, body string, timeout time.Duration) error {
 	if ctx == nil || strings.TrimSpace(endpoint) == "" || timeout <= 0 {
 		return fmt.Errorf("Collector readiness context, endpoint, and timeout are required")

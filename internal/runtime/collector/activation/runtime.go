@@ -10,6 +10,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
+	fleetenrollment "github.com/ar-imms/telemetry-agent/internal/identity/fleetenrollment/application"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
 	runtimecontracts "github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
@@ -23,7 +24,7 @@ const (
 
 // RuntimeStoreFactory supplies context-owned persistence ports assembled by
 // application composition for one Agent state database.
-type RuntimeStoreFactory func(string) (agentstate.Repository, coreconfig.GatewayRuntimeRepository, enrollment.AttemptRepository)
+type RuntimeStoreFactory func(string) (agentstate.Repository, coreconfig.GatewayRuntimeRepository, enrollment.AttemptRepository, fleetenrollment.AttemptRepository)
 
 // RunCollectorRuntime loads the bootstrapped Collector context and supervises
 // the Collector until the caller cancels ctx.
@@ -90,8 +91,8 @@ func runCollectorRuntimeWithReconciliation(
 	if storeFactory == nil {
 		return fmt.Errorf("Collector runtime store factory is required")
 	}
-	store, gatewayStore, enrollmentStore := storeFactory(statePath)
-	if store == nil || gatewayStore == nil || enrollmentStore == nil {
+	store, gatewayStore, enrollmentStore, fleetEnrollmentStore := storeFactory(statePath)
+	if store == nil || gatewayStore == nil || enrollmentStore == nil || fleetEnrollmentStore == nil {
 		return fmt.Errorf("Collector runtime state stores are required")
 	}
 
@@ -146,7 +147,7 @@ func runCollectorRuntimeWithReconciliation(
 	runtimeRunner := collectorRunner(supervisor.Run)
 	if state.Supervisor.Enabled {
 		runtimeRunner = func(ctx context.Context, options supervisor.Options) error {
-			return runManagedSupervisor(ctx, statePath, state.Supervisor, options, enrollmentStore)
+			return runManagedSupervisor(ctx, statePath, state.Supervisor, options, enrollmentStore, fleetEnrollmentStore)
 		}
 	}
 

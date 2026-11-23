@@ -12,6 +12,7 @@ import (
 	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
 	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
+	fleetenrollment "github.com/ar-imms/telemetry-agent/internal/identity/fleetenrollment/application"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	definitionapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
 	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
@@ -201,8 +202,8 @@ func runRuntimeWithReconciliation(ctx context.Context, statePath string, teardow
 		Teardown:  teardown,
 		Reporter:  reporter,
 		Runner:    runner,
-		StoreFactory: func(path string) (agentstate.Repository, coreconfig.GatewayRuntimeRepository, enrollment.AttemptRepository) {
-			return newAgentStateStore(path), newAgentCoreGatewayStore(path), newAgentEnrollmentStore(path)
+		StoreFactory: func(path string) (agentstate.Repository, coreconfig.GatewayRuntimeRepository, enrollment.AttemptRepository, fleetenrollment.AttemptRepository) {
+			return newAgentStateStore(path), newAgentCoreGatewayStore(path), newAgentEnrollmentStore(path), newAgentFleetEnrollmentStore(path)
 		},
 		Build: func(publisher events.Publisher, commandRunner bootstrap.CommandRunner) (app.RuntimeComponents, error) {
 			controller, recordRecoveryFailure, err := newRuntimeReconciliationController(statePath, commandRunner)
