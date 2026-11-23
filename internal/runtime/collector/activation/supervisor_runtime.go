@@ -212,17 +212,17 @@ func currentSupervisorCredentialReference(repository enrollment.AttemptRepositor
 
 func fleetSupervisorCredentialReference(repository fleetenrollment.AttemptRepository, endpoint string) (string, error) {
 	if repository == nil {
-		return "", fmt.Errorf("Fleet Supervisor endpoint has no Fleet enrollment repository")
+		return "", fmt.Errorf("fleet Supervisor endpoint has no fleet enrollment repository")
 	}
 	attempt, err := repository.LoadAttempt()
 	if err != nil {
 		return "", fmt.Errorf("load Fleet credential reference for Supervisor: %w", err)
 	}
 	if attempt.Status != fleetdomain.AttemptRegistered || attempt.Result == nil || attempt.CredentialRef == "" {
-		return "", fmt.Errorf("Fleet Supervisor endpoint has no registered Fleet credential")
+		return "", fmt.Errorf("fleet Supervisor endpoint has no registered fleet credential")
 	}
 	if strings.TrimSpace(attempt.Result.OpAMPEndpoint) != endpoint {
-		return "", fmt.Errorf("Fleet Supervisor endpoint does not match registered Fleet enrollment state")
+		return "", fmt.Errorf("fleet Supervisor endpoint does not match registered fleet enrollment state")
 	}
 	return attempt.CredentialRef, nil
 }
