@@ -5,12 +5,16 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
-	"github.com/ar-imms/telemetry-agent/internal/config"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
 	"io"
 	"os"
+
+	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	agentservice "github.com/ar-imms/telemetry-agent/internal/runtime/service"
 )
 
 func runBootstrap(
@@ -34,7 +38,7 @@ func runBootstrap(
 	configPath := flags.String("config-path", "", "final rendered Collector configuration path")
 	statePath := flags.String(
 		"state-path",
-		agentstate.DefaultPath(),
+		agentservice.DefaultStatePath(),
 		"Agent lifecycle state path",
 	)
 	validationEndpoint := flags.String("validation-endpoint", defaultValidationEndpoint, "endpoint supplied only to Collector validation")
@@ -45,7 +49,7 @@ func runBootstrap(
 	)
 	validationTimeout := flags.Duration("timeout", defaultValidationTimeout, "Collector validation timeout")
 
-	if err := flags.Parse(args); err != nil {
+	if err := parseCompatibilityFlags(flags, args); err != nil {
 		flags.Usage()
 		return 2
 	}
@@ -98,7 +102,7 @@ func runBootstrap(
 		return 1
 	}
 
-	stateStore := agentstate.NewStore(*statePath)
+	stateStore := newAgentStateStore(*statePath)
 
 	state, err := stateStore.Load()
 	if err != nil {
@@ -109,7 +113,7 @@ func runBootstrap(
 		}
 
 		state = agentstate.State{
-			Dependencies: make(map[string]agentstate.DependencyState),
+			Dependencies: make(map[string]dependencydomain.DependencyState),
 		}
 	}
 
@@ -119,11 +123,17 @@ func runBootstrap(
 
 		return 1
 	}
+	nativeLayers, nativeReceivers, err := nativeDockerMonitoringInputsWithConfigRoot(*statePath, platform.OS, *configRoot)
+	if err != nil {
+		fmt.Fprintf(stderr, "configure native Docker monitoring: %v\n", err)
+		return 1
+	}
 
 	receiverLayer, err := dependencyMetricsReceiverLayer(
 		catalog,
 		platform.OS,
 		state,
+		nativeReceivers...,
 	)
 	if err != nil {
 		fmt.Fprintf(
@@ -150,11 +160,9 @@ func runBootstrap(
 		InstallDir: *installDir,
 		ConfigPath: *configPath,
 		ConfigInput: config.RenderInput{
-			Platform: platform,
-			Layers:   layers,
-			InlineLayers: []config.InlineLayer{
-				receiverLayer,
-			},
+			Platform:     platform,
+			Layers:       layers,
+			InlineLayers: append([]config.InlineLayer{receiverLayer}, nativeLayers...),
 		},
 		ValidationEnvironment: []string{
 			"OTEL_GATEWAY_ENDPOINT=" + *validationEndpoint,
@@ -167,7 +175,7 @@ func runBootstrap(
 	}
 
 	_, err = stateStore.Update(func(state *agentstate.State) error {
-		state.Collector = agentstate.CollectorContext{
+		state.Collector = collectordomain.CollectorContext{
 			ConfigRoot:      *configRoot,
 			BinaryPath:      result.BinaryPath,
 			ConfigPath:      result.ConfigPath,

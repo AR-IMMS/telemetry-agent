@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -9,13 +10,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
-	"github.com/ar-imms/telemetry-agent/internal/configuration"
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
-	discoverydocker "github.com/ar-imms/telemetry-agent/internal/discovery/docker"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
+	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
+	materializationapp "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/application"
+	templatesapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
+	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
+	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
+	matchingdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/domain"
+	templatesmonitoringapp "github.com/ar-imms/telemetry-agent/internal/monitoring/templates/application"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
+	agentservice "github.com/ar-imms/telemetry-agent/internal/runtime/service"
 )
 
 // TestLiveDockerTemplateAutoMaterializesDesiredInstance verifies the live Docker
@@ -30,7 +35,7 @@ func TestLiveDockerTemplateAutoMaterializesDesiredInstance(t *testing.T) {
 	if statePath == "" || fixtureID == "" || endpoint == "" {
 		t.Fatal("isolated state path, Redis container ID, and explicit Docker endpoint are required")
 	}
-	if filepath.Clean(statePath) == filepath.Clean(agentstate.DefaultPath()) {
+	if filepath.Clean(statePath) == filepath.Clean(agentservice.DefaultStatePath()) {
 		t.Fatal("E2E must not use the production Agent state path")
 	}
 	relative, err := filepath.Rel(os.TempDir(), filepath.Clean(statePath))
@@ -38,13 +43,13 @@ func TestLiveDockerTemplateAutoMaterializesDesiredInstance(t *testing.T) {
 		t.Fatal("E2E state database must be inside the temporary directory")
 	}
 
-	store := agentstate.NewSQLiteStore(statePath)
+	store := sqlitefixture.NewSQLiteStore(statePath)
 	registry, err := productionIntegrationRegistry()
 	if err != nil {
 		t.Fatal(err)
 	}
-	templateRepository := store.TemplateRepository()
-	templateService := configuration.NewTemplateService(registry, templateRepository)
+	templateRepository := newTestTemplateRepository(store)
+	templateService := templatesapp.NewService(registry, templateRepository)
 	if _, _, err := templateService.Put(redisRuntimeTemplate(), 0); err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +57,7 @@ func TestLiveDockerTemplateAutoMaterializesDesiredInstance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	coordinator, err := discovery.NewCoordinator(store.InventoryRepository(), []discovery.DiscoveryProvider{provider}, discovery.DefaultPolicy(), 5*time.Second)
+	coordinator, err := inventoryapp.NewCoordinator(sqlitefixture.NewInventoryRepositoryFromStore(store), []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), 5*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,10 +65,10 @@ func TestLiveDockerTemplateAutoMaterializesDesiredInstance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !discoveryCycleSucceeded(cycle) {
+	if !cycle.Succeeded() {
 		t.Fatalf("Docker provider cycle failed: %+v", cycle.ProviderResults)
 	}
-	inventory, err := store.InventoryRepository().Snapshot()
+	inventory, err := sqlitefixture.NewInventoryRepositoryFromStore(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +76,7 @@ func TestLiveDockerTemplateAutoMaterializesDesiredInstance(t *testing.T) {
 	for _, resource := range inventory.Resources {
 		if resource.Key.ProviderResourceID == fixtureID {
 			fixtureFound = true
-			if resource.Kind != discovery.ResourceContainer || resource.Presence != discovery.PresencePresent || resource.Attributes["container.image.repository"] != "docker.io/library/redis" {
+			if resource.Kind != inventorydomain.ResourceContainer || resource.Presence != inventorydomain.PresencePresent || resource.Attributes["container.image.repository"] != "docker.io/library/redis" {
 				t.Fatalf("fixture is not a present Redis container: %+v", resource)
 			}
 		}
@@ -89,26 +94,26 @@ func TestLiveDockerTemplateAutoMaterializesDesiredInstance(t *testing.T) {
 		t.Fatal(err)
 	}
 	materializer := runtimeTemplateMaterializer{
-		inventory: store.InventoryRepository(), templates: templateRepository, desired: store.IntegrationRepository(),
-		service: configuration.NewMaterializationService(store.MaterializationRepository()),
-		matcher: integration.NewMatcher(registry, catalogCapabilityAssessor{catalog: catalog, platform: runtime.GOOS + "/" + runtime.GOARCH}),
+		inventory: sqlitefixture.NewInventoryRepositoryFromStore(store), templates: templateRepository, desired: newTestDesiredStateRepository(store),
+		service: materializationapp.NewService(newTestMaterializationRepository(store)),
+		matcher: templatesmonitoringapp.NewEvaluator(registry, matchingdomain.NewCatalogCapabilityAssessor(catalog, runtime.GOOS, runtime.GOOS+"/"+runtime.GOARCH)),
 	}
 	if err := materializer.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	desired, err := store.IntegrationRepository().Snapshot()
+	desired, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
-	var generated *integration.IntegrationInstance
+	var generated *desiredstatedomain.Instance
 	for index := range desired.Instances {
 		instance := &desired.Instances[index]
-		if instance.Source == integration.SourceTemplate && instance.Binding != nil && instance.Binding.ResourceID == fixtureID {
+		if instance.Source == desiredstatedomain.SourceTemplate && instance.Binding != nil && instance.Binding.ResourceID == fixtureID {
 			generated = instance
 			break
 		}
 	}
-	if generated == nil || !generated.Enabled || generated.TemplateID != "redis-auto" || generated.TemplateOwner != integration.TemplateOwnerLocal {
+	if generated == nil || !generated.Enabled || generated.TemplateID != "redis-auto" || generated.TemplateOwner != desiredstatedomain.TemplateOwnerLocal {
 		t.Fatalf("live Docker observation did not create the enabled Template-owned desired instance: %+v", desired)
 	}
 	proposalRefresher, err := newRuntimeProposalRefresher(statePath)
@@ -118,7 +123,7 @@ func TestLiveDockerTemplateAutoMaterializesDesiredInstance(t *testing.T) {
 	if err := proposalRefresher.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	proposals, err := store.ProposalRepository().ProposalSnapshot()
+	proposals, err := sqlitefixture.NewProposalRepositoryFromStore(store).ProposalSnapshot()
 	if err != nil {
 		t.Fatal(err)
 	}

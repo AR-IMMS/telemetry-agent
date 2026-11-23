@@ -8,40 +8,40 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/configuration"
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
+	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
+	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
+	proposals "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
 )
 
 func TestSQLiteApprovalCommitsProposalAndDesiredStateAtomically(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	proposal := sqliteProposalFixture(t)
-	if err := store.ProposalRepository().PutProposal(proposal, 0); err != nil {
+	if err := newTestProposalRepository(store).PutProposal(proposal, 0); err != nil {
 		t.Fatal(err)
 	}
 	commit := approvalFixture(proposal, 0)
-	instance, revision, err := store.ApprovalRepository().CommitApproval(commit)
+	instance, revision, err := newTestApprovalRepository(store).CommitApproval(commit)
 	if err != nil || instance.Revision != 1 || revision != 1 {
 		t.Fatalf("approval instance=%+v desired revision=%d err=%v", instance, revision, err)
 	}
-	proposals, err := store.ProposalRepository().ProposalSnapshot()
-	if err != nil || proposals[0].Status != discovery.ProposalApproved || proposals[0].ApprovedInstanceID != instance.ID || proposals[0].ApprovedCandidateDigest != proposal.CandidateDigest {
-		t.Fatalf("proposal after approval=%+v err=%v", proposals, err)
+	proposalList, err := newTestProposalRepository(store).ProposalSnapshot()
+	if err != nil || proposalList[0].Status != proposals.ProposalApproved || proposalList[0].ApprovedInstanceID != instance.ID || proposalList[0].ApprovedCandidateDigest != proposal.CandidateDigest {
+		t.Fatalf("proposal after approval=%+v err=%v", proposalList, err)
 	}
 	commit.Instance = instance
-	if got, desired, err := store.ApprovalRepository().CommitApproval(commit); err != nil || got.Revision != 1 || desired != 1 {
+	if got, desired, err := newTestApprovalRepository(store).CommitApproval(commit); err != nil || got.Revision != 1 || desired != 1 {
 		t.Fatalf("idempotent approval=%+v desired=%d err=%v", got, desired, err)
 	}
-	snapshot, err := store.IntegrationRepository().Snapshot()
+	snapshot, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil || snapshot.Revision != 1 || len(snapshot.Instances) != 1 {
 		t.Fatalf("desired snapshot=%+v err=%v", snapshot, err)
 	}
 }
 
 func TestSQLiteApprovalRollsBackEveryWriteWhenTerminalProposalUpdateFails(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	proposal := sqliteProposalFixture(t)
-	if err := store.ProposalRepository().PutProposal(proposal, 0); err != nil {
+	if err := newTestProposalRepository(store).PutProposal(proposal, 0); err != nil {
 		t.Fatal(err)
 	}
 	db, err := store.open()
@@ -53,37 +53,37 @@ func TestSQLiteApprovalRollsBackEveryWriteWhenTerminalProposalUpdateFails(t *tes
 		t.Fatal(err)
 	}
 	db.Close()
-	if _, _, err := store.ApprovalRepository().CommitApproval(approvalFixture(proposal, 0)); err == nil {
+	if _, _, err := newTestApprovalRepository(store).CommitApproval(approvalFixture(proposal, 0)); err == nil {
 		t.Fatal("approval succeeded despite injected proposal write failure")
 	}
-	snapshot, err := store.IntegrationRepository().Snapshot()
+	snapshot, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil || snapshot.Revision != 0 || len(snapshot.Instances) != 0 {
 		t.Fatalf("partial desired mutation survived rollback: %+v err=%v", snapshot, err)
 	}
-	proposals, err := store.ProposalRepository().ProposalSnapshot()
-	if err != nil || proposals[0].Status != discovery.ProposalPending {
-		t.Fatalf("proposal changed despite rollback: %+v err=%v", proposals, err)
+	proposalList, err := newTestProposalRepository(store).ProposalSnapshot()
+	if err != nil || proposalList[0].Status != proposals.ProposalPending {
+		t.Fatalf("proposal changed despite rollback: %+v err=%v", proposalList, err)
 	}
 }
 
 func TestSQLiteApprovalRejectsStaleDesiredAndInventorySnapshots(t *testing.T) {
 	for _, test := range []struct {
 		name   string
-		mutate func(*configuration.ApprovalCommit)
+		mutate func(*proposals.ApprovalCommit)
 		want   error
 	}{
-		{name: "desired revision", mutate: func(commit *configuration.ApprovalCommit) { commit.ExpectedDesiredRevision = 1 }, want: configuration.ErrRevisionConflict},
-		{name: "inventory write revision", mutate: func(commit *configuration.ApprovalCommit) { commit.InventoryWriteRevision = 1 }, want: configuration.ErrApprovalStale},
+		{name: "desired revision", mutate: func(commit *proposals.ApprovalCommit) { commit.ExpectedDesiredRevision = 1 }, want: desiredstateapp.ErrRevisionConflict},
+		{name: "inventory write revision", mutate: func(commit *proposals.ApprovalCommit) { commit.InventoryWriteRevision = 1 }, want: proposals.ErrApprovalStale},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+			store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 			proposal := sqliteProposalFixture(t)
-			if err := store.ProposalRepository().PutProposal(proposal, 0); err != nil {
+			if err := newTestProposalRepository(store).PutProposal(proposal, 0); err != nil {
 				t.Fatal(err)
 			}
 			commit := approvalFixture(proposal, 0)
 			test.mutate(&commit)
-			if _, _, err := store.ApprovalRepository().CommitApproval(commit); !errors.Is(err, test.want) {
+			if _, _, err := newTestApprovalRepository(store).CommitApproval(commit); !errors.Is(err, test.want) {
 				t.Fatalf("stale admission error=%v, want %v", err, test.want)
 			}
 		})
@@ -91,49 +91,49 @@ func TestSQLiteApprovalRejectsStaleDesiredAndInventorySnapshots(t *testing.T) {
 }
 
 func TestSQLiteApprovalRejectsDuplicateResourceBinding(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	first := sqliteProposalFixture(t)
-	if err := store.ProposalRepository().PutProposal(first, 0); err != nil {
+	if err := newTestProposalRepository(store).PutProposal(first, 0); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := store.ApprovalRepository().CommitApproval(approvalFixture(first, 0)); err != nil {
+	if _, _, err := newTestApprovalRepository(store).CommitApproval(approvalFixture(first, 0)); err != nil {
 		t.Fatal(err)
 	}
 	second := sqliteProposalFixture(t)
 	second.Identity.IntegrationID = "postgresql"
-	second.ID, _ = discovery.StableProposalID(second.Identity)
+	second.ID, _ = proposals.StableProposalID(second.Identity)
 	second.CandidateDigest = "sha256:" + repeatedProposalHex('d')
 	second.ResourceFingerprint = "sha256:" + repeatedProposalHex('e')
 	second.Revision = 1
-	second.Status = discovery.ProposalPending
-	if err := store.ProposalRepository().PutProposal(second, 0); err != nil {
+	second.Status = proposals.ProposalPending
+	if err := newTestProposalRepository(store).PutProposal(second, 0); err != nil {
 		t.Fatal(err)
 	}
 	commit := approvalFixture(second, 1)
-	if _, _, err := store.ApprovalRepository().CommitApproval(commit); !errors.Is(err, configuration.ErrApprovalBindingConflict) {
+	if _, _, err := newTestApprovalRepository(store).CommitApproval(commit); !errors.Is(err, proposals.ErrApprovalBindingConflict) {
 		t.Fatalf("duplicate binding error=%v", err)
 	}
 }
 
 func TestSQLiteApprovalRejectsEquivalentManualIntegration(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	proposal := sqliteProposalFixture(t)
-	if err := store.ProposalRepository().PutProposal(proposal, 0); err != nil {
+	if err := newTestProposalRepository(store).PutProposal(proposal, 0); err != nil {
 		t.Fatal(err)
 	}
-	manual := integration.IntegrationInstance{ID: "manual-cache", DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true, Configuration: map[string]any{"endpoint": "127.0.0.1:6379"}}
-	if _, _, err := store.IntegrationRepository().Put(manual, 0); err != nil {
+	manual := desiredstatedomain.Instance{ID: "manual-cache", DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true, Configuration: map[string]any{"endpoint": "127.0.0.1:6379"}}
+	if _, _, err := newTestDesiredStateRepository(store).Put(manual, 0); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := store.ApprovalRepository().CommitApproval(approvalFixture(proposal, 1)); !errors.Is(err, configuration.ErrApprovalDuplicate) {
+	if _, _, err := newTestApprovalRepository(store).CommitApproval(approvalFixture(proposal, 1)); !errors.Is(err, proposals.ErrApprovalDuplicate) {
 		t.Fatalf("duplicate manual configuration error=%v", err)
 	}
 }
 
 func TestSQLiteApprovalConcurrentRepeatAdvancesDesiredSetOnce(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	proposal := sqliteProposalFixture(t)
-	if err := store.ProposalRepository().PutProposal(proposal, 0); err != nil {
+	if err := newTestProposalRepository(store).PutProposal(proposal, 0); err != nil {
 		t.Fatal(err)
 	}
 	commit := approvalFixture(proposal, 0)
@@ -145,7 +145,7 @@ func TestSQLiteApprovalConcurrentRepeatAdvancesDesiredSetOnce(t *testing.T) {
 		go func() {
 			defer wait.Done()
 			<-start
-			_, _, err := store.ApprovalRepository().CommitApproval(commit)
+			_, _, err := newTestApprovalRepository(store).CommitApproval(commit)
 			results <- err
 		}()
 	}
@@ -157,21 +157,21 @@ func TestSQLiteApprovalConcurrentRepeatAdvancesDesiredSetOnce(t *testing.T) {
 			t.Fatalf("concurrent idempotent approval error=%v", err)
 		}
 	}
-	snapshot, err := NewSQLiteStore(store.path).IntegrationRepository().Snapshot()
+	snapshot, err := newTestDesiredStateRepository(newTestSQLiteStore(store.path)).Snapshot()
 	if err != nil || snapshot.Revision != 1 || len(snapshot.Instances) != 1 || snapshot.Instances[0].Revision != 1 {
 		t.Fatalf("concurrent approval desired snapshot=%+v err=%v", snapshot, err)
 	}
 }
 
-func approvalFixture(proposal discovery.Proposal, expectedDesired uint64) configuration.ApprovalCommit {
-	return configuration.ApprovalCommit{
+func approvalFixture(proposal proposals.Proposal, expectedDesired uint64) proposals.ApprovalCommit {
+	return proposals.ApprovalCommit{
 		ProposalID: proposal.ID, ProposalRevision: proposal.Revision, ExpectedDesiredRevision: expectedDesired,
 		ExpectedCandidateDigest: proposal.CandidateDigest, VerifiedCandidateDigest: proposal.CandidateDigest,
 		InventoryWriteRevision: 0,
-		Instance: integration.IntegrationInstance{
+		Instance: desiredstatedomain.Instance{
 			ID: discoveredTestInstanceID(proposal.ID), DefinitionID: proposal.Identity.IntegrationID, DefinitionVersion: proposal.DefinitionVersion,
-			Configuration: map[string]any{"endpoint": "127.0.0.1:6379"}, Source: integration.SourceDiscovery,
-			Binding: &integration.ResourceBinding{Provider: proposal.Identity.Provider, ProviderInstance: proposal.Identity.ProviderInstance, ResourceID: proposal.Identity.ResourceID}, Enabled: true,
+			Configuration: map[string]any{"endpoint": "127.0.0.1:6379"}, Source: desiredstatedomain.SourceDiscovery,
+			Binding: &desiredstatedomain.ResourceBinding{Provider: proposal.Identity.Provider, ProviderInstance: proposal.Identity.ProviderInstance, ResourceID: proposal.Identity.ResourceID}, Enabled: true,
 		},
 	}
 }

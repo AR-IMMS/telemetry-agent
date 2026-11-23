@@ -3,21 +3,23 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
-	"github.com/ar-imms/telemetry-agent/internal/agentinstallation"
-	"github.com/ar-imms/telemetry-agent/internal/agentlifecycle"
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
-	"github.com/ar-imms/telemetry-agent/internal/dependency"
-	librehardwaremonitor "github.com/ar-imms/telemetry-agent/internal/dependency/libre_hardware_monitor"
-	nodeexporter "github.com/ar-imms/telemetry-agent/internal/dependency/node_exporter"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
-	"github.com/ar-imms/telemetry-agent/internal/supervisor"
-	"io"
 	"net"
 	"net/http"
 	"os"
 	"time"
+
+	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/supervisor"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	librehardwaremonitor "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/libre_hardware_monitor"
+	nodeexporter "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/node_exporter"
+	windowsexporter "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/windows_exporter"
+	agentinstallation "github.com/ar-imms/telemetry-agent/internal/runtime/service"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
+	"io"
 )
 
 const (
@@ -48,11 +50,16 @@ type dependencies struct {
 	runCollectorRuntime           collectorRuntimeRunFunc
 	prepareInstallationIdentity   func(string) error
 	runEnrollment                 enrollmentRunFunc
+	runFleetEnrollment            fleetEnrollmentRunFunc
+	readFleetInvitationToken      func(io.Writer) (string, error)
+	provisionFleetSupervisor      fleetSupervisorProvisionFunc
 	readBootstrapToken            func(io.Writer) (string, error)
 	teardownDependency            dependencyTeardownFunc
 	configureDependencies         dependencyConfigureFunc
 	listenStatus                  statusListenerFunc
 	serveStatus                   statusServerRunFunc
+	healthEvidenceSources         func(string) []agenthealth.EvidenceSource
+	environmentEvidence           func(string) *identity.EnvironmentEvidence
 	runCollectorRuntimeWithHealth collectorRuntimeHealthRunFunc
 	fetchHealthStatus             healthStatusFetchFunc
 	agentInstallationLayout       func(
@@ -143,12 +150,12 @@ func defaultDependencies() dependencies {
 	agentInstaller := agentinstallation.NewInstaller(
 		downloader,
 		runner,
+		newAgentStateStore,
 	)
 
 	agentUninstaller := newManagedAgentUninstaller(
 		identity.CollectPlatformInfo,
 		os.Executable,
-		runner,
 	)
 
 	return dependencies{
@@ -187,9 +194,12 @@ func defaultDependencies() dependencies {
 			runDependencyMultiSelectProgram(os.Stdin),
 		),
 		listDependencyStatuses:      defaultListDependencyStatuses,
-		runCollectorRuntime:         agentlifecycle.RunCollectorRuntime,
+		runCollectorRuntime:         runAgentCollectorRuntime,
 		prepareInstallationIdentity: prepareAgentInstallationIdentity,
 		runEnrollment:               runAgentEnrollment,
+		runFleetEnrollment:          runAgentFleetEnrollment,
+		readFleetInvitationToken:    readFleetInvitationToken,
+		provisionFleetSupervisor:    provisionFleetSupervisor,
 		readBootstrapToken:          readBootstrapToken,
 		configureDependencies: newTerminalDependencyConfigurer(
 			func() bool {
@@ -203,8 +213,10 @@ func defaultDependencies() dependencies {
 			},
 			runDependencyConfigureProgram(os.Stdin),
 		),
-		listenStatus: net.Listen,
-		serveStatus:  agenthealth.ServeStatus,
+		listenStatus:          net.Listen,
+		serveStatus:           agenthealth.ServeStatus,
+		healthEvidenceSources: newAgentHealthEvidenceSources,
+		environmentEvidence:   newAgentEnvironmentEvidence,
 		runCollectorRuntimeWithHealth: func(ctx context.Context, statePath string, teardown dependencyTeardownFunc, reporter agenthealth.ObservationReporter) error {
 			return runRuntimeWithReconciliation(ctx, statePath, teardown, reporter, runner)
 		},
@@ -276,7 +288,7 @@ func defaultListDependencies(
 // defaultDependencyCatalog creates the built-in integrations bundled with this
 // agentctl release.
 func defaultDependencyCatalog() (dependency.Catalog, error) {
-	windowsExporterOptions := dependency.DefaultWindowsExporterOptions()
+	windowsExporterOptions := windowsexporter.DefaultWindowsExporterOptions()
 	nodeExporterOptions := nodeexporter.DefaultOptions()
 	lhmOptions := librehardwaremonitor.DefaultOptions()
 
@@ -292,18 +304,18 @@ func defaultDependencyCatalog() (dependency.Catalog, error) {
 				SupportedOS: []string{"windows"},
 			},
 			CollectorReceiver: "prometheus/windows_exporter",
-			Install: dependency.NewWindowsExporterInstaller(
+			Install: windowsexporter.NewWindowsExporterInstaller(
 				windowsExporterOptions,
 				bootstrap.HTTPDownloader{},
 			),
-			Inspect: dependency.NewWindowsExporterInspector(
+			Inspect: windowsexporter.NewWindowsExporterInspector(
 				windowsExporterOptions,
 			),
-			Teardown: dependency.NewWindowsExporterTeardown(
+			Teardown: windowsexporter.NewWindowsExporterTeardown(
 				windowsExporterOptions,
 			),
-			Enable: dependency.NewWindowsExporterEnabler(
-				dependency.DefaultWindowsExporterOptions(),
+			Enable: windowsexporter.NewWindowsExporterEnabler(
+				windowsexporter.DefaultWindowsExporterOptions(),
 			),
 		},
 		{
@@ -393,7 +405,7 @@ func defaultInstallDependency(
 func defaultEnableDependency(
 	ctx context.Context,
 	name string,
-	resources []agentstate.OwnedResource,
+	resources []servicedomain.OwnedResource,
 ) error {
 	platform, err := identity.CollectPlatformInfo()
 	if err != nil {

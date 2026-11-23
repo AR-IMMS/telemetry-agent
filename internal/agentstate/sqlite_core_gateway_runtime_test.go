@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
+	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
 )
 
 func TestUnchangedCoreRevisionWaitsForRuntimeReadinessBeforeAppliedMapping(t *testing.T) {
@@ -183,7 +183,7 @@ func TestCoreGatewayRuntimeMigrationSeedsExistingAcceptedSnapshot(t *testing.T) 
 	}
 	db.Close()
 	path := filepath.Clean(store.path)
-	if _, err := NewSQLiteStore(path).Load(); err != nil {
+	if _, err := newTestSQLiteStore(path).Load(); err != nil {
 		t.Fatal(err)
 	}
 	got, err := store.GatewayForGeneration(5)

@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/enrollment"
+	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 )
 
 const (
@@ -68,7 +68,20 @@ func (c *HTTPEnrollmentClient) Enroll(
 	}
 	base.Path = enrollmentEndpoint
 	base.RawPath, base.RawQuery, base.Fragment = "", "", ""
-	body, err := json.Marshal(request)
+	wireRequest := enrollmentRequestDTO{
+		BootstrapToken: request.BootstrapToken,
+		enrollmentPayloadDTO: enrollmentPayloadDTO{
+			AttemptID:    request.AttemptID,
+			Installation: installationDTO{ID: request.Installation.ID},
+			Agent:        agentDTO{Version: request.Agent.Version},
+			Environment: environmentDTO{
+				OS: request.Environment.OS, Architecture: request.Environment.Architecture,
+				Hostname: request.Environment.Hostname,
+			},
+			Metadata: request.Metadata,
+		},
+	}
+	body, err := json.Marshal(wireRequest)
 	if err != nil {
 		return enrollment.EnrollmentResponse{}, fmt.Errorf("encode enrollment request: %w", err)
 	}
@@ -98,7 +111,7 @@ func (c *HTTPEnrollmentClient) Enroll(
 		return enrollment.EnrollmentResponse{}, classifyHTTPError(response, content)
 	}
 	var envelope struct {
-		Data enrollment.EnrollmentResponse `json:"data"`
+		Data enrollmentResponseDTO `json:"data"`
 		Meta struct {
 			RequestID string `json:"request_id"`
 		} `json:"meta"`
@@ -109,10 +122,73 @@ func (c *HTTPEnrollmentClient) Enroll(
 	if strings.TrimSpace(envelope.Meta.RequestID) == "" {
 		return enrollment.EnrollmentResponse{}, fmt.Errorf("Core enrollment response is missing meta.request_id")
 	}
-	if err := envelope.Data.Validate(request.Installation.ID, origin); err != nil {
+	result := envelope.Data.applicationResponse()
+	if err := result.Validate(request.Installation.ID, origin); err != nil {
 		return enrollment.EnrollmentResponse{}, fmt.Errorf("validate Core enrollment response: %w", err)
 	}
-	return envelope.Data, nil
+	return result, nil
+}
+
+// enrollmentRequestDTO and enrollmentResponseDTO keep Core's JSON contract at
+// the protocol adapter boundary rather than in Identity domain models.
+type enrollmentRequestDTO struct {
+	BootstrapToken string `json:"bootstrap_token"`
+	enrollmentPayloadDTO
+}
+
+type enrollmentPayloadDTO struct {
+	AttemptID    string          `json:"enrollment_attempt_id"`
+	Installation installationDTO `json:"installation"`
+	Agent        agentDTO        `json:"agent"`
+	Environment  environmentDTO  `json:"environment"`
+	Metadata     map[string]any  `json:"metadata,omitempty"`
+}
+
+type installationDTO struct {
+	ID string `json:"id"`
+}
+
+type agentDTO struct {
+	Version string `json:"version"`
+}
+
+type environmentDTO struct {
+	OS           string `json:"os"`
+	Architecture string `json:"architecture"`
+	Hostname     string `json:"hostname,omitempty"`
+}
+
+type enrollmentResponseDTO struct {
+	EnrollmentID   string          `json:"enrollment_id"`
+	InstallationID string          `json:"installation_id"`
+	Binding        bindingDTO      `json:"binding"`
+	Credential     credentialDTO   `json:"credential"`
+	ControlPlane   controlPlaneDTO `json:"control_plane"`
+}
+
+type bindingDTO struct {
+	ID     string `json:"id"`
+	NodeID string `json:"node_id"`
+	Status string `json:"status"`
+}
+
+type credentialDTO struct {
+	Type        string `json:"type"`
+	AccessToken string `json:"access_token"`
+}
+
+type controlPlaneDTO struct {
+	BaseURL             string `json:"base_url"`
+	PollIntervalSeconds int    `json:"poll_interval_seconds"`
+}
+
+func (dto enrollmentResponseDTO) applicationResponse() enrollment.EnrollmentResponse {
+	return enrollment.EnrollmentResponse{
+		EnrollmentID: dto.EnrollmentID, InstallationID: dto.InstallationID,
+		Binding:      enrollment.Binding{ID: dto.Binding.ID, NodeID: dto.Binding.NodeID, Status: dto.Binding.Status},
+		Credential:   enrollment.Credential{Type: dto.Credential.Type, AccessToken: dto.Credential.AccessToken},
+		ControlPlane: enrollment.ControlPlane{BaseURL: dto.ControlPlane.BaseURL, PollIntervalSeconds: dto.ControlPlane.PollIntervalSeconds},
+	}
 }
 
 func classifyHTTPError(response *http.Response, body []byte) error {

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/dependency"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 )
 
 func TestRunDependencyStatusWritesLifecycleResults(

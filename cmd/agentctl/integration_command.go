@@ -11,13 +11,15 @@ import (
 	"os"
 	"sort"
 	"strings"
-	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentlifecycle"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/configuration"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
-	"github.com/ar-imms/telemetry-agent/internal/reconciliation"
+	"github.com/ar-imms/telemetry-agent/internal/app"
+	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
+	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
+	"github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation"
+	reconciliationcontracts "github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation/contracts"
+	definitionapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
+	agentservice "github.com/ar-imms/telemetry-agent/internal/runtime/service"
 )
 
 func writeIntegrationHelp(w io.Writer) {
@@ -47,7 +49,7 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 	}
 	flags := flag.NewFlagSet("integration "+command, flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	statePath := flags.String("state-path", agentstate.DefaultPath(), "persistent Agent state path")
+	statePath := flags.String("state-path", agentservice.DefaultStatePath(), "persistent Agent state path")
 	id := flags.String("id", "", "Integration instance ID")
 	definition := flags.String("definition", "", "exact definition ID")
 	version := flags.String("version", "", "exact definition version")
@@ -55,7 +57,7 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 	enabled := flags.Bool("enabled", true, "enable created or updated instance")
 	expected := flags.Uint64("expected-revision", 0, "expected instance revision")
 	limit := flags.Int("limit", 20, "history limit (1-100)")
-	if err := flags.Parse(args[1:]); err != nil {
+	if err := parseCompatibilityFlags(flags, args[1:]); err != nil {
 		return 2
 	}
 	if strings.TrimSpace(*statePath) == "" {
@@ -68,12 +70,13 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 	if err := ctx.Err(); err != nil {
 		return integrationCommandError(stderr, command, err)
 	}
-	stateStore := agentstate.NewStore(*statePath)
-	store, ok := stateStore.(agentstate.SQLiteStore)
+	stateStore := newAgentStateStore(*statePath)
+	_, ok := stateStore.(agentstate.SQLiteStore)
 	if !ok {
 		return integrationCommandError(stderr, command, fmt.Errorf("SQLite state store is required"))
 	}
-	repository := store.IntegrationRepository()
+	repository := app.NewDesiredStateRepository(*statePath)
+	diagnostics := app.NewReconciliationRepository(*statePath)
 	switch command {
 	case "configure", "update":
 		if *id == "" || *definition == "" || *version == "" {
@@ -88,23 +91,6 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 			fmt.Fprintln(stderr, "usage error: update requires --expected-revision")
 			return 2
 		}
-		if command == "update" && !flagProvided(args[1:], "--enabled") {
-			snapshot, err := repository.Snapshot()
-			if err != nil {
-				return integrationCommandError(stderr, command, err)
-			}
-			found := false
-			for _, instance := range snapshot.Instances {
-				if instance.ID == *id {
-					*enabled = instance.Enabled
-					found = true
-					break
-				}
-			}
-			if !found {
-				return integrationCommandError(stderr, command, sql.ErrNoRows)
-			}
-		}
 		var values map[string]any
 		if err := json.Unmarshal([]byte(*settings), &values); err != nil || values == nil {
 			fmt.Fprintln(stderr, "usage error: --settings must be a JSON object")
@@ -114,8 +100,18 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 		if err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
-		service := configuration.NewIntegrationService(integration.NewResolver(registry), repository)
-		stored, revision, err := service.Put(integration.IntegrationInstance{ID: *id, DefinitionID: *definition, DefinitionVersion: *version, Configuration: values, Enabled: *enabled}, *expected)
+		service := desiredstateapp.NewService(app.NewMonitoringDesiredStateResolver(definitionapp.NewResolver(registry)), repository)
+		instance := desiredstatedomain.Instance{ID: *id, DefinitionID: *definition, DefinitionVersion: *version, Configuration: values, Enabled: *enabled}
+		var stored desiredstatedomain.Instance
+		var revision uint64
+		if command == "update" && !flagProvided(args[1:], "--enabled") {
+			stored, revision, err = service.PutPreservingEnabled(instance, *expected)
+		} else {
+			stored, revision, err = service.Put(instance, *expected)
+		}
+		if errors.Is(err, desiredstateapp.ErrInstanceNotFound) {
+			err = sql.ErrNoRows
+		}
 		if err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
@@ -133,27 +129,15 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 			fmt.Fprintf(stdout, "Desired Integration deleted: id=%s desired_set_revision=%d; Agent Service convergence is pending\n", *id, revision)
 			return 0
 		}
-		snapshot, err := repository.Snapshot()
-		if err != nil {
-			return integrationCommandError(stderr, command, err)
-		}
-		var instance *integration.IntegrationInstance
-		for i := range snapshot.Instances {
-			if snapshot.Instances[i].ID == *id {
-				instance = &snapshot.Instances[i]
-				break
-			}
-		}
-		if instance == nil {
-			return integrationCommandError(stderr, command, sql.ErrNoRows)
-		}
-		instance.Enabled = command == "enable"
 		registry, err := productionIntegrationRegistry()
 		if err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
-		service := configuration.NewIntegrationService(integration.NewResolver(registry), repository)
-		stored, revision, err := service.Put(*instance, *expected)
+		service := desiredstateapp.NewService(app.NewMonitoringDesiredStateResolver(definitionapp.NewResolver(registry)), repository)
+		stored, revision, err := service.SetEnabled(*id, command == "enable", *expected)
+		if errors.Is(err, desiredstateapp.ErrInstanceNotFound) {
+			err = sql.ErrNoRows
+		}
 		if err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
@@ -191,14 +175,14 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 		if err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
-		evidence, err := store.ReconciliationEvidence()
+		evidence, err := diagnostics.Evidence()
 		status := "Desired"
 		if err == nil {
 			currentBaseline, baselineErr := newRuntimeBaseline(*statePath)
 			if baselineErr != nil {
 				return integrationCommandError(stderr, command, baselineErr)
 			}
-			baseline, baselineErr := currentBaseline.Snapshot()
+			baseline, baselineErr := currentBaseline.Snapshot(ctx)
 			if baselineErr != nil {
 				return integrationCommandError(stderr, command, baselineErr)
 			}
@@ -206,43 +190,29 @@ func runIntegration(ctx context.Context, args []string, stdout, stderr io.Writer
 		}
 		fmt.Fprintf(stdout, "Desired revision: %d\nConvergence: %s\n", desired.Revision, status)
 		if err == nil {
-			fmt.Fprintf(stdout, "stage=%s code=%s attempts=%d/5 generation=%d candidate=%s\n", evidence.Stage, evidence.Code, evidence.Attempts, evidence.LifecycleGeneration, evidence.CandidateDigest)
+			fmt.Fprintf(stdout, "stage=%s code=%s attempts=%d/5 generation=%d candidate=%s\n", evidence.Stage, evidence.Code, evidence.Attempts, evidence.Generation, evidence.CandidateDigest)
 		} else if !errors.Is(err, sql.ErrNoRows) && !errors.Is(err, os.ErrNotExist) {
 			return integrationCommandError(stderr, command, err)
 		}
 		fmt.Fprintln(stdout, "Integration health and telemetry delivery are not inferred from configuration application.")
 	case "history":
-		rows, err := store.ReconciliationHistory(*limit)
+		rows, err := diagnostics.History(*limit)
 		if err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
 		for _, row := range rows {
-			fmt.Fprintf(stdout, "attempt=%d epoch=%d status=%s stage=%s code=%s generation=%d candidate=%s at=%s detail=%s\n", row.Number, row.Epoch, row.Status, row.Stage, row.Code, row.LifecycleGeneration, row.CandidateDigest, row.UpdatedAt, row.SafeDetail)
+			fmt.Fprintf(stdout, "attempt=%d epoch=%d status=%s stage=%s code=%s generation=%d candidate=%s at=%s detail=%s\n", row.Number, row.Epoch, row.Status, row.Stage, row.Code, row.Generation, row.CandidateDigest, row.UpdatedAt, row.SafeDetail)
 		}
 	case "retry":
-		evidence, err := store.ReconciliationEvidence()
-		if err != nil {
-			return integrationCommandError(stderr, command, err)
-		}
-		desired, err := repository.Snapshot()
-		if err != nil {
-			return integrationCommandError(stderr, command, err)
-		}
 		currentBaseline, err := newRuntimeBaseline(*statePath)
 		if err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
-		baseline, err := currentBaseline.Snapshot()
+		revision, err := reconciliation.NewRetryService(repository, currentBaseline, diagnostics).RetryCurrentTarget(ctx)
 		if err != nil {
 			return integrationCommandError(stderr, command, err)
 		}
-		if !integrationTargetMatches(evidence, desired.Revision, baseline) {
-			return integrationCommandError(stderr, command, fmt.Errorf("latest desired or baseline target changed; the new target has its own retry budget"))
-		}
-		if err := store.RetryReconciliationTarget(evidence.Target.Key, time.Now().UTC()); err != nil {
-			return integrationCommandError(stderr, command, err)
-		}
-		fmt.Fprintf(stdout, "Explicit retry recorded for desired revision %d; Agent Service polling will resume convergence\n", evidence.Target.DesiredRevision)
+		fmt.Fprintf(stdout, "Explicit retry recorded for desired revision %d; Agent Service polling will resume convergence\n", revision)
 	default:
 		return usageIntegration(stderr, "unknown integration command "+command)
 	}
@@ -276,15 +246,9 @@ func flagProvided(args []string, name string) bool {
 	return false
 }
 
-func integrationConvergenceStatus(evidence agentstate.ReconciliationEvidence, desiredRevision uint64, baseline agentlifecycle.CleanBaselineSnapshot) string {
-	if !integrationTargetMatches(evidence, desiredRevision, baseline) {
+func integrationConvergenceStatus(evidence reconciliationcontracts.TargetEvidence, desiredRevision uint64, baseline reconciliation.BaselineSnapshot) string {
+	if !reconciliation.TargetIsCurrent(evidence, desiredRevision, baseline) {
 		return string(reconciliation.StatusPending)
 	}
-	return evidence.Status
-}
-
-func integrationTargetMatches(evidence agentstate.ReconciliationEvidence, desiredRevision uint64, baseline agentlifecycle.CleanBaselineSnapshot) bool {
-	return evidence.Target.DesiredRevision == desiredRevision &&
-		evidence.Target.DesiredGeneration == baseline.DesiredGeneration &&
-		evidence.Target.BaselineFingerprint == baseline.Fingerprint
+	return string(evidence.Status)
 }

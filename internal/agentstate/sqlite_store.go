@@ -1,6 +1,7 @@
 package agentstate
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -8,33 +9,45 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
-	_ "modernc.org/sqlite"
+	platformsqlite "github.com/ar-imms/telemetry-agent/internal/platform/sqlite"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
-
-// sqliteInitializationMutex prevents concurrent first-open schema and import
-// work from racing across SQLiteStore values in the same Agent process.
-var sqliteInitializationMutex sync.Mutex
-
-// sqliteUpdateMutex serializes in-process mutations across store values.
-// SQLite's immediate transactions and busy timeout coordinate other processes.
-var sqliteUpdateMutex sync.Mutex
 
 // SQLiteStore persists Agent operational state in one local SQLite database.
 // Each operation owns and closes its database handle; transactions remain
 // short and callbacks must contain state changes only.
 type SQLiteStore struct {
-	path       string
-	legacyPath string
+	path               string
+	legacyPath         string
+	initializeSchema   func(*sql.DB) error
+	markGatewayApplied func(*sql.Tx, uint64, string) error
 }
 
 // NewSQLiteStore creates a SQLite WAL store at the supplied database path.
-func NewSQLiteStore(path string) SQLiteStore {
+// Application composition supplies its ordered schema initializer explicitly.
+func NewSQLiteStore(path string, initializeSchema func(*sql.DB) error) SQLiteStore {
+	return NewSQLiteStoreWithGatewayApplied(path, initializeSchema, nil)
+}
+
+// NewSQLiteStoreWithGatewayApplied creates a SQLite store whose candidate
+// completion can enlist Configuration's Gateway attribution in the same SQL
+// transaction. Application composition supplies the owner callback.
+func NewSQLiteStoreWithGatewayApplied(path string, initializeSchema func(*sql.DB) error, markGatewayApplied func(*sql.Tx, uint64, string) error) SQLiteStore {
 	path = strings.TrimSpace(path)
 	legacy := filepath.Join(filepath.Dir(path), "state.json")
-	return SQLiteStore{path: path, legacyPath: legacy}
+	return SQLiteStore{path: path, legacyPath: legacy, initializeSchema: initializeSchema, markGatewayApplied: markGatewayApplied}
+}
+
+// OpenDatabase opens the operational database after initializing its shared schema.
+func (s SQLiteStore) OpenDatabase() (*sql.DB, error) {
+	return s.openWithContext(context.Background())
+}
+
+// OpenDatabaseContext opens the operational database under the caller context.
+func (s SQLiteStore) OpenDatabaseContext(ctx context.Context) (*sql.DB, error) {
+	return s.openWithContext(ctx)
 }
 
 // Save atomically replaces the persisted Agent state.
@@ -61,8 +74,9 @@ func (s SQLiteStore) Update(mutate StateMutation) (State, error) {
 	if mutate == nil {
 		return State{}, fmt.Errorf("Agent state mutation is required")
 	}
-	sqliteUpdateMutex.Lock()
-	defer sqliteUpdateMutex.Unlock()
+	locker := platformsqlite.UpdateLocker()
+	locker.Lock()
+	defer locker.Unlock()
 
 	db, err := s.open()
 	if err != nil {
@@ -81,7 +95,7 @@ func (s SQLiteStore) Update(mutate StateMutation) (State, error) {
 		if !errors.Is(err, os.ErrNotExist) {
 			return State{}, err
 		}
-		state = State{Dependencies: make(map[string]DependencyState)}
+		state = State{Dependencies: make(map[string]dependencydomain.DependencyState)}
 	}
 	previous := state
 	if err := mutate(&state); err != nil {
@@ -112,35 +126,22 @@ func (s SQLiteStore) Update(mutate StateMutation) (State, error) {
 }
 
 func (s SQLiteStore) open() (*sql.DB, error) {
-	sqliteInitializationMutex.Lock()
-	defer sqliteInitializationMutex.Unlock()
+	return s.openWithContext(context.Background())
+}
 
+func (s SQLiteStore) openWithContext(ctx context.Context) (*sql.DB, error) {
 	if s.path == "" {
 		return nil, fmt.Errorf("Agent SQLite database path is required")
 	}
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o750); err != nil {
-		return nil, fmt.Errorf("create Agent database directory: %w", err)
+	if s.initializeSchema == nil {
+		return nil, fmt.Errorf("Agent SQLite schema initializer is required")
 	}
-	dsn := "file:" + filepath.ToSlash(s.path) +
-		"?_txlock=immediate&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(FULL)"
-	db, err := sql.Open("sqlite", dsn)
-	if err != nil {
-		return nil, fmt.Errorf("open Agent SQLite database: %w", err)
-	}
-	db.SetMaxOpenConns(1)
-	if err := db.Ping(); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("connect to Agent SQLite database: %w", err)
-	}
-	if err := ensureSQLiteSchema(db); err != nil {
-		db.Close()
-		return nil, err
-	}
-	if err := s.importLegacyState(db); err != nil {
-		db.Close()
-		return nil, err
-	}
-	return db, nil
+	return platformsqlite.Open(ctx, s.path, func(db *sql.DB) error {
+		if err := s.initializeSchema(db); err != nil {
+			return err
+		}
+		return s.importLegacyState(db)
+	})
 }
 
 type stateQueryer interface {

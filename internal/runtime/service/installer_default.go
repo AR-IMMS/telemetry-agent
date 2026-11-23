@@ -1,0 +1,44 @@
+package agentinstallation
+
+import (
+	"context"
+
+	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+)
+
+// NewInstaller wires the production effects for a packaged Agent installation.
+func NewInstaller(
+	downloader bootstrap.Downloader,
+	runner bootstrap.CommandRunner,
+	stateStoreFactory func(string) agentstate.Repository,
+) Installer {
+	var newStateStore func(string) stateStore
+	if stateStoreFactory != nil {
+		newStateStore = func(path string) stateStore { return stateStoreFactory(path) }
+	}
+	return Installer{
+		layoutFor:       DefaultLayout,
+		copyAgentBinary: CopyAgentBinary,
+		bootstrap: func(
+			ctx context.Context,
+			options bootstrap.Options,
+		) (bootstrap.Result, error) {
+			return bootstrap.Run(ctx, options, downloader, runner)
+		},
+		installSupervisor: func(ctx context.Context, installDir string, platform identity.PlatformInfo) (string, error) {
+			artifact, err := bootstrap.SelectSupervisorArtifact(platform)
+			if err != nil {
+				return "", err
+			}
+			result, err := bootstrap.InstallSupervisorBinary(ctx, installDir, artifact, downloader)
+			if err != nil {
+				return "", err
+			}
+			return result.BinaryPath, nil
+		},
+		newStateStore: newStateStore,
+		serviceFor:    newDefaultServiceInstaller,
+	}
+}

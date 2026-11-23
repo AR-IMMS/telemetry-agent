@@ -3,38 +3,69 @@ package main
 import (
 	"bytes"
 	"context"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
+	matchingdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/domain"
+	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
 )
+
+func TestCatalogCapabilityAssessorUsesPinnedRuntimeCatalog(t *testing.T) {
+	platform := identity.PlatformInfo{OS: runtime.GOOS, Architecture: runtime.GOARCH}
+	catalog, err := collectorruntime.StaticCatalog(platform)
+	if err != nil {
+		t.Fatalf("load Runtime catalog for %s/%s: %v", platform.OS, platform.Architecture, err)
+	}
+	assessor := matchingdomain.NewCatalogCapabilityAssessor(catalog, platform.OS, platform.OS+"/"+platform.Architecture)
+
+	assessment, err := assessor.Assess([]string{monitoringdomain.RedisCapability})
+	if err != nil {
+		t.Fatalf("assess Redis capability: %v", err)
+	}
+	if assessment.Status != matchingdomain.CapabilitySupported || assessment.Platform != platform.OS+"/"+platform.Architecture ||
+		assessment.ArtifactVersion != "0.160.0" || assessment.ManifestVersion == "" {
+		t.Fatalf("Redis assessment lacks exact pinned Runtime evidence: %+v", assessment)
+	}
+
+	assessment, err = assessor.Assess([]string{monitoringdomain.RedisCapability, "otel.receiver.not_in_pinned_catalog.metrics"})
+	if err != nil {
+		t.Fatalf("assess unsupported capability: %v", err)
+	}
+	if assessment.Status != matchingdomain.CapabilityUnsupported || len(assessment.Unsupported) != 1 ||
+		assessment.Unsupported[0] != "otel.receiver.not_in_pinned_catalog.metrics" {
+		t.Fatalf("unsupported capability assessment = %+v", assessment)
+	}
+}
 
 func TestIntegrationMatchReadsPersistedInventoryWithoutDesiredStateMutation(t *testing.T) {
 	statePath := t.TempDir() + "/agent.db"
-	store := agentstate.NewSQLiteStore(statePath)
-	repository := store.InventoryRepository()
+	store := sqlitefixture.NewSQLiteStore(statePath)
+	repository := sqlitefixture.NewInventoryRepositoryFromStore(store)
 	now := time.Now().UTC()
-	snapshot := discovery.ProviderSnapshot{
+	snapshot := inventorydomain.ProviderSnapshot{
 		ProviderID: "docker", ProviderInstanceID: "local-engine", Complete: true, ObservedAt: now,
-		Resources: []discovery.ResourceObservation{{
-			ProviderResourceID: "container-id", Kind: discovery.ResourceContainer, LifecycleState: "running",
+		Resources: []inventorydomain.ResourceObservation{{
+			ProviderResourceID: "container-id", Kind: inventorydomain.ResourceContainer, LifecycleState: "running",
 			Attributes: map[string]string{"container.image.repository": "docker.io/library/redis"},
-			Endpoints: []discovery.Endpoint{{Address: "127.0.0.1", Port: 6380, Protocol: "tcp", Scope: discovery.EndpointHost, Provenance: "published_port"}},
+			Endpoints:  []inventorydomain.Endpoint{{Address: "127.0.0.1", Port: 6380, Protocol: "tcp", Scope: inventorydomain.EndpointHost, Provenance: "published_port"}},
 		}},
 	}
-	resource := discovery.Resource{
-		Key: discovery.ResourceKey{Provider: "docker", ProviderInstance: "local-engine", ProviderResourceID: "container-id"},
-		Kind: discovery.ResourceContainer, LifecycleState: "running", Presence: discovery.PresencePresent,
-		Attributes: map[string]string{"container.image.repository": "docker.io/library/redis"},
-		Endpoints: []discovery.Endpoint{{Address: "127.0.0.1", Port: 6380, Protocol: "tcp", Scope: discovery.EndpointHost, Provenance: "published_port"}},
+	resource := inventorydomain.Resource{
+		Key:  inventorydomain.ResourceKey{Provider: "docker", ProviderInstance: "local-engine", ProviderResourceID: "container-id"},
+		Kind: inventorydomain.ResourceContainer, LifecycleState: "running", Presence: inventorydomain.PresencePresent,
+		Attributes:  map[string]string{"container.image.repository": "docker.io/library/redis"},
+		Endpoints:   []inventorydomain.Endpoint{{Address: "127.0.0.1", Port: 6380, Protocol: "tcp", Scope: inventorydomain.EndpointHost, Provenance: "published_port"}},
 		FirstSeenAt: now, LastSeenAt: now,
 	}
-	if err := repository.CommitProviderSnapshot(0, snapshot, []discovery.Resource{resource}, true); err != nil {
+	if err := repository.CommitProviderSnapshot(0, snapshot, []inventorydomain.Resource{resource}, true); err != nil {
 		t.Fatal(err)
 	}
-	desired := store.IntegrationRepository()
+	desired := newTestDesiredStateRepository(store)
 	before, err := desired.Snapshot()
 	if err != nil {
 		t.Fatal(err)

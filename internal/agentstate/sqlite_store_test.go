@@ -5,10 +5,13 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 func TestSQLiteStorePersistsStateAndUsesWAL(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	if _, err := store.Update(func(state *State) error {
 		state.DesiredGeneration = 3
 		return nil
@@ -42,24 +45,26 @@ func TestSQLiteStoreImportsLegacyJSONState(t *testing.T) {
 	legacy := NewFileStore(legacyPath)
 	want := State{
 		DesiredGeneration: 4,
-		Dependencies: map[string]DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {
 				Enabled: true,
-				Ownership: &OwnershipRecord{Resources: []OwnedResource{{
-					Kind: "systemd-service", Identifier: "node-exporter",
-				}}},
 			},
 		},
+	}
+	if err := want.RecordOwnership("node-exporter", []servicedomain.OwnedResource{{
+		Kind: "systemd-service", Identifier: "node-exporter",
+	}}); err != nil {
+		t.Fatalf("record Agent-owned resources: %v", err)
 	}
 	if err := legacy.Save(want); err != nil {
 		t.Fatalf("save legacy state: %v", err)
 	}
-	store := NewSQLiteStore(filepath.Join(directory, "state.db"))
+	store := newTestSQLiteStore(filepath.Join(directory, "state.db"))
 	got, err := store.Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if got.Dependencies["node-exporter"].Ownership.Resources[0].Identifier != "node-exporter" ||
+	if got.OwnedDependencyResources("node-exporter")[0].Identifier != "node-exporter" ||
 		got.DesiredGeneration != want.DesiredGeneration {
 		t.Fatalf("migrated state = %#v, want %#v", got, want)
 	}
@@ -70,8 +75,8 @@ func TestSQLiteStoreImportsLegacyJSONState(t *testing.T) {
 
 func TestSQLiteStoreSerializesConcurrentUpdatesAcrossInstances(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	first := NewSQLiteStore(path)
-	second := NewSQLiteStore(path)
+	first := newTestSQLiteStore(path)
+	second := newTestSQLiteStore(path)
 	const updates = 20
 	var wait sync.WaitGroup
 	errors := make(chan error, updates)
@@ -107,7 +112,7 @@ func TestSQLiteStoreSerializesConcurrentUpdatesAcrossInstances(t *testing.T) {
 }
 
 func TestSQLiteStoreJournalsActivationAndRollback(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
 	if _, err := store.Update(func(state *State) error {
 		state.DesiredGeneration = 2
 		return state.MarkGenerationActivated(2)
@@ -141,7 +146,7 @@ func TestNewStoreMigratesExplicitLegacyJSONPathToSQLite(t *testing.T) {
 	if err := NewFileStore(legacyPath).Save(State{DesiredGeneration: 7}); err != nil {
 		t.Fatalf("write legacy state: %v", err)
 	}
-	store := NewStore(legacyPath)
+	store := newTestStore(legacyPath)
 	got, err := store.Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)

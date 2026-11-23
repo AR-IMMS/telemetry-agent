@@ -1,0 +1,51 @@
+PR-09.5a Linux test output
+Checkout: 696ebe0c723ebd60eb8a942fdf6340e93e406248 (source-equivalent to c45456143ab482255daf1fad0c05f8d8af98ba11; later tracked changes are documentation-only)
+Runtime: Docker Desktop Linux Engine 29.5.3, linux/x86_64
+Image: golang:1.25.5, sha256:8bbd14091f2c61916134fa6aeb8f76b18693fcb29a39ec6d8be9242c0a7e9260
+Command: docker run --rm --init --mount type=bind,source=<repo>,target=/src --mount type=bind,source=<repo>/.superpowers/sdd/pr-09.5-architecture-consolidation/linux-machine-id,target=/etc/machine-id,readonly --workdir /src golang:1.25.5 go test ./... -count=1
+Fixture content: 8d5fce92149c4fa9a0bd7f0f3d5c1122 (32 hex characters; read-only mount)
+Result: PASS, exit 0
+
+ok  	github.com/ar-imms/telemetry-agent/cmd/agentctl	2.888s
+ok  	github.com/ar-imms/telemetry-agent/internal/agenthealth	0.012s
+ok  	github.com/ar-imms/telemetry-agent/internal/agentinstallation	0.017s
+ok  	github.com/ar-imms/telemetry-agent/internal/agentlifecycle	1.228s
+ok  	github.com/ar-imms/telemetry-agent/internal/agentstate	8.650s
+ok  	github.com/ar-imms/telemetry-agent/internal/app	0.007s
+ok  	github.com/ar-imms/telemetry-agent/internal/bootstrap	0.058s
+ok  	github.com/ar-imms/telemetry-agent/internal/collectorruntime	0.034s
+ok  	github.com/ar-imms/telemetry-agent/internal/config	0.129s
+ok  	github.com/ar-imms/telemetry-agent/internal/configuration	0.011s
+ok  	github.com/ar-imms/telemetry-agent/internal/configuration/sqlite	0.299s
+ok  	github.com/ar-imms/telemetry-agent/internal/coreapi	0.063s
+ok  	github.com/ar-imms/telemetry-agent/internal/coreconfig	0.005s
+ok  	github.com/ar-imms/telemetry-agent/internal/credentialstore	0.080s
+ok  	github.com/ar-imms/telemetry-agent/internal/dependency	0.255s
+ok  	github.com/ar-imms/telemetry-agent/internal/dependency/libre_hardware_monitor	0.167s
+ok  	github.com/ar-imms/telemetry-agent/internal/dependency/node_exporter	0.187s
+ok  	github.com/ar-imms/telemetry-agent/internal/discovery	0.007s
+ok  	github.com/ar-imms/telemetry-agent/internal/discovery/docker	0.008s
+ok  	github.com/ar-imms/telemetry-agent/internal/discovery/sqlite	0.383s
+ok  	github.com/ar-imms/telemetry-agent/internal/enrollment	15.103s
+ok  	github.com/ar-imms/telemetry-agent/internal/enrollment/sqlite	0.149s
+ok  	github.com/ar-imms/telemetry-agent/internal/identity	0.021s
+ok  	github.com/ar-imms/telemetry-agent/internal/identity/sqlite	0.143s
+ok  	github.com/ar-imms/telemetry-agent/internal/integration	0.018s
+ok  	github.com/ar-imms/telemetry-agent/internal/integration/redis	0.008s
+ok  	github.com/ar-imms/telemetry-agent/internal/mockcore	0.019s
+ok  	github.com/ar-imms/telemetry-agent/internal/monitoringprofile	0.019s
+ok  	github.com/ar-imms/telemetry-agent/internal/opampserver	0.033s
+ok  	github.com/ar-imms/telemetry-agent/internal/opampsupervisorconfig	0.005s
+ok  	github.com/ar-imms/telemetry-agent/internal/operations	0.016s
+ok  	github.com/ar-imms/telemetry-agent/internal/operations/dockeradapter	0.006s
+ok  	github.com/ar-imms/telemetry-agent/internal/operations/handlers	0.032s
+ok  	github.com/ar-imms/telemetry-agent/internal/operations/nats	0.029s
+ok  	github.com/ar-imms/telemetry-agent/internal/operations/sqlite	0.384s
+ok  	github.com/ar-imms/telemetry-agent/internal/operations/testsupport/mockcore	0.006s
+ok  	github.com/ar-imms/telemetry-agent/internal/platform/events	0.016s
+ok  	github.com/ar-imms/telemetry-agent/internal/platform/sqlite	0.036s
+ok  	github.com/ar-imms/telemetry-agent/internal/platform/sqlite/migrate	0.005s
+ok  	github.com/ar-imms/telemetry-agent/internal/processowner	0.025s
+ok  	github.com/ar-imms/telemetry-agent/internal/reconciliation	0.396s
+?   	github.com/ar-imms/telemetry-agent/internal/reconciliation/contracts	[no test files]
+ok  	github.com/ar-imms/telemetry-agent/internal/supervisor	0.084s

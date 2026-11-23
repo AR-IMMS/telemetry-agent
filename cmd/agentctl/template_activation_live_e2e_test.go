@@ -15,12 +15,20 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
-	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
-	"github.com/ar-imms/telemetry-agent/internal/configuration"
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
-	discoverydocker "github.com/ar-imms/telemetry-agent/internal/discovery/docker"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
+	"github.com/ar-imms/telemetry-agent/internal/app"
+	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
+	templatesapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
+	templatesconfigdomain "github.com/ar-imms/telemetry-agent/internal/configuration/templates/domain"
+	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
+	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
+	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
+	definitionsapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
 const templateRuntimeE2EEnv = "AR_IMMS_S4_TEMPLATE_RUNTIME_E2E"
@@ -52,14 +60,14 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	configPath := filepath.Join(tempDir, "agent", "otel.yaml")
-	store := agentstate.NewSQLiteStore(statePath)
+	store := sqlitefixture.NewSQLiteStore(statePath)
 	initial := agentstate.State{
-		Collector: agentstate.CollectorContext{
+		Collector: collectordomain.CollectorContext{
 			ConfigRoot: configRoot, BinaryPath: binary, ConfigPath: configPath,
 			GatewayEndpoint: sinkEndpoint, HealthEndpoint: defaultHealthEndpoint,
 		},
 		DesiredGeneration: 1, ActivatedGeneration: 1, AppliedGeneration: 1,
-		Dependencies: map[string]agentstate.DependencyState{},
+		Dependencies: map[string]dependencydomain.DependencyState{},
 	}
 	if err := store.Save(initial); err != nil {
 		t.Fatal(err)
@@ -68,7 +76,7 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	baselineSnapshot, err := baseline.Snapshot()
+	baselineSnapshot, err := baseline.Snapshot(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,12 +116,12 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	discoveryCoordinator, err := discovery.NewCoordinator(store.InventoryRepository(), []discovery.DiscoveryProvider{provider}, discovery.DefaultPolicy(), 5*time.Second)
+	discoveryCoordinator, err := inventoryapp.NewCoordinator(sqlitefixture.NewInventoryRepositoryFromStore(store), []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), 5*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
 	cycle, err := discoveryCoordinator.DiscoverOnce(ctx)
-	if err != nil || !discoveryCycleSucceeded(cycle) {
+	if err != nil || !cycle.Succeeded() {
 		t.Fatalf("discover live Docker resources: result=%+v err=%v", cycle, err)
 	}
 	materializer, err := newRuntimeTemplateMaterializer(statePath)
@@ -123,13 +131,13 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 	if err := materializer.Refresh(ctx); err != nil {
 		t.Fatal(err)
 	}
-	desired, err := store.IntegrationRepository().Snapshot()
+	desired, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
 	generated := make(map[string]string, len(containerIDs))
 	for _, instance := range desired.Instances {
-		if instance.Source == integration.SourceTemplate && instance.Binding != nil && instance.Enabled {
+		if instance.Source == desiredstatedomain.SourceTemplate && instance.Binding != nil && instance.Enabled {
 			for _, containerID := range containerIDs {
 				if instance.Binding.ResourceID == containerID {
 					endpoint, ok := instance.Configuration["endpoint"].(string)
@@ -149,7 +157,7 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 	serviceCtx, stopService := context.WithCancel(ctx)
 	serviceDone := make(chan error, 1)
 	go func() {
-		serviceDone <- runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, agentstate.TeardownAction, []agentstate.OwnedResource) error {
+		serviceDone <- runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, dependencydomain.TeardownAction, []servicedomain.OwnedResource) error {
 			return nil
 		}, nil, bootstrap.OSCommandRunner{})
 	}()
@@ -237,7 +245,7 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 		stopService()
 		t.Fatalf("updated Template candidate lost host or Gateway components: %s", updatedConfig)
 	}
-	desiredBeforeNoOp, err := store.IntegrationRepository().Snapshot()
+	desiredBeforeNoOp, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil {
 		stopService()
 		t.Fatalf("read desired snapshot before no-op materialization: %v", err)
@@ -246,7 +254,7 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 		stopService()
 		t.Fatalf("repeat unchanged Template materialization: %v", err)
 	}
-	desiredAfterNoOp, err := store.IntegrationRepository().Snapshot()
+	desiredAfterNoOp, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil || desiredAfterNoOp.Revision != desiredBeforeNoOp.Revision {
 		stopService()
 		t.Fatalf("unchanged materialization advanced desired revision: before=%d after=%d err=%v", desiredBeforeNoOp.Revision, desiredAfterNoOp.Revision, err)
@@ -264,7 +272,7 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 	case <-ctx.Done():
 		stopService()
 		t.Fatalf("timed out observing unchanged Template runtime")
-	case <-time.After(discoveryPollInterval + reconciliationPollInterval + time.Second):
+	case <-time.After(app.DiscoveryPollInterval + app.ReconciliationPollInterval + time.Second):
 	}
 	finalSteadyState, err := store.Load()
 	finalConfig, configErr := os.ReadFile(configPath)
@@ -321,7 +329,7 @@ func TestLiveDockerTemplateConvergesThroughAgentRuntime(t *testing.T) {
 	serviceCtx, stopService = context.WithCancel(ctx)
 	serviceDone = make(chan error, 1)
 	go func() {
-		serviceDone <- runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, agentstate.TeardownAction, []agentstate.OwnedResource) error {
+		serviceDone <- runRuntimeWithReconciliation(serviceCtx, statePath, func(context.Context, string, dependencydomain.TeardownAction, []servicedomain.OwnedResource) error {
 			return nil
 		}, nil, bootstrap.OSCommandRunner{})
 	}()
@@ -383,7 +391,7 @@ func waitForTemplateActivation(t *testing.T, ctx context.Context, store agentsta
 
 func assertTemplateInstancesEnabled(t *testing.T, store agentstate.SQLiteStore, enabled bool, resourceIDs []string) {
 	t.Helper()
-	snapshot, err := store.IntegrationRepository().Snapshot()
+	snapshot, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil {
 		t.Fatalf("read generated Integration instances: %v", err)
 	}
@@ -393,7 +401,7 @@ func assertTemplateInstancesEnabled(t *testing.T, store agentstate.SQLiteStore, 
 	}
 	seen := make(map[string]struct{}, len(resourceIDs))
 	for _, instance := range snapshot.Instances {
-		if instance.Source != integration.SourceTemplate || instance.Binding == nil {
+		if instance.Source != desiredstatedomain.SourceTemplate || instance.Binding == nil {
 			continue
 		}
 		if _, isFixture := expected[instance.Binding.ResourceID]; !isFixture {
@@ -597,12 +605,12 @@ service:
 	return ""
 }
 
-func newRuntimeTemplateServiceForTest(t *testing.T, statePath string, registry integration.Registry) configuration.TemplateService {
+func newRuntimeTemplateServiceForTest(t *testing.T, statePath string, registry definitionsapp.Registry) templatesapp.Service {
 	t.Helper()
-	return configuration.NewTemplateService(registry, agentstate.NewSQLiteStore(statePath).TemplateRepository())
+	return templatesapp.NewService(registry, newTestTemplateRepository(sqlitefixture.NewSQLiteStore(statePath)))
 }
 
-func writeRuntimeTemplateFile(t *testing.T, path string, template integration.IntegrationTemplate) {
+func writeRuntimeTemplateFile(t *testing.T, path string, template templatesconfigdomain.Template) {
 	t.Helper()
 	content, err := json.MarshalIndent(template, "", "  ")
 	if err != nil {

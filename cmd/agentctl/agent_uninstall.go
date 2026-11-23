@@ -9,13 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentinstallation"
-	"github.com/ar-imms/telemetry-agent/internal/agentlifecycle"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
-	"github.com/ar-imms/telemetry-agent/internal/config"
-	"github.com/ar-imms/telemetry-agent/internal/dependency"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/service"
 )
 
 type dependencyUninstallRequestFunc func(
@@ -97,7 +94,7 @@ func (u managedAgentUninstaller) Uninstall(
 		return fmt.Errorf("resolve current Agent executable path: %w", err)
 	}
 
-	store := agentstate.NewStore(statePath)
+	store := newAgentStateStore(statePath)
 	state, err := store.Load()
 	if err != nil {
 		return fmt.Errorf("load Agent state: %w", err)
@@ -172,15 +169,10 @@ func (u managedAgentUninstaller) Uninstall(
 type dependencyUninstallAllRequestFunc func(
 	context.Context,
 	agentstate.Repository,
-	agentlifecycle.CollectorConfigurationOptions,
 ) ([]string, error)
 
 type managedAgentUninstallRequester struct {
-	collectPlatform func() (identity.PlatformInfo, error)
-	buildCatalog    func() (dependency.Catalog, error)
-	layersFor       func(string, string) ([]config.Layer, error)
-	runner          bootstrap.CommandRunner
-	requestAll      dependencyUninstallAllRequestFunc
+	requestAll dependencyUninstallAllRequestFunc
 }
 
 // Request persists teardown requests for every dependency in the current
@@ -198,7 +190,7 @@ func (r managedAgentUninstallRequester) Request(
 		return fmt.Errorf("Agent lifecycle state path is required")
 	}
 
-	store := agentstate.NewStore(statePath)
+	store := newAgentStateStore(statePath)
 	state, err := store.Load()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -219,41 +211,6 @@ func (r managedAgentUninstallRequester) Request(
 		)
 	}
 
-	collectPlatform := r.collectPlatform
-	if collectPlatform == nil {
-		collectPlatform = identity.CollectPlatformInfo
-	}
-
-	platform, err := collectPlatform()
-	if err != nil {
-		return fmt.Errorf("collect platform information: %w", err)
-	}
-
-	buildCatalog := r.buildCatalog
-	if buildCatalog == nil {
-		buildCatalog = defaultDependencyCatalog
-	}
-
-	catalog, err := buildCatalog()
-	if err != nil {
-		return fmt.Errorf("build dependency catalog: %w", err)
-	}
-
-	layersFor := r.layersFor
-	if layersFor == nil {
-		layersFor = configurationLayers
-	}
-
-	layers, err := layersFor(state.Collector.ConfigRoot, platform.OS)
-	if err != nil {
-		return fmt.Errorf("resolve Collector configuration layers: %w", err)
-	}
-
-	runner := r.runner
-	if runner == nil {
-		runner = bootstrap.OSCommandRunner{}
-	}
-
 	requestAll := r.requestAll
 	if requestAll == nil {
 		requestAll = agentlifecycle.RequestAllDependencyUninstalls
@@ -262,19 +219,6 @@ func (r managedAgentUninstallRequester) Request(
 	if _, err := requestAll(
 		ctx,
 		store,
-		agentlifecycle.CollectorConfigurationOptions{
-			Platform:   platform,
-			Catalog:    catalog,
-			Layers:     layers,
-			BinaryPath: state.Collector.BinaryPath,
-			ConfigPath: state.Collector.ConfigPath,
-			ValidationEnvironment: []string{
-				"OTEL_GATEWAY_ENDPOINT=" +
-					state.Collector.GatewayEndpoint,
-			},
-			Runner:            runner,
-			GatewayRepository: agentstate.NewCoreGatewayStore(statePath),
-		},
 	); err != nil {
 		return fmt.Errorf("request all dependency uninstalls: %w", err)
 	}
@@ -287,12 +231,8 @@ const dependencyTeardownPollInterval = 250 * time.Millisecond
 func newManagedAgentUninstaller(
 	collectPlatform func() (identity.PlatformInfo, error),
 	currentExecutable func() (string, error),
-	runner bootstrap.CommandRunner,
 ) agentUninstallFunc {
-	requester := managedAgentUninstallRequester{
-		collectPlatform: collectPlatform,
-		runner:          runner,
-	}
+	requester := managedAgentUninstallRequester{}
 
 	uninstaller := managedAgentUninstaller{
 		collectPlatform:   collectPlatform,
@@ -304,7 +244,7 @@ func newManagedAgentUninstaller(
 		) (agentstate.State, error) {
 			return agentlifecycle.WaitForDependenciesRemoved(
 				ctx,
-				agentstate.NewStore(statePath),
+				newAgentStateStore(statePath),
 				dependencyTeardownPollInterval,
 			)
 		},

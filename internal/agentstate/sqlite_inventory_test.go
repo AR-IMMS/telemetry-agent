@@ -9,26 +9,29 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
+	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/domain"
+	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
+	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
+	inventorysqlite "github.com/ar-imms/telemetry-agent/internal/inventory/sqlite"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
-func inventoryFixture(at time.Time, ids ...string) (discovery.ProviderSnapshot, []discovery.Resource) {
-	snapshot := discovery.ProviderSnapshot{ProviderID: "docker", ProviderInstanceID: "local", Complete: true, ObservedAt: at}
-	resources := make([]discovery.Resource, 0, len(ids))
+func inventoryFixture(at time.Time, ids ...string) (inventorydomain.ProviderSnapshot, []inventorydomain.Resource) {
+	snapshot := inventorydomain.ProviderSnapshot{ProviderID: "docker", ProviderInstanceID: "local", Complete: true, ObservedAt: at}
+	resources := make([]inventorydomain.Resource, 0, len(ids))
 	for _, id := range ids {
-		observation := discovery.ResourceObservation{ProviderResourceID: id, Kind: discovery.ResourceContainer, DisplayName: id, LifecycleState: "running", Attributes: map[string]string{"label.safe": "value"}, Endpoints: []discovery.Endpoint{{Address: "10.0.0.2", Port: 6379, Protocol: "tcp", Scope: discovery.EndpointContainer, Provenance: "container_network"}}}
+		observation := inventorydomain.ResourceObservation{ProviderResourceID: id, Kind: inventorydomain.ResourceContainer, DisplayName: id, LifecycleState: "running", Attributes: map[string]string{"label.safe": "value"}, Endpoints: []inventorydomain.Endpoint{{Address: "10.0.0.2", Port: 6379, Protocol: "tcp", Scope: inventorydomain.EndpointContainer, Provenance: "container_network"}}}
 		snapshot.Resources = append(snapshot.Resources, observation)
-		resources = append(resources, discovery.Resource{Key: discovery.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: id}, Kind: observation.Kind, DisplayName: id, LifecycleState: "running", Attributes: map[string]string{"label.safe": "value"}, Endpoints: append([]discovery.Endpoint(nil), observation.Endpoints...), Presence: discovery.PresencePresent, FirstSeenAt: at, LastSeenAt: at})
+		resources = append(resources, inventorydomain.Resource{Key: inventorydomain.ResourceKey{Provider: "docker", ProviderInstance: "local", ProviderResourceID: id}, Kind: observation.Kind, DisplayName: id, LifecycleState: "running", Attributes: map[string]string{"label.safe": "value"}, Endpoints: append([]inventorydomain.Endpoint(nil), observation.Endpoints...), Presence: inventorydomain.PresencePresent, FirstSeenAt: at, LastSeenAt: at})
 	}
 	return snapshot, resources
 }
 
 func TestSQLiteInventoryRevisionCASNoopFailureAndRestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	store := NewSQLiteStore(path)
-	repository := store.InventoryRepository()
+	store := newTestSQLiteStore(path)
+	repository := newTestInventoryRepository(store)
 	at := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	snapshot, resources := inventoryFixture(at, "container-a")
 	if err := repository.CommitProviderSnapshot(0, snapshot, resources, true); err != nil {
@@ -41,7 +44,7 @@ func TestSQLiteInventoryRevisionCASNoopFailureAndRestart(t *testing.T) {
 	if loaded.Revision != 1 || loaded.WriteRevision != 1 || len(loaded.Resources) != 1 || loaded.Resources[0].Key.ProviderResourceID != "container-a" {
 		t.Fatalf("initial snapshot=%+v", loaded)
 	}
-	if err := repository.CommitProviderSnapshot(0, snapshot, resources, true); !errors.Is(err, discovery.ErrSnapshotConflict) {
+	if err := repository.CommitProviderSnapshot(0, snapshot, resources, true); !errors.Is(err, inventoryapp.ErrSnapshotConflict) {
 		t.Fatalf("stale CAS error=%v", err)
 	}
 	snapshot.ObservedAt = at.Add(time.Minute)
@@ -56,7 +59,7 @@ func TestSQLiteInventoryRevisionCASNoopFailureAndRestart(t *testing.T) {
 	if loaded.Revision != 1 || loaded.WriteRevision != 2 || !loaded.Resources[0].LastSeenAt.Equal(snapshot.ObservedAt) {
 		t.Fatalf("no-op revision or last_seen incorrect: %+v", loaded)
 	}
-	failure := discovery.ProviderStatus{ProviderID: "docker", ProviderInstanceID: "local", Enabled: true, LastAttemptAt: at.Add(2 * time.Minute), LastErrorCode: "daemon_unavailable"}
+	failure := inventorydomain.ProviderStatus{ProviderID: "docker", ProviderInstanceID: "local", Enabled: true, LastAttemptAt: at.Add(2 * time.Minute), LastErrorCode: "daemon_unavailable"}
 	if err := repository.RecordProviderFailure(failure); err != nil {
 		t.Fatal(err)
 	}
@@ -64,10 +67,10 @@ func TestSQLiteInventoryRevisionCASNoopFailureAndRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Revision != 1 || loaded.WriteRevision != 3 || len(loaded.Resources) != 1 || loaded.Resources[0].Presence != discovery.PresencePresent || loaded.Providers[0].LastErrorCode != "daemon_unavailable" || !loaded.Providers[0].LastSuccessAt.Equal(at.Add(time.Minute)) {
+	if loaded.Revision != 1 || loaded.WriteRevision != 3 || len(loaded.Resources) != 1 || loaded.Resources[0].Presence != inventorydomain.PresencePresent || loaded.Providers[0].LastErrorCode != "daemon_unavailable" || !loaded.Providers[0].LastSuccessAt.Equal(at.Add(time.Minute)) {
 		t.Fatalf("failure changed resource evidence or lost success: %+v", loaded)
 	}
-	restarted, err := NewSQLiteStore(path).InventoryRepository().Snapshot()
+	restarted, err := newTestInventoryRepository(newTestSQLiteStore(path)).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,8 +80,8 @@ func TestSQLiteInventoryRevisionCASNoopFailureAndRestart(t *testing.T) {
 }
 
 func TestSQLiteInventoryCASRejectsSnapshotMadeStaleByNonMaterialWrites(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
-	repo := store.InventoryRepository()
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	repo := newTestInventoryRepository(store)
 	at := time.Now().UTC()
 	snapshot, resources := inventoryFixture(at, "container-a")
 	if err := repo.CommitProviderSnapshot(0, snapshot, resources, true); err != nil {
@@ -88,13 +91,13 @@ func TestSQLiteInventoryCASRejectsSnapshotMadeStaleByNonMaterialWrites(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.RecordProviderFailure(discovery.ProviderStatus{
+	if err := repo.RecordProviderFailure(inventorydomain.ProviderStatus{
 		ProviderID: "docker", ProviderInstanceID: "local", Enabled: true,
 		LastAttemptAt: at.Add(time.Second), LastErrorCode: "daemon_unavailable",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.CommitProviderSnapshot(stale.WriteRevision, snapshot, resources, false); !errors.Is(err, discovery.ErrSnapshotConflict) {
+	if err := repo.CommitProviderSnapshot(stale.WriteRevision, snapshot, resources, false); !errors.Is(err, inventoryapp.ErrSnapshotConflict) {
 		t.Fatalf("stale non-material writer error=%v, want snapshot conflict", err)
 	}
 	current, err := repo.Snapshot()
@@ -127,7 +130,7 @@ func TestMigrateInventoryWriteRevisionFromPopulatedV10PreservesInventory(t *test
 			t.Fatal(err)
 		}
 	}
-	if err := migrateInventoryWriteRevision(db); err != nil {
+	if err := inventorysqlite.Migrations()[1].Apply(db); err != nil {
 		t.Fatal(err)
 	}
 	var materialRevision, writeRevision int
@@ -151,15 +154,15 @@ func TestMigrateInventoryWriteRevisionFromPopulatedV10PreservesInventory(t *test
 }
 
 func TestSQLiteInventoryDeleteEvidenceAndAtomicRollback(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
-	repo := store.InventoryRepository()
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	repo := newTestInventoryRepository(store)
 	at := time.Now().UTC()
 	snapshot, resources := inventoryFixture(at, "keep")
 	if err := repo.CommitProviderSnapshot(0, snapshot, resources, true); err != nil {
 		t.Fatal(err)
 	}
-	missing := discovery.ProviderSnapshot{ProviderID: "docker", ProviderInstanceID: "local", Complete: true, ObservedAt: at.Add(time.Minute)}
-	next, changed, err := discovery.ReconcileProviderSnapshot(resources, missing, discovery.Policy{MissingAfterSnapshots: 1, StaleAfter: time.Minute})
+	missing := inventorydomain.ProviderSnapshot{ProviderID: "docker", ProviderInstanceID: "local", Complete: true, ObservedAt: at.Add(time.Minute)}
+	next, changed, err := inventorydomain.ReconcileProviderSnapshot(resources, missing, inventorydomain.Policy{MissingAfterSnapshots: 1, StaleAfter: time.Minute})
 	if err != nil || !changed {
 		t.Fatalf("reconcile missing changed=%v err=%v", changed, err)
 	}
@@ -194,8 +197,8 @@ func TestSQLiteInventoryDeleteEvidenceAndAtomicRollback(t *testing.T) {
 }
 
 func TestSQLiteInventoryConcurrentCASAndConsistentSnapshots(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
-	repo := store.InventoryRepository()
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	repo := newTestInventoryRepository(store)
 	const count = 24
 	start := make(chan struct{})
 	stopReader := make(chan struct{})
@@ -222,7 +225,7 @@ func TestSQLiteInventoryConcurrentCASAndConsistentSnapshots(t *testing.T) {
 					writerErrors <- nil
 					return
 				}
-				if !errors.Is(err, discovery.ErrSnapshotConflict) {
+				if !errors.Is(err, inventoryapp.ErrSnapshotConflict) {
 					writerErrors <- err
 					return
 				}
@@ -279,31 +282,31 @@ func TestSQLiteInventoryConcurrentCASAndConsistentSnapshots(t *testing.T) {
 	}
 }
 
-func inventoryFixtureForInstance(at time.Time, instance string, ids ...string) (discovery.ProviderSnapshot, []discovery.Resource) {
+func inventoryFixtureForInstance(at time.Time, instance string, ids ...string) (inventorydomain.ProviderSnapshot, []inventorydomain.Resource) {
 	snapshot, resources := inventoryFixture(at, ids...)
-	snapshot.ProviderInstanceID = discovery.ProviderInstanceID(instance)
+	snapshot.ProviderInstanceID = inventorydomain.ProviderInstanceID(instance)
 	for i := range resources {
-		resources[i].Key.ProviderInstance = discovery.ProviderInstanceID(instance)
+		resources[i].Key.ProviderInstance = inventorydomain.ProviderInstanceID(instance)
 	}
 	return snapshot, resources
 }
 
 func TestSQLiteInventoryMigrationFromPopulatedV9PreservesExistingState(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	store := NewSQLiteStore(path)
-	state := State{DesiredGeneration: 8, ActivatedGeneration: 7, AppliedGeneration: 7, Dependencies: map[string]DependencyState{"host": {Enabled: true}}}
+	store := newTestSQLiteStore(path)
+	state := State{DesiredGeneration: 8, ActivatedGeneration: 7, AppliedGeneration: 7, Dependencies: map[string]dependencydomain.DependencyState{"host": {Enabled: true}}}
 	if err := store.Save(state); err != nil {
 		t.Fatal(err)
 	}
-	installationID, err := identity.ParseInstallationID("123e4567-e89b-12d3-a456-426614174000")
+	installationID, err := installationid.ParseInstallationID("123e4567-e89b-12d3-a456-426614174000")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.EnsureInstallationID(installationID); err != nil {
+	if _, err := newTestIdentityStore(path).EnsureInstallationID(installationID); err != nil {
 		t.Fatal(err)
 	}
-	instance := integration.IntegrationInstance{ID: "redis-main", DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true, Configuration: map[string]any{"endpoint": "127.0.0.1:6379"}}
-	if _, _, err := store.IntegrationRepository().Put(instance, 0); err != nil {
+	instance := desiredstatedomain.Instance{ID: "redis-main", DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true, Configuration: map[string]any{"endpoint": "127.0.0.1:6379"}}
+	if _, _, err := newTestDesiredStateRepository(store).Put(instance, 0); err != nil {
 		t.Fatal(err)
 	}
 	db, err := store.open()
@@ -319,8 +322,8 @@ func TestSQLiteInventoryMigrationFromPopulatedV9PreservesExistingState(t *testin
 		t.Fatal(err)
 	}
 	db.Close()
-	restarted := NewSQLiteStore(path)
-	snapshot, err := restarted.InventoryRepository().Snapshot()
+	restarted := newTestSQLiteStore(path)
+	snapshot, err := newTestInventoryRepository(restarted).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -334,7 +337,7 @@ func TestSQLiteInventoryMigrationFromPopulatedV9PreservesExistingState(t *testin
 	if loaded.DesiredGeneration != 8 || loaded.ActivatedGeneration != 7 || loaded.AppliedGeneration != 7 || !loaded.Dependencies["host"].Enabled {
 		t.Fatalf("M1/M2 state changed: %+v", loaded)
 	}
-	desired, err := restarted.IntegrationRepository().Snapshot()
+	desired, err := newTestDesiredStateRepository(restarted).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -356,7 +359,7 @@ func TestSQLiteInventoryMigrationFromPopulatedV9PreservesExistingState(t *testin
 	if err := verify.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if identityValue != 1 || enrollmentRows != 1 || version != 13 {
+	if identityValue != 1 || enrollmentRows != 1 || version != 15 {
 		t.Fatalf("identity=%d enrollment=%d migration=%d", identityValue, enrollmentRows, version)
 	}
 }

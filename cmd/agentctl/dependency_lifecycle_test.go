@@ -10,9 +10,13 @@ import (
 	"testing"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
-	"github.com/ar-imms/telemetry-agent/internal/dependency"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
 func TestManagedDependencyInstallerRequiresBootstrapBeforePhysicalInstall(
@@ -129,10 +133,10 @@ service:
 
 	statePath := filepath.Join(t.TempDir(), "state.json")
 
-	store := agentstate.NewStore(statePath)
+	store := sqlitefixture.NewStore(statePath)
 
 	_, err := store.Update(func(state *agentstate.State) error {
-		state.Collector = agentstate.CollectorContext{
+		state.Collector = collectordomain.CollectorContext{
 			ConfigRoot:      configRoot,
 			BinaryPath:      "otelcol-contrib",
 			ConfigPath:      targetPath,
@@ -161,7 +165,7 @@ service:
 
 			return dependency.InstallResult{
 				Name: "windows-exporter",
-				OwnedResources: []agentstate.OwnedResource{
+				OwnedResources: []servicedomain.OwnedResource{
 					{
 						Kind:       "windows-service",
 						Identifier: "windows_exporter",
@@ -199,21 +203,21 @@ service:
 	if !state.Dependencies["windows-exporter"].Enabled {
 		t.Fatal("windows-exporter Enabled = false, want true")
 	}
-	ownership := state.Dependencies["windows-exporter"].Ownership
+	ownership := state.OwnedDependencyResources("windows-exporter")
 
-	if ownership == nil {
-		t.Fatal("windows-exporter Ownership = nil, want recorded resources")
+	if len(ownership) == 0 {
+		t.Fatal("windows-exporter ownership = empty, want recorded resources")
 	}
-	if len(ownership.Resources) != 2 {
+	if len(ownership) != 2 {
 		t.Fatalf(
 			"ownership resources = %#v, want two resources",
-			ownership.Resources,
+			ownership,
 		)
 	}
-	if ownership.Resources[0].Identifier != "windows_exporter" {
+	if ownership[0].Identifier != "windows_exporter" {
 		t.Fatalf(
 			"first owned resource = %#v, want windows_exporter service",
-			ownership.Resources[0],
+			ownership[0],
 		)
 	}
 	if state.DesiredGeneration != 1 {
@@ -396,10 +400,10 @@ service:
 `)
 
 	statePath := filepath.Join(t.TempDir(), "state.json")
-	store := agentstate.NewStore(statePath)
+	store := sqlitefixture.NewStore(statePath)
 
 	_, err := store.Update(func(state *agentstate.State) error {
-		state.Collector = agentstate.CollectorContext{
+		state.Collector = collectordomain.CollectorContext{
 			ConfigRoot:      configRoot,
 			BinaryPath:      "otelcol-contrib",
 			ConfigPath:      targetPath,
@@ -408,7 +412,7 @@ service:
 		state.DesiredGeneration = 1
 		state.ActivatedGeneration = 1
 		state.AppliedGeneration = 1
-		state.Dependencies = map[string]agentstate.DependencyState{
+		state.Dependencies = map[string]dependencydomain.DependencyState{
 			"windows-exporter": {
 				Enabled: true,
 			},
@@ -451,7 +455,7 @@ service:
 	if dependency.PendingTeardown == nil {
 		t.Fatal("PendingTeardown = nil, want disable teardown")
 	}
-	if dependency.PendingTeardown.Action != agentstate.TeardownActionDisable {
+	if dependency.PendingTeardown.Action != dependencydomain.TeardownActionDisable {
 		t.Fatalf(
 			"PendingTeardown.Action = %q, want %q",
 			dependency.PendingTeardown.Action,
@@ -523,9 +527,9 @@ service:
 `)
 
 	statePath := filepath.Join(t.TempDir(), "state.json")
-	store := agentstate.NewStore(statePath)
+	store := sqlitefixture.NewStore(statePath)
 
-	ownership := []agentstate.OwnedResource{
+	ownership := []servicedomain.OwnedResource{
 		{
 			Kind:       "windows-service",
 			Identifier: "windows_exporter",
@@ -533,7 +537,7 @@ service:
 	}
 
 	_, err := store.Update(func(state *agentstate.State) error {
-		state.Collector = agentstate.CollectorContext{
+		state.Collector = collectordomain.CollectorContext{
 			ConfigRoot:      configRoot,
 			BinaryPath:      "otelcol-contrib",
 			ConfigPath:      targetPath,
@@ -542,11 +546,13 @@ service:
 		state.DesiredGeneration = 1
 		state.ActivatedGeneration = 1
 		state.AppliedGeneration = 1
-		state.Dependencies = map[string]agentstate.DependencyState{
+		state.Dependencies = map[string]dependencydomain.DependencyState{
 			"windows-exporter": {
-				Enabled:   false,
-				Ownership: &agentstate.OwnershipRecord{Resources: ownership},
+				Enabled: false,
 			},
+		}
+		if err := state.RecordOwnership("windows-exporter", ownership); err != nil {
+			return err
 		}
 
 		return nil
@@ -565,7 +571,7 @@ service:
 		func(
 			ctx context.Context,
 			name string,
-			resources []agentstate.OwnedResource,
+			resources []servicedomain.OwnedResource,
 		) error {
 			enableCalls++
 
@@ -650,10 +656,10 @@ func TestManagedDependencyLifecycleRejectsEnableWithoutOwnership(
 	t *testing.T,
 ) {
 	statePath := filepath.Join(t.TempDir(), "state.json")
-	store := agentstate.NewStore(statePath)
+	store := sqlitefixture.NewStore(statePath)
 
 	_, err := store.Update(func(state *agentstate.State) error {
-		state.Collector = agentstate.CollectorContext{
+		state.Collector = collectordomain.CollectorContext{
 			ConfigRoot:      "configs",
 			BinaryPath:      "otelcol-contrib",
 			ConfigPath:      "otel.yaml",
@@ -662,7 +668,7 @@ func TestManagedDependencyLifecycleRejectsEnableWithoutOwnership(
 		state.DesiredGeneration = 1
 		state.ActivatedGeneration = 1
 		state.AppliedGeneration = 1
-		state.Dependencies = map[string]agentstate.DependencyState{
+		state.Dependencies = map[string]dependencydomain.DependencyState{
 			"windows-exporter": {
 				Enabled: false,
 			},
@@ -682,7 +688,7 @@ func TestManagedDependencyLifecycleRejectsEnableWithoutOwnership(
 		func(
 			context.Context,
 			string,
-			[]agentstate.OwnedResource,
+			[]servicedomain.OwnedResource,
 		) error {
 			enableCalls++
 

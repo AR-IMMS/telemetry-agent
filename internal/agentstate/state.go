@@ -1,253 +1,129 @@
 package agentstate
 
 import (
-	"fmt"
-	"sort"
-	"strings"
+	activationdomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/domain"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
+	dependencyapplication "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/application"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	opampdomain "github.com/ar-imms/telemetry-agent/internal/runtime/opamp/domain"
+	serviceapplication "github.com/ar-imms/telemetry-agent/internal/runtime/service/application"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
-
-// AgentInstallation records the service, binary, and owned resources created
-// by one Agent installation so removal never has to infer ownership.
-type AgentInstallation struct {
-	// Platform identifies the operating system on which this installation runs.
-	Platform string `json:"platform"`
-	// ServiceName is the OS service registered for the Agent process.
-	ServiceName string `json:"serviceName"`
-	// BinaryPath is the durable Agent executable path.
-	BinaryPath string `json:"binaryPath"`
-	// Ownership lists resources this installation may safely remove.
-	Ownership OwnershipRecord `json:"ownership"`
-}
-
-// CollectorContext is the persisted runtime context required to render and
-// supervise the local OpenTelemetry Collector.
-type CollectorContext struct {
-	ConfigRoot      string `json:"configRoot"`
-	BinaryPath      string `json:"binaryPath"`
-	ConfigPath      string `json:"configPath"`
-	GatewayEndpoint string `json:"gatewayEndpoint"`
-	HealthEndpoint  string `json:"healthEndpoint"`
-}
-
-// TeardownAction identifies the host-resource operation permitted after the
-// Collector has acknowledged a configuration generation.
-type TeardownAction string
-
-const (
-	// TeardownActionDisable stops a dependency after its receiver is removed.
-	TeardownActionDisable TeardownAction = "disable"
-	// TeardownActionUninstall removes a dependency after its receiver is removed.
-	TeardownActionUninstall TeardownAction = "uninstall"
-)
-
-// PendingTeardown delays host-resource changes until the Collector has applied
-// the configuration generation that removes its scrape receiver.
-type PendingTeardown struct {
-	Action     TeardownAction `json:"action"`
-	Generation uint64         `json:"generation"`
-}
-
-// DependencyState is the desired lifecycle state of one managed dependency.
-type DependencyState struct {
-	Enabled         bool             `json:"enabled"`
-	Ownership       *OwnershipRecord `json:"ownership,omitempty"`
-	PendingTeardown *PendingTeardown `json:"pendingTeardown,omitempty"`
-}
 
 // State is the Agent-owned desired state persisted on the local machine.
 type State struct {
-	Collector           CollectorContext `json:"collector"`
-	DesiredGeneration   uint64           `json:"desiredGeneration"`
-	ActivatedGeneration uint64           `json:"activatedGeneration"`
-	AppliedGeneration   uint64           `json:"appliedGeneration"`
+	Collector           collectordomain.CollectorContext `json:"collector"`
+	Supervisor          opampdomain.SupervisorContext    `json:"supervisor,omitempty"`
+	DesiredGeneration   uint64                           `json:"desiredGeneration"`
+	ActivatedGeneration uint64                           `json:"activatedGeneration"`
+	AppliedGeneration   uint64                           `json:"appliedGeneration"`
 	// PendingActivation supports recovery between config promotion and commit.
-	PendingActivation *PendingActivation         `json:"pendingActivation,omitempty"`
-	Dependencies      map[string]DependencyState `json:"dependencies"`
-	Installation      *AgentInstallation         `json:"installation,omitempty"`
+	PendingActivation   *activationdomain.PendingActivation         `json:"pendingActivation,omitempty"`
+	Dependencies        map[string]dependencydomain.DependencyState `json:"-"`
+	Installation        *servicedomain.AgentInstallation            `json:"installation,omitempty"`
+	dependencyOwnership map[string]*servicedomain.OwnershipRecord
 }
 
-// OwnedResource identifies one host resource created and managed by the Agent.
-type OwnedResource struct {
-	Kind       string `json:"kind"`
-	Identifier string `json:"identifier"`
-}
-
-// OwnershipRecord records resources that an Agent-managed installation owns.
-type OwnershipRecord struct {
-	Resources []OwnedResource `json:"resources"`
+// Clone returns an independent copy of mutable state used to prepare one
+// Collector configuration plan.
+func (s State) Clone() State {
+	cloned := s
+	if s.Dependencies != nil {
+		cloned.Dependencies = make(map[string]dependencydomain.DependencyState, len(s.Dependencies))
+		for name, dependency := range s.Dependencies {
+			if dependency.PendingTeardown != nil {
+				pending := *dependency.PendingTeardown
+				dependency.PendingTeardown = &pending
+			}
+			cloned.Dependencies[name] = dependency
+		}
+	}
+	if s.dependencyOwnership != nil {
+		cloned.dependencyOwnership = make(map[string]*servicedomain.OwnershipRecord, len(s.dependencyOwnership))
+		for name, record := range s.dependencyOwnership {
+			if record == nil {
+				cloned.dependencyOwnership[name] = nil
+				continue
+			}
+			cloned.dependencyOwnership[name] = &servicedomain.OwnershipRecord{
+				Resources: append([]servicedomain.OwnedResource(nil), record.Resources...),
+			}
+		}
+	}
+	if s.Installation != nil {
+		installation := *s.Installation
+		installation.Ownership.Resources = append([]servicedomain.OwnedResource(nil), installation.Ownership.Resources...)
+		cloned.Installation = &installation
+	}
+	if s.PendingActivation != nil {
+		pending := *s.PendingActivation
+		if s.PendingActivation.Candidate != nil {
+			candidate := *s.PendingActivation.Candidate
+			pending.Candidate = &candidate
+		}
+		cloned.PendingActivation = &pending
+	}
+	return cloned
 }
 
 // RequiresApply reports whether the Collector must reload an activated
 // configuration generation.
 func (s State) RequiresApply() bool {
-	return s.ActivatedGeneration > s.AppliedGeneration
+	return s.activationState().RequiresApply()
 }
 
 // MarkGenerationApplied records that the Collector is healthy with one
 // activated configuration generation.
 func (s *State) MarkGenerationApplied(generation uint64) error {
-	if generation > s.ActivatedGeneration {
-		return fmt.Errorf(
-			"applied generation %d exceeds activated generation %d",
-			generation,
-			s.ActivatedGeneration,
-		)
+	next, err := s.activationState().MarkGenerationApplied(generation)
+	if err != nil {
+		return err
 	}
-	if generation < s.AppliedGeneration {
-		return fmt.Errorf(
-			"applied generation %d is older than current applied generation %d",
-			generation,
-			s.AppliedGeneration,
-		)
-	}
-
-	s.AppliedGeneration = generation
-	if s.PendingActivation != nil && s.PendingActivation.Generation <= generation {
-		s.PendingActivation = nil
-	}
-
+	s.applyActivationState(next)
 	return nil
 }
 
 // EnableDependency enables one dependency in desired state. It advances the
 // generation only when the requested state actually changes.
 func (s *State) EnableDependency(name string) (bool, error) {
-	normalizedName := strings.ToLower(strings.TrimSpace(name))
-	if normalizedName == "" {
-		return false, fmt.Errorf("dependency name is required")
+	next, changed, err := dependencyapplication.EnableDependency(s.dependencySnapshot(), name)
+	if err != nil || !changed {
+		return changed, err
 	}
-
-	if s.Dependencies == nil {
-		s.Dependencies = make(map[string]DependencyState)
-	}
-
-	dependency := s.Dependencies[normalizedName]
-	if dependency.Enabled {
-		return false, nil
-	}
-
-	dependency.Enabled = true
-	dependency.PendingTeardown = nil
-
-	s.Dependencies[normalizedName] = dependency
-	s.DesiredGeneration++
-
+	s.applyDependencySnapshot(next)
 	return true, nil
 }
 
 // DisableDependency disables one dependency in desired state. It advances the
 // generation only when the requested state actually changes.
 func (s *State) DisableDependency(name string) (bool, error) {
-	normalizedName := strings.ToLower(strings.TrimSpace(name))
-	if normalizedName == "" {
-		return false, fmt.Errorf("dependency name is required")
+	next, changed, err := dependencyapplication.DisableDependency(s.dependencySnapshot(), name)
+	if err != nil || !changed {
+		return changed, err
 	}
-
-	dependency, exists := s.Dependencies[normalizedName]
-	if !exists || !dependency.Enabled {
-		return false, nil
-	}
-
-	dependency.Enabled = false
-	s.DesiredGeneration++
-	dependency.PendingTeardown = &PendingTeardown{
-		Action:     TeardownActionDisable,
-		Generation: s.DesiredGeneration,
-	}
-	s.Dependencies[normalizedName] = dependency
-
+	s.applyDependencySnapshot(next)
 	return true, nil
 }
 
 // RequestUninstall removes one dependency from desired configuration and delays
 // host-resource deletion until the Collector has acknowledged that generation.
 func (s *State) RequestUninstall(name string) (bool, error) {
-	normalizedName := strings.ToLower(strings.TrimSpace(name))
-	if normalizedName == "" {
-		return false, fmt.Errorf("dependency name is required")
+	next, changed, err := dependencyapplication.RequestUninstall(s.dependencySnapshot(), name)
+	if err != nil || !changed {
+		return changed, err
 	}
-
-	dependency, exists := s.Dependencies[normalizedName]
-	if !exists {
-		return false, fmt.Errorf(
-			"dependency %q has no persisted Agent state",
-			normalizedName,
-		)
-	}
-
-	if dependency.PendingTeardown != nil &&
-		dependency.PendingTeardown.Action == TeardownActionUninstall {
-		return false, nil
-	}
-
-	if dependency.Enabled {
-		dependency.Enabled = false
-	}
-
-	s.DesiredGeneration++
-
-	dependency.PendingTeardown = &PendingTeardown{
-		Action:     TeardownActionUninstall,
-		Generation: s.DesiredGeneration,
-	}
-	s.Dependencies[normalizedName] = dependency
-
+	s.applyDependencySnapshot(next)
 	return true, nil
 }
 
 // CompleteTeardown records successful platform teardown after the Collector has
 // acknowledged the generation that removed the dependency receiver.
 func (s *State) CompleteTeardown(name string, generation uint64) error {
-	normalizedName := strings.ToLower(strings.TrimSpace(name))
-	if normalizedName == "" {
-		return fmt.Errorf("dependency name is required")
+	next, err := dependencyapplication.CompleteTeardown(s.dependencySnapshot(), name, generation)
+	if err != nil {
+		return err
 	}
-
-	dependency, exists := s.Dependencies[normalizedName]
-	if !exists {
-		return fmt.Errorf(
-			"dependency %q has no persisted Agent state",
-			normalizedName,
-		)
-	}
-	if dependency.PendingTeardown == nil {
-		return fmt.Errorf(
-			"dependency %q has no pending teardown",
-			normalizedName,
-		)
-	}
-	if dependency.PendingTeardown.Generation != generation {
-		return fmt.Errorf(
-			"dependency %q pending teardown generation is %d, not %d",
-			normalizedName,
-			dependency.PendingTeardown.Generation,
-			generation,
-		)
-	}
-	if s.AppliedGeneration < generation {
-		return fmt.Errorf(
-			"dependency %q teardown generation %d is not applied",
-			normalizedName,
-			generation,
-		)
-	}
-
-	switch dependency.PendingTeardown.Action {
-	case TeardownActionDisable:
-		dependency.PendingTeardown = nil
-		s.Dependencies[normalizedName] = dependency
-
-	case TeardownActionUninstall:
-		delete(s.Dependencies, normalizedName)
-
-	default:
-		return fmt.Errorf(
-			"dependency %q has unsupported teardown action %q",
-			normalizedName,
-			dependency.PendingTeardown.Action,
-		)
-	}
-
+	s.applyDependencySnapshot(next)
 	return nil
 }
 
@@ -255,114 +131,37 @@ func (s *State) CompleteTeardown(name string, generation uint64) error {
 // installation. It does not change desired Collector configuration.
 func (s *State) RecordOwnership(
 	name string,
-	resources []OwnedResource,
+	resources []servicedomain.OwnedResource,
 ) error {
-	normalizedName := strings.ToLower(strings.TrimSpace(name))
-	if normalizedName == "" {
-		return fmt.Errorf("dependency name is required")
+	next, err := serviceapplication.RecordDependencyOwnership(s.dependencyOwnershipSnapshot(), name, resources)
+	if err != nil {
+		return err
 	}
-
-	if len(resources) == 0 {
-		return fmt.Errorf(
-			"dependency %q ownership resources are required",
-			normalizedName,
-		)
-	}
-
-	for _, resource := range resources {
-		if strings.TrimSpace(resource.Kind) == "" {
-			return fmt.Errorf(
-				"dependency %q owned resource kind is required",
-				normalizedName,
-			)
-		}
-		if strings.TrimSpace(resource.Identifier) == "" {
-			return fmt.Errorf(
-				"dependency %q owned resource identifier is required",
-				normalizedName,
-			)
-		}
-	}
-
-	dependency, exists := s.Dependencies[normalizedName]
-	if !exists {
-		return fmt.Errorf(
-			"dependency %q has no persisted Agent state",
-			normalizedName,
-		)
-	}
-
-	dependency.Ownership = &OwnershipRecord{
-		Resources: append([]OwnedResource(nil), resources...),
-	}
-	s.Dependencies[normalizedName] = dependency
-
+	s.applyDependencyOwnership(next)
 	return nil
 }
 
 // OwnsDependency reports whether Agent state contains at least one concrete
 // resource ownership record for the named dependency.
 func (s State) OwnsDependency(name string) bool {
-	normalizedName := strings.ToLower(strings.TrimSpace(name))
+	return serviceapplication.OwnsDependency(s.dependencyOwnershipSnapshot(), name)
+}
 
-	dependency, exists := s.Dependencies[normalizedName]
-
-	return exists &&
-		dependency.Ownership != nil &&
-		len(dependency.Ownership.Resources) > 0
+// OwnedDependencyResources returns a copy of the concrete host resources
+// recorded for one dependency, or nil when the Agent owns none.
+func (s State) OwnedDependencyResources(name string) []servicedomain.OwnedResource {
+	return serviceapplication.DependencyResources(s.dependencyOwnershipSnapshot(), name)
 }
 
 // RecordAgentInstallation persists validated platform and ownership metadata.
 func (s *State) RecordAgentInstallation(
-	installation AgentInstallation,
+	installation servicedomain.AgentInstallation,
 ) error {
-	platform := strings.ToLower(strings.TrimSpace(installation.Platform))
-	if platform == "" {
-		return fmt.Errorf("Agent installation platform is required")
+	validated, err := serviceapplication.ValidateAgentInstallation(installation)
+	if err != nil {
+		return err
 	}
-
-	serviceName := strings.TrimSpace(installation.ServiceName)
-	if serviceName == "" {
-		return fmt.Errorf("Agent installation service name is required")
-	}
-
-	if len(installation.Ownership.Resources) == 0 {
-		return fmt.Errorf("Agent installation ownership is required")
-	}
-
-	resources := make(
-		[]OwnedResource,
-		0,
-		len(installation.Ownership.Resources),
-	)
-
-	for _, resource := range installation.Ownership.Resources {
-		resource.Kind = strings.TrimSpace(resource.Kind)
-		resource.Identifier = strings.TrimSpace(resource.Identifier)
-
-		if resource.Kind == "" {
-			return fmt.Errorf(
-				"Agent installation owned resource kind is required",
-			)
-		}
-		if resource.Identifier == "" {
-			return fmt.Errorf(
-				"Agent installation owned resource identifier is required",
-			)
-		}
-
-		resources = append(resources, resource)
-	}
-
-	s.Installation = &AgentInstallation{
-		Platform:    platform,
-		ServiceName: serviceName,
-		BinaryPath:  installation.BinaryPath,
-		Ownership: OwnershipRecord{
-			Resources: resources,
-		},
-	}
-
+	s.Installation = &validated
 	return nil
 }
 
@@ -371,68 +170,44 @@ func (s *State) RecordAgentInstallation(
 func (s *State) RequestUninstalls(
 	names []string,
 ) ([]string, error) {
-	if len(names) == 0 {
-		return nil, fmt.Errorf("at least one dependency is required")
+	next, changedNames, err := dependencyapplication.RequestUninstalls(s.dependencySnapshot(), names)
+	if err != nil || len(changedNames) == 0 {
+		return changedNames, err
 	}
-
-	normalizedNames := make([]string, 0, len(names))
-	seen := make(map[string]struct{}, len(names))
-
-	for _, name := range names {
-		normalizedName := strings.ToLower(strings.TrimSpace(name))
-		if normalizedName == "" {
-			return nil, fmt.Errorf("dependency name is required")
-		}
-		if _, exists := seen[normalizedName]; exists {
-			continue
-		}
-
-		seen[normalizedName] = struct{}{}
-		normalizedNames = append(normalizedNames, normalizedName)
-	}
-
-	sort.Strings(normalizedNames)
-
-	// Validate all requested dependencies before changing any desired state.
-	for _, name := range normalizedNames {
-		if _, exists := s.Dependencies[name]; !exists {
-			return nil, fmt.Errorf(
-				"dependency %q has no persisted Agent state",
-				name,
-			)
-		}
-	}
-
-	changedNames := make([]string, 0, len(normalizedNames))
-
-	for _, name := range normalizedNames {
-		dependency := s.Dependencies[name]
-
-		if dependency.PendingTeardown != nil &&
-			dependency.PendingTeardown.Action ==
-				TeardownActionUninstall {
-			continue
-		}
-
-		changedNames = append(changedNames, name)
-	}
-
-	if len(changedNames) == 0 {
-		return nil, nil
-	}
-
-	// Every changed dependency shares this one desired configuration generation.
-	s.DesiredGeneration++
-
-	for _, name := range changedNames {
-		dependency := s.Dependencies[name]
-		dependency.Enabled = false
-		dependency.PendingTeardown = &PendingTeardown{
-			Action:     TeardownActionUninstall,
-			Generation: s.DesiredGeneration,
-		}
-		s.Dependencies[name] = dependency
-	}
-
+	s.applyDependencySnapshot(next)
 	return changedNames, nil
+}
+
+func (s State) dependencySnapshot() dependencyapplication.Snapshot {
+	dependencies := make(map[string]dependencydomain.DependencyState, len(s.Dependencies))
+	for name, dependency := range s.Dependencies {
+		dependencies[name] = dependency
+	}
+	return dependencyapplication.Snapshot{
+		DesiredGeneration: s.DesiredGeneration,
+		AppliedGeneration: s.AppliedGeneration,
+		Dependencies:      dependencies,
+	}
+}
+
+func (s *State) applyDependencySnapshot(snapshot dependencyapplication.Snapshot) {
+	s.DesiredGeneration = snapshot.DesiredGeneration
+	s.Dependencies = snapshot.Dependencies
+	for name := range s.dependencyOwnership {
+		if _, exists := s.Dependencies[name]; !exists {
+			delete(s.dependencyOwnership, name)
+		}
+	}
+}
+
+func (s State) dependencyOwnershipSnapshot() serviceapplication.OwnershipSnapshot {
+	dependencies := make(map[string]*servicedomain.OwnershipRecord, len(s.Dependencies))
+	for name := range s.Dependencies {
+		dependencies[name] = s.dependencyOwnership[name]
+	}
+	return serviceapplication.OwnershipSnapshot{Dependencies: dependencies}
+}
+
+func (s *State) applyDependencyOwnership(snapshot serviceapplication.OwnershipSnapshot) {
+	s.dependencyOwnership = snapshot.Dependencies
 }

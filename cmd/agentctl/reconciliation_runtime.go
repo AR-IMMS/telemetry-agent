@@ -2,34 +2,47 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/agenthealth"
-	"github.com/ar-imms/telemetry-agent/internal/agentlifecycle"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
-	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
-	"github.com/ar-imms/telemetry-agent/internal/config"
-	"github.com/ar-imms/telemetry-agent/internal/coreconfig"
-	"github.com/ar-imms/telemetry-agent/internal/dependency"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
-	"github.com/ar-imms/telemetry-agent/internal/reconciliation"
+	"github.com/ar-imms/telemetry-agent/internal/app"
+	"github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation"
+	reconciliationcontracts "github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation/contracts"
+	coreconfig "github.com/ar-imms/telemetry-agent/internal/configuration/remoteconfig"
+	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
+	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
+	fleetenrollment "github.com/ar-imms/telemetry-agent/internal/identity/fleetenrollment/application"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	definitionapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
+	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
+	"github.com/ar-imms/telemetry-agent/internal/platform/events"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation"
+	activationapp "github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation/application"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
+	runtimecontracts "github.com/ar-imms/telemetry-agent/internal/runtime/collector/contracts"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
 )
 
-const reconciliationPollInterval = 15 * time.Second
-
 type runtimeBaseline struct {
-	store        agentstate.Repository
-	platform     identity.PlatformInfo
-	dependencies dependency.Catalog
-	layers       []config.Layer
-	gateways     coreconfig.GatewayRepository
+	store          agentstate.Repository
+	platform       identity.PlatformInfo
+	dependencies   dependency.Catalog
+	layers         []config.Layer
+	gateways       coreconfig.GatewayRepository
+	profiles       monitoringdomain.Registry
+	baselineInputs func() ([]config.InlineLayer, []string, error)
 }
 
+var (
+	_ reconciliation.BaselineReader   = runtimeBaseline{}
+	_ reconciliation.CandidateApplier = runtimeCandidateApplier{}
+)
+
 func newRuntimeBaseline(statePath string) (runtimeBaseline, error) {
-	store := agentstate.NewStore(statePath)
+	store := newAgentStateStore(statePath)
 	state, err := store.Load()
 	if err != nil {
 		return runtimeBaseline{}, err
@@ -46,25 +59,49 @@ func newRuntimeBaseline(statePath string) (runtimeBaseline, error) {
 	if err != nil {
 		return runtimeBaseline{}, err
 	}
+	profiles, err := loadMonitoringProfiles(state.Collector.ConfigRoot)
+	if err != nil {
+		return runtimeBaseline{}, fmt.Errorf("load local monitoring profiles: %w", err)
+	}
 	return runtimeBaseline{
 		store:        store,
 		platform:     platform,
 		dependencies: dependencies,
 		layers:       layers,
-		gateways:     agentstate.NewCoreGatewayStore(statePath),
+		gateways:     newAgentCoreGatewayStore(statePath),
+		profiles:     profiles,
+		baselineInputs: func() ([]config.InlineLayer, []string, error) {
+			return nativeDockerMonitoringInputsWithProfiles(statePath, platform.OS, profiles)
+		},
 	}, nil
 }
 
-func (b runtimeBaseline) Snapshot() (agentlifecycle.CleanBaselineSnapshot, error) {
+func (b runtimeBaseline) Snapshot(ctx context.Context) (reconciliation.BaselineSnapshot, error) {
 	state, err := b.store.Load()
 	if err != nil {
-		return agentlifecycle.CleanBaselineSnapshot{}, err
+		return reconciliation.BaselineSnapshot{}, err
 	}
-	gateway, err := b.gateways.EffectiveGateway()
+	gateway, err := b.gateways.EffectiveGateway(ctx)
 	if err != nil {
-		return agentlifecycle.CleanBaselineSnapshot{}, err
+		return reconciliation.BaselineSnapshot{}, err
 	}
-	return agentlifecycle.BuildCleanBaselineSnapshot(b.platform, b.dependencies, b.layers, state, map[string]string{"OTEL_GATEWAY_ENDPOINT": gateway.Endpoint})
+	var additionalLayers []config.InlineLayer
+	var additionalReceivers []string
+	if b.baselineInputs != nil {
+		additionalLayers, additionalReceivers, err = b.baselineInputs()
+	}
+	if err != nil {
+		return reconciliation.BaselineSnapshot{}, fmt.Errorf("resolve native monitoring baseline: %w", err)
+	}
+	snapshot, err := agentlifecycle.BuildCleanBaselineSnapshotWithAdditionalInputs(b.platform, b.dependencies, b.layers, state, map[string]string{"OTEL_GATEWAY_ENDPOINT": gateway.Endpoint}, additionalLayers, additionalReceivers)
+	if err != nil {
+		return reconciliation.BaselineSnapshot{}, err
+	}
+	return reconciliation.BaselineSnapshot{
+		Input:             snapshot.Input,
+		DesiredGeneration: snapshot.DesiredGeneration,
+		Fingerprint:       snapshot.Fingerprint,
+	}, nil
 }
 
 type runtimeCandidateApplier struct {
@@ -72,8 +109,41 @@ type runtimeCandidateApplier struct {
 	options agentlifecycle.CollectorConfigurationOptions
 }
 
-func (a runtimeCandidateApplier) ApplyCandidate(ctx context.Context, request agentlifecycle.CandidateApplyRequest) (agentlifecycle.CandidateActivationOutcome, error) {
-	return agentlifecycle.ApplyCollectorCandidate(ctx, a.store, request, a.options)
+type runtimeCandidateCompiler struct{ compiler collectorruntime.Compiler }
+
+func (c runtimeCandidateCompiler) Compile(input config.RenderInput, resolved []runtimecontracts.ResolvedContribution) (runtimecontracts.Candidate, error) {
+	candidate, err := c.compiler.Compile(input, resolved)
+	return candidate, classifyRuntimeCandidateError(err)
+}
+
+type runtimeCandidateValidator struct {
+	runner bootstrap.CommandRunner
+	binary string
+	env    []string
+}
+
+func (v runtimeCandidateValidator) Validate(ctx context.Context, candidate runtimecontracts.Candidate) error {
+	return classifyRuntimeCandidateError(collectorruntime.ValidateCandidate(ctx, v.runner, v.binary, candidate, v.env))
+}
+
+func classifyRuntimeCandidateError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, collectorruntime.ErrUnsupportedCapability) || errors.Is(err, collectorruntime.ErrInvalidIntent) ||
+		errors.Is(err, collectorruntime.ErrComponentIDConflict) || errors.Is(err, collectorruntime.ErrInvalidCatalog) ||
+		errors.Is(err, collectorruntime.ErrCompilation) || errors.Is(err, collectorruntime.ErrNativeValidation) {
+		return errors.Join(runtimecontracts.ErrInvalidCandidate, err)
+	}
+	return err
+}
+
+func (a runtimeCandidateApplier) ApplyCandidate(ctx context.Context, request reconciliation.CandidateApplyRequest) (reconciliation.CandidateActivationOutcome, error) {
+	outcome, err := agentlifecycle.ApplyCollectorCandidate(ctx, a.store, request, a.options)
+	if errors.Is(err, activationapp.ErrStaleCandidate) {
+		return outcome, runtimecontracts.ErrStaleCandidate
+	}
+	return outcome, err
 }
 
 func newRuntimeReconciliationController(statePath string, runner bootstrap.CommandRunner) (*reconciliation.Controller, func(agentstate.State) error, error) {
@@ -82,7 +152,7 @@ func newRuntimeReconciliationController(statePath string, runner bootstrap.Comma
 		return nil, nil, err
 	}
 	store := baseline.store
-	sqliteStore, ok := store.(agentstate.SQLiteStore)
+	_, ok := store.(agentstate.SQLiteStore)
 	if !ok {
 		return nil, nil, fmt.Errorf("Agent SQLite store is required for reconciliation")
 	}
@@ -98,41 +168,68 @@ func newRuntimeReconciliationController(statePath string, runner bootstrap.Comma
 	if err != nil {
 		return nil, nil, err
 	}
-	resolver := integration.NewResolver(registry)
-	options := agentlifecycle.CollectorConfigurationOptions{Platform: baseline.platform, Catalog: baseline.dependencies, Layers: baseline.layers, BinaryPath: state.Collector.BinaryPath, ConfigPath: state.Collector.ConfigPath, ValidationEnvironment: []string{"OTEL_GATEWAY_ENDPOINT=" + state.Collector.GatewayEndpoint}, Runner: runner, GatewayRepository: baseline.gateways}
-	attempts := reconciliation.NewSQLiteAttemptsFromStore(sqliteStore)
-	controller := &reconciliation.Controller{Desired: sqliteStore.IntegrationRepository(), Baseline: baseline, Resolver: resolver, Compiler: collectorruntime.NewCompiler(collectorCatalog), Validator: func(ctx context.Context, candidate collectorruntime.Candidate) error {
-		return collectorruntime.ValidateCandidate(ctx, runner, state.Collector.BinaryPath, candidate, options.ValidationEnvironment)
-	}, Applier: runtimeCandidateApplier{store: store, options: options}, Attempts: attempts, Outcomes: reconciliation.CandidateOutcomes{Store: sqliteStore}}
-	return controller, attempts.RecordRecoveryFailure, nil
+	profiles := baseline.profiles
+	additionalBaselineInputs := baseline.baselineInputs
+	nativeLayers, _, nativeErr := additionalBaselineInputs()
+	if nativeErr != nil {
+		return nil, nil, fmt.Errorf("resolve native monitoring ownership: %w", nativeErr)
+	}
+	resolver := nativeOwnershipResolver{delegate: app.NewMonitoringDesiredStateResolver(definitionapp.NewResolver(registry)), inventory: app.NewInventoryRepository(statePath), profiles: profiles, enabled: len(nativeLayers) > 0}
+	options := agentlifecycle.CollectorConfigurationOptions{Platform: baseline.platform, Catalog: baseline.dependencies, Layers: baseline.layers, AdditionalBaselineInputs: additionalBaselineInputs, BinaryPath: state.Collector.BinaryPath, ConfigPath: state.Collector.ConfigPath, ValidationEnvironment: []string{"OTEL_GATEWAY_ENDPOINT=" + state.Collector.GatewayEndpoint}, Runner: runner, GatewayRepository: baseline.gateways}
+	reconciliationRepository := app.NewReconciliationRepository(statePath)
+	recordRecoveryFailure := func(state agentstate.State) error {
+		if state.PendingActivation == nil || state.PendingActivation.Candidate == nil {
+			return fmt.Errorf("pending candidate recovery evidence is required")
+		}
+		pending := state.PendingActivation
+		mapping := pending.Candidate
+		return reconciliationRepository.RecordRecoveryFailure(reconciliationcontracts.RecoveryFailure{
+			DesiredRevision:     mapping.DesiredSetRevision,
+			BaselineFingerprint: mapping.BaselineFingerprint,
+			CandidateDigest:     mapping.CandidateDigest,
+			Generation:          pending.Generation,
+		})
+	}
+	controller := &reconciliation.Controller{Desired: app.NewDesiredStateRepository(statePath), Baseline: baseline, Resolver: resolver, Compiler: runtimeCandidateCompiler{compiler: collectorruntime.NewCompiler(collectorCatalog)}, Validator: func(ctx context.Context, candidate runtimecontracts.Candidate) error {
+		return (runtimeCandidateValidator{runner: runner, binary: state.Collector.BinaryPath, env: options.ValidationEnvironment}).Validate(ctx, candidate)
+	}, Applier: runtimeCandidateApplier{store: store, options: options}, Attempts: reconciliationRepository, Outcomes: reconciliationRepository}
+	return controller, recordRecoveryFailure, nil
 }
 
 func runRuntimeWithReconciliation(ctx context.Context, statePath string, teardown dependencyTeardownFunc, reporter agenthealth.ObservationReporter, runner bootstrap.CommandRunner) error {
-	controller, recordRecoveryFailure, err := newRuntimeReconciliationController(statePath, runner)
-	if err != nil {
-		return fmt.Errorf("compose Agent reconciliation: %w", err)
-	}
-	inventory := newDockerDiscoveryCoordinator(statePath)
-	proposalRefresher, err := newRuntimeProposalRefresher(statePath)
-	if err != nil {
-		return fmt.Errorf("compose monitoring proposal refresh: %w", err)
-	}
-	templateMaterializer, err := newRuntimeTemplateMaterializer(statePath)
-	if err != nil {
-		return fmt.Errorf("compose Integration Template materialization: %w", err)
-	}
-	return agentlifecycle.RunCollectorRuntimeWithReconciliation(
-		ctx,
-		statePath,
-		teardown,
-		reporter,
-		func(ctx context.Context) error {
-			return runRuntimeControlLoops(ctx,
-				func(ctx context.Context) error { return controller.Run(ctx, reconciliationPollInterval) },
-				inventory, proposalRefresher.Refresh, templateMaterializer.Refresh)
+	return app.RunRuntime(ctx, app.RuntimeOptions{
+		StatePath: statePath,
+		Teardown:  teardown,
+		Reporter:  reporter,
+		Runner:    runner,
+		StoreFactory: func(path string) (agentstate.Repository, coreconfig.GatewayRuntimeRepository, enrollment.AttemptRepository, fleetenrollment.AttemptRepository) {
+			return newAgentStateStore(path), newAgentCoreGatewayStore(path), newAgentEnrollmentStore(path), newAgentFleetEnrollmentStore(path)
 		},
-		func(state agentstate.State, _ error) error {
-			return recordRecoveryFailure(state)
+		Build: func(publisher events.Publisher, commandRunner bootstrap.CommandRunner) (app.RuntimeComponents, error) {
+			controller, recordRecoveryFailure, err := newRuntimeReconciliationController(statePath, commandRunner)
+			if err != nil {
+				return app.RuntimeComponents{}, fmt.Errorf("compose Agent reconciliation: %w", err)
+			}
+			inventory := newDockerDiscoveryCoordinator(statePath)
+			proposalRefresher, err := newRuntimeProposalRefresher(statePath)
+			if err != nil {
+				return app.RuntimeComponents{}, fmt.Errorf("compose monitoring proposal refresh: %w", err)
+			}
+			operationsRunner := newRuntimeOperationsRunner(statePath, reporter)
+			var optionalOperations app.OperationsRunner
+			if operationsRunner != nil {
+				optionalOperations = operationsRunner
+			}
+			templateMaterializer, err := newRuntimeTemplateMaterializer(statePath, publisher)
+			if err != nil {
+				return app.RuntimeComponents{}, fmt.Errorf("compose Integration Template materialization: %w", err)
+			}
+			return app.RuntimeComponents{
+				Reconciler: controller, Inventory: inventory,
+				RefreshProposals: proposalRefresher.Refresh, RefreshTemplates: templateMaterializer.Refresh,
+				RecordRecoveryFailure: func(state agentstate.State, _ error) error { return recordRecoveryFailure(state) },
+				Operations:            optionalOperations,
+			}, nil
 		},
-	)
+	})
 }

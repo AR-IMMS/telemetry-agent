@@ -6,18 +6,19 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/configuration"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
+	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
+	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
 func TestIntegrationMigrationV5PreservesExistingAgentData(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	store := NewSQLiteStore(path)
+	store := newTestSQLiteStore(path)
 	id := mustInstallationID(t, "11111111-2222-4333-8444-555555555555")
-	if _, err := NewIdentityStore(path).EnsureInstallationID(id); err != nil {
+	if _, err := newTestIdentityStore(path).EnsureInstallationID(id); err != nil {
 		t.Fatal(err)
 	}
-	want := State{DesiredGeneration: 7, ActivatedGeneration: 6, AppliedGeneration: 5, Dependencies: map[string]DependencyState{"node-exporter": {Enabled: true}}}
+	want := State{DesiredGeneration: 7, ActivatedGeneration: 6, AppliedGeneration: 5, Dependencies: map[string]dependencydomain.DependencyState{"node-exporter": {Enabled: true}}}
 	if err := store.Save(want); err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +41,7 @@ func TestIntegrationMigrationV5PreservesExistingAgentData(t *testing.T) {
 	}
 	db.Close()
 
-	db, err = NewSQLiteStore(path).open()
+	db, err = newTestSQLiteStore(path).open()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +71,7 @@ func TestIntegrationMigrationV5PreservesExistingAgentData(t *testing.T) {
 }
 
 func TestIntegrationSnapshotsStayConsistentDuringConcurrentCreates(t *testing.T) {
-	repo := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db")).IntegrationRepository()
+	repo := newTestDesiredStateRepository(newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db")))
 	const count = 20
 	start := make(chan struct{})
 	done := make(chan error, 1)
@@ -99,14 +100,14 @@ func TestIntegrationSnapshotsStayConsistentDuringConcurrentCreates(t *testing.T)
 	}
 }
 
-func integrationInstance(id, endpoint string) integration.IntegrationInstance {
-	return integration.IntegrationInstance{ID: id, DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true, Configuration: map[string]any{"endpoint": endpoint}}
+func integrationInstance(id, endpoint string) desiredstatedomain.Instance {
+	return desiredstatedomain.Instance{ID: id, DefinitionID: "redis", DefinitionVersion: "1.0.0", Enabled: true, Configuration: map[string]any{"endpoint": endpoint}}
 }
 
 func TestSQLiteIntegrationMutationsCASNoOpDeleteRestartAndMigration(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	store := NewSQLiteStore(path)
-	repo := store.IntegrationRepository()
+	store := newTestSQLiteStore(path)
+	repo := newTestDesiredStateRepository(store)
 	created, setRev, err := repo.Put(integrationInstance("cache", "localhost:6379"), 0)
 	if err != nil || created.Revision != 1 || setRev != 1 {
 		t.Fatalf("create = rev %d set %d err %v", created.Revision, setRev, err)
@@ -115,14 +116,14 @@ func TestSQLiteIntegrationMutationsCASNoOpDeleteRestartAndMigration(t *testing.T
 	if err != nil || noop.Revision != 1 || setRev != 1 {
 		t.Fatalf("no-op = rev %d set %d err %v", noop.Revision, setRev, err)
 	}
-	if _, _, err := repo.Put(integrationInstance("cache", "other:6379"), 0); !errors.Is(err, configuration.ErrRevisionConflict) {
+	if _, _, err := repo.Put(integrationInstance("cache", "other:6379"), 0); !errors.Is(err, desiredstateapp.ErrRevisionConflict) {
 		t.Fatalf("stale CAS error = %v", err)
 	}
 	updated, setRev, err := repo.Put(integrationInstance("cache", "other:6379"), 1)
 	if err != nil || updated.Revision != 2 || setRev != 2 {
 		t.Fatalf("update = rev %d set %d err %v", updated.Revision, setRev, err)
 	}
-	restarted := NewSQLiteStore(path).IntegrationRepository()
+	restarted := newTestDesiredStateRepository(newTestSQLiteStore(path))
 	snapshot, err := restarted.Snapshot()
 	if err != nil || snapshot.Revision != 2 || len(snapshot.Instances) != 1 || snapshot.Instances[0].Revision != 2 {
 		t.Fatalf("snapshot = %+v err %v", snapshot, err)
@@ -142,18 +143,18 @@ func TestSQLiteIntegrationMutationsCASNoOpDeleteRestartAndMigration(t *testing.T
 }
 
 func TestSQLiteIntegrationLegacySourceNormalizesWithoutAdvancingRevision(t *testing.T) {
-	repository := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db")).IntegrationRepository()
+	repository := newTestDesiredStateRepository(newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db")))
 	legacy := integrationInstance("legacy-cache", "localhost:6379")
 	created, setRevision, err := repository.Put(legacy, 0)
 	if err != nil || setRevision != 1 || created.Revision != 1 {
 		t.Fatalf("legacy create=%+v desired revision=%d err=%v", created, setRevision, err)
 	}
 	snapshot, err := repository.Snapshot()
-	if err != nil || snapshot.Instances[0].Source != integration.SourceLocal {
+	if err != nil || snapshot.Instances[0].Source != desiredstatedomain.SourceLocal {
 		t.Fatalf("legacy source snapshot=%+v err=%v", snapshot, err)
 	}
 	explicitLocal := legacy
-	explicitLocal.Source = integration.SourceLocal
+	explicitLocal.Source = desiredstatedomain.SourceLocal
 	unchanged, setRevision, err := repository.Put(explicitLocal, 1)
 	if err != nil || unchanged.Revision != 1 || setRevision != 1 {
 		t.Fatalf("normalizing legacy source advanced revision: instance=%+v desired=%d err=%v", unchanged, setRevision, err)
@@ -161,8 +162,8 @@ func TestSQLiteIntegrationLegacySourceNormalizesWithoutAdvancingRevision(t *test
 }
 
 func TestSQLiteIntegrationMutationRollsBackInstanceWhenMarkerUpdateFails(t *testing.T) {
-	store := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
-	repo := store.IntegrationRepository()
+	store := newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db"))
+	repo := newTestDesiredStateRepository(store)
 	db, err := store.open()
 	if err != nil {
 		t.Fatal(err)
@@ -184,7 +185,7 @@ func TestSQLiteIntegrationMutationRollsBackInstanceWhenMarkerUpdateFails(t *test
 }
 
 func TestSQLiteIntegrationConcurrentCreatesAdvanceMarkerWithoutLostWrites(t *testing.T) {
-	repo := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db")).IntegrationRepository()
+	repo := newTestDesiredStateRepository(newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db")))
 	var wg sync.WaitGroup
 	errs := make(chan error, 12)
 	for i := 0; i < 12; i++ {

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -29,11 +30,14 @@ Commands:
   bootstrap   Bootstrap the OpenTelemetry Collector.
   dependency  Manage telemetry dependencies.
   integration Manage desired Integration instances and local convergence diagnostics.
+  monitoring  Manage monitoring instances, templates, and proposals.
   run         Run the OpenTelemetry Collector under supervision.
   inventory   Read persisted resource discovery inventory.
   discovery   Review and approve durable monitoring proposals.
   status      Show live Agent health.
+  doctor      Explain available health evidence and unknown dimensions.
   enroll      Bind this Agent installation to an AR-IMMS Core node.
+  service     Run the Windows Service dispatcher (Windows internal entrypoint).
   install     Install and start the Agent as a managed service.
   uninstall   Safely remove the Agent and its managed dependencies.
   help        Show this help.
@@ -84,11 +88,14 @@ Commands:
   bootstrap   Bootstrap the OpenTelemetry Collector.
   dependency  Manage telemetry dependencies.
   integration Manage desired Integration instances and local convergence diagnostics.
+  monitoring  Manage monitoring instances, templates, and proposals.
   run         Run the OpenTelemetry Collector under supervision.
   inventory   Read persisted resource discovery inventory.
   discovery   Review and approve durable monitoring proposals.
   status      Show live Agent health.
+  doctor      Explain available health evidence and unknown dimensions.
   enroll      Bind this Agent installation to an AR-IMMS Core node.
+  service     Run the Windows Service dispatcher (Windows internal entrypoint).
   install     Install and start the Agent as a managed service.
   uninstall   Safely remove the Agent and its managed dependencies.
   help        Show this help.
@@ -135,11 +142,14 @@ Commands:
   bootstrap   Bootstrap the OpenTelemetry Collector.
   dependency  Manage telemetry dependencies.
   integration Manage desired Integration instances and local convergence diagnostics.
+  monitoring  Manage monitoring instances, templates, and proposals.
   run         Run the OpenTelemetry Collector under supervision.
   inventory   Read persisted resource discovery inventory.
   discovery   Review and approve durable monitoring proposals.
   status      Show live Agent health.
+  doctor      Explain available health evidence and unknown dimensions.
   enroll      Bind this Agent installation to an AR-IMMS Core node.
+  service     Run the Windows Service dispatcher (Windows internal entrypoint).
   install     Install and start the Agent as a managed service.
   uninstall   Safely remove the Agent and its managed dependencies.
   help        Show this help.
@@ -151,5 +161,43 @@ Commands:
 			stderr.String(),
 			wantStderr,
 		)
+	}
+}
+
+func TestCobraHelpExposesApprovedMonitoringHierarchy(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{
+			name: "root help flag",
+			args: []string{"--help"},
+			want: []string{"monitoring", "Manage monitoring instances, templates, and proposals"},
+		},
+		{
+			name: "monitoring subtree",
+			args: []string{"monitoring", "--help"},
+			want: []string{"instance", "template", "proposal"},
+		},
+		{
+			name: "instance actions",
+			args: []string{"monitoring", "instance", "--help"},
+			want: []string{"configure", "update", "enable", "disable", "delete", "list", "inspect", "status", "history", "retry"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			code, stdout, stderr := runForTest(t, test.args, dependencies{})
+			if code != 0 || stderr != "" {
+				t.Fatalf("run(%v) = (%d, stderr=%q), want successful help", test.args, code, stderr)
+			}
+			for _, want := range test.want {
+				if !strings.Contains(stdout, want) {
+					t.Errorf("help output %q does not contain %q", stdout, want)
+				}
+			}
+		})
 	}
 }

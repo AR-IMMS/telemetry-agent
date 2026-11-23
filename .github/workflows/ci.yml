@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main, dev, chore/v0.1.4a-next]
   pull_request:
-    branches: [main, dev, 'feat/**']
+    branches: [main, dev, 'feat/**', chore/v0.1.4a-next]
 
 permissions:
   contents: read
@@ -26,6 +26,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v7
@@ -72,13 +74,295 @@ jobs:
           & $binaryPath components 2>&1 | Set-Content -LiteralPath $inventoryPath
           if ($LASTEXITCODE -ne 0) { throw "Collector component inventory failed: $LASTEXITCODE" }
           "OTELCOL_CONTRIB_BINARY=$binaryPath" | Add-Content $env:GITHUB_ENV
+          "AR_IMMS_PR05_COLLECTOR_BINARY=$binaryPath" | Add-Content $env:GITHUB_ENV
           "OTELCOL_ARTIFACT_SHA256=$actual" | Add-Content $env:GITHUB_ENV
+
+      - name: Download and verify pinned OpAMP Supervisor
+        shell: pwsh
+        run: |
+          if ($IsWindows) {
+            $name = 'opampsupervisor_0.160.0_windows_amd64.exe'
+            $expected = 'df2dfae96d6b711db31675d2deb8493d3dbada8561b25fe575fd90bd7cac8449'
+          } else {
+            $name = 'opampsupervisor_0.160.0_linux_amd64'
+            $expected = '7967e3210e0252f25f41a96b15758dd2e03feb0aecbe85a945f1e2e6e71865c9'
+          }
+          $directory = Join-Path $env:RUNNER_TEMP 'opampsupervisor'
+          New-Item -ItemType Directory -Force -Path $directory | Out-Null
+          $binaryPath = Join-Path $directory $name
+          $url = "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/cmd%2Fopampsupervisor%2Fv0.160.0/$name"
+          Invoke-WebRequest -Uri $url -OutFile $binaryPath
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $binaryPath).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "Pinned Supervisor checksum mismatch: $actual" }
+          if (-not $IsWindows) { chmod 755 $binaryPath; if ($LASTEXITCODE -ne 0) { throw 'Could not mark Supervisor executable' } }
+          # The pinned Supervisor binary does not implement a --version flag;
+          # the official release URL plus the verified executable digest is its identity.
+          "AR_IMMS_PR07A_SUPERVISOR_BINARY=$binaryPath" | Add-Content $env:GITHUB_ENV
+          "OPAMPSUPERVISOR_ARTIFACT_SHA256=$actual" | Add-Content $env:GITHUB_ENV
+
+      - name: Check architecture boundaries and production Go file size
+        shell: pwsh
+        run: ./scripts/check-architecture.ps1
+
+      - name: Build PR-06 Agent and current Agent for native service lifecycle E2E
+        if: github.event_name == 'pull_request' && (github.event.pull_request.number == 30 || github.event.pull_request.number == 36 || github.event.pull_request.number == 39 || github.event.pull_request.number == 40)
+        shell: pwsh
+        run: |
+          $legacySource = Join-Path $env:RUNNER_TEMP 'pr07-legacy-source'
+          $binaryName = if ($IsWindows) { 'agentctl.exe' } else { 'agentctl' }
+          $legacyBinary = Join-Path $env:RUNNER_TEMP "pr07-legacy-$binaryName"
+          $currentBinary = Join-Path $env:RUNNER_TEMP "pr07-current-$binaryName"
+          $evidenceDirectory = Join-Path $env:RUNNER_TEMP 'pr07c-native-service-evidence'
+          New-Item -ItemType Directory -Force -Path $evidenceDirectory | Out-Null
+          git worktree add --detach $legacySource origin/chore/v0.1.4a-next
+          if ($LASTEXITCODE -ne 0) { throw 'Could not prepare the PR-06 Agent source for upgrade verification' }
+          try {
+            Push-Location $legacySource
+            try {
+              go build -o $legacyBinary ./cmd/agentctl
+              if ($LASTEXITCODE -ne 0) { throw 'Could not build the PR-06 Agent binary' }
+            } finally {
+              Pop-Location
+            }
+            go build -o $currentBinary ./cmd/agentctl
+            if ($LASTEXITCODE -ne 0) { throw 'Could not build the current Agent binary' }
+          } finally {
+            git worktree remove --force $legacySource
+          }
+          "AR_IMMS_PR07C_LEGACY_AGENTCTL_BINARY=$legacyBinary" | Add-Content $env:GITHUB_ENV
+          "AR_IMMS_PR07C_AGENTCTL_BINARY=$currentBinary" | Add-Content $env:GITHUB_ENV
+          "AR_IMMS_PR07C_CONFIG_ROOT=$(Join-Path $env:GITHUB_WORKSPACE 'configs')" | Add-Content $env:GITHUB_ENV
+          "AR_IMMS_PR07C_SERVICE_EVIDENCE_DIR=$evidenceDirectory" | Add-Content $env:GITHUB_ENV
+
+      - name: Native service upgrade, migration, rollback, restart, and uninstall E2E
+        if: github.event_name == 'pull_request' && (github.event.pull_request.number == 30 || github.event.pull_request.number == 36 || github.event.pull_request.number == 39 || github.event.pull_request.number == 40)
+        shell: pwsh
+        run: |
+          $testBinary = Join-Path $env:RUNNER_TEMP 'pr07-native-service.test'
+          if ($IsWindows) { $testBinary += '.exe' }
+          go test -c -o $testBinary ./internal/runtime/service
+          if ($LASTEXITCODE -ne 0) { throw 'Could not build the native service E2E test binary' }
+          $testArgs = @("-test.run=^TestPR07NativeServiceUpgradeMigrationRollbackUninstall$", '-test.v')
+          if ($IsWindows) {
+            $env:AR_IMMS_PR07C_NATIVE_SERVICE_E2E = '1'
+            & $testBinary @testArgs
+            if ($LASTEXITCODE -ne 0) { throw "Native Windows service lifecycle E2E failed: $LASTEXITCODE" }
+          } else {
+            sudo env `
+              "AR_IMMS_PR07C_NATIVE_SERVICE_E2E=1" `
+              "OTELCOL_CONTRIB_BINARY=$env:OTELCOL_CONTRIB_BINARY" `
+              "AR_IMMS_PR05_COLLECTOR_BINARY=$env:AR_IMMS_PR05_COLLECTOR_BINARY" `
+              "OTELCOL_ARTIFACT_SHA256=$env:OTELCOL_ARTIFACT_SHA256" `
+              "AR_IMMS_PR07A_SUPERVISOR_BINARY=$env:AR_IMMS_PR07A_SUPERVISOR_BINARY" `
+              "OPAMPSUPERVISOR_ARTIFACT_SHA256=$env:OPAMPSUPERVISOR_ARTIFACT_SHA256" `
+              "AR_IMMS_PR07C_LEGACY_AGENTCTL_BINARY=$env:AR_IMMS_PR07C_LEGACY_AGENTCTL_BINARY" `
+              "AR_IMMS_PR07C_AGENTCTL_BINARY=$env:AR_IMMS_PR07C_AGENTCTL_BINARY" `
+              "AR_IMMS_PR07C_CONFIG_ROOT=$env:AR_IMMS_PR07C_CONFIG_ROOT" `
+              "AR_IMMS_PR07C_SERVICE_EVIDENCE_DIR=$env:AR_IMMS_PR07C_SERVICE_EVIDENCE_DIR" `
+              $testBinary @testArgs
+            if ($LASTEXITCODE -ne 0) { throw "Native Linux service lifecycle E2E failed: $LASTEXITCODE" }
+          }
+
+      - name: Upload native service lifecycle evidence
+        if: always() && github.event_name == 'pull_request' && (github.event.pull_request.number == 30 || github.event.pull_request.number == 36 || github.event.pull_request.number == 39 || github.event.pull_request.number == 40)
+        uses: actions/upload-artifact@v6
+        with:
+          name: pr07c-native-service-${{ runner.os }}
+          path: ${{ runner.temp }}/pr07c-native-service-evidence/
+          if-no-files-found: warn
+
+      - name: Start isolated Docker Engine for PR-05 recovery E2E
+        if: runner.os == 'Linux'
+        id: isolated_docker_engine
+        shell: pwsh
+        run: |
+          $socketDirectory = Join-Path $env:RUNNER_TEMP 'arimms-pr05-dind'
+          $dataDirectory = Join-Path $env:RUNNER_TEMP 'arimms-pr05-dind-data'
+          New-Item -ItemType Directory -Force -Path $socketDirectory | Out-Null
+          New-Item -ItemType Directory -Force -Path $dataDirectory | Out-Null
+          $manager = 'arimms-pr05-dind'
+          docker run --privileged --detach --name $manager --network host --volume "${socketDirectory}:/run/host" --volume "${dataDirectory}:/var/lib/docker" docker:29.5.3-dind --host=unix:///run/host/docker.sock --host=tcp://127.0.0.1:2375
+          if ($LASTEXITCODE -ne 0) { throw 'Could not start isolated Docker-in-Docker test daemon' }
+          $socket = Join-Path $socketDirectory 'docker.sock'
+          $dockerHost = "unix://$socket"
+          $ready = $false
+          for ($attempt = 0; $attempt -lt 90; $attempt++) {
+            if (Test-Path -LiteralPath $socket) {
+              docker exec $manager chmod 666 /run/host/docker.sock
+            }
+            docker --host $dockerHost info *> $null
+            if ($LASTEXITCODE -eq 0) { $ready = $true; break }
+            Start-Sleep -Seconds 1
+          }
+          if (-not $ready) { docker logs $manager; throw 'Isolated Docker Engine did not become ready' }
+          "AR_IMMS_PR05_FIXTURE_DOCKER_HOST=$dockerHost" | Add-Content $env:GITHUB_ENV
+          "AR_IMMS_DOCKER_DISCOVERY_ENDPOINT=$dockerHost" | Add-Content $env:GITHUB_ENV
+          "AR_IMMS_PR05_ISOLATED_DOCKER_MANAGER=$manager" | Add-Content $env:GITHUB_ENV
 
       - name: Test
         run: go test ./... -count=1
+
+      - name: Lint Fleet enrollment packages
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.15.0
+          args: ./internal/identity/fleetenrollment/...
+
+      - name: Protected enrollment application with provisional Mock Fleet
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 40
+        env:
+          AR_IMMS_REQUIRE_PROTECTED_ENROLLMENT_TEST: '1'
+        run: go test ./internal/identity/enrollment/application -run '^TestEnrollmentApplicationStoresCredentialFromProvisionalMockFleetExchange$' -count=1 -v
+
+      - name: Fleet enrollment production CLI with protected Windows credentials
+        if: runner.os == 'Windows'
+        env:
+          AR_IMMS_REQUIRE_PROTECTED_ENROLLMENT_TEST: '1'
+        run: go test ./cmd/agentctl -run '^TestRunEnrollmentFleetProductionPathPersistsAndExplicitlyProvisions$' -count=1 -v
+
+      - name: Race-sensitive state and uninstall tests
+        if: github.event_name == 'pull_request' && (github.event.pull_request.number == 39 || github.event.pull_request.number == 40)
+        run: go test -race ./internal/agentstate ./internal/identity/sqlite ./internal/identity/enrollment/sqlite ./internal/runtime/collector/activation ./cmd/agentctl -count=1
+
+      - name: Live Docker Inventory provider E2E
+        if: always() && runner.os == 'Linux' && steps.isolated_docker_engine.outcome == 'success'
+        shell: pwsh
+        env:
+          AR_IMMS_S4_E2E: '1'
+          AR_IMMS_S4_E2E_STATE: ${{ runner.temp }}/pr095b-inventory/agent.db
+          AR_IMMS_PR095B_EVIDENCE_DIR: ${{ runner.temp }}/pr095b-inventory
+        run: |
+          $evidenceDirectory = $env:AR_IMMS_PR095B_EVIDENCE_DIR
+          New-Item -ItemType Directory -Force -Path $evidenceDirectory | Out-Null
+          $dockerHost = $env:AR_IMMS_PR05_FIXTURE_DOCKER_HOST
+          $fixtureName = "arimms-pr095b-inventory-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $logPath = Join-Path $evidenceDirectory 'linux-live-inventory.log'
+          $unavailableLogPath = Join-Path $evidenceDirectory 'linux-unavailable-inventory.log'
+          $environmentPath = Join-Path $evidenceDirectory 'environment.txt'
+          $fixtureCreated = $false
+          try {
+            docker --host $dockerHost pull redis:7-alpine
+            if ($LASTEXITCODE -ne 0) { throw 'Could not pull the isolated Redis inventory fixture image' }
+            docker --host $dockerHost run --detach --name $fixtureName --label ar-imms.test=pr-09.5b-inventory redis:7-alpine *> $null
+            if ($LASTEXITCODE -ne 0) { throw 'Could not create the isolated Redis inventory fixture' }
+            $fixtureCreated = $true
+            $fixtureID = (docker --host $dockerHost inspect --format '{{.Id}}' $fixtureName).Trim()
+            if ($LASTEXITCODE -ne 0 -or $fixtureID.Length -ne 64) { throw 'Could not verify the exact Docker fixture ID' }
+            $engine = (docker --host $dockerHost info --format '{{.ServerVersion}} {{.OSType}}/{{.Architecture}}').Trim()
+            @("commit=$env:GITHUB_SHA", "engine=$engine", "fixture_name=$fixtureName", "fixture_id=$fixtureID", "state_path=$env:AR_IMMS_S4_E2E_STATE") | Set-Content -LiteralPath $environmentPath
+            $env:AR_IMMS_DOCKER_DISCOVERY_ENDPOINT = $dockerHost
+            $env:AR_IMMS_S4_E2E_CONTAINER_ID = $fixtureID
+            $env:AR_IMMS_S4_E2E_EXPECT_PRESENCE = 'present'
+            go test ./cmd/agentctl -run '^TestLiveDockerInventoryWhenExplicitlyEnabled$' -count=1 -v *> $logPath
+            $testExitCode = $LASTEXITCODE
+            Get-Content -LiteralPath $logPath
+            if ($testExitCode -ne 0) { throw "Live Docker Inventory E2E failed: $testExitCode" }
+            $env:AR_IMMS_S4_E2E_UNAVAILABLE_ENDPOINT = "unix:///tmp/arimms-pr095b-unavailable-$env:GITHUB_RUN_ID.sock"
+            go test ./cmd/agentctl -run '^TestLiveDockerUnavailableRetainsInventory$' -count=1 -v *> $unavailableLogPath
+            $unavailableExitCode = $LASTEXITCODE
+            Get-Content -LiteralPath $unavailableLogPath
+            if ($unavailableExitCode -ne 0) { throw "Unavailable Docker provider retention E2E failed: $unavailableExitCode" }
+          } finally {
+            Remove-Item Env:\AR_IMMS_DOCKER_DISCOVERY_ENDPOINT -ErrorAction SilentlyContinue
+            Remove-Item Env:\AR_IMMS_S4_E2E_CONTAINER_ID -ErrorAction SilentlyContinue
+            Remove-Item Env:\AR_IMMS_S4_E2E_EXPECT_PRESENCE -ErrorAction SilentlyContinue
+            Remove-Item Env:\AR_IMMS_S4_E2E_UNAVAILABLE_ENDPOINT -ErrorAction SilentlyContinue
+            if ($fixtureCreated) { docker --host $dockerHost rm --force $fixtureName; if ($LASTEXITCODE -ne 0) { Write-Warning "Could not remove fixture $fixtureName" } }
+          }
+
+      - name: Upload PR-09.5b Docker inventory evidence
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v6
+        with:
+          name: pr095b-docker-inventory-${{ runner.os }}
+          path: ${{ runner.temp }}/pr095b-inventory/
+          if-no-files-found: warn
+      - name: Live JetStream Operations and Docker inspection E2E
+        if: always() && runner.os == 'Linux' && steps.isolated_docker_engine.outcome == 'success'
+        shell: pwsh
+        env:
+          AR_IMMS_PR09_NATS_E2E: '1'
+          AR_IMMS_PR09_EVIDENCE_DIR: ${{ runner.temp }}/pr09-evidence
+        run: |
+          $evidenceDirectory = $env:AR_IMMS_PR09_EVIDENCE_DIR
+          New-Item -ItemType Directory -Force -Path $evidenceDirectory | Out-Null
+          $logPath = Join-Path $evidenceDirectory 'linux-live-jetstream-operations.log'
+          go test ./internal/operations/nats -run '^TestLiveJetStreamOperationsE2E$' -count=1 -v *> $logPath
+          $testExitCode = $LASTEXITCODE
+          Get-Content -LiteralPath $logPath
+          if ($testExitCode -ne 0) { throw "PR-09 native Linux JetStream Operations E2E failed: $testExitCode" }
+
+      - name: Upload PR-09 live Operations evidence
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v6
+        with:
+          name: pr09-jetstream-operations-${{ runner.os }}
+          path: ${{ runner.temp }}/pr09-evidence/
+          if-no-files-found: warn
+
+      - name: Live Docker/Collector/OTLP profile E2E
+        if: runner.os == 'Linux'
+        env:
+          AR_IMMS_PR05_NATIVE_RUNTIME_E2E: '1'
+          AR_IMMS_PR05_COLLECTOR_BINARY: ${{ env.OTELCOL_CONTRIB_BINARY }}
+        run: go test ./cmd/agentctl -run '^TestLiveNativeDockerRedisProfileDeliversOTLP$' -count=1 -v
+
+      - name: Live Docker application profile E2E
+        if: runner.os == 'Linux'
+        env:
+          AR_IMMS_PR06_APPLICATION_PROFILE_E2E: '1'
+          AR_IMMS_PR07A_SUPERVISOR_PROFILE_PARITY: '1'
+          AR_IMMS_PR05_COLLECTOR_BINARY: ${{ env.OTELCOL_CONTRIB_BINARY }}
+          AR_IMMS_PR07A_SUPERVISOR_BINARY: ${{ env.AR_IMMS_PR07A_SUPERVISOR_BINARY }}
+          AR_IMMS_PR07A_EVIDENCE_DIR: ${{ runner.temp }}/pr07a-evidence
+        run: go test ./cmd/agentctl -run '^TestLiveDockerApplicationProfilesDeliverOTLP$' -count=1 -v
+
+      - name: Upload PR-07a profile parity evidence
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v6
+        with:
+          name: pr07a-supervisor-profile-parity
+          path: ${{ runner.temp }}/pr07a-evidence/
+          if-no-files-found: warn
+
+      - name: Agent-managed Supervisor fallback and OTLP E2E
+        env:
+          AR_IMMS_PR07C_RUNTIME_E2E: '1'
+          AR_IMMS_PR07C_CONTROL_E2E: '1'
+          AR_IMMS_PR07C_EVIDENCE_DIR: ${{ runner.temp }}/pr07c-evidence
+        run: go test ./internal/runtime/collector/activation -run '^(TestManagedSupervisorRuntimeDeliversOTLP|TestManagedSupervisorEnrollmentAndRemoteGatewayE2E)$' -count=1 -v
+
+      - name: Upload PR-07c runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pr07c-managed-supervisor-${{ runner.os }}
+          path: ${{ runner.temp }}/pr07c-evidence/
+          if-no-files-found: warn
+
+      - name: Mock Fleet Supervisor remote-config, rollback, and revocation E2E
+        env:
+          AR_IMMS_PR09_MOCKFLEET_LIVE_E2E: '1'
+          AR_IMMS_PR07A_SUPERVISOR_BINARY: ${{ env.AR_IMMS_PR07A_SUPERVISOR_BINARY }}
+          AR_IMMS_PR05_COLLECTOR_BINARY: ${{ env.OTELCOL_CONTRIB_BINARY }}
+          AR_IMMS_PR09_MOCKFLEET_EVIDENCE_DIR: ${{ runner.temp }}/pr09-mockfleet-evidence
+        run: go test ./cmd/agentctl -run '^TestPR09MockFleetSupervisorConfigAndRollbackE2E$' -count=1 -v
+
+      - name: Upload PR-09 Mock Fleet E2E evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pr09-mockfleet-supervisor-${{ runner.os }}
+          path: ${{ runner.temp }}/pr09-mockfleet-evidence/
+          if-no-files-found: warn
 
       - name: Vet
         run: go vet ./...
 
       - name: Build
         run: go build ./...
+
+      - name: Remove isolated Docker Engine
+        if: always() && runner.os == 'Linux'
+        shell: pwsh
+        run: docker rm --force arimms-pr05-dind

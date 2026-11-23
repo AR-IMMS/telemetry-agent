@@ -1,0 +1,160 @@
+package application
+
+import (
+	"errors"
+	"testing"
+
+	desiredstate "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
+	templatesdomain "github.com/ar-imms/telemetry-agent/internal/configuration/templates/domain"
+	definitionsapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
+	definitionsdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
+)
+
+func TestTemplateServiceRejectsCoreOwnedOrUnknownDefinitionBeforePersistence(t *testing.T) {
+	registry, err := definitionsapp.NewRegistry(templateTestDefinition())
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := &templateMemoryRepository{}
+	service := NewService(registry, repository)
+
+	tests := []struct {
+		name   string
+		change func(*templatesdomain.Template)
+	}{
+		{"core owner", func(value *templatesdomain.Template) { value.Owner = desiredstate.TemplateOwnerCore }},
+		{"unknown definition version", func(value *templatesdomain.Template) { value.DefinitionVersion = "2.0.0" }},
+		{"undeclared setting", func(value *templatesdomain.Template) { value.Settings["password"] = "should-not-persist" }},
+		{"wrong declared setting type", func(value *templatesdomain.Template) { value.Settings["endpoint"] = 6379 }},
+		{"missing required setting", func(value *templatesdomain.Template) { value.Bindings = nil }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := templateTestValue()
+			test.change(&candidate)
+			if _, _, err := service.Put(candidate, 0); err == nil {
+				t.Fatal("Put() accepted an invalid local template")
+			}
+			if repository.writes != 0 {
+				t.Fatalf("repository writes = %d, want 0", repository.writes)
+			}
+		})
+	}
+}
+
+func TestTemplateServiceStoresLocalEnabledTemplate(t *testing.T) {
+	registry, err := definitionsapp.NewRegistry(templateTestDefinition())
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := &templateMemoryRepository{}
+	service := NewService(registry, repository)
+	stored, revision, err := service.Put(templateTestValue(), 0)
+	if err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	if stored.Owner != desiredstate.TemplateOwnerLocal || stored.Revision != 1 || revision != 1 || repository.writes != 1 {
+		t.Fatalf("stored=%+v revision=%d writes=%d", stored, revision, repository.writes)
+	}
+}
+
+func TestTemplateServiceEnableDisableDeleteUsesCASAndPermanentTombstone(t *testing.T) {
+	registry, err := definitionsapp.NewRegistry(templateTestDefinition())
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := &templateLifecycleMemoryRepository{templates: make(map[string]templatesdomain.Template)}
+	service := NewService(registry, repository)
+	created, _, err := service.Put(templateTestValue(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	disabled, _, err := service.SetEnabled(created.ID, false, created.Revision)
+	if err != nil || disabled.Status != templatesdomain.StatusDisabled || disabled.Revision != 2 {
+		t.Fatalf("disable=%+v err=%v", disabled, err)
+	}
+	if _, _, err := service.SetEnabled(created.ID, true, created.Revision); !errors.Is(err, ErrRevisionConflict) {
+		t.Fatalf("stale enable error=%v", err)
+	}
+	deleted, _, err := service.Delete(created.ID, disabled.Revision)
+	if err != nil || deleted.Status != templatesdomain.StatusDeleted || deleted.Revision != 3 {
+		t.Fatalf("delete=%+v err=%v", deleted, err)
+	}
+	if _, _, err := service.SetEnabled(created.ID, true, deleted.Revision); !errors.Is(err, ErrTemplateDeleted) {
+		t.Fatalf("deleted Template re-enable error=%v", err)
+	}
+	again, _, err := service.Delete(created.ID, deleted.Revision)
+	if err != nil || again.Status != templatesdomain.StatusDeleted || again.Revision != deleted.Revision {
+		t.Fatalf("idempotent delete=%+v err=%v", again, err)
+	}
+}
+
+type templateMemoryRepository struct {
+	writes   int
+	template templatesdomain.Template
+}
+
+func (r *templateMemoryRepository) Put(value templatesdomain.Template, expected uint64) (templatesdomain.Template, uint64, error) {
+	r.writes++
+	if expected != 0 {
+		return templatesdomain.Template{}, 0, ErrRevisionConflict
+	}
+	value.Revision = 1
+	r.template = value
+	return value, 1, nil
+}
+
+func (*templateMemoryRepository) Snapshot() (Snapshot, error) {
+	return Snapshot{}, errors.New("not implemented")
+}
+
+type templateLifecycleMemoryRepository struct {
+	templates map[string]templatesdomain.Template
+	revision  uint64
+}
+
+func (r *templateLifecycleMemoryRepository) Put(value templatesdomain.Template, expected uint64) (templatesdomain.Template, uint64, error) {
+	current, exists := r.templates[value.ID]
+	if exists && current.Revision != expected || !exists && expected != 0 {
+		return templatesdomain.Template{}, 0, ErrRevisionConflict
+	}
+	if exists && current.Status == templatesdomain.StatusDeleted && value.Status != templatesdomain.StatusDeleted {
+		return templatesdomain.Template{}, 0, ErrTemplateDeleted
+	}
+	value.Revision = expected + 1
+	r.revision++
+	r.templates[value.ID] = value
+	return value, r.revision, nil
+}
+
+func (r *templateLifecycleMemoryRepository) Snapshot() (Snapshot, error) {
+	values := make([]templatesdomain.Template, 0, len(r.templates))
+	for _, value := range r.templates {
+		values = append(values, value)
+	}
+	return Snapshot{Revision: r.revision, Templates: values}, nil
+}
+
+func templateTestDefinition() definitionsdomain.Definition {
+	return definitionsdomain.Definition{
+		ID: "redis", Version: "1.0.0",
+		Validate: func(map[string]any) error { return nil },
+		Contribute: func(map[string]any) (definitionsdomain.Contribution, error) {
+			return definitionsdomain.NewContribution(nil), nil
+		},
+		TemplateSettingRules: map[string]definitionsdomain.TemplateSettingRule{
+			"endpoint": {Type: "string", Description: "Target endpoint", Required: true, AllowResourceBinding: true},
+		},
+	}
+}
+
+func templateTestValue() templatesdomain.Template {
+	return templatesdomain.Template{
+		ID: "redis-default", DefinitionID: "redis", DefinitionVersion: "1.0.0",
+		Owner: desiredstate.TemplateOwnerLocal, Revision: 1, Status: templatesdomain.StatusEnabled,
+		Settings: map[string]any{},
+		Bindings: []templatesdomain.SettingBinding{{Target: "endpoint", Source: templatesdomain.BindingSource{
+			Kind: templatesdomain.SourceEndpoint, EndpointScope: "host", EndpointProtocol: "tcp", EndpointProvenance: "published_port",
+		}}},
+	}
+}

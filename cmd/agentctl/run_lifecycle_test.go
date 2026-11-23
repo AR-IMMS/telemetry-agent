@@ -5,8 +5,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentlifecycle"
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector/activation"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	agentservice "github.com/ar-imms/telemetry-agent/internal/runtime/service"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 func TestRunCollectorUsesDefaultStatePath(t *testing.T) {
@@ -41,11 +43,11 @@ func TestRunCollectorUsesDefaultStatePath(t *testing.T) {
 			stderr.String(),
 		)
 	}
-	if gotStatePath != agentstate.DefaultPath() {
+	if gotStatePath != agentservice.DefaultStatePath() {
 		t.Fatalf(
 			"state path = %q, want %q",
 			gotStatePath,
-			agentstate.DefaultPath(),
+			agentservice.DefaultStatePath(),
 		)
 	}
 	if stdout.String() != "Collector stopped\n" {
@@ -67,15 +69,15 @@ func TestRunCollectorPassesDependencyTeardownToRuntime(t *testing.T) {
 	teardown := agentlifecycle.DependencyTeardownFunc(func(
 		ctx context.Context,
 		name string,
-		action agentstate.TeardownAction,
-		resources []agentstate.OwnedResource,
+		action dependencydomain.TeardownAction,
+		resources []servicedomain.OwnedResource,
 	) error {
 		teardownCalled = true
 
 		if name != "node-exporter" {
 			t.Fatalf("teardown name = %q, want node-exporter", name)
 		}
-		if action != agentstate.TeardownActionDisable {
+		if action != dependencydomain.TeardownActionDisable {
 			t.Fatalf("teardown action = %q, want disable", action)
 		}
 
@@ -111,7 +113,7 @@ func TestRunCollectorPassesDependencyTeardownToRuntime(t *testing.T) {
 				return gotTeardown(
 					ctx,
 					"node-exporter",
-					agentstate.TeardownActionDisable,
+					dependencydomain.TeardownActionDisable,
 					nil,
 				)
 			},

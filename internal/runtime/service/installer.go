@@ -1,0 +1,434 @@
+package agentinstallation
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	opampdomain "github.com/ar-imms/telemetry-agent/internal/runtime/opamp/domain"
+)
+
+// Options contains the caller-provided inputs for one packaged Agent
+// installation. Paths owned by the Agent are resolved from Platform.
+type Options struct {
+	Platform         identity.PlatformInfo
+	SourceBinaryPath string
+	ConfigRoot       string
+	GatewayEndpoint  string
+	HealthEndpoint   string
+	// OpAMPServerURL configures the default Supervisor owner on a new
+	// installation. A new install requires this unless DisableSupervisor is set.
+	OpAMPServerURL string
+	// CredentialSource explicitly identifies which issuer's credential the
+	// Supervisor will use for a remote endpoint.
+	CredentialSource opampdomain.CredentialSource
+	// DisableSupervisor explicitly selects the legacy Agent Collector runtime.
+	DisableSupervisor     bool
+	ConfigInput           config.RenderInput
+	ValidationEnvironment []string
+	ValidationTimeout     time.Duration
+}
+
+type stateStore interface {
+	Load() (agentstate.State, error)
+	Update(agentstate.StateMutation) (agentstate.State, error)
+}
+
+type serviceInstaller interface {
+	Install(context.Context, Layout) error
+}
+
+type serviceStopper interface {
+	Stop(context.Context, Layout) error
+}
+
+type serviceInstallerFunc func(context.Context, Layout) error
+
+// ValidateOpAMPServerURL accepts secure WSS URLs and loopback-only WS URLs.
+func ValidateOpAMPServerURL(value string) error {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return fmt.Errorf("OpAMP server URL is invalid")
+	}
+	if port := parsed.Port(); port != "" {
+		parsedPort, portErr := strconv.Atoi(port)
+		if portErr != nil || parsedPort < 1 || parsedPort > 65535 {
+			return fmt.Errorf("OpAMP server URL port is invalid")
+		}
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case "wss":
+		return nil
+	case "ws":
+		host := strings.ToLower(parsed.Hostname())
+		if host == "localhost" || net.ParseIP(host) != nil && net.ParseIP(host).IsLoopback() {
+			return nil
+		}
+		return fmt.Errorf("cleartext OpAMP is allowed only on loopback")
+	default:
+		return fmt.Errorf("OpAMP server URL must use wss, or ws on loopback")
+	}
+}
+
+func (f serviceInstallerFunc) Install(
+	ctx context.Context,
+	layout Layout,
+) error {
+	return f(ctx, layout)
+}
+
+// Installer coordinates the concrete effects of a packaged Agent installation.
+type Installer struct {
+	layoutFor         func(identity.PlatformInfo) (Layout, error)
+	copyAgentBinary   func(context.Context, string, string) error
+	bootstrap         func(context.Context, bootstrap.Options) (bootstrap.Result, error)
+	installSupervisor func(context.Context, string, identity.PlatformInfo) (string, error)
+	newStateStore     func(string) stateStore
+	serviceFor        func(Layout) (serviceInstaller, error)
+}
+
+// Install stages the durable Agent binary, bootstraps the Collector, persists
+// ownership and Collector context, then enables and starts the Agent service.
+func (i Installer) Install(
+	ctx context.Context,
+	options Options,
+) (Layout, error) {
+	if ctx == nil {
+		return Layout{}, fmt.Errorf("Agent installation context is required")
+	}
+	if i.layoutFor == nil {
+		return Layout{}, fmt.Errorf("Agent installation layout resolver is required")
+	}
+	if i.copyAgentBinary == nil {
+		return Layout{}, fmt.Errorf("Agent binary copier is required")
+	}
+	if i.bootstrap == nil {
+		return Layout{}, fmt.Errorf("Collector bootstrapper is required")
+	}
+	if i.installSupervisor == nil {
+		return Layout{}, fmt.Errorf("Supervisor installer is required")
+	}
+	if i.newStateStore == nil {
+		return Layout{}, fmt.Errorf("Agent state store factory is required")
+	}
+	if i.serviceFor == nil {
+		return Layout{}, fmt.Errorf("Agent service resolver is required")
+	}
+	if strings.TrimSpace(options.SourceBinaryPath) == "" {
+		return Layout{}, fmt.Errorf("Agent source binary path is required")
+	}
+	if strings.TrimSpace(options.ConfigRoot) == "" {
+		return Layout{}, fmt.Errorf("Collector configuration root is required")
+	}
+	if strings.TrimSpace(options.GatewayEndpoint) == "" {
+		return Layout{}, fmt.Errorf("Collector gateway endpoint is required")
+	}
+	if strings.TrimSpace(options.HealthEndpoint) == "" {
+		return Layout{}, fmt.Errorf("Collector health endpoint is required")
+	}
+	if options.ValidationTimeout <= 0 {
+		return Layout{}, fmt.Errorf(
+			"Collector validation timeout must be positive",
+		)
+	}
+	if options.OpAMPServerURL != "" {
+		if err := ValidateOpAMPServerURL(options.OpAMPServerURL); err != nil {
+			return Layout{}, err
+		}
+		options.OpAMPServerURL = strings.TrimSpace(options.OpAMPServerURL)
+	}
+	if options.CredentialSource != "" && options.CredentialSource != opampdomain.CredentialSourceCore && options.CredentialSource != opampdomain.CredentialSourceFleet {
+		return Layout{}, fmt.Errorf("OpAMP credential source must be core or fleet")
+	}
+	if options.CredentialSource != "" && options.OpAMPServerURL == "" {
+		return Layout{}, fmt.Errorf("OpAMP credential source requires an explicit server URL")
+	}
+	if options.DisableSupervisor && options.OpAMPServerURL != "" {
+		return Layout{}, fmt.Errorf("OpAMP Supervisor cannot be disabled while an OpAMP endpoint is configured")
+	}
+
+	layout, err := i.layoutFor(options.Platform)
+	if err != nil {
+		return Layout{}, fmt.Errorf("resolve Agent installation layout: %w", err)
+	}
+
+	service, err := i.serviceFor(layout)
+	if err != nil {
+		return Layout{}, fmt.Errorf("resolve Agent service installer: %w", err)
+	}
+	if service == nil {
+		return Layout{}, fmt.Errorf("Agent service installer is required")
+	}
+	store := i.newStateStore(layout.StatePath)
+	previousState, previousErr := store.Load()
+	if previousErr != nil && !errors.Is(previousErr, os.ErrNotExist) {
+		return Layout{}, fmt.Errorf("load Agent state before installation update: %w", previousErr)
+	}
+	previousState = previousState.Clone()
+	bootstrapConfigPath := layout.CollectorConfigurationPath
+	var configStagingDirectory string
+	if previousState.Installation != nil {
+		configDirectory := filepath.Dir(layout.CollectorConfigurationPath)
+		if err := os.MkdirAll(configDirectory, 0755); err != nil {
+			return Layout{}, fmt.Errorf("create Collector configuration directory: %w", err)
+		}
+		configStagingDirectory, err = os.MkdirTemp(configDirectory, ".agent-install-config-")
+		if err != nil {
+			return Layout{}, fmt.Errorf("create staged Collector configuration directory: %w", err)
+		}
+		defer os.RemoveAll(configStagingDirectory)
+		bootstrapConfigPath = filepath.Join(configStagingDirectory, filepath.Base(layout.CollectorConfigurationPath))
+	}
+	opampServerURL, enabled, err := supervisorActivationForInstall(
+		options.OpAMPServerURL,
+		previousState,
+		options.DisableSupervisor,
+	)
+	if err != nil {
+		return Layout{}, err
+	}
+	credentialSource := options.CredentialSource
+	if credentialSource == "" && strings.TrimSpace(previousState.Supervisor.OpAMPServerURL) == opampServerURL {
+		credentialSource = previousState.Supervisor.CredentialSource
+	}
+	if opampServerURL != "" && !isLoopbackOpAMPEndpoint(opampServerURL) && credentialSource == "" {
+		return Layout{}, fmt.Errorf("remote OpAMP endpoint requires an explicit credential source")
+	}
+
+	result, err := i.bootstrap(ctx, bootstrap.Options{
+		Platform:    options.Platform,
+		InstallDir:  layout.CollectorInstallDirectory,
+		ConfigPath:  bootstrapConfigPath,
+		ConfigInput: options.ConfigInput,
+		ValidationEnvironment: append(
+			[]string(nil),
+			options.ValidationEnvironment...,
+		),
+		ValidationTimeout: options.ValidationTimeout,
+	})
+	if err != nil {
+		return Layout{}, fmt.Errorf("bootstrap Collector: %w", err)
+	}
+	supervisorBinaryPath := previousState.Supervisor.BinaryPath
+	if options.OpAMPServerURL != "" || enabled {
+		supervisorBinaryPath, err = i.installSupervisor(ctx, layout.SupervisorInstallDirectory, options.Platform)
+		if err != nil {
+			return Layout{}, fmt.Errorf("install OpAMP Supervisor: %w", err)
+		}
+	}
+	if previousState.Installation != nil {
+		stopper, ok := service.(serviceStopper)
+		if !ok {
+			return Layout{}, fmt.Errorf("Agent service stop capability is required to replace an installed binary")
+		}
+		if err := stopper.Stop(ctx, layout); err != nil {
+			return Layout{}, fmt.Errorf("stop existing Agent service before binary replacement: %w", err)
+		}
+	}
+	if err := i.copyAgentBinary(ctx, options.SourceBinaryPath, layout.AgentBinaryPath); err != nil {
+		if previousState.Installation != nil {
+			if restartErr := service.Install(ctx, layout); restartErr != nil {
+				return Layout{}, fmt.Errorf("stage Agent binary: %w; restart previous Agent service: %v", err, restartErr)
+			}
+		}
+		return Layout{}, fmt.Errorf("stage Agent binary: %w", err)
+	}
+
+	configBackupPath := ""
+	configBackupExists := false
+	if previousState.Installation != nil {
+		configBackupPath = filepath.Join(configStagingDirectory, "previous-collector-config")
+		if _, statErr := os.Stat(layout.CollectorConfigurationPath); statErr == nil {
+			if err := config.PreserveFileSecurity(layout.CollectorConfigurationPath, bootstrapConfigPath); err != nil {
+				if restartErr := service.Install(ctx, layout); restartErr != nil {
+					return Layout{}, errors.Join(
+						fmt.Errorf("preserve previous Collector configuration security: %w", err),
+						fmt.Errorf("restart existing Agent service: %w", restartErr),
+					)
+				}
+				return Layout{}, fmt.Errorf("preserve previous Collector configuration security: %w", err)
+			}
+			if err := os.Rename(layout.CollectorConfigurationPath, configBackupPath); err != nil {
+				if restartErr := service.Install(ctx, layout); restartErr != nil {
+					return Layout{}, errors.Join(
+						fmt.Errorf("preserve previous Collector configuration: %w", err),
+						fmt.Errorf("restart existing Agent service: %w", restartErr),
+					)
+				}
+				return Layout{}, fmt.Errorf("preserve previous Collector configuration: %w", err)
+			}
+			configBackupExists = true
+		} else if !errors.Is(statErr, os.ErrNotExist) {
+			if restartErr := service.Install(ctx, layout); restartErr != nil {
+				return Layout{}, errors.Join(
+					fmt.Errorf("inspect previous Collector configuration: %w", statErr),
+					fmt.Errorf("restart existing Agent service: %w", restartErr),
+				)
+			}
+			return Layout{}, fmt.Errorf("inspect previous Collector configuration: %w", statErr)
+		}
+		if err := os.Rename(bootstrapConfigPath, layout.CollectorConfigurationPath); err != nil {
+			var restoreErr error
+			if configBackupExists {
+				restoreErr = os.Rename(configBackupPath, layout.CollectorConfigurationPath)
+			}
+			if restoreErr != nil {
+				return Layout{}, errors.Join(
+					fmt.Errorf("activate staged Collector configuration: %w", err),
+					fmt.Errorf("restore previous Collector configuration: %w", restoreErr),
+				)
+			}
+			if restartErr := service.Install(ctx, layout); restartErr != nil {
+				return Layout{}, errors.Join(
+					fmt.Errorf("activate staged Collector configuration: %w", err),
+					fmt.Errorf("restart existing Agent service: %w", restartErr),
+				)
+			}
+			return Layout{}, fmt.Errorf("activate staged Collector configuration: %w", err)
+		}
+		result.ConfigPath = layout.CollectorConfigurationPath
+	}
+	restorePreviousConfig := func() error {
+		if previousState.Installation == nil {
+			return nil
+		}
+		if err := os.Remove(layout.CollectorConfigurationPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("remove candidate Collector configuration: %w", err)
+		}
+		if configBackupExists {
+			if err := os.Rename(configBackupPath, layout.CollectorConfigurationPath); err != nil {
+				return fmt.Errorf("restore previous Collector configuration: %w", err)
+			}
+		}
+		return nil
+	}
+
+	_, err = store.Update(func(state *agentstate.State) error {
+		if state.Dependencies == nil {
+			state.Dependencies = make(
+				map[string]dependencydomain.DependencyState,
+			)
+		}
+
+		state.Collector = collectordomain.CollectorContext{
+			ConfigRoot:      options.ConfigRoot,
+			BinaryPath:      result.BinaryPath,
+			ConfigPath:      result.ConfigPath,
+			GatewayEndpoint: options.GatewayEndpoint,
+			HealthEndpoint:  options.HealthEndpoint,
+		}
+		state.Supervisor = opampdomain.SupervisorContext{
+			BinaryPath: supervisorBinaryPath, ConfigurationPath: layout.SupervisorConfigurationPath,
+			StateDirectory: layout.SupervisorStateDirectory, OpAMPServerURL: opampServerURL,
+			CredentialSource: credentialSource,
+			Enabled:          enabled,
+		}
+
+		return state.RecordAgentInstallation(layout.Installation())
+	})
+	if err != nil {
+		persistErr := fmt.Errorf("persist Agent installation state: %w", err)
+		if previousState.Installation != nil {
+			if restoreErr := restorePreviousConfig(); restoreErr != nil {
+				return Layout{}, errors.Join(persistErr, restoreErr)
+			}
+			if restartErr := service.Install(ctx, layout); restartErr != nil {
+				return Layout{}, errors.Join(
+					persistErr,
+					fmt.Errorf("restart existing Agent service after state persistence failure: %w", restartErr),
+				)
+			}
+		}
+		return Layout{}, persistErr
+	}
+
+	if err := service.Install(ctx, layout); err != nil {
+		installErr := fmt.Errorf("install Agent service: %w", err)
+		if previousState.Installation == nil {
+			return Layout{}, installErr
+		}
+
+		stopper, ok := service.(serviceStopper)
+		if !ok {
+			return Layout{}, errors.Join(
+				installErr,
+				fmt.Errorf("stop partially started target Agent service: stop capability is unavailable"),
+			)
+		}
+		if stopErr := stopper.Stop(ctx, layout); stopErr != nil {
+			return Layout{}, errors.Join(
+				installErr,
+				fmt.Errorf("stop partially started target Agent service: %w", stopErr),
+			)
+		}
+		configRestoreErr := restorePreviousConfig()
+		if _, restoreErr := store.Update(func(state *agentstate.State) error {
+			*state = previousState
+			return nil
+		}); restoreErr != nil {
+			return Layout{}, errors.Join(
+				installErr,
+				fmt.Errorf("restore previous Agent state after service start failure: %w", restoreErr),
+				configRestoreErr,
+			)
+		}
+		if configRestoreErr != nil {
+			return Layout{}, errors.Join(installErr, configRestoreErr)
+		}
+		if restartErr := service.Install(ctx, layout); restartErr != nil {
+			return Layout{}, errors.Join(
+				installErr,
+				fmt.Errorf("restart previous Agent service after target start failure: %w", restartErr),
+			)
+		}
+		return Layout{}, installErr
+	}
+
+	return layout, nil
+}
+
+func isLoopbackOpAMPEndpoint(endpoint string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(endpoint))
+	if err != nil {
+		return false
+	}
+	host := strings.TrimSpace(parsed.Hostname())
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	address := net.ParseIP(host)
+	return address != nil && address.IsLoopback()
+}
+
+func supervisorActivationForInstall(requestedEndpoint string, previous agentstate.State, disableSupervisor bool) (string, bool, error) {
+	if disableSupervisor {
+		return "", false, nil
+	}
+	if strings.TrimSpace(requestedEndpoint) != "" {
+		// Supplying the endpoint selects the default Supervisor owner for a new
+		// install or explicitly migrates an existing legacy installation.
+		return requestedEndpoint, true, nil
+	}
+	if previous.Installation != nil {
+		if previous.Supervisor.Enabled {
+			return previous.Supervisor.OpAMPServerURL, true, nil
+		}
+		return "", false, nil
+	}
+	return "", false, fmt.Errorf(
+		"OpAMP server URL is required for a new installation using the default Supervisor runtime; explicitly disable Supervisor to select the legacy Agent runtime",
+	)
+}

@@ -9,125 +9,32 @@ import (
 	"time"
 )
 
-// ensureSQLiteSchema applies idempotent schema setup before any state access.
-func ensureSQLiteSchema(db *sql.DB) error {
+// InitializeAgentStateBaseSchema creates the legacy Agent State payload table.
+// Application migration composition creates the technical ledger, Runtime's
+// activation journal, and records historical version 1 around this callback.
+func InitializeAgentStateBaseSchema(db *sql.DB) error {
 	statements := []string{
-		`CREATE TABLE IF NOT EXISTS schema_migrations (
-			version INTEGER PRIMARY KEY,
-			applied_at TEXT NOT NULL
-		)`,
 		`CREATE TABLE IF NOT EXISTS agent_state (
 			id INTEGER PRIMARY KEY CHECK (id = 1),
 			payload BLOB NOT NULL,
 			updated_at TEXT NOT NULL
 		)`,
-		`CREATE TABLE IF NOT EXISTS activation_journal (
-			generation INTEGER PRIMARY KEY,
-			outcome TEXT NOT NULL,
-			updated_at TEXT NOT NULL
-		)`,
-		`INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (1, CURRENT_TIMESTAMP)`,
 	}
 	for _, statement := range statements {
 		if _, err := db.Exec(statement); err != nil {
 			return fmt.Errorf("initialize Agent SQLite schema: %w", err)
 		}
 	}
-	if err := migrateInstallationIdentity(db); err != nil {
-		return err
-	}
-	if err := migrateCoreGatewaySnapshot(db); err != nil {
-		return err
-	}
-	if err := migrateCoreGatewayRuntime(db); err != nil {
-		return err
-	}
-	if err := migrateEnrollmentAttempts(db); err != nil {
-		return err
-	}
-	if err := migrateIntegrationDesiredState(db); err != nil {
-		return err
-	}
-	if err := migrateCandidateActivationMapping(db); err != nil {
-		return err
-	}
-	if err := migrateCandidateAttemptHistory(db); err != nil {
-		return err
-	}
-	if err := migrateReconciliationDiagnostics(db); err != nil {
-		return err
-	}
-	if err := migrateDiscoveryInventory(db); err != nil {
-		return err
-	}
-	if err := migrateInventoryWriteRevision(db); err != nil {
-		return err
-	}
-	if err := migrateMonitoringProposals(db); err != nil {
-		return err
-	}
-	return migrateIntegrationTemplates(db)
+	return nil
 }
 
-// migrateInstallationIdentity atomically creates the identity schema and its
-// explicit uninitialized singleton row, independently of UUID initialization.
-func migrateInstallationIdentity(db *sql.DB) error {
-	tx, err := db.Begin()
-	if err != nil {
-		return fmt.Errorf("begin Agent identity schema migration: %w", err)
+// LoadStateForMigration reads Agent-owned state from the migration transaction
+// without committing or changing the transaction boundary.
+func LoadStateForMigration(tx *sql.Tx) (State, error) {
+	if tx == nil {
+		return State{}, fmt.Errorf("Agent migration transaction is required")
 	}
-	defer tx.Rollback()
-
-	var applied int
-	if err := tx.QueryRow(
-		`SELECT COUNT(*) FROM schema_migrations WHERE version = 2`,
-	).Scan(&applied); err != nil {
-		return fmt.Errorf("check Agent identity schema version: %w", err)
-	}
-	if applied != 0 {
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("finish Agent identity schema check: %w", err)
-		}
-		return nil
-	}
-
-	var tableExists int
-	if err := tx.QueryRow(
-		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'installation_identity'`,
-	).Scan(&tableExists); err != nil {
-		return fmt.Errorf("check Agent identity table: %w", err)
-	}
-	if tableExists != 0 {
-		return fmt.Errorf("Agent identity table exists without schema migration version 2")
-	}
-	if _, err := tx.Exec(
-		`CREATE TABLE installation_identity (
-			id INTEGER PRIMARY KEY CHECK (id = 1),
-			installation_id TEXT,
-			initialized INTEGER NOT NULL CHECK (initialized IN (0, 1)),
-			CHECK (
-				(initialized = 0 AND installation_id IS NULL) OR
-				(initialized = 1 AND installation_id IS NOT NULL)
-			)
-		)`,
-	); err != nil {
-		return fmt.Errorf("create Agent identity table: %w", err)
-	}
-	if _, err := tx.Exec(
-		`INSERT INTO installation_identity (id, installation_id, initialized)
-		 VALUES (1, NULL, 0)`,
-	); err != nil {
-		return fmt.Errorf("initialize Agent identity row: %w", err)
-	}
-	if _, err := tx.Exec(
-		`INSERT INTO schema_migrations (version, applied_at) VALUES (2, CURRENT_TIMESTAMP)`,
-	); err != nil {
-		return fmt.Errorf("record Agent identity schema version: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit Agent identity schema migration: %w", err)
-	}
-	return nil
+	return loadSQLiteState(tx)
 }
 
 // importLegacyState imports JSON only when the database has no state row.
@@ -177,49 +84,3 @@ func (s SQLiteStore) importLegacyState(db *sql.DB) error {
 
 // recordActivationTransition journals only changes to the activated revision.
 // A lower revision represents restoring the previously activated generation.
-func recordActivationTransition(
-	tx *sql.Tx,
-	previous State,
-	current State,
-) error {
-	outcome := ""
-	generation := current.ActivatedGeneration
-	switch {
-	case current.ActivatedGeneration > previous.ActivatedGeneration:
-		outcome = "activated"
-	case current.ActivatedGeneration < previous.ActivatedGeneration:
-		outcome = "rolled_back"
-		generation = previous.ActivatedGeneration
-	}
-	if outcome == "" {
-		return nil
-	}
-	var candidate *CandidateMapping
-	if current.PendingActivation != nil && current.PendingActivation.Generation == generation {
-		candidate = current.PendingActivation.Candidate
-	}
-	if candidate == nil && previous.PendingActivation != nil && previous.PendingActivation.Generation == generation {
-		candidate = previous.PendingActivation.Candidate
-	}
-	if candidate != nil {
-		mapping := *candidate
-		mapping.Outcome = outcome
-		if outcome == "activated" {
-			mapping.Stage = "activation"
-		} else {
-			mapping.Stage = "rollback"
-			mapping.RecoveryResult = "recovered"
-		}
-		return writeCandidateJournal(tx, generation, mapping)
-	}
-	if _, err := tx.Exec(
-		`INSERT INTO activation_journal (generation, outcome, updated_at) VALUES (?, ?, ?)
-		 ON CONFLICT(generation) DO UPDATE SET outcome = excluded.outcome, updated_at = excluded.updated_at`,
-		generation,
-		outcome,
-		time.Now().UTC().Format(time.RFC3339Nano),
-	); err != nil {
-		return fmt.Errorf("record configuration activation: %w", err)
-	}
-	return nil
-}

@@ -1,0 +1,66 @@
+%% Current process/system topology and control/data collaboration.
+%% Arrows do not describe Go imports; see consolidation/03-target-architecture.md#code-dependency-go-imports.
+flowchart TB
+    Admin[Engineer / Core UI]
+    Core[AR-IMMS Core]
+    Mock[Go Mock Core / isolated testbed]
+    OpAMPServer[Go OpAMP Server adapter]
+    NATS[NATS JetStream]
+    Gateway[OTLP Gateway]
+
+    Admin --> Core
+    Core <-->|Versioned Core contract| OpAMPServer
+    Mock <-->|Same contract in tests| OpAMPServer
+    OpAMPServer <-->|Native authenticated OpAMP| Supervisor
+    Core <-->|Enrollment and supported APIs| Agent
+    Core <-->|Authorized operations contract| Operations
+    Operations <-->|Authenticated request/result path| NATS
+
+    subgraph Host[Windows / Linux host]
+      CLI[agentctl]
+      Agent[Agent Service / Application Host]
+      Identity[Identity]
+      Inventory[Inventory providers]
+      Monitoring[Monitoring profiles]
+      Configuration[Configuration and desired state]
+      Runtime[Runtime provisioning / recovery]
+      Health[Health and reporting]
+      Operations[Operations]
+      SQLite[(SQLite context repositories)]
+      Docker[Docker API]
+      Observer[OTel Observer]
+      Creator[OTel Receiver Creator]
+      Receivers[OTel receivers]
+      Supervisor[OTel OpAMP Supervisor]
+      LegacyOwner[Legacy Agent Collector owner]
+      Collector[OTel Collector]
+
+      CLI --> Agent
+      Agent --> Identity
+      Agent --> Inventory
+      Agent --> Monitoring
+      Agent --> Configuration
+      Agent --> Runtime
+      Agent --> Health
+      Agent --> Operations
+      Docker --> Inventory
+      Inventory -->|Observed evidence| Monitoring
+      Monitoring -->|Profile recommendation| Configuration
+      Configuration -->|Validated candidate / desired state| Runtime
+      Runtime -->|New installs require Supervisor endpoint; existing installs migrate explicitly| Supervisor
+      Runtime -.->|Explicit legacy selection or rollback; mutually exclusive owner| LegacyOwner
+      Supervisor --> Collector
+      LegacyOwner -.-> Collector
+      Docker --> Observer
+      Observer --> Creator
+      Creator --> Receivers
+      Collector --> Receivers
+      Identity <--> SQLite
+      Inventory <--> SQLite
+      Monitoring <--> SQLite
+      Configuration <--> SQLite
+      Runtime <--> SQLite
+      Health -.->|Evidence snapshots| Agent
+    end
+
+    Receivers --> Gateway

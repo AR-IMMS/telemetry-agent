@@ -1,0 +1,16 @@
+sequenceDiagram
+    participant Infra as Docker/App
+    participant Provider as Agent Discovery Provider
+    participant Inv as Inventory Registry
+    participant Cap as Capability Resolver
+    participant Config as Configuration Provisioner
+    participant OTel as OTel Observer + Receiver Creator
+    Infra-->>Provider: Docker metadata/snapshot
+    Provider->>Inv: Commit complete scoped observations
+    Inv->>Cap: Resource + provenance
+    Cap->>Config: Supported preconfigured capability needed
+    Config->>Config: CAS rule revision / no-op if unchanged
+    Config-->>OTel: Validated Collector configuration generation
+    Infra-->>OTel: Endpoint start/stop observed
+    OTel->>OTel: Create/delete receiver instance on rule match
+    Note over OTel: No per-service approval; no unknown receiver auto-creation

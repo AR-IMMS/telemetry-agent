@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
+	agentservice "github.com/ar-imms/telemetry-agent/internal/runtime/service"
 )
 
 func writeDependencyHelp(output io.Writer) {
@@ -30,7 +30,7 @@ Commands:
 func parseDependencyInstallArguments(
 	args []string,
 ) ([]string, string, error) {
-	statePath := agentstate.DefaultPath()
+	statePath := agentservice.DefaultStatePath()
 	names := make([]string, 0, 1)
 
 	for index := 0; index < len(args); index++ {

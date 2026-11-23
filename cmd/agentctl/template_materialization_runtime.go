@@ -4,44 +4,70 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ar-imms/telemetry-agent/internal/app"
+	desiredstateapp "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/application"
+	materializationapp "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/application"
+	materializationdomain "github.com/ar-imms/telemetry-agent/internal/configuration/materialization/domain"
+	proposalapp "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
+	templatesconfigapp "github.com/ar-imms/telemetry-agent/internal/configuration/templates/application"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
+	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
+	matchingapp "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/application"
+	matchingdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/domain"
+	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
+	templatesmonitoringapp "github.com/ar-imms/telemetry-agent/internal/monitoring/templates/application"
+	"github.com/ar-imms/telemetry-agent/internal/platform/events"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 	"log"
 	"runtime"
 	"sort"
 	"time"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
-	"github.com/ar-imms/telemetry-agent/internal/configuration"
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
 )
 
 const materializationCASAttempts = 3
 
 type runtimeTemplateMaterializer struct {
-	inventory discovery.InventoryRepository
-	templates configuration.TemplateRepository
-	desired   configuration.IntegrationRepository
-	service   configuration.MaterializationService
-	matcher   integration.Matcher
+	inventory        inventoryapp.InventoryRepository
+	templates        templatesconfigapp.Repository
+	desired          desiredstateapp.Repository
+	service          materializationapp.Service
+	matcher          templatesmonitoringapp.Evaluator
+	nativeMonitoring bool
+	nativeProfiles   monitoringdomain.Registry
 }
 
-func newRuntimeTemplateMaterializer(statePath string) (runtimeTemplateMaterializer, error) {
-	store := agentstate.NewSQLiteStore(statePath)
+func newRuntimeTemplateMaterializer(statePath string, publisher ...events.Publisher) (runtimeTemplateMaterializer, error) {
+	state, err := newAgentStateStore(statePath).Load()
+	if err != nil {
+		return runtimeTemplateMaterializer{}, fmt.Errorf("load Agent config root for template materialization: %w", err)
+	}
+	profiles, err := loadMonitoringProfiles(state.Collector.ConfigRoot)
+	if err != nil {
+		return runtimeTemplateMaterializer{}, fmt.Errorf("load local monitoring profiles: %w", err)
+	}
 	registry, err := productionIntegrationRegistry()
 	if err != nil {
 		return runtimeTemplateMaterializer{}, err
 	}
 	platform := identity.PlatformInfo{OS: runtime.GOOS, Architecture: runtime.GOARCH}
-	var assessor integration.CapabilityAssessor
+	var assessor matchingdomain.CapabilityAssessor
 	if catalog, catalogErr := collectorruntime.StaticCatalog(platform); catalogErr == nil {
-		assessor = catalogCapabilityAssessor{catalog: catalog, platform: platform.OS + "/" + platform.Architecture}
+		assessor = matchingdomain.NewCatalogCapabilityAssessor(catalog, platform.OS, platform.OS+"/"+platform.Architecture)
+	}
+	materializationRepository := app.NewMaterializationRepository(statePath)
+	if len(publisher) > 0 && publisher[0] != nil {
+		materializationRepository = app.NewMaterializationRepositoryWithEvents(statePath, publisher[0])
+	}
+	nativeLayers, _, err := nativeDockerMonitoringInputs(statePath, platform.OS)
+	if err != nil {
+		return runtimeTemplateMaterializer{}, fmt.Errorf("resolve native monitoring for template materialization: %w", err)
 	}
 	return runtimeTemplateMaterializer{
-		inventory: store.InventoryRepository(), templates: store.TemplateRepository(), desired: store.IntegrationRepository(),
-		service: configuration.NewMaterializationService(store.MaterializationRepository()),
-		matcher: integration.NewMatcher(registry, assessor),
+		inventory: app.NewInventoryRepository(statePath), templates: app.NewTemplateRepository(statePath), desired: app.NewDesiredStateRepository(statePath),
+		service:          materializationapp.NewService(materializationRepository),
+		matcher:          templatesmonitoringapp.NewEvaluator(registry, assessor),
+		nativeMonitoring: len(nativeLayers) > 0, nativeProfiles: profiles,
 	}, nil
 }
 
@@ -63,21 +89,35 @@ func (r runtimeTemplateMaterializer) Refresh(ctx context.Context) error {
 			return fmt.Errorf("read desired Integrations for materialization: %w", err)
 		}
 		asOf := time.Now().UTC()
-		matchSnapshot := projectInventory(inventory, asOf)
-		matches, err := r.matcher.MatchTemplates(matchSnapshot, templates.Templates)
+		matchSnapshot := matchingapp.ProjectInventory(inventory, asOf)
+		if r.nativeMonitoring {
+			filtered := matchSnapshot.Resources[:0]
+			for _, resource := range matchSnapshot.Resources {
+				if _, native := r.nativeProfiles.Match(resource.Provider, resource.Attributes); native {
+					continue
+				}
+				filtered = append(filtered, resource)
+			}
+			matchSnapshot.Resources = filtered
+		}
+		monitoringTemplates, err := proposalapp.MonitoringTemplateInputs(templates.Templates)
+		if err != nil {
+			return fmt.Errorf("project Configuration Templates for Monitoring evaluation: %w", err)
+		}
+		matches, err := r.matcher.MatchTemplates(matchSnapshot, monitoringTemplates)
 		if err != nil {
 			return fmt.Errorf("match Templates against inventory: %w", err)
 		}
-		plan, err := configuration.BuildMaterializationPlan(configuration.MaterializationInput{
+		plan, err := materializationapp.BuildPlan(materializationapp.Input{
 			InventoryRevision: inventory.Revision, InventoryWriteRevision: inventory.WriteRevision,
 			Templates: templates, Desired: desired, Resources: matchSnapshot.Resources, Matches: matches,
-			StaleAfter: discovery.DefaultPolicy().StaleAfter,
+			StaleAfter: inventorydomain.DefaultPolicy().StaleAfter,
 		})
 		if err != nil {
 			return fmt.Errorf("build Integration materialization plan: %w", err)
 		}
 		if _, err := r.service.Apply(plan); err != nil {
-			if errors.Is(err, configuration.ErrMaterializationConflict) {
+			if errors.Is(err, materializationdomain.ErrMaterializationConflict) {
 				continue
 			}
 			return err
@@ -85,10 +125,10 @@ func (r runtimeTemplateMaterializer) Refresh(ctx context.Context) error {
 		logMaterializationDiagnostics(plan.Diagnostics)
 		return nil
 	}
-	return configuration.ErrMaterializationConflict
+	return materializationdomain.ErrMaterializationConflict
 }
 
-func logMaterializationDiagnostics(diagnostics []configuration.MaterializationDiagnostic) {
+func logMaterializationDiagnostics(diagnostics []materializationdomain.Diagnostic) {
 	if len(diagnostics) == 0 {
 		return
 	}

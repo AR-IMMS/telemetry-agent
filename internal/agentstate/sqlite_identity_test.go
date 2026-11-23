@@ -9,14 +9,18 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	installationapp "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
+	installationid "github.com/ar-imms/telemetry-agent/internal/identity/installation/domain"
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 )
 
 func TestSQLiteIdentityRepositoryInitializesAndReusesCommittedID(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	store := NewSQLiteStore(path)
+	store := newTestSQLiteStore(path)
 	wantState := State{
-		Collector: CollectorContext{
+		Collector: collectordomain.CollectorContext{
 			BinaryPath:      "otelcol",
 			ConfigPath:      "otel.yaml",
 			GatewayEndpoint: "127.0.0.1:4317",
@@ -25,15 +29,16 @@ func TestSQLiteIdentityRepositoryInitializesAndReusesCommittedID(t *testing.T) {
 		DesiredGeneration:   4,
 		ActivatedGeneration: 4,
 		AppliedGeneration:   3,
-		Dependencies: map[string]DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {
 				Enabled: true,
-				Ownership: &OwnershipRecord{Resources: []OwnedResource{{
-					Kind:       "systemd-service",
-					Identifier: "node-exporter",
-				}}},
 			},
 		},
+	}
+	if err := wantState.RecordOwnership("node-exporter", []servicedomain.OwnedResource{{
+		Kind: "systemd-service", Identifier: "node-exporter",
+	}}); err != nil {
+		t.Fatalf("record Agent-owned resources: %v", err)
 	}
 	if err := store.Save(wantState); err != nil {
 		t.Fatalf("initialize M1 state: %v", err)
@@ -41,7 +46,7 @@ func TestSQLiteIdentityRepositoryInitializesAndReusesCommittedID(t *testing.T) {
 
 	first := mustInstallationID(t, "11111111-2222-4333-8444-555555555555")
 	second := mustInstallationID(t, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee")
-	repository := NewIdentityStore(path)
+	repository := newTestIdentityStore(path)
 	got, err := repository.EnsureInstallationID(first)
 	if err != nil {
 		t.Fatalf("EnsureInstallationID(first) error = %v", err)
@@ -68,7 +73,7 @@ func TestSQLiteIdentityRepositoryInitializesAndReusesCommittedID(t *testing.T) {
 
 func TestSQLiteIdentityMigrationSeparatesSchemaAndInitialization(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	store := NewSQLiteStore(path)
+	store := newTestSQLiteStore(path)
 	if _, err := store.Load(); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("Load() error = %v, want missing state", err)
 	}
@@ -82,8 +87,8 @@ func TestSQLiteIdentityMigrationSeparatesSchemaAndInitialization(t *testing.T) {
 	if err := db.QueryRow("SELECT MAX(version) FROM schema_migrations").Scan(&schemaVersion); err != nil {
 		t.Fatalf("read schema version: %v", err)
 	}
-	if schemaVersion != 13 {
-		t.Fatalf("schema version = %d, want 13 after Integration Template migration", schemaVersion)
+	if schemaVersion != 15 {
+		t.Fatalf("schema version = %d, want 15 after composed migrations", schemaVersion)
 	}
 	var integrationMigration, candidateMappingMigration, candidateHistoryMigration, inventoryWriteMigration, proposalMigration, templateMigration int
 	if err := db.QueryRow("SELECT COUNT(*) FROM schema_migrations WHERE version=6").Scan(&integrationMigration); err != nil {
@@ -128,18 +133,18 @@ func TestSQLiteIdentityMigrationSeparatesSchemaAndInitialization(t *testing.T) {
 
 func TestSQLiteIdentityConcurrentInitializationReturnsCommittedID(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	first := NewIdentityStore(path)
-	second := NewIdentityStore(path)
-	candidates := []identity.InstallationID{
+	first := newTestIdentityStore(path)
+	second := newTestIdentityStore(path)
+	candidates := []installationid.InstallationID{
 		mustInstallationID(t, "11111111-2222-4333-8444-555555555555"),
 		mustInstallationID(t, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"),
 	}
-	results := make(chan identity.InstallationID, len(candidates))
+	results := make(chan installationid.InstallationID, len(candidates))
 	errorsFound := make(chan error, len(candidates))
 	var wait sync.WaitGroup
-	for index, repository := range []identity.InstallationIdentityRepository{first, second} {
+	for index, repository := range []installationapp.InstallationIdentityRepository{first, second} {
 		wait.Add(1)
-		go func(index int, repository identity.InstallationIdentityRepository) {
+		go func(index int, repository installationapp.InstallationIdentityRepository) {
 			defer wait.Done()
 			id, err := repository.EnsureInstallationID(candidates[index])
 			if err != nil {
@@ -155,7 +160,7 @@ func TestSQLiteIdentityConcurrentInitializationReturnsCommittedID(t *testing.T) 
 	for err := range errorsFound {
 		t.Fatalf("concurrent EnsureInstallationID() error = %v", err)
 	}
-	var committed identity.InstallationID
+	var committed installationid.InstallationID
 	for id := range results {
 		if committed.String() == "" {
 			committed = id
@@ -172,12 +177,12 @@ func TestSQLiteIdentityConcurrentInitializationReturnsCommittedID(t *testing.T) 
 
 func TestSQLiteIdentityDoesNotRecreateMissingInitializedRow(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	repository := NewIdentityStore(path)
+	repository := newTestIdentityStore(path)
 	first := mustInstallationID(t, "11111111-2222-4333-8444-555555555555")
 	if _, err := repository.EnsureInstallationID(first); err != nil {
 		t.Fatalf("initialize identity: %v", err)
 	}
-	db, err := NewSQLiteStore(path).open()
+	db, err := newTestSQLiteStore(path).open()
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
@@ -193,7 +198,7 @@ func TestSQLiteIdentityDoesNotRecreateMissingInitializedRow(t *testing.T) {
 	if _, err := repository.EnsureInstallationID(second); err == nil {
 		t.Fatal("EnsureInstallationID() error = nil, want missing initialized row error")
 	}
-	verifyDB, err := NewSQLiteStore(path).open()
+	verifyDB, err := newTestSQLiteStore(path).open()
 	if err != nil {
 		t.Fatalf("reopen database: %v", err)
 	}
@@ -209,12 +214,12 @@ func TestSQLiteIdentityDoesNotRecreateMissingInitializedRow(t *testing.T) {
 
 func TestSQLiteIdentityRejectsMalformedInitializedID(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	repository := NewIdentityStore(path)
+	repository := newTestIdentityStore(path)
 	first := mustInstallationID(t, "11111111-2222-4333-8444-555555555555")
 	if _, err := repository.EnsureInstallationID(first); err != nil {
 		t.Fatalf("initialize identity: %v", err)
 	}
-	db, err := NewSQLiteStore(path).open()
+	db, err := newTestSQLiteStore(path).open()
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
@@ -241,13 +246,13 @@ func TestSQLiteIdentityStoreResolvesLegacyJSONPath(t *testing.T) {
 	if err := NewFileStore(legacyPath).Save(wantState); err != nil {
 		t.Fatalf("save legacy state: %v", err)
 	}
-	repository := NewIdentityStore(legacyPath)
+	repository := newTestIdentityStore(legacyPath)
 	if _, err := repository.EnsureInstallationID(
 		mustInstallationID(t, "11111111-2222-4333-8444-555555555555"),
 	); err != nil {
 		t.Fatalf("initialize identity from legacy state path: %v", err)
 	}
-	state, err := NewStore(legacyPath).Load()
+	state, err := newTestStore(legacyPath).Load()
 	if err != nil {
 		t.Fatalf("load imported state: %v", err)
 	}
@@ -259,9 +264,9 @@ func TestSQLiteIdentityStoreResolvesLegacyJSONPath(t *testing.T) {
 	}
 }
 
-func mustInstallationID(t *testing.T, value string) identity.InstallationID {
+func mustInstallationID(t *testing.T, value string) installationid.InstallationID {
 	t.Helper()
-	id, err := identity.ParseInstallationID(value)
+	id, err := installationid.ParseInstallationID(value)
 	if err != nil {
 		t.Fatalf("ParseInstallationID(%q) error = %v", value, err)
 	}

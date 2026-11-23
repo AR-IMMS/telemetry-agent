@@ -12,9 +12,18 @@ import (
 	"time"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
-	discoverydocker "github.com/ar-imms/telemetry-agent/internal/discovery/docker"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
+	desiredstatedomain "github.com/ar-imms/telemetry-agent/internal/configuration/desiredstate/domain"
+	proposals "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
+	discoverydocker "github.com/ar-imms/telemetry-agent/internal/inventory/docker"
+	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
+	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
+	matchingapp "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/application"
+	matchingdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/domain"
+	definitionsapp "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/application"
+	definitionsdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	agentservice "github.com/ar-imms/telemetry-agent/internal/runtime/service"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
 // TestLiveDockerInventoryWhenExplicitlyEnabled runs only in the documented local E2E.
@@ -28,24 +37,24 @@ func TestLiveDockerInventoryWhenExplicitlyEnabled(t *testing.T) {
 	expectedPresence := os.Getenv("AR_IMMS_S4_E2E_EXPECT_PRESENCE")
 	expectedLifecycle := os.Getenv("AR_IMMS_S4_E2E_EXPECT_LIFECYCLE")
 	if expectedPresence == "" {
-		expectedPresence = string(discovery.PresencePresent)
+		expectedPresence = string(inventorydomain.PresencePresent)
 	}
 	if statePath == "" || fixtureID == "" || endpoint == "" {
 		t.Fatal("E2E state path, fixture ID, and explicit Docker endpoint are required")
 	}
-	if filepath.Clean(statePath) == filepath.Clean(agentstate.DefaultPath()) {
+	if filepath.Clean(statePath) == filepath.Clean(agentservice.DefaultStatePath()) {
 		t.Fatal("E2E must not use the production Agent state path")
 	}
 
-	store := agentstate.NewSQLiteStore(statePath)
-	if err := store.Save(agentstate.State{DesiredGeneration: 3, ActivatedGeneration: 2, AppliedGeneration: 2, Dependencies: map[string]agentstate.DependencyState{"host": {Enabled: true}}}); err != nil {
+	store := sqlitefixture.NewSQLiteStore(statePath)
+	if err := store.Save(agentstate.State{DesiredGeneration: 3, ActivatedGeneration: 2, AppliedGeneration: 2, Dependencies: map[string]dependencydomain.DependencyState{"host": {Enabled: true}}}); err != nil {
 		t.Fatal(err)
 	}
 	initial, err := store.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	desiredBefore, err := store.IntegrationRepository().Snapshot()
+	desiredBefore, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,16 +63,16 @@ func TestLiveDockerInventoryWhenExplicitlyEnabled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	repository := store.InventoryRepository()
-	coordinator, err := discovery.NewCoordinator(repository, []discovery.DiscoveryProvider{provider}, discovery.DefaultPolicy(), 5*time.Second)
+	repository := sqlitefixture.NewInventoryRepositoryFromStore(store)
+	coordinator, err := inventoryapp.NewCoordinator(repository, []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), 5*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
 	cycles := 1
-	if expectedPresence == string(discovery.PresenceMissing) {
+	if expectedPresence == string(inventorydomain.PresenceMissing) {
 		cycles = 2
 	}
-	var result discovery.CycleResult
+	var result inventoryapp.CycleResult
 	for cycle := 0; cycle < cycles; cycle++ {
 		result, err = coordinator.DiscoverOnce(context.Background())
 		if err != nil {
@@ -105,7 +114,7 @@ func TestLiveDockerInventoryWhenExplicitlyEnabled(t *testing.T) {
 		t.Fatalf("provider status=%s", status.String())
 	}
 
-	if expectedPresence == string(discovery.PresencePresent) {
+	if expectedPresence == string(inventorydomain.PresencePresent) {
 		stable := false
 		revision := result.InventoryRevision
 		for attempt := 0; attempt < 6; attempt++ {
@@ -129,7 +138,7 @@ func TestLiveDockerInventoryWhenExplicitlyEnabled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	desiredAfter, err := store.IntegrationRepository().Snapshot()
+	desiredAfter, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,8 +156,8 @@ func TestLiveDockerUnavailableRetainsInventory(t *testing.T) {
 	if statePath == "" || endpoint == "" {
 		t.Fatal("E2E state path and unreachable local Docker endpoint are required")
 	}
-	store := agentstate.NewSQLiteStore(statePath)
-	repository := store.InventoryRepository()
+	store := sqlitefixture.NewSQLiteStore(statePath)
+	repository := sqlitefixture.NewInventoryRepositoryFromStore(store)
 	before, err := repository.Snapshot()
 	if err != nil {
 		t.Fatal(err)
@@ -157,7 +166,7 @@ func TestLiveDockerUnavailableRetainsInventory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	coordinator, err := discovery.NewCoordinator(repository, []discovery.DiscoveryProvider{provider}, discovery.DefaultPolicy(), time.Second)
+	coordinator, err := inventoryapp.NewCoordinator(repository, []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,15 +208,15 @@ func TestLiveDockerProposalAndExplicitApproval(t *testing.T) {
 	}
 	statePath := os.Getenv("AR_IMMS_S4_E2E_STATE")
 	fixtureID := os.Getenv("AR_IMMS_S4_E2E_CONTAINER_ID")
-	if statePath == "" || fixtureID == "" || filepath.Clean(statePath) == filepath.Clean(agentstate.DefaultPath()) {
+	if statePath == "" || fixtureID == "" || filepath.Clean(statePath) == filepath.Clean(agentservice.DefaultStatePath()) {
 		t.Fatal("isolated E2E state path and disposable fixture ID are required")
 	}
-	store := agentstate.NewSQLiteStore(statePath)
+	store := sqlitefixture.NewSQLiteStore(statePath)
 	before, err := store.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	desiredBefore, err := store.IntegrationRepository().Snapshot()
+	desiredBefore, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +240,7 @@ func TestLiveDockerProposalAndExplicitApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	matchDesired, err := store.IntegrationRepository().Snapshot()
+	matchDesired, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,20 +248,20 @@ func TestLiveDockerProposalAndExplicitApproval(t *testing.T) {
 		matchState.AppliedGeneration != before.AppliedGeneration || matchDesired.Revision != desiredBefore.Revision {
 		t.Fatalf("read-only match mutated lifecycle or desired state: before=%+v after=%+v desired %d -> %d", before, matchState, desiredBefore.Revision, matchDesired.Revision)
 	}
-	proposals, err := store.ProposalRepository().ProposalSnapshot()
+	proposalList, err := sqlitefixture.NewProposalRepositoryFromStore(store).ProposalSnapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
-	var selected *discovery.Proposal
-	for i := range proposals {
-		proposal := &proposals[i]
+	var selected *proposals.Proposal
+	for i := range proposalList {
+		proposal := &proposalList[i]
 		if proposal.Identity.Provider == "docker" && proposal.Identity.ResourceID == fixtureID && proposal.Identity.IntegrationID == "redis" {
 			selected = proposal
 			break
 		}
 	}
-	if selected == nil || selected.Status != discovery.ProposalPending || selected.CandidateDigest == "" {
-		t.Fatalf("Redis proposal=%+v; all proposals=%+v", selected, proposals)
+	if selected == nil || selected.Status != proposals.ProposalPending || selected.CandidateDigest == "" {
+		t.Fatalf("Redis proposal=%+v; all proposals=%+v", selected, proposalList)
 	}
 	var listed, approvalOutput, stderr bytes.Buffer
 	if code := runDiscovery(context.Background(), []string{"proposals", "list", "--state-path", statePath}, &listed, &stderr); code != 0 {
@@ -267,11 +276,11 @@ func TestLiveDockerProposalAndExplicitApproval(t *testing.T) {
 	}, &approvalOutput, &stderr); code != 0 {
 		t.Fatalf("proposal approval code=%d stderr=%s", code, stderr.String())
 	}
-	desiredAfter, err := store.IntegrationRepository().Snapshot()
+	desiredAfter, err := newTestDesiredStateRepository(store).Snapshot()
 	if err != nil || len(desiredAfter.Instances) != len(desiredBefore.Instances)+1 || desiredAfter.Revision != desiredBefore.Revision+1 {
 		t.Fatalf("desired state after approval=%+v err=%v", desiredAfter, err)
 	}
-	var approved *integration.IntegrationInstance
+	var approved *desiredstatedomain.Instance
 	for i := range desiredAfter.Instances {
 		instance := &desiredAfter.Instances[i]
 		if instance.Binding != nil && instance.Binding.ResourceID == fixtureID {
@@ -279,7 +288,7 @@ func TestLiveDockerProposalAndExplicitApproval(t *testing.T) {
 			break
 		}
 	}
-	if approved == nil || approved.Source != integration.SourceDiscovery || approved.Configuration["endpoint"] == nil {
+	if approved == nil || approved.Source != desiredstatedomain.SourceDiscovery || approved.Configuration["endpoint"] == nil {
 		t.Fatalf("approved desired Integration=%+v", approved)
 	}
 	after, err := store.Load()
@@ -299,48 +308,48 @@ func TestLiveDatabaseFixturesMatchIntoNeedsInputProposals(t *testing.T) {
 	postgresID := os.Getenv("AR_IMMS_S4_E2E_POSTGRES_ID")
 	mongoID := os.Getenv("AR_IMMS_S4_E2E_MONGO_ID")
 	endpoint := os.Getenv(dockerDiscoveryEndpointEnv)
-	if statePath == "" || postgresID == "" || mongoID == "" || endpoint == "" || filepath.Clean(statePath) == filepath.Clean(agentstate.DefaultPath()) {
+	if statePath == "" || postgresID == "" || mongoID == "" || endpoint == "" || filepath.Clean(statePath) == filepath.Clean(agentservice.DefaultStatePath()) {
 		t.Fatal("isolated E2E state path, Docker endpoint, and PostgreSQL/MongoDB fixture IDs are required")
 	}
-	store := agentstate.NewSQLiteStore(statePath)
+	store := sqlitefixture.NewSQLiteStore(statePath)
 	provider, err := discoverydocker.NewProvider(endpoint)
 	if err != nil {
 		t.Fatal(err)
 	}
-	coordinator, err := discovery.NewCoordinator(store.InventoryRepository(), []discovery.DiscoveryProvider{provider}, discovery.DefaultPolicy(), 5*time.Second)
+	coordinator, err := inventoryapp.NewCoordinator(sqlitefixture.NewInventoryRepositoryFromStore(store), []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), 5*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := coordinator.DiscoverOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	inventory, err := store.InventoryRepository().Snapshot()
+	inventory, err := sqlitefixture.NewInventoryRepositoryFromStore(store).Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
-	postgresDefinition := fixtureDatabaseDefinition("postgresql-fixture", "docker.io/library/postgres", []integration.RequiredInput{
+	postgresDefinition := fixtureDatabaseDefinition("postgresql-fixture", "docker.io/library/postgres", []matchingdomain.RequiredInput{
 		{Name: "username", Reason: "database username is required"}, {Name: "authentication_profile", Reason: "an approved authentication profile must be selected"},
 	})
-	mongoDefinition := fixtureDatabaseDefinition("mongodb-fixture", "docker.io/library/mongo", []integration.RequiredInput{
+	mongoDefinition := fixtureDatabaseDefinition("mongodb-fixture", "docker.io/library/mongo", []matchingdomain.RequiredInput{
 		{Name: "username", Reason: "database username is required"}, {Name: "authentication_profile", Reason: "an approved authentication profile must be selected"},
 	})
-	registry, err := integration.NewRegistry(postgresDefinition, mongoDefinition)
+	registry, err := definitionsapp.NewRegistry(postgresDefinition, mongoDefinition)
 	if err != nil {
 		t.Fatal(err)
 	}
-	matcher := integration.NewMatcher(registry, fixtureCapabilityAssessor{})
-	report, err := matcher.Match(projectInventory(inventory, time.Now().UTC()))
+	matcher := matchingapp.NewMatcher(registry, fixtureCapabilityAssessor{})
+	report, err := matcher.Match(matchingapp.ProjectInventory(inventory, time.Now().UTC()))
 	if err != nil {
 		t.Fatal(err)
 	}
-	observations := make([]discovery.ProposalObservation, 0, 2)
-	fixtureResults := make([]integration.MatchResult, 0, 2)
+	observations := make([]proposals.ProposalObservation, 0, 2)
+	fixtureResults := make([]matchingdomain.MatchResult, 0, 2)
 	for _, result := range report.Results {
 		if result.Resource.ResourceID != postgresID && result.Resource.ResourceID != mongoID {
 			continue
 		}
 		fixtureResults = append(fixtureResults, result)
-		observation, err := proposalObservationFromMatch(result, report.InventoryRevision)
+		observation, err := proposals.ProposalObservationFromMatch(result, report.InventoryRevision)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -349,29 +358,29 @@ func TestLiveDatabaseFixturesMatchIntoNeedsInputProposals(t *testing.T) {
 	if len(observations) != 2 {
 		t.Fatalf("test-only matcher observations=%+v, want PostgreSQL and MongoDB fixtures", observations)
 	}
-	manager := discovery.NewProposalManager(store.ProposalRepository())
+	manager := proposals.NewProposalManager(sqlitefixture.NewProposalRepositoryFromStore(store))
 	if err := manager.Refresh(observations, report.EvaluatedAt); err != nil {
 		t.Fatal(err)
 	}
-	proposals, err := store.ProposalRepository().ProposalSnapshot()
+	proposalList, err := sqlitefixture.NewProposalRepositoryFromStore(store).ProposalSnapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, fixture := range []struct{ id, definition string }{{postgresID, "postgresql-fixture"}, {mongoID, "mongodb-fixture"}} {
 		found := false
-		for _, proposal := range proposals {
+		for _, proposal := range proposalList {
 			if proposal.Identity.ResourceID == fixture.id && proposal.Identity.IntegrationID == fixture.definition {
-				found = proposal.Status == discovery.ProposalNeedsInput && len(proposal.RequiredInputs) == 2 && proposal.CandidateDigest == ""
+				found = proposal.Status == proposals.ProposalNeedsInput && len(proposal.RequiredInputs) == 2 && proposal.CandidateDigest == ""
 			}
 		}
 		if !found {
-			t.Fatalf("fixture %s did not produce a needs_input proposal; fixture_results=%+v proposals=%+v", fixture.id, fixtureResults, proposals)
+			t.Fatalf("fixture %s did not produce a needs_input proposal; fixture_results=%+v proposals=%+v", fixture.id, fixtureResults, proposalList)
 		}
 	}
 }
 
-func fixtureDatabaseDefinition(id, imageRepository string, inputs []integration.RequiredInput) integration.IntegrationDefinition {
-	return integration.IntegrationDefinition{
+func fixtureDatabaseDefinition(id, imageRepository string, inputs []matchingdomain.RequiredInput) definitionsdomain.Definition {
+	return definitionsdomain.Definition{
 		ID: id, Version: "1.0.0", Validate: func(settings map[string]any) error {
 			endpoint, ok := settings["endpoint"].(string)
 			if !ok || endpoint == "" {
@@ -379,22 +388,22 @@ func fixtureDatabaseDefinition(id, imageRepository string, inputs []integration.
 			}
 			return nil
 		},
-		Contribute: func(integration.IntegrationInstance) (integration.Contribution, error) {
-			return integration.NewContribution(nil), nil
+		Contribute: func(map[string]any) (definitionsdomain.Contribution, error) {
+			return definitionsdomain.NewContribution(nil), nil
 		},
-		Matching: &integration.MatchingDefinition{
-			Selector: &integration.MatchSelector{
+		Matching: &matchingdomain.MatchingDefinition{
+			Selector: &matchingdomain.MatchSelector{
 				ResourceKinds: []string{"container"}, LifecycleStates: []string{"running"},
 				ExactAttributes: map[string]string{"container.image.repository": imageRepository},
 			},
-			BuildCandidate: func(resource integration.MatchResource) (integration.CandidateBuild, error) {
+			BuildCandidate: func(resource matchingdomain.MatchResource) (matchingdomain.CandidateBuild, error) {
 				for _, endpoint := range resource.Endpoints {
 					if endpoint.Scope == "host" && endpoint.Provenance == "published_port" && endpoint.Protocol == "tcp" && endpoint.Port > 0 {
-						return integration.CandidateBuild{RequiredInputs: append([]integration.RequiredInput(nil), inputs...)}, nil
+						return matchingdomain.CandidateBuild{RequiredInputs: append([]matchingdomain.RequiredInput(nil), inputs...)}, nil
 					}
 				}
-				missing := append([]integration.RequiredInput{{Name: "endpoint", Reason: "test fixture has no host-published endpoint"}}, inputs...)
-				return integration.CandidateBuild{RequiredInputs: missing}, nil
+				missing := append([]matchingdomain.RequiredInput{{Name: "endpoint", Reason: "test fixture has no host-published endpoint"}}, inputs...)
+				return matchingdomain.CandidateBuild{RequiredInputs: missing}, nil
 			},
 		},
 	}
@@ -402,11 +411,11 @@ func fixtureDatabaseDefinition(id, imageRepository string, inputs []integration.
 
 type fixtureCapabilityAssessor struct{}
 
-func (fixtureCapabilityAssessor) Assess(required []string) (integration.CapabilityAssessment, error) {
-	return integration.CapabilityAssessment{Status: integration.CapabilitySupported, Platform: "test-fixture", ArtifactVersion: "test-only", ManifestVersion: "test-only", Required: append([]string(nil), required...)}, nil
+func (fixtureCapabilityAssessor) Assess(required []string) (matchingdomain.CapabilityAssessment, error) {
+	return matchingdomain.CapabilityAssessment{Status: matchingdomain.CapabilitySupported, Platform: "test-fixture", ArtifactVersion: "test-only", ManifestVersion: "test-only", Required: append([]string(nil), required...)}, nil
 }
 
-func mustInventory(t *testing.T, repository discovery.InventoryRepository) discovery.InventorySnapshot {
+func mustInventory(t *testing.T, repository inventoryapp.InventoryRepository) inventorydomain.InventorySnapshot {
 	t.Helper()
 	snapshot, err := repository.Snapshot()
 	if err != nil {

@@ -1,0 +1,8 @@
+=== RUN   TestLiveJetStreamReadOnlyOperationsE2E
+nats: permissions violation: Permissions Violation for Publish to "arimms.ops.v1.result.other-installation" on connection [16]
+nats: permissions violation: Permissions Violation for Publish to "$JS.API.CONSUMER.INFO.ARIMMS_OP_REQUESTS_PR09.OTHER_INSTALLATION_CONSUMER" on connection [16]
+nats: permissions violation: Permissions Violation for Publish to "arimms.ops.v1.request.11111111-2222-4333-8444-555555555555" on connection [16]
+nats: permissions violation: Permissions Violation for Publish to "$JS.API.STREAM.CREATE.AGENT_CREATED_STREAM" on connection [16]
+--- PASS: TestLiveJetStreamReadOnlyOperationsE2E (31.97s)
+PASS
+ok  	github.com/ar-imms/telemetry-agent/internal/operations/nats	32.122s

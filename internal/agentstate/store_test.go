@@ -5,6 +5,10 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	collectordomain "github.com/ar-imms/telemetry-agent/internal/runtime/collector/domain"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	opampdomain "github.com/ar-imms/telemetry-agent/internal/runtime/opamp/domain"
 )
 
 var _ Repository = FileStore{}
@@ -13,7 +17,7 @@ func TestFileStorePersistsDesiredState(t *testing.T) {
 	statePath := t.TempDir() + "/state.json"
 
 	want := State{
-		Collector: CollectorContext{
+		Collector: collectordomain.CollectorContext{
 			ConfigRoot:      "/opt/ar-imms/configs",
 			BinaryPath:      "/opt/ar-imms/otelcol-contrib",
 			ConfigPath:      "/etc/ar-imms/otel.yaml",
@@ -21,7 +25,7 @@ func TestFileStorePersistsDesiredState(t *testing.T) {
 			HealthEndpoint:  "http://127.0.0.1:13133",
 		},
 		DesiredGeneration: 3,
-		Dependencies: map[string]DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {
 				Enabled: true,
 			},
@@ -41,6 +45,28 @@ func TestFileStorePersistsDesiredState(t *testing.T) {
 
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Load() = %#v, want %#v", got, want)
+	}
+}
+
+func TestFileStorePersistsSupervisorRuntimeContext(t *testing.T) {
+	store := NewFileStore(filepath.Join(t.TempDir(), "state.json"))
+	want := State{Supervisor: opampdomain.SupervisorContext{
+		BinaryPath:        "supervisor",
+		ConfigurationPath: "supervisor.yaml",
+		StateDirectory:    "supervisor-state",
+		OpAMPServerURL:    "wss://opamp.example.test/v1/opamp",
+		ServerCAFile:      "opamp-server-ca.pem",
+		Enabled:           true,
+	}}
+	if err := store.Save(want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("loaded state = %#v, want %#v", got, want)
 	}
 }
 
@@ -103,7 +129,7 @@ func TestLoadWaitsForUpdateToReleaseStateLock(t *testing.T) {
 	if err := store.Save(State{
 		DesiredGeneration:   1,
 		ActivatedGeneration: 1,
-		Dependencies:        map[string]DependencyState{},
+		Dependencies:        map[string]dependencydomain.DependencyState{},
 	}); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}

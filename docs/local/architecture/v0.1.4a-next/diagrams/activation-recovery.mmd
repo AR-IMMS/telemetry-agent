@@ -1,0 +1,18 @@
+sequenceDiagram
+    participant Config
+    participant Runtime
+    participant SQLite
+    participant Collector
+    Config->>Runtime: Apply candidate (hash/revision)
+    Runtime->>SQLite: Persist journal under lifecycle lock
+    Runtime->>Collector: Native config validate
+    alt Validation/activation succeeds
+      Runtime->>Collector: Activate and supervise
+      Collector-->>Runtime: Ready evidence
+      Runtime->>SQLite: Commit Applied generation
+    else Failure or interrupted activation
+      Runtime->>SQLite: Read LKG and journal
+      Runtime->>Collector: Restore/restart LKG
+      Runtime->>SQLite: Commit failure/recovery evidence
+    end
+    Note over Runtime: Ready != OTLP delivered

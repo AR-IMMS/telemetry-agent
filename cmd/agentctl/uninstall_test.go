@@ -10,9 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/agentinstallation"
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/service"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 )
 
 func TestRunUninstallPassesStatePathAndTimeoutToAgentUninstaller(
@@ -88,16 +91,16 @@ func TestManagedAgentUninstallerRemovesAgentAfterDependenciesAreGone(
 ) {
 	statePath := filepath.Join(t.TempDir(), "state.json")
 
-	installation := agentstate.AgentInstallation{
+	installation := servicedomain.AgentInstallation{
 		Platform:    "linux",
 		ServiceName: "ar-imms-telemetry-agent",
 		BinaryPath:  "/opt/ar-imms/telemetry-agent/agentctl",
 	}
 
-	store := agentstate.NewStore(statePath)
+	store := sqlitefixture.NewStore(statePath)
 	saveTestState(t, store, agentstate.State{
 		Installation: &installation,
-		Dependencies: map[string]agentstate.DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {
 				Enabled: false,
 			},
@@ -154,7 +157,7 @@ func TestManagedAgentUninstallerRemovesAgentAfterDependenciesAreGone(
 
 			return agentstate.State{
 				Installation: &installation,
-				Dependencies: map[string]agentstate.DependencyState{},
+				Dependencies: map[string]dependencydomain.DependencyState{},
 			}, nil
 		},
 		newRemover: func(
@@ -168,7 +171,7 @@ func TestManagedAgentUninstallerRemovesAgentAfterDependenciesAreGone(
 
 			return agentRemovalFunc(func(
 				_ context.Context,
-				gotInstallation agentstate.AgentInstallation,
+				gotInstallation servicedomain.AgentInstallation,
 				gotStatePath string,
 			) error {
 				steps = append(steps, "remove-agent")
@@ -216,13 +219,13 @@ func TestManagedAgentUninstallerRemovesAgentAfterDependenciesAreGone(
 
 type agentRemovalFunc func(
 	context.Context,
-	agentstate.AgentInstallation,
+	servicedomain.AgentInstallation,
 	string,
 ) error
 
 func (f agentRemovalFunc) Remove(
 	ctx context.Context,
-	installation agentstate.AgentInstallation,
+	installation servicedomain.AgentInstallation,
 	statePath string,
 ) error {
 	return f(ctx, installation, statePath)
@@ -234,13 +237,13 @@ func TestManagedAgentUninstallerRejectsInstalledBinaryBeforeRequestingTeardown(
 	statePath := filepath.Join(t.TempDir(), "state.json")
 	installedBinary := "/opt/ar-imms/telemetry-agent/agentctl"
 
-	store := agentstate.NewStore(statePath)
+	store := sqlitefixture.NewStore(statePath)
 	saveTestState(t, store, agentstate.State{
-		Installation: &agentstate.AgentInstallation{
+		Installation: &servicedomain.AgentInstallation{
 			Platform:   "linux",
 			BinaryPath: installedBinary,
 		},
-		Dependencies: map[string]agentstate.DependencyState{},
+		Dependencies: map[string]dependencydomain.DependencyState{},
 	})
 
 	requested := false
@@ -305,13 +308,13 @@ func TestManagedAgentUninstallerDoesNotRemoveAgentWhenTeardownWaitFails(
 	statePath := filepath.Join(t.TempDir(), "state.json")
 	waitError := errors.New("Collector did not apply teardown generation")
 
-	store := agentstate.NewStore(statePath)
+	store := sqlitefixture.NewStore(statePath)
 	saveTestState(t, store, agentstate.State{
-		Installation: &agentstate.AgentInstallation{
+		Installation: &servicedomain.AgentInstallation{
 			Platform:   "linux",
 			BinaryPath: "/opt/ar-imms/telemetry-agent/agentctl",
 		},
-		Dependencies: map[string]agentstate.DependencyState{
+		Dependencies: map[string]dependencydomain.DependencyState{
 			"node-exporter": {Enabled: false},
 		},
 	})

@@ -3,30 +3,35 @@ package main
 import (
 	"bytes"
 	"context"
+	agenthealth "github.com/ar-imms/telemetry-agent/internal/health"
+	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
+	profilesapplication "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/application"
+	monitoringdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/domain"
+	"github.com/ar-imms/telemetry-agent/internal/testsupport/sqlitefixture"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
 )
 
 func TestInventoryCommandsReadPersistedSnapshot(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "state.db")
-	repository := agentstate.NewSQLiteStore(statePath).InventoryRepository()
+	repository := sqlitefixture.NewInventoryRepositoryFromStore(sqlitefixture.NewSQLiteStore(statePath))
 	at := time.Now().UTC()
-	snapshot := discovery.ProviderSnapshot{
+	snapshot := inventorydomain.ProviderSnapshot{
 		ProviderID: "docker", ProviderInstanceID: "local", Complete: true, ObservedAt: at,
-		Resources: []discovery.ResourceObservation{{
-			ProviderResourceID: "container-1", Kind: discovery.ResourceContainer,
+		Resources: []inventorydomain.ResourceObservation{{
+			ProviderResourceID: "container-1", Kind: inventorydomain.ResourceContainer,
 			DisplayName: "redis-test", LifecycleState: "running",
-			Attributes: map[string]string{"label.safe": "value"},
-			Endpoints:  []discovery.Endpoint{{Address: "172.18.0.2", Port: 6379, Protocol: "tcp", Scope: discovery.EndpointContainer, Provenance: "container_network"}},
+			Attributes: map[string]string{"label.safe": "value", "label.ar-imms.monitoring.enabled": "true", "label.ar-imms.monitoring.profile": "redis"},
+			Endpoints: []inventorydomain.Endpoint{
+				{Address: "172.18.0.2", Port: 6379, ContainerPort: 6379, Protocol: "tcp", Scope: inventorydomain.EndpointContainer, Provenance: "container_network"},
+				{Address: "127.0.0.1", Port: 16379, ContainerPort: 6379, Protocol: "tcp", Scope: inventorydomain.EndpointHost, Provenance: "published_port"},
+			},
 		}},
 	}
-	resources, changed, err := discovery.ReconcileProviderSnapshot(nil, snapshot, discovery.DefaultPolicy())
+	resources, changed, err := inventorydomain.ReconcileProviderSnapshot(nil, snapshot, inventorydomain.DefaultPolicy())
 	if err != nil || !changed {
 		t.Fatalf("reconcile changed=%v err=%v", changed, err)
 	}
@@ -39,7 +44,7 @@ func TestInventoryCommandsReadPersistedSnapshot(t *testing.T) {
 		want []string
 	}{
 		{[]string{"list", "--state-path", statePath}, []string{"docker", "container-1", "redis-test", "running", "present", "fresh"}},
-		{[]string{"inspect", "--state-path", statePath, "docker/local/container-1"}, []string{"Endpoint evidence:", "172.18.0.2", "container_network", "label.safe=value"}},
+		{[]string{"inspect", "--state-path", statePath, "docker/local/container-1"}, []string{"Endpoint evidence:", "172.18.0.2", "container_network", "label.safe=value", "Monitoring profile: redis", "Profile endpoint: endpoint_resolved", "Endpoint reachability: unverified"}},
 		{[]string{"status", "--state-path", statePath}, []string{"Inventory revision: 1", "Provider: docker/local", "resources: 1", "last error: none"}},
 	} {
 		var stdout, stderr bytes.Buffer
@@ -62,16 +67,16 @@ func TestInventoryCommandsReadPersistedSnapshot(t *testing.T) {
 
 func TestInventoryListActiveOnlyExcludesMissingHistory(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "state.db")
-	repository := agentstate.NewSQLiteStore(statePath).InventoryRepository()
+	repository := sqlitefixture.NewInventoryRepositoryFromStore(sqlitefixture.NewSQLiteStore(statePath))
 	at := time.Now().UTC()
-	first := discovery.ProviderSnapshot{
+	first := inventorydomain.ProviderSnapshot{
 		ProviderID: "docker", ProviderInstanceID: "local", Complete: true, ObservedAt: at,
-		Resources: []discovery.ResourceObservation{
-			{ProviderResourceID: "redis-v1", Kind: discovery.ResourceContainer, DisplayName: "redis-old", LifecycleState: "running"},
-			{ProviderResourceID: "redis-v2", Kind: discovery.ResourceContainer, DisplayName: "redis-new", LifecycleState: "running"},
+		Resources: []inventorydomain.ResourceObservation{
+			{ProviderResourceID: "redis-v1", Kind: inventorydomain.ResourceContainer, DisplayName: "redis-old", LifecycleState: "running"},
+			{ProviderResourceID: "redis-v2", Kind: inventorydomain.ResourceContainer, DisplayName: "redis-new", LifecycleState: "running"},
 		},
 	}
-	resources, changed, err := discovery.ReconcileProviderSnapshot(nil, first, discovery.DefaultPolicy())
+	resources, changed, err := inventorydomain.ReconcileProviderSnapshot(nil, first, inventorydomain.DefaultPolicy())
 	if err != nil || !changed {
 		t.Fatalf("first snapshot changed=%v err=%v", changed, err)
 	}
@@ -79,15 +84,15 @@ func TestInventoryListActiveOnlyExcludesMissingHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	for miss := 1; miss <= 2; miss++ {
-		snapshot := discovery.ProviderSnapshot{
+		snapshot := inventorydomain.ProviderSnapshot{
 			ProviderID: "docker", ProviderInstanceID: "local", Complete: true, ObservedAt: at.Add(time.Duration(miss) * time.Second),
-			Resources: []discovery.ResourceObservation{{ProviderResourceID: "redis-v2", Kind: discovery.ResourceContainer, DisplayName: "redis-new", LifecycleState: "running"}},
+			Resources: []inventorydomain.ResourceObservation{{ProviderResourceID: "redis-v2", Kind: inventorydomain.ResourceContainer, DisplayName: "redis-new", LifecycleState: "running"}},
 		}
 		current, err := repository.Snapshot()
 		if err != nil {
 			t.Fatal(err)
 		}
-		resources, changed, err = discovery.ReconcileProviderSnapshot(current.Resources, snapshot, discovery.DefaultPolicy())
+		resources, changed, err = inventorydomain.ReconcileProviderSnapshot(current.Resources, snapshot, inventorydomain.DefaultPolicy())
 		if err != nil {
 			t.Fatalf("miss %d changed=%v err=%v", miss, changed, err)
 		}
@@ -138,5 +143,16 @@ func TestInventoryCommandsRejectInvalidArgumentsAndHonorCanceledContext(t *testi
 	var stdout, stderr bytes.Buffer
 	if code := runInventory(ctx, []string{"status", "--state-path", filepath.Join(t.TempDir(), "state.db")}, &stdout, &stderr); code != 1 {
 		t.Fatalf("canceled command code=%d, stderr=%s", code, stderr.String())
+	}
+}
+
+func TestInventoryEvidenceClassifiesMatchingCollectorEndpointAsUnreachable(t *testing.T) {
+	snapshot := agenthealth.Snapshot{CollectorFailures: []agenthealth.CollectorFailure{{
+		Receiver: "redis/alternate_port", Endpoint: "127.0.0.1:16379", Code: "connection_failed", ObservedAt: time.Now().UTC().Format(time.RFC3339Nano),
+	}}}
+	evidence := collectorScrapeEvidenceFromSnapshot(snapshot)
+	endpoint := profilesapplication.DiagnoseEndpoint(monitoringdomain.RedisProfile(), "windows", monitoringEndpointEvidence([]inventorydomain.Endpoint{{Address: "127.0.0.1", Port: 16379, ContainerPort: 6379, Protocol: "tcp", Scope: inventorydomain.EndpointHost, Provenance: "published_port"}}), evidence)
+	if endpoint.State != profilesapplication.EndpointUnreachable || endpoint.EvidenceCode != "connection_failed" {
+		t.Fatalf("diagnostic with matching OTel scrape failure=%+v, want unreachable with connection_failed evidence", endpoint)
 	}
 }

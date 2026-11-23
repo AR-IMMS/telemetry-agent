@@ -1,0 +1,246 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/ar-imms/telemetry-agent/internal/configuration/reconciliation"
+	inventoryapp "github.com/ar-imms/telemetry-agent/internal/inventory/observation/application"
+	inventorydomain "github.com/ar-imms/telemetry-agent/internal/inventory/observation/domain"
+)
+
+type runtimeReconciler struct {
+	run func(context.Context, time.Duration) error
+}
+
+type runtimeOperations func(context.Context) error
+
+func (r runtimeOperations) Run(ctx context.Context) error {
+	return r(ctx)
+}
+
+func (r runtimeReconciler) Reconcile(context.Context) (reconciliation.Result, error) {
+	return reconciliation.Result{}, nil
+}
+
+func (r runtimeReconciler) Run(ctx context.Context, interval time.Duration) error {
+	return r.run(ctx, interval)
+}
+
+type runtimeInventoryRepository struct {
+	revision atomic.Uint64
+	writes   atomic.Uint64
+}
+
+func (r *runtimeInventoryRepository) Snapshot() (inventorydomain.InventorySnapshot, error) {
+	return inventorydomain.InventorySnapshot{Revision: r.revision.Load(), WriteRevision: r.writes.Load()}, nil
+}
+
+func (r *runtimeInventoryRepository) CommitProviderSnapshot(expectedWriteRevision uint64, _ inventorydomain.ProviderSnapshot, _ []inventorydomain.Resource, changed bool) error {
+	if r.writes.Load() != expectedWriteRevision {
+		return inventoryapp.ErrSnapshotConflict
+	}
+	if changed {
+		r.revision.Add(1)
+	}
+	r.writes.Add(1)
+	return nil
+}
+
+func (r *runtimeInventoryRepository) RecordProviderFailure(inventorydomain.ProviderStatus) error {
+	return nil
+}
+
+type runtimeDiscoveryProvider struct {
+	calls atomic.Int32
+	seen  chan struct{}
+	err   error
+}
+
+type cancellationDiscoveryProvider struct {
+	started   chan struct{}
+	cancelled chan struct{}
+}
+
+func (p cancellationDiscoveryProvider) ID() inventorydomain.ProviderID { return "docker" }
+func (p cancellationDiscoveryProvider) InstanceID() inventorydomain.ProviderInstanceID {
+	return "local"
+}
+func (p cancellationDiscoveryProvider) Discover(ctx context.Context) (inventorydomain.ProviderSnapshot, error) {
+	close(p.started)
+	<-ctx.Done()
+	close(p.cancelled)
+	return inventorydomain.ProviderSnapshot{}, ctx.Err()
+}
+
+func (p *runtimeDiscoveryProvider) ID() inventorydomain.ProviderID                 { return "docker" }
+func (p *runtimeDiscoveryProvider) InstanceID() inventorydomain.ProviderInstanceID { return "local" }
+func (p *runtimeDiscoveryProvider) Discover(context.Context) (inventorydomain.ProviderSnapshot, error) {
+	p.calls.Add(1)
+	select {
+	case p.seen <- struct{}{}:
+	default:
+	}
+	if p.err != nil {
+		return inventorydomain.ProviderSnapshot{}, p.err
+	}
+	return inventorydomain.ProviderSnapshot{ProviderID: "docker", ProviderInstanceID: "local", Complete: true}, nil
+}
+
+func TestRunControlLoopsRunsDiscoveryAndStopsWithReconciliation(t *testing.T) {
+	provider := &runtimeDiscoveryProvider{seen: make(chan struct{}, 1)}
+	coordinator, err := inventoryapp.NewCoordinator(&runtimeInventoryRepository{}, []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := errors.New("reconciliation stopped")
+	var refreshes atomic.Int32
+	components := RuntimeComponents{
+		Inventory: coordinator,
+		Reconciler: runtimeReconciler{run: func(ctx context.Context, _ time.Duration) error {
+			select {
+			case <-provider.seen:
+				return want
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(3 * time.Second):
+				return errors.New("discovery did not run")
+			}
+		}},
+		RefreshProposals: func(context.Context) error { refreshes.Add(1); return nil },
+	}
+	if err := runControlLoops(context.Background(), components); !errors.Is(err, want) {
+		t.Fatalf("runtime error=%v, want %v", err, want)
+	}
+	if provider.calls.Load() != 1 || refreshes.Load() != 1 {
+		t.Fatalf("provider calls=%d proposal refreshes=%d, want 1 each", provider.calls.Load(), refreshes.Load())
+	}
+}
+
+func TestRunControlLoopsWithoutDiscoveryPreservesReconciliation(t *testing.T) {
+	want := errors.New("reconciliation failure")
+	var refreshes atomic.Int32
+	components := RuntimeComponents{
+		Reconciler:       runtimeReconciler{run: func(context.Context, time.Duration) error { return want }},
+		RefreshProposals: func(context.Context) error { refreshes.Add(1); return nil },
+	}
+	if err := runControlLoops(context.Background(), components); !errors.Is(err, want) {
+		t.Fatalf("runtime error=%v, want %v", err, want)
+	}
+	if refreshes.Load() != 1 {
+		t.Fatalf("proposal refresh calls=%d, want one startup refresh", refreshes.Load())
+	}
+}
+
+func TestRunControlLoopsOperationFailureCancelsReconciliation(t *testing.T) {
+	want := errors.New("operations runner failed")
+	components := RuntimeComponents{
+		Reconciler: runtimeReconciler{run: func(ctx context.Context, _ time.Duration) error {
+			<-ctx.Done()
+			return ctx.Err()
+		}},
+		Operations: runtimeOperations(func(context.Context) error { return want }),
+	}
+	if err := runControlLoops(context.Background(), components); !errors.Is(err, want) {
+		t.Fatalf("runtime error=%v, want originating Operations error %v", err, want)
+	}
+}
+
+func TestRunControlLoopsReconciliationFailureCancelsOperations(t *testing.T) {
+	want := errors.New("reconciliation failed")
+	var stopped atomic.Bool
+	components := RuntimeComponents{
+		Reconciler: runtimeReconciler{run: func(context.Context, time.Duration) error { return want }},
+		Operations: runtimeOperations(func(ctx context.Context) error {
+			<-ctx.Done()
+			stopped.Store(true)
+			return ctx.Err()
+		}),
+	}
+	if err := runControlLoops(context.Background(), components); !errors.Is(err, want) {
+		t.Fatalf("runtime error=%v, want originating reconciliation error %v", err, want)
+	}
+	if !stopped.Load() {
+		t.Fatal("Operations runner was not joined after reconciliation failed")
+	}
+}
+
+func TestRunControlLoopsExternalCancellationStopsAndJoinsDiscovery(t *testing.T) {
+	provider := cancellationDiscoveryProvider{started: make(chan struct{}), cancelled: make(chan struct{})}
+	coordinator, err := inventoryapp.NewCoordinator(&runtimeInventoryRepository{}, []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	components := RuntimeComponents{
+		Inventory: coordinator,
+		Reconciler: runtimeReconciler{run: func(ctx context.Context, _ time.Duration) error {
+			<-ctx.Done()
+			return ctx.Err()
+		}},
+	}
+	done := make(chan error, 1)
+	go func() { done <- runControlLoops(ctx, components) }()
+
+	select {
+	case <-provider.started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("discovery did not start")
+	}
+	cancel()
+
+	select {
+	case <-provider.cancelled:
+	case <-time.After(3 * time.Second):
+		t.Fatal("discovery did not observe service cancellation")
+	}
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("runtime error = %v, want context.Canceled", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("runtime did not join its workers after cancellation")
+	}
+}
+
+func TestRunControlLoopsSkipsTemplateProjectionAfterProviderFailure(t *testing.T) {
+	provider := &runtimeDiscoveryProvider{seen: make(chan struct{}, 1), err: errors.New("Docker unavailable")}
+	coordinator, err := inventoryapp.NewCoordinator(&runtimeInventoryRepository{}, []inventoryapp.DiscoveryProvider{provider}, inventorydomain.DefaultPolicy(), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := errors.New("reconciliation stopped")
+	var proposals, templates atomic.Int32
+	components := RuntimeComponents{
+		Inventory: coordinator,
+		Reconciler: runtimeReconciler{run: func(ctx context.Context, _ time.Duration) error {
+			select {
+			case <-provider.seen:
+				return want
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(3 * time.Second):
+				return errors.New("discovery did not run")
+			}
+		}},
+		RefreshProposals: func(context.Context) error { proposals.Add(1); return nil },
+		RefreshTemplates: func(context.Context) error { templates.Add(1); return nil },
+	}
+	if err := runControlLoops(context.Background(), components); !errors.Is(err, want) {
+		t.Fatalf("runtime error=%v, want %v", err, want)
+	}
+	if proposals.Load() != 1 || templates.Load() != 0 {
+		t.Fatalf("proposal refreshes=%d template refreshes=%d, want 1 and 0", proposals.Load(), templates.Load())
+	}
+}
+
+func TestRunRuntimeRequiresBuilder(t *testing.T) {
+	if err := RunRuntime(context.Background(), RuntimeOptions{}); err == nil {
+		t.Fatal("RunRuntime() without options unexpectedly succeeded")
+	}
+}

@@ -10,9 +10,11 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ar-imms/telemetry-agent/internal/collectorruntime"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
-	"github.com/ar-imms/telemetry-agent/internal/integration"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	matchingapp "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/application"
+	matchingdomain "github.com/ar-imms/telemetry-agent/internal/monitoring/matching/domain"
+	profiledefs "github.com/ar-imms/telemetry-agent/internal/monitoring/profiles/definitions/domain"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/collector"
 )
 
 type integrationCatalogView struct {
@@ -45,9 +47,9 @@ type catalogTemplateSettingView struct {
 }
 
 type catalogMatchingView struct {
-	Mode                 string                     `json:"mode"`
-	Selector             *integration.MatchSelector `json:"selector,omitempty"`
-	RequiredCapabilities []string                   `json:"required_capabilities,omitempty"`
+	Mode                 string                        `json:"mode"`
+	Selector             *matchingdomain.MatchSelector `json:"selector,omitempty"`
+	RequiredCapabilities []string                      `json:"required_capabilities,omitempty"`
 }
 
 type catalogCapabilityMapping struct {
@@ -59,7 +61,7 @@ type catalogCapabilityMapping struct {
 	Pipeline   string   `json:"pipeline"`
 }
 
-func catalogTemplateSettingsView(rules map[string]integration.TemplateSettingRule) map[string]catalogTemplateSettingView {
+func catalogTemplateSettingsView(rules map[string]profiledefs.TemplateSettingRule) map[string]catalogTemplateSettingView {
 	if len(rules) == 0 {
 		return nil
 	}
@@ -98,7 +100,7 @@ func runIntegrationCatalog(ctx context.Context, args []string, stdout, stderr io
 	id := flags.String("id", "", "exact Integration Definition ID")
 	version := flags.String("version", "", "exact Integration Definition version")
 	output := flags.String("output", "text", "output format: text or json")
-	if err := flags.Parse(args[1:]); err != nil {
+	if err := parseCompatibilityFlags(flags, args[1:]); err != nil {
 		return 2
 	}
 	if flags.NArg() != 0 || (*output != "text" && *output != "json") {
@@ -123,7 +125,7 @@ func runIntegrationCatalog(ctx context.Context, args []string, stdout, stderr io
 		if err != nil {
 			return integrationCommandError(stderr, "catalog inspect", fmt.Errorf("%w; no matching Definition is shipped in this Agent build, use catalog list or the Integration Developer Guide", err))
 		}
-		definitions = []integration.IntegrationDefinition{definition}
+		definitions = []profiledefs.Definition{definition}
 	}
 	view := buildIntegrationCatalogView(definitions)
 	if *output == "json" {
@@ -138,7 +140,7 @@ func runIntegrationCatalog(ctx context.Context, args []string, stdout, stderr io
 	return 0
 }
 
-func buildIntegrationCatalogView(definitions []integration.IntegrationDefinition) integrationCatalogView {
+func buildIntegrationCatalogView(definitions []profiledefs.Definition) integrationCatalogView {
 	platform := identity.PlatformInfo{OS: runtime.GOOS, Architecture: runtime.GOARCH}
 	view := integrationCatalogView{Platform: platform.OS + "/" + platform.Architecture, Definitions: make([]integrationDefinitionView, 0, len(definitions))}
 	catalog, catalogErr := collectorruntime.StaticCatalog(platform)
@@ -151,7 +153,7 @@ func buildIntegrationCatalogView(definitions []integration.IntegrationDefinition
 			ID: definition.ID, Version: definition.Version,
 			Matchable:        definition.Matching != nil,
 			TemplateSettings: catalogTemplateSettingsView(definition.TemplateSettingRules),
-			Capabilities:     capabilityView{Status: integration.CapabilityNotAssessed, Platform: view.Platform},
+			Capabilities:     capabilityView{Status: matchingapp.CapabilityNotAssessed, Platform: view.Platform},
 		}
 		if definition.Matching != nil {
 			mode := "custom"
@@ -164,9 +166,9 @@ func buildIntegrationCatalogView(definitions []integration.IntegrationDefinition
 			}
 			item.Capabilities.Required = append([]string(nil), definition.Matching.RequiredCapabilities...)
 			if len(item.Capabilities.Required) > 0 {
-				item.Capabilities.Status = integration.CapabilityUnverified
+				item.Capabilities.Status = matchingapp.CapabilityUnverified
 				if catalogErr == nil {
-					assessment, err := (catalogCapabilityAssessor{catalog: catalog, platform: view.Platform}).Assess(item.Capabilities.Required)
+					assessment, err := matchingdomain.NewCatalogCapabilityAssessor(catalog, strings.SplitN(view.Platform, "/", 2)[0], view.Platform).Assess(item.Capabilities.Required)
 					if err == nil {
 						item.Capabilities = capabilityView{
 							Status: assessment.Status, Platform: assessment.Platform,

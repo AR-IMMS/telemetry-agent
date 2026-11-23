@@ -8,47 +8,48 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/discovery"
+	proposals "github.com/ar-imms/telemetry-agent/internal/configuration/proposals/application"
+	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
 )
 
 func TestSQLiteProposalRepositoryCASDismissAndRestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	store := NewSQLiteStore(path)
-	repository := store.ProposalRepository()
+	store := newTestSQLiteStore(path)
+	repository := newTestProposalRepository(store)
 	proposal := sqliteProposalFixture(t)
 	if err := repository.PutProposal(proposal, 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.PutProposal(proposal, 0); !errors.Is(err, discovery.ErrProposalConflict) {
+	if err := repository.PutProposal(proposal, 0); !errors.Is(err, proposals.ErrProposalConflict) {
 		t.Fatalf("duplicate insert error = %v", err)
 	}
 	stale := proposal
 	stale.Revision = 3
 	stale.CandidateDigest = "sha256:" + repeatedProposalHex('c')
-	if err := repository.PutProposal(stale, 2); !errors.Is(err, discovery.ErrProposalConflict) {
+	if err := repository.PutProposal(stale, 2); !errors.Is(err, proposals.ErrProposalConflict) {
 		t.Fatalf("stale insert error = %v", err)
 	}
-	proposals, err := NewSQLiteStore(path).ProposalRepository().ProposalSnapshot()
-	if err != nil || len(proposals) != 1 || proposals[0].Revision != 1 || proposals[0].CandidateDigest != proposal.CandidateDigest {
-		t.Fatalf("recovered proposals=%+v err=%v", proposals, err)
+	proposalList, err := newTestProposalRepository(newTestSQLiteStore(path)).ProposalSnapshot()
+	if err != nil || len(proposalList) != 1 || proposalList[0].Revision != 1 || proposalList[0].CandidateDigest != proposal.CandidateDigest {
+		t.Fatalf("recovered proposals=%+v err=%v", proposalList, err)
 	}
-	if err := repository.DismissProposal(proposal.ID, 0, time.Now().UTC()); !errors.Is(err, discovery.ErrInvalidProposal) {
+	if err := repository.DismissProposal(proposal.ID, 0, time.Now().UTC()); !errors.Is(err, proposals.ErrInvalidProposal) {
 		t.Fatalf("invalid dismissal error = %v", err)
 	}
-	if err := repository.DismissProposal(proposal.ID, 2, time.Now().UTC()); !errors.Is(err, discovery.ErrProposalConflict) {
+	if err := repository.DismissProposal(proposal.ID, 2, time.Now().UTC()); !errors.Is(err, proposals.ErrProposalConflict) {
 		t.Fatalf("stale dismissal error = %v", err)
 	}
 	if err := repository.DismissProposal(proposal.ID, 1, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
-	proposals, err = repository.ProposalSnapshot()
-	if err != nil || proposals[0].Status != discovery.ProposalDismissed || proposals[0].Revision != 1 {
-		t.Fatalf("dismissed proposal=%+v err=%v", proposals, err)
+	proposalList, err = repository.ProposalSnapshot()
+	if err != nil || proposalList[0].Status != proposals.ProposalDismissed || proposalList[0].Revision != 1 {
+		t.Fatalf("dismissed proposal=%+v err=%v", proposalList, err)
 	}
 }
 
 func TestSQLiteProposalRepositoryConcurrentCreateHasSingleWinner(t *testing.T) {
-	repository := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db")).ProposalRepository()
+	repository := newTestProposalRepository(newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db")))
 	proposal := sqliteProposalFixture(t)
 	start := make(chan struct{})
 	results := make(chan error, 2)
@@ -69,7 +70,7 @@ func TestSQLiteProposalRepositoryConcurrentCreateHasSingleWinner(t *testing.T) {
 		switch {
 		case err == nil:
 			successes++
-		case errors.Is(err, discovery.ErrProposalConflict):
+		case errors.Is(err, proposals.ErrProposalConflict):
 			conflicts++
 		default:
 			t.Fatalf("unexpected concurrent create error: %v", err)
@@ -81,13 +82,13 @@ func TestSQLiteProposalRepositoryConcurrentCreateHasSingleWinner(t *testing.T) {
 }
 
 func TestSQLiteNeedsInputProposalPersistsWithoutCandidateConfiguration(t *testing.T) {
-	repository := NewSQLiteStore(filepath.Join(t.TempDir(), "state.db")).ProposalRepository()
+	repository := newTestProposalRepository(newTestSQLiteStore(filepath.Join(t.TempDir(), "state.db")))
 	proposal := sqliteProposalFixture(t)
-	proposal.Status = discovery.ProposalNeedsInput
+	proposal.Status = proposals.ProposalNeedsInput
 	proposal.CandidateDigest = ""
 	proposal.CandidateConfiguration = nil
-	proposal.RequiredInputs = []discovery.ProposalInput{{Name: "authentication_profile", Reason: "an approved profile is required"}}
-	if err := discovery.ValidateProposal(proposal); err != nil {
+	proposal.RequiredInputs = []proposals.ProposalInput{{Name: "authentication_profile", Reason: "an approved profile is required"}}
+	if err := proposals.ValidateProposal(proposal); err != nil {
 		t.Fatalf("needs-input fixture is invalid: %v", err)
 	}
 	if err := repository.PutProposal(proposal, 0); err != nil {
@@ -97,23 +98,23 @@ func TestSQLiteNeedsInputProposalPersistsWithoutCandidateConfiguration(t *testin
 	if err != nil {
 		t.Fatalf("read persisted needs-input proposal: %v", err)
 	}
-	if len(got) != 1 || got[0].Status != discovery.ProposalNeedsInput || len(got[0].CandidateConfiguration) != 0 {
+	if len(got) != 1 || got[0].Status != proposals.ProposalNeedsInput || len(got[0].CandidateConfiguration) != 0 {
 		t.Fatalf("persisted needs-input proposal=%+v", got)
 	}
 }
 
 func TestMonitoringProposalMigrationFromV11PreservesExistingState(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	store := NewSQLiteStore(path)
-	want := State{DesiredGeneration: 8, ActivatedGeneration: 7, AppliedGeneration: 7, Dependencies: map[string]DependencyState{"host": {Enabled: true}}}
+	store := newTestSQLiteStore(path)
+	want := State{DesiredGeneration: 8, ActivatedGeneration: 7, AppliedGeneration: 7, Dependencies: map[string]dependencydomain.DependencyState{"host": {Enabled: true}}}
 	if err := store.Save(want); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := store.IntegrationRepository().Put(integrationInstance("cache", "localhost:6379"), 0); err != nil {
+	if _, _, err := newTestDesiredStateRepository(store).Put(integrationInstance("cache", "localhost:6379"), 0); err != nil {
 		t.Fatal(err)
 	}
 	providerSnapshot, resources := inventoryFixture(time.Now().UTC(), "container-a")
-	if err := store.InventoryRepository().CommitProviderSnapshot(0, providerSnapshot, resources, true); err != nil {
+	if err := newTestInventoryRepository(store).CommitProviderSnapshot(0, providerSnapshot, resources, true); err != nil {
 		t.Fatal(err)
 	}
 	db, err := store.open()
@@ -125,15 +126,15 @@ func TestMonitoringProposalMigrationFromV11PreservesExistingState(t *testing.T) 
 		t.Fatal(err)
 	}
 	db.Close()
-	restarted := NewSQLiteStore(path)
-	if _, err := restarted.ProposalRepository().ProposalSnapshot(); err != nil {
+	restarted := newTestSQLiteStore(path)
+	if _, err := newTestProposalRepository(restarted).ProposalSnapshot(); err != nil {
 		t.Fatal(err)
 	}
 	state, err := restarted.Load()
 	if err != nil || state.DesiredGeneration != want.DesiredGeneration || state.ActivatedGeneration != want.ActivatedGeneration || state.AppliedGeneration != want.AppliedGeneration || !state.Dependencies["host"].Enabled {
 		t.Fatalf("M2 state after migration=%+v err=%v", state, err)
 	}
-	snapshot, err := restarted.IntegrationRepository().Snapshot()
+	snapshot, err := newTestDesiredStateRepository(restarted).Snapshot()
 	if err != nil || snapshot.Revision != 1 || len(snapshot.Instances) != 1 {
 		t.Fatalf("Integration state after migration=%+v err=%v", snapshot, err)
 	}
@@ -152,21 +153,21 @@ func TestMonitoringProposalMigrationFromV11PreservesExistingState(t *testing.T) 
 	}
 }
 
-func sqliteProposalFixture(t *testing.T) discovery.Proposal {
+func sqliteProposalFixture(t *testing.T) proposals.Proposal {
 	t.Helper()
-	identity := discovery.ProposalIdentity{Provider: "docker", ProviderInstance: "local", ResourceID: "container-a", IntegrationID: "redis"}
-	id, err := discovery.StableProposalID(identity)
+	identity := proposals.ProposalIdentity{Provider: "docker", ProviderInstance: "local", ResourceID: "container-a", IntegrationID: "redis"}
+	id, err := proposals.StableProposalID(identity)
 	if err != nil {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
-	proposal := discovery.Proposal{
-		ID: id, Identity: identity, Revision: 1, Status: discovery.ProposalPending, DefinitionVersion: "1.0.0",
+	proposal := proposals.Proposal{
+		ID: id, Identity: identity, Revision: 1, Status: proposals.ProposalPending, DefinitionVersion: "1.0.0",
 		ResourceFingerprint: "sha256:" + repeatedProposalHex('a'), CandidateDigest: "sha256:" + repeatedProposalHex('b'),
 		CandidateConfiguration: json.RawMessage(`{"endpoint":"127.0.0.1:6379"}`), CapabilityEvidence: json.RawMessage(`{"status":"supported"}`),
 		InventoryRevision: 1, CreatedAt: now, UpdatedAt: now,
 	}
-	if err := discovery.ValidateProposal(proposal); err != nil {
+	if err := proposals.ValidateProposal(proposal); err != nil {
 		t.Fatal(err)
 	}
 	return proposal

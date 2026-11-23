@@ -4,7 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/ar-imms/telemetry-agent/internal/enrollment"
+	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 	"io"
 	"os"
 	"os/signal"
@@ -33,11 +33,14 @@ Commands:
   bootstrap   Bootstrap the OpenTelemetry Collector.
   dependency  Manage telemetry dependencies.
   integration Manage desired Integration instances and local convergence diagnostics.
+  monitoring  Manage monitoring instances, templates, and proposals.
   run         Run the OpenTelemetry Collector under supervision.
   inventory   Read persisted resource discovery inventory.
   discovery   Review and approve durable monitoring proposals.
   status      Show live Agent health.
+  doctor      Explain available health evidence and unknown dimensions.
   enroll      Bind this Agent installation to an AR-IMMS Core node.
+  service     Run the Windows Service dispatcher (Windows internal entrypoint).
   install     Install and start the Agent as a managed service.
   uninstall   Safely remove the Agent and its managed dependencies.
   help        Show this help.
@@ -45,6 +48,16 @@ Commands:
 }
 
 func run(
+	ctx context.Context,
+	args []string,
+	stdout io.Writer,
+	stderr io.Writer,
+	deps dependencies,
+) int {
+	return executeAgentctl(ctx, args, stdout, stderr, deps)
+}
+
+func runLegacy(
 	ctx context.Context,
 	args []string,
 	stdout io.Writer,
@@ -82,6 +95,9 @@ func run(
 
 	case "status":
 		return runStatus(ctx, args[1:], stdout, stderr, deps)
+
+	case "doctor":
+		return runDoctor(ctx, args[1:], stdout, stderr, deps)
 
 	case "enroll":
 		return runEnrollment(ctx, args[1:], stdout, stderr, deps)

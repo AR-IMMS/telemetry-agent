@@ -4,13 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	servicedomain "github.com/ar-imms/telemetry-agent/internal/runtime/service/domain"
 	"os"
 	"strings"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
-	"github.com/ar-imms/telemetry-agent/internal/bootstrap"
-	"github.com/ar-imms/telemetry-agent/internal/dependency"
-	"github.com/ar-imms/telemetry-agent/internal/identity"
+	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/bootstrap"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/dependencies"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/lifecyclelock"
 )
 
 // managedDependencyInstallFunc installs one dependency after confirming that
@@ -32,7 +34,7 @@ const (
 type dependencyEnableFunc func(
 	context.Context,
 	string,
-	[]agentstate.OwnedResource,
+	[]servicedomain.OwnedResource,
 ) error
 
 type managedDependencyLifecycleFunc func(
@@ -92,7 +94,7 @@ func (l managedDependencyLifecycle) Apply(
 		return fmt.Errorf("Agent lifecycle state path is required")
 	}
 
-	store := agentstate.NewStore(statePath)
+	store := newAgentStateStore(statePath)
 
 	state, err := store.Load()
 	if err != nil {
@@ -113,7 +115,7 @@ func (l managedDependencyLifecycle) Apply(
 			"bootstrap the Collector before managing dependencies",
 		)
 	}
-	lifecycleLock, err := agentstate.AcquireLifecycleLock(
+	lifecycleLock, err := lifecyclelock.Acquire(
 		state.Collector.ConfigPath + ".lifecycle",
 	)
 	if err != nil {
@@ -139,8 +141,8 @@ func (l managedDependencyLifecycle) Apply(
 		}
 
 		if !dependencyState.Enabled {
-			if dependencyState.Ownership == nil ||
-				len(dependencyState.Ownership.Resources) == 0 {
+			resources := state.OwnedDependencyResources(normalizedName)
+			if len(resources) == 0 {
 				return fmt.Errorf(
 					"dependency %q is disabled without Agent-owned resources; install it again",
 					name,
@@ -156,7 +158,7 @@ func (l managedDependencyLifecycle) Apply(
 			if err := l.enable(
 				ctx,
 				name,
-				dependencyState.Ownership.Resources,
+				resources,
 			); err != nil {
 				return fmt.Errorf(
 					"enable dependency %q: %w",
@@ -228,7 +230,7 @@ func (i managedDependencyInstaller) Install(
 		)
 	}
 
-	store := agentstate.NewStore(statePath)
+	store := newAgentStateStore(statePath)
 
 	state, err := store.Load()
 	if err != nil {
@@ -258,7 +260,7 @@ func (i managedDependencyInstaller) Install(
 			"dependency installer is not configured",
 		)
 	}
-	lifecycleLock, err := agentstate.AcquireLifecycleLock(
+	lifecycleLock, err := lifecyclelock.Acquire(
 		state.Collector.ConfigPath + ".lifecycle",
 	)
 	if err != nil {

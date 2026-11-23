@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ar-imms/telemetry-agent/internal/enrollment"
+	enrollment "github.com/ar-imms/telemetry-agent/internal/identity/enrollment/application"
 )
 
 func TestEnrollmentClientPostsContractAndAcceptsRecoveredResult(t *testing.T) {
@@ -22,7 +22,7 @@ func TestEnrollmentClientPostsContractAndAcceptsRecoveredResult(t *testing.T) {
 		if request.Header.Get("Content-Type") != "application/json" {
 			t.Fatalf("Content-Type = %q", request.Header.Get("Content-Type"))
 		}
-		var body enrollment.EnrollmentRequest
+		var body enrollmentRequestDTO
 		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
 			t.Fatal(err)
 		}

@@ -1,6 +1,13 @@
 # AR-IMMS Telemetry Agent Architecture
 
-> **Status**: implemented PoC architecture — Windows and Linux AMD64  
+> **Target under review:** `v0.1.4a-next` is the proposed next architecture,
+> not a statement of shipped behavior. Read its [architecture index](local/architecture/v0.1.4a-next/README.md)
+> and [integration status](local/architecture/v0.1.4a-next/integration-status.md).
+> This document below describes the implemented PoC baseline at the time it was
+> written. The accepted v0.1.4 target is retained as historical design input;
+> it is not the current next-version target.
+
+> **Status**: implemented PoC architecture — Windows and Linux AMD64<br>
 > **Scope**: up to three monitored nodes
 
 ## Purpose
