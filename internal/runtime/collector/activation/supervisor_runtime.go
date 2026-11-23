@@ -176,7 +176,7 @@ func currentSupervisorCredentialReference(repository enrollment.AttemptRepositor
 		if fleetRepository != nil {
 			attempt, err := fleetRepository.LoadAttempt()
 			if err == nil && attempt.Result != nil && strings.TrimSpace(attempt.Result.OpAMPEndpoint) == endpoint {
-				return "", fmt.Errorf("Core credential source conflicts with registered Fleet endpoint")
+				return "", fmt.Errorf("core credential source conflicts with registered Fleet endpoint")
 			}
 			if err != nil && !errors.Is(err, fleetenrollment.ErrNoAttempt) {
 				return "", fmt.Errorf("load Fleet endpoint binding for Supervisor: %w", err)

@@ -32,7 +32,7 @@ func runInstall(
 			stderr,
 			"usage: agentctl install --config-root <path> [--gateway-endpoint <host:port>] [--opamp-server-url <wss://host/path> --opamp-credential-source <core|fleet>] [--disable-opamp-supervisor] [--validation-endpoint <host:port>] [--timeout <duration>]",
 		)
-		fmt.Fprintln(stderr, "remote OpAMP endpoints require an explicit --opamp-credential-source; existing installs preserve their persisted owner when the endpoint is omitted")
+		_, _ = fmt.Fprintln(stderr, "remote OpAMP endpoints require an explicit --opamp-credential-source; existing installs preserve their persisted owner when the endpoint is omitted")
 	}
 
 	configRoot := flags.String(
