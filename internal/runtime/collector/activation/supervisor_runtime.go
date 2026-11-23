@@ -173,6 +173,15 @@ func currentSupervisorCredentialReference(repository enrollment.AttemptRepositor
 	case opampdomain.CredentialSourceFleet:
 		return fleetSupervisorCredentialReference(fleetRepository, endpoint)
 	case opampdomain.CredentialSourceCore:
+		if fleetRepository != nil {
+			attempt, err := fleetRepository.LoadAttempt()
+			if err == nil && attempt.Result != nil && strings.TrimSpace(attempt.Result.OpAMPEndpoint) == endpoint {
+				return "", fmt.Errorf("Core credential source conflicts with registered Fleet endpoint")
+			}
+			if err != nil && !errors.Is(err, fleetenrollment.ErrNoAttempt) {
+				return "", fmt.Errorf("load Fleet endpoint binding for Supervisor: %w", err)
+			}
+		}
 		return coreSupervisorCredentialReference(repository)
 	case "":
 		// Older local Supervisor state has no issuer field. A registered Fleet

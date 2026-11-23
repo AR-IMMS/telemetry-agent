@@ -8,7 +8,11 @@ Redis, PostgreSQL, Python/Prometheus, and mock-cooling telemetry to the OTLP
 sink. New installations require `--opamp-server-url` and default to the pinned
 Supervisor; protected token/config/state paths, credential-reference change
 detection, single-owner runtime selection, and contained Agent-owned process
-cleanup are implemented. Existing installations preserve their persisted owner
+cleanup are implemented. Remote endpoints require an explicit
+`--opamp-credential-source core|fleet`; endpoint changes do not inherit the
+previous issuer. Fleet enrollment provisioning records the Fleet issuer and
+fails closed if the registered Fleet endpoint or credential is missing or does
+not match. Existing installations preserve their persisted owner
 until explicit migration; controlled legacy rollback remains available.
 Production Core interoperability remains separate, and hosted Windows CI
 skips Docker profile E2E. Earlier migration steps and CI races below are retained

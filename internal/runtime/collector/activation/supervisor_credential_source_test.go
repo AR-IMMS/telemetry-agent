@@ -59,6 +59,43 @@ func TestLegacyRemoteSupervisorEndpointFailsClosedWithoutFleetState(t *testing.T
 	}
 }
 
+func TestLegacyRemoteSupervisorEndpointFailsClosedWhenFleetAttemptMismatches(t *testing.T) {
+	coreRepository := supervisorCoreAttemptRepository{attempt: coredomain.Attempt{
+		Status: coredomain.AttemptRegistered, AccessCredentialRef: "core-credential-ref",
+	}}
+	fleetRepository := supervisorFleetAttemptRepository{attempt: fleetdomain.Attempt{
+		Status:        fleetdomain.AttemptRegistered,
+		CredentialRef: "fleet-credential-ref",
+		Result:        &fleetdomain.Result{OpAMPEndpoint: "wss://different-fleet.example.test/v1/opamp"},
+	}}
+	supervisor := opampdomain.SupervisorContext{OpAMPServerURL: "wss://fleet.example.test/v1/opamp"}
+
+	credential, err := currentSupervisorCredentialReference(coreRepository, fleetRepository, supervisor)
+	if err == nil || credential != "" {
+		t.Fatalf("remote endpoint with mismatched Fleet state returned credential %q, err=%v", credential, err)
+	}
+}
+
+func TestCoreSupervisorCredentialFailsClosedWhenFleetStateOwnsEndpoint(t *testing.T) {
+	coreRepository := supervisorCoreAttemptRepository{attempt: coredomain.Attempt{
+		Status: coredomain.AttemptRegistered, AccessCredentialRef: "core-credential-ref",
+	}}
+	fleetRepository := supervisorFleetAttemptRepository{attempt: fleetdomain.Attempt{
+		Status:        fleetdomain.AttemptRegistered,
+		CredentialRef: "fleet-credential-ref",
+		Result:        &fleetdomain.Result{OpAMPEndpoint: "wss://fleet.example.test/v1/opamp"},
+	}}
+	supervisor := opampdomain.SupervisorContext{
+		CredentialSource: opampdomain.CredentialSourceCore,
+		OpAMPServerURL:   "wss://fleet.example.test/v1/opamp",
+	}
+
+	credential, err := currentSupervisorCredentialReference(coreRepository, fleetRepository, supervisor)
+	if err == nil || credential != "" {
+		t.Fatalf("Core source for a registered Fleet endpoint returned credential %q, err=%v", credential, err)
+	}
+}
+
 func TestSupervisorCredentialUsesTheConfiguredIssuer(t *testing.T) {
 	tests := []struct {
 		name    string

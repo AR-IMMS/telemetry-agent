@@ -32,6 +32,9 @@ type Options struct {
 	// OpAMPServerURL configures the default Supervisor owner on a new
 	// installation. A new install requires this unless DisableSupervisor is set.
 	OpAMPServerURL string
+	// CredentialSource explicitly identifies which issuer's credential the
+	// Supervisor will use for a remote endpoint.
+	CredentialSource opampdomain.CredentialSource
 	// DisableSupervisor explicitly selects the legacy Agent Collector runtime.
 	DisableSupervisor     bool
 	ConfigInput           config.RenderInput
@@ -147,6 +150,12 @@ func (i Installer) Install(
 		}
 		options.OpAMPServerURL = strings.TrimSpace(options.OpAMPServerURL)
 	}
+	if options.CredentialSource != "" && options.CredentialSource != opampdomain.CredentialSourceCore && options.CredentialSource != opampdomain.CredentialSourceFleet {
+		return Layout{}, fmt.Errorf("OpAMP credential source must be core or fleet")
+	}
+	if options.CredentialSource != "" && options.OpAMPServerURL == "" {
+		return Layout{}, fmt.Errorf("OpAMP credential source requires an explicit server URL")
+	}
 	if options.DisableSupervisor && options.OpAMPServerURL != "" {
 		return Layout{}, fmt.Errorf("OpAMP Supervisor cannot be disabled while an OpAMP endpoint is configured")
 	}
@@ -190,6 +199,13 @@ func (i Installer) Install(
 	)
 	if err != nil {
 		return Layout{}, err
+	}
+	credentialSource := options.CredentialSource
+	if credentialSource == "" && strings.TrimSpace(previousState.Supervisor.OpAMPServerURL) == opampServerURL {
+		credentialSource = previousState.Supervisor.CredentialSource
+	}
+	if opampServerURL != "" && !isLoopbackOpAMPEndpoint(opampServerURL) && credentialSource == "" {
+		return Layout{}, fmt.Errorf("remote OpAMP endpoint requires an explicit credential source")
 	}
 
 	result, err := i.bootstrap(ctx, bootstrap.Options{
@@ -314,10 +330,6 @@ func (i Installer) Install(
 			GatewayEndpoint: options.GatewayEndpoint,
 			HealthEndpoint:  options.HealthEndpoint,
 		}
-		credentialSource := previousState.Supervisor.CredentialSource
-		if credentialSource == "" && previousState.Supervisor.OpAMPServerURL != opampServerURL {
-			credentialSource = opampdomain.CredentialSourceCore
-		}
 		state.Supervisor = opampdomain.SupervisorContext{
 			BinaryPath: supervisorBinaryPath, ConfigurationPath: layout.SupervisorConfigurationPath,
 			StateDirectory: layout.SupervisorStateDirectory, OpAMPServerURL: opampServerURL,
@@ -386,6 +398,19 @@ func (i Installer) Install(
 	}
 
 	return layout, nil
+}
+
+func isLoopbackOpAMPEndpoint(endpoint string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(endpoint))
+	if err != nil {
+		return false
+	}
+	host := strings.TrimSpace(parsed.Hostname())
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	address := net.ParseIP(host)
+	return address != nil && address.IsLoopback()
 }
 
 func supervisorActivationForInstall(requestedEndpoint string, previous agentstate.State, disableSupervisor bool) (string, bool, error) {

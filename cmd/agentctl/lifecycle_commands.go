@@ -13,6 +13,7 @@ import (
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
 	config "github.com/ar-imms/telemetry-agent/internal/runtime/collector/configuration"
 	dependencydomain "github.com/ar-imms/telemetry-agent/internal/runtime/dependencies/domain"
+	opampdomain "github.com/ar-imms/telemetry-agent/internal/runtime/opamp/domain"
 	"github.com/ar-imms/telemetry-agent/internal/runtime/service"
 	agentservice "github.com/ar-imms/telemetry-agent/internal/runtime/service"
 )
@@ -29,9 +30,9 @@ func runInstall(
 	flags.Usage = func() {
 		fmt.Fprintln(
 			stderr,
-			"usage: agentctl install --config-root <path> [--gateway-endpoint <host:port>] [--opamp-server-url <wss://host/path>] [--disable-opamp-supervisor] [--validation-endpoint <host:port>] [--timeout <duration>]",
+			"usage: agentctl install --config-root <path> [--gateway-endpoint <host:port>] [--opamp-server-url <wss://host/path> --opamp-credential-source <core|fleet>] [--disable-opamp-supervisor] [--validation-endpoint <host:port>] [--timeout <duration>]",
 		)
-		fmt.Fprintln(stderr, "new installs require --opamp-server-url unless --disable-opamp-supervisor is explicit; existing installs preserve their persisted owner when the endpoint is omitted")
+		fmt.Fprintln(stderr, "remote OpAMP endpoints require an explicit --opamp-credential-source; existing installs preserve their persisted owner when the endpoint is omitted")
 	}
 
 	configRoot := flags.String(
@@ -45,6 +46,7 @@ func runInstall(
 		"runtime OpenTelemetry Gateway endpoint",
 	)
 	opampServerURL := flags.String("opamp-server-url", "", "Supervisor endpoint; required for new installs unless legacy runtime is explicitly selected")
+	opampCredentialSource := flags.String("opamp-credential-source", "", "credential issuer for a remote Supervisor endpoint: core or fleet")
 	disableSupervisor := flags.Bool("disable-opamp-supervisor", false, "explicitly select the legacy Agent Collector runtime for a new install or rollback")
 	validationEndpoint := flags.String(
 		"validation-endpoint",
@@ -90,6 +92,12 @@ func runInstall(
 		if err := agentinstallation.ValidateOpAMPServerURL(*opampServerURL); err != nil {
 			return usageError(stderr, flags, err.Error())
 		}
+	}
+	if *opampCredentialSource != "" && *opampCredentialSource != string(opampdomain.CredentialSourceCore) && *opampCredentialSource != string(opampdomain.CredentialSourceFleet) {
+		return usageError(stderr, flags, "--opamp-credential-source must be core or fleet")
+	}
+	if *opampCredentialSource != "" && strings.TrimSpace(*opampServerURL) == "" {
+		return usageError(stderr, flags, "--opamp-credential-source requires --opamp-server-url")
 	}
 	if *disableSupervisor && strings.TrimSpace(*opampServerURL) != "" {
 		return usageError(stderr, flags, "--disable-opamp-supervisor cannot be combined with --opamp-server-url")
@@ -196,6 +204,7 @@ func runInstall(
 		ConfigRoot:        *configRoot,
 		GatewayEndpoint:   *gatewayEndpoint,
 		OpAMPServerURL:    *opampServerURL,
+		CredentialSource:  opampdomain.CredentialSource(*opampCredentialSource),
 		DisableSupervisor: *disableSupervisor,
 		HealthEndpoint:    defaultHealthEndpoint,
 		ConfigInput: config.RenderInput{

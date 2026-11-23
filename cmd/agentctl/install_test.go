@@ -7,8 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ar-imms/telemetry-agent/internal/runtime/service"
 	"github.com/ar-imms/telemetry-agent/internal/identity/host"
+	opampdomain "github.com/ar-imms/telemetry-agent/internal/runtime/opamp/domain"
+	"github.com/ar-imms/telemetry-agent/internal/runtime/service"
 )
 
 func TestRunInstallStagesCurrentBinaryAndOwnedLayout(t *testing.T) {
@@ -67,6 +68,8 @@ func TestRunInstallStagesCurrentBinaryAndOwnedLayout(t *testing.T) {
 			"gateway.example:4317",
 			"--opamp-server-url",
 			"ws://127.0.0.1:4320/v1/opamp",
+			"--opamp-credential-source",
+			"core",
 		},
 		&stdout,
 		&stderr,
@@ -97,6 +100,9 @@ func TestRunInstallStagesCurrentBinaryAndOwnedLayout(t *testing.T) {
 	}
 	if got, want := gotOptions.OpAMPServerURL, "ws://127.0.0.1:4320/v1/opamp"; got != want {
 		t.Fatalf("OpAMP server URL = %q, want %q", got, want)
+	}
+	if got, want := gotOptions.CredentialSource, opampdomain.CredentialSourceCore; got != want {
+		t.Fatalf("OpAMP credential source = %q, want %q", got, want)
 	}
 	if got, want := gotOptions.HealthEndpoint,
 		defaultHealthEndpoint; got != want {

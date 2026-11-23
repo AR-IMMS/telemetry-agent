@@ -211,6 +211,47 @@ func TestInstallerAcceptsWrappedMissingStateForNewInstallation(t *testing.T) {
 	}
 }
 
+func TestInstallerRequiresExplicitIssuerWhenRemoteSupervisorEndpointChanges(t *testing.T) {
+	platform := identity.PlatformInfo{OS: "linux", Architecture: "amd64"}
+	store := &recordingStateStore{state: agentstate.State{
+		Supervisor: opampdomain.SupervisorContext{
+			OpAMPServerURL:   "wss://core.example.test/v1/opamp",
+			CredentialSource: opampdomain.CredentialSourceCore,
+			Enabled:          true,
+		},
+	}}
+	bootstrapCalled := false
+	installer := Installer{
+		layoutFor:       DefaultLayout,
+		copyAgentBinary: func(context.Context, string, string) error { return nil },
+		bootstrap: func(context.Context, bootstrap.Options) (bootstrap.Result, error) {
+			bootstrapCalled = true
+			return bootstrap.Result{BinaryPath: "/collector", ConfigPath: "/collector.yaml"}, nil
+		},
+		installSupervisor: func(context.Context, string, identity.PlatformInfo) (string, error) { return "/supervisor", nil },
+		newStateStore:     func(string) stateStore { return store },
+		serviceFor: func(Layout) (serviceInstaller, error) {
+			return serviceInstallerFunc(func(context.Context, Layout) error { return nil }), nil
+		},
+	}
+
+	_, err := installer.Install(context.Background(), Options{
+		Platform: platform, SourceBinaryPath: "/release/agentctl", ConfigRoot: "/release/config",
+		GatewayEndpoint: "127.0.0.1:4317", HealthEndpoint: "http://127.0.0.1:13133",
+		OpAMPServerURL: "wss://fleet.example.test/v1/opamp", ConfigInput: config.RenderInput{Platform: platform},
+		ValidationTimeout: time.Second,
+	})
+	if err == nil {
+		t.Fatal("Install() accepted a changed remote endpoint without an explicit credential issuer")
+	}
+	if bootstrapCalled {
+		t.Fatal("Install() began mutating installation before rejecting an ambiguous issuer")
+	}
+	if store.state.Supervisor.OpAMPServerURL != "wss://core.example.test/v1/opamp" || store.state.Supervisor.CredentialSource != opampdomain.CredentialSourceCore {
+		t.Fatalf("ambiguous install changed existing Supervisor state: %+v", store.state.Supervisor)
+	}
+}
+
 func TestInstallerExplicitLegacyRollbackDisablesManagedSupervisor(t *testing.T) {
 	platform := identity.PlatformInfo{OS: "linux", Architecture: "amd64"}
 	layout, err := DefaultLayout(platform)
@@ -464,8 +505,8 @@ func TestInstallerRestoresPreviousOwnerAfterTargetServiceStartFailure(t *testing
 	_, err := installer.Install(context.Background(), Options{
 		Platform: platform, SourceBinaryPath: "/tmp/new-agentctl", ConfigRoot: "/etc/ar-imms",
 		GatewayEndpoint: "gateway.new:4317", HealthEndpoint: "http://127.0.0.1:13133",
-		OpAMPServerURL: "wss://opamp.example.test/v1/opamp",
-		ConfigInput:    config.RenderInput{Platform: platform}, ValidationTimeout: time.Second,
+		OpAMPServerURL: "wss://opamp.example.test/v1/opamp", CredentialSource: opampdomain.CredentialSourceCore,
+		ConfigInput: config.RenderInput{Platform: platform}, ValidationTimeout: time.Second,
 	})
 	if !errors.Is(err, activationErr) {
 		t.Fatalf("Install() error = %v, want target service start error", err)
