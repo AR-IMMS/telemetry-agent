@@ -314,10 +314,15 @@ func (i Installer) Install(
 			GatewayEndpoint: options.GatewayEndpoint,
 			HealthEndpoint:  options.HealthEndpoint,
 		}
+		credentialSource := previousState.Supervisor.CredentialSource
+		if credentialSource == "" && previousState.Supervisor.OpAMPServerURL != opampServerURL {
+			credentialSource = opampdomain.CredentialSourceCore
+		}
 		state.Supervisor = opampdomain.SupervisorContext{
 			BinaryPath: supervisorBinaryPath, ConfigurationPath: layout.SupervisorConfigurationPath,
 			StateDirectory: layout.SupervisorStateDirectory, OpAMPServerURL: opampServerURL,
-			Enabled: enabled,
+			CredentialSource: credentialSource,
+			Enabled:          enabled,
 		}
 
 		return state.RecordAgentInstallation(layout.Installation())

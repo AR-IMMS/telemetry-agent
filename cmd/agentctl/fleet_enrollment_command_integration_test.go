@@ -103,8 +103,8 @@ func TestRunEnrollmentFleetProductionPathPersistsAndExplicitlyProvisions(t *test
 		t.Fatal("completed exchange retained the recovery proof")
 	}
 	state, err := newAgentStateStore(statePath).Load()
-	if err != nil || state.Supervisor.OpAMPServerURL != opampEndpoint {
-		t.Fatalf("explicitly provisioned Supervisor endpoint=%q, err=%v", state.Supervisor.OpAMPServerURL, err)
+	if err != nil || state.Supervisor.OpAMPServerURL != opampEndpoint || state.Supervisor.CredentialSource != opampdomain.CredentialSourceFleet {
+		t.Fatalf("explicitly provisioned Supervisor endpoint=%q source=%q, err=%v", state.Supervisor.OpAMPServerURL, state.Supervisor.CredentialSource, err)
 	}
 	database, err := os.ReadFile(statePath)
 	if err != nil {

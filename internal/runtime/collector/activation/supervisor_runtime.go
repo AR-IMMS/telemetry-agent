@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -31,7 +33,7 @@ func runManagedSupervisor(ctx context.Context, statePath string, managed opampdo
 		return fmt.Errorf("Supervisor enrollment repository is required")
 	}
 	for {
-		credentialReference, err := currentSupervisorCredentialReference(attemptRepository, fleetRepository, managed.OpAMPServerURL)
+		credentialReference, err := currentSupervisorCredentialReference(attemptRepository, fleetRepository, managed)
 		if err != nil {
 			return err
 		}
@@ -100,7 +102,7 @@ func runManagedSupervisorOnce(ctx context.Context, statePath, credentialReferenc
 	credentialChanged := make(chan struct{}, 1)
 	credentialWatchContext, cancelCredentialWatch := context.WithCancel(processContext)
 	defer cancelCredentialWatch()
-	go watchSupervisorCredential(credentialWatchContext, attemptRepository, fleetRepository, managed.OpAMPServerURL, credentialReference, credentialChanged)
+	go watchSupervisorCredential(credentialWatchContext, attemptRepository, fleetRepository, managed, credentialReference, credentialChanged)
 	readinessDone := make(chan error, 1)
 	go func() {
 		readinessDone <- waitForManagedCollectorReadiness(processContext, collector.HealthEndpoint, collector.ReadinessBody, managedSupervisorStartupTimeout)
@@ -165,16 +167,58 @@ func runManagedSupervisorOnce(ctx context.Context, statePath, credentialReferenc
 	}
 }
 
-func currentSupervisorCredentialReference(repository enrollment.AttemptRepository, fleetRepository fleetenrollment.AttemptRepository, opampEndpoint string) (string, error) {
-	if fleetRepository != nil {
-		attempt, err := fleetRepository.LoadAttempt()
-		if err == nil && attempt.Status == fleetdomain.AttemptRegistered && attempt.Result != nil && strings.TrimSpace(attempt.Result.OpAMPEndpoint) == strings.TrimSpace(opampEndpoint) {
-			return attempt.CredentialRef, nil
+func currentSupervisorCredentialReference(repository enrollment.AttemptRepository, fleetRepository fleetenrollment.AttemptRepository, supervisor opampdomain.SupervisorContext) (string, error) {
+	endpoint := strings.TrimSpace(supervisor.OpAMPServerURL)
+	switch supervisor.CredentialSource {
+	case opampdomain.CredentialSourceFleet:
+		return fleetSupervisorCredentialReference(fleetRepository, endpoint)
+	case opampdomain.CredentialSourceCore:
+		return coreSupervisorCredentialReference(repository)
+	case "":
+		// Older local Supervisor state has no issuer field. A registered Fleet
+		// attempt is still usable only when its endpoint matches exactly. A
+		// remote endpoint without matching Fleet state is ambiguous and must not
+		// receive the legacy Core credential.
+		if fleetRepository != nil {
+			attempt, err := fleetRepository.LoadAttempt()
+			if err == nil {
+				if attempt.Status != fleetdomain.AttemptRegistered || attempt.Result == nil || attempt.CredentialRef == "" ||
+					strings.TrimSpace(attempt.Result.OpAMPEndpoint) != endpoint {
+					return "", fmt.Errorf("legacy Supervisor endpoint does not match registered Fleet enrollment state")
+				}
+				return attempt.CredentialRef, nil
+			}
+			if !errors.Is(err, fleetenrollment.ErrNoAttempt) {
+				return "", fmt.Errorf("load Fleet credential reference for Supervisor: %w", err)
+			}
 		}
-		if err != nil && !errors.Is(err, fleetenrollment.ErrNoAttempt) {
-			return "", fmt.Errorf("load Fleet credential reference for Supervisor: %w", err)
+		if !isLoopbackSupervisorEndpoint(endpoint) {
+			return "", fmt.Errorf("refusing Core Supervisor credential for remote endpoint without an explicit credential source")
 		}
+		return coreSupervisorCredentialReference(repository)
+	default:
+		return "", fmt.Errorf("unsupported Supervisor credential source %q", supervisor.CredentialSource)
 	}
+}
+
+func fleetSupervisorCredentialReference(repository fleetenrollment.AttemptRepository, endpoint string) (string, error) {
+	if repository == nil {
+		return "", fmt.Errorf("Fleet Supervisor endpoint has no Fleet enrollment repository")
+	}
+	attempt, err := repository.LoadAttempt()
+	if err != nil {
+		return "", fmt.Errorf("load Fleet credential reference for Supervisor: %w", err)
+	}
+	if attempt.Status != fleetdomain.AttemptRegistered || attempt.Result == nil || attempt.CredentialRef == "" {
+		return "", fmt.Errorf("Fleet Supervisor endpoint has no registered Fleet credential")
+	}
+	if strings.TrimSpace(attempt.Result.OpAMPEndpoint) != endpoint {
+		return "", fmt.Errorf("Fleet Supervisor endpoint does not match registered Fleet enrollment state")
+	}
+	return attempt.CredentialRef, nil
+}
+
+func coreSupervisorCredentialReference(repository enrollment.AttemptRepository) (string, error) {
 	attempt, err := repository.LoadAttempt()
 	if errors.Is(err, enrollment.ErrNoAttempt) {
 		return "", nil
@@ -191,7 +235,20 @@ func currentSupervisorCredentialReference(repository enrollment.AttemptRepositor
 	return "", nil
 }
 
-func watchSupervisorCredential(ctx context.Context, repository enrollment.AttemptRepository, fleetRepository fleetenrollment.AttemptRepository, opampEndpoint, initialReference string, changed chan<- struct{}) {
+func isLoopbackSupervisorEndpoint(endpoint string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(endpoint))
+	if err != nil || (parsed.Scheme != "ws" && parsed.Scheme != "wss") {
+		return false
+	}
+	host := strings.TrimSpace(parsed.Hostname())
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	address := net.ParseIP(host)
+	return address != nil && address.IsLoopback()
+}
+
+func watchSupervisorCredential(ctx context.Context, repository enrollment.AttemptRepository, fleetRepository fleetenrollment.AttemptRepository, supervisor opampdomain.SupervisorContext, initialReference string, changed chan<- struct{}) {
 	ticker := time.NewTicker(managedCredentialPollInterval)
 	defer ticker.Stop()
 	for {
@@ -199,7 +256,7 @@ func watchSupervisorCredential(ctx context.Context, repository enrollment.Attemp
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			current, err := currentSupervisorCredentialReference(repository, fleetRepository, opampEndpoint)
+			current, err := currentSupervisorCredentialReference(repository, fleetRepository, supervisor)
 			if err == nil && current != initialReference {
 				select {
 				case changed <- struct{}{}:

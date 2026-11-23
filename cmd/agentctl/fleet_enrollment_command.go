@@ -14,6 +14,7 @@ import (
 	fleethttp "github.com/ar-imms/telemetry-agent/internal/identity/fleetenrollment/delivery/http"
 	"github.com/ar-imms/telemetry-agent/internal/identity/fleetenrollment/domain"
 	installationapp "github.com/ar-imms/telemetry-agent/internal/identity/installation/application"
+	opampdomain "github.com/ar-imms/telemetry-agent/internal/runtime/opamp/domain"
 	agentservice "github.com/ar-imms/telemetry-agent/internal/runtime/service"
 )
 
@@ -48,6 +49,7 @@ func provisionFleetSupervisor(statePath, endpoint string) error {
 			return fmt.Errorf("Fleet Supervisor provisioning requires an installed, enabled OpAMP Supervisor")
 		}
 		state.Supervisor.OpAMPServerURL = endpoint
+		state.Supervisor.CredentialSource = opampdomain.CredentialSourceFleet
 		return nil
 	})
 	if err != nil {
