@@ -10,6 +10,7 @@ exporters:
   otlphttp/gateway:
     endpoint: 'https://${env:OTEL_GATEWAY_ENDPOINT}'
     encoding: json
+    compression: none
     auth:
       authenticator: bearertokenauth/otlp
     tls:

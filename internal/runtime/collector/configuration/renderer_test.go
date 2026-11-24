@@ -95,6 +95,9 @@ func TestFleetCollectorFragmentUsesProtectedTokenFileAndTLS(t *testing.T) {
 	if nested(t, document, "exporters", "otlphttp/gateway", "encoding") != "json" {
 		t.Fatal("Fleet export must use inspectable OTLP/HTTP JSON")
 	}
+	if nested(t, document, "exporters", "otlphttp/gateway", "compression") != "none" {
+		t.Fatal("Fleet export must disable compression for the bounded JSON ingress")
+	}
 	for _, signal := range []string{"metrics", "logs", "traces"} {
 		if got := list(t, document, "service", "pipelines", signal, "exporters"); len(got) != 1 || got[0] != "otlphttp/gateway" {
 			t.Fatalf("Fleet %s exporter = %v", signal, got)

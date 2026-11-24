@@ -208,6 +208,11 @@ jobs:
       - name: Test
         run: go test ./... -count=1
 
+      - name: Pinned Collector authenticated OTLP export
+        env:
+          OTELCOL_CONTRIB_BINARY: ${{ env.OTELCOL_CONTRIB_BINARY }}
+        run: go test -tags=integration -run '^TestPinnedCollectorExportsAuthenticatedMetrics$' -count=1 -v ./internal/otlp/ingress
+
       - name: Lint Fleet enrollment packages
         uses: golangci/golangci-lint-action@v9
         with:
