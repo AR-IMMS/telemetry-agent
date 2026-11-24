@@ -113,7 +113,7 @@ func runCollectorRuntimeWithReconciliation(
 			"Collector context is incomplete; bootstrap the Collector before running it",
 		)
 	}
-	otlpTokenFile, err := prepareCollectorOTLPToken(statePath, fleetEnrollmentStore)
+	otlpTokenFile, err := PrepareCollectorOTLPToken(statePath, fleetEnrollmentStore)
 	if err != nil {
 		return err
 	}

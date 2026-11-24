@@ -16,21 +16,21 @@ func TestPrepareCollectorOTLPTokenRequiresCommittedScopedCredential(t *testing.T
 		t.Skip("Windows protected-store integration requires a service-account test environment")
 	}
 	statePath := filepath.Join(t.TempDir(), "state.db")
-	if path, err := prepareCollectorOTLPToken(statePath, supervisorFleetAttemptRepository{err: fleetenrollment.ErrNoAttempt}); err != nil || path != "" {
+	if path, err := PrepareCollectorOTLPToken(statePath, supervisorFleetAttemptRepository{err: fleetenrollment.ErrNoAttempt}); err != nil || path != "" {
 		t.Fatalf("unenrolled token path=%q, err=%v", path, err)
 	}
 	attempt := fleetdomain.Attempt{Status: fleetdomain.AttemptRegistered, OTLPCredentialRef: "fleet/otlp/ref", Result: &fleetdomain.Result{OTLPCredentialID: "otlp-id", OTLPCredentialScope: "opamp.connect"}}
-	if path, err := prepareCollectorOTLPToken(statePath, supervisorFleetAttemptRepository{attempt: attempt}); err == nil || path != "" {
+	if path, err := PrepareCollectorOTLPToken(statePath, supervisorFleetAttemptRepository{attempt: attempt}); err == nil || path != "" {
 		t.Fatalf("wrong-scope token path=%q, err=%v", path, err)
 	}
 	attempt.Result.OTLPCredentialScope = "otlp.write"
-	if path, err := prepareCollectorOTLPToken(statePath, supervisorFleetAttemptRepository{attempt: attempt}); err == nil || path != "" {
+	if path, err := PrepareCollectorOTLPToken(statePath, supervisorFleetAttemptRepository{attempt: attempt}); err == nil || path != "" {
 		t.Fatalf("missing protected token path=%q, err=%v", path, err)
 	}
 	if err := credentialstore.New(statePath).Put(attempt.OTLPCredentialRef, "test-only-otlp-bearer"); err != nil {
 		t.Fatal(err)
 	}
-	path, err := prepareCollectorOTLPToken(statePath, supervisorFleetAttemptRepository{attempt: attempt})
+	path, err := PrepareCollectorOTLPToken(statePath, supervisorFleetAttemptRepository{attempt: attempt})
 	if err != nil {
 		t.Fatal(err)
 	}

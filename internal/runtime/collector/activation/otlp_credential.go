@@ -10,10 +10,10 @@ import (
 	fleetdomain "github.com/ar-imms/telemetry-agent/internal/identity/fleetenrollment/domain"
 )
 
-// prepareCollectorOTLPToken materializes only a committed Fleet OTLP bearer.
+// PrepareCollectorOTLPToken materializes only a committed Fleet OTLP bearer.
 // The returned path may be passed to a child process; the bearer itself must
 // remain in the protected file and must never enter the process environment.
-func prepareCollectorOTLPToken(statePath string, repository fleetenrollment.AttemptRepository) (string, error) {
+func PrepareCollectorOTLPToken(statePath string, repository fleetenrollment.AttemptRepository) (string, error) {
 	if repository == nil {
 		return "", nil
 	}

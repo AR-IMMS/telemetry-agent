@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 
 	"github.com/ar-imms/telemetry-agent/internal/agentstate"
 	"github.com/ar-imms/telemetry-agent/internal/app"
@@ -31,6 +32,7 @@ type runtimeBaseline struct {
 	platform       identity.PlatformInfo
 	dependencies   dependency.Catalog
 	layers         []config.Layer
+	otlpTokenFile  string
 	gateways       coreconfig.GatewayRepository
 	profiles       monitoringdomain.Registry
 	baselineInputs func() ([]config.InlineLayer, []string, error)
@@ -59,21 +61,34 @@ func newRuntimeBaseline(statePath string) (runtimeBaseline, error) {
 	if err != nil {
 		return runtimeBaseline{}, err
 	}
+	otlpTokenFile, err := agentlifecycle.PrepareCollectorOTLPToken(statePath, newAgentFleetEnrollmentStore(statePath))
+	if err != nil {
+		return runtimeBaseline{}, err
+	}
+	layers = fleetCollectorLayers(layers, state.Collector.ConfigRoot, otlpTokenFile)
 	profiles, err := loadMonitoringProfiles(state.Collector.ConfigRoot)
 	if err != nil {
 		return runtimeBaseline{}, fmt.Errorf("load local monitoring profiles: %w", err)
 	}
 	return runtimeBaseline{
-		store:        store,
-		platform:     platform,
-		dependencies: dependencies,
-		layers:       layers,
-		gateways:     newAgentCoreGatewayStore(statePath),
-		profiles:     profiles,
+		store:         store,
+		platform:      platform,
+		dependencies:  dependencies,
+		layers:        layers,
+		otlpTokenFile: otlpTokenFile,
+		gateways:      newAgentCoreGatewayStore(statePath),
+		profiles:      profiles,
 		baselineInputs: func() ([]config.InlineLayer, []string, error) {
 			return nativeDockerMonitoringInputsWithProfiles(statePath, platform.OS, profiles)
 		},
 	}, nil
+}
+
+func fleetCollectorLayers(layers []config.Layer, configRoot, tokenFile string) []config.Layer {
+	if tokenFile == "" {
+		return layers
+	}
+	return append(layers, config.Layer{Name: "fleet", Path: filepath.Join(configRoot, "fleet", "otel.yaml")})
 }
 
 func (b runtimeBaseline) Snapshot(ctx context.Context) (reconciliation.BaselineSnapshot, error) {
@@ -176,6 +191,9 @@ func newRuntimeReconciliationController(statePath string, runner bootstrap.Comma
 	}
 	resolver := nativeOwnershipResolver{delegate: app.NewMonitoringDesiredStateResolver(definitionapp.NewResolver(registry)), inventory: app.NewInventoryRepository(statePath), profiles: profiles, enabled: len(nativeLayers) > 0}
 	options := agentlifecycle.CollectorConfigurationOptions{Platform: baseline.platform, Catalog: baseline.dependencies, Layers: baseline.layers, AdditionalBaselineInputs: additionalBaselineInputs, BinaryPath: state.Collector.BinaryPath, ConfigPath: state.Collector.ConfigPath, ValidationEnvironment: []string{"OTEL_GATEWAY_ENDPOINT=" + state.Collector.GatewayEndpoint}, Runner: runner, GatewayRepository: baseline.gateways}
+	if baseline.otlpTokenFile != "" {
+		options.ValidationEnvironment = append(options.ValidationEnvironment, "AR_IMMS_OTLP_TOKEN_FILE="+baseline.otlpTokenFile)
+	}
 	reconciliationRepository := app.NewReconciliationRepository(statePath)
 	recordRecoveryFailure := func(state agentstate.State) error {
 		if state.PendingActivation == nil || state.PendingActivation.Candidate == nil {
