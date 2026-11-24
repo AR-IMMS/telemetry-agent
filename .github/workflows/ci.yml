@@ -36,6 +36,12 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
+      - name: Validate and build authenticated OTLP ingress
+        if: runner.os == 'Linux'
+        run: |
+          docker compose --env-file infra/observability/.env.example -f infra/observability/compose.yaml config --quiet
+          docker compose --env-file infra/observability/.env.example -f infra/observability/compose.yaml build otlp-ingress
+
       - name: Probe pinned Collector capability manifest
         shell: pwsh
         run: |
