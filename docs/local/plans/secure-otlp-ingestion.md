@@ -56,3 +56,14 @@ sequenceDiagram
 ## Acceptance evidence and limits
 
 Do not call the goal complete until all five steps are implemented and verified. The service-to-service introspection authentication mechanism and contract fields require explicit cross-service review. A compromised Agent host can read its own provisioned bearer while its Collector is running; OS ACLs/permissions limit access, but cannot eliminate that exposure. The current shared contracts are draft. Fleet implementation exists on a local branch, while Core and end-to-end integration remain open.
+
+## UAT evidence
+
+### Fleet credential lifecycle — 2026-11-25
+
+- Passed against a disposable Fleet process and isolated MongoDB replica set, using temporary loopback TLS and mTLS identities.
+- A Core client certificate created an enrollment invitation; an Agent exchange returned a distinct `otlp.write` credential; the Gateway ingress client certificate introspected it as active and associated it with the enrolled `agent_id`.
+- The Core client certificate revoked the Agent. A subsequent introspection of the same token returned inactive. Raw invitation and credential values were kept in process memory and were not recorded.
+- The Fleet process, isolated database, temporary certificates, client script, logs, and test binary were removed after the run.
+
+This is a Fleet lifecycle slice, not end-to-end UAT. Core application, managed Agent/Supervisor, and the updated TLS ingress/Gateway stack were not connected in this run. The existing Docker stack was still running the previous direct Gateway configuration, so it was left untouched. Full UAT and cross-service contract review remain required.
