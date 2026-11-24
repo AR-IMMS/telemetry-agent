@@ -18,6 +18,7 @@ type Store struct {
 }
 
 const supervisorTokenFileName = "opamp-supervisor.token"
+const otlpTokenFileName = "otlp-collector.token"
 const supervisorConfigFileName = "opamp-supervisor.yaml"
 
 // New creates a Store beside the operational database, in a dedicated
@@ -75,6 +76,38 @@ func (s Store) ProvisionSupervisorToken(reference string) (string, error) {
 		return "", fmt.Errorf("provision protected Supervisor token file: %w", err)
 	}
 	return path, nil
+}
+
+// ProvisionOTLPToken materializes the Fleet OTLP bearer for the managed
+// Collector under the protected service credential directory.
+func (s Store) ProvisionOTLPToken(reference string) (string, error) {
+	plain, err := s.getBytes(reference)
+	if err != nil {
+		return "", err
+	}
+	defer clear(plain)
+	path := filepath.Join(s.directory, otlpTokenFileName)
+	if err := writeAtomicFile(s.directory, path, plain); err != nil {
+		return "", fmt.Errorf("provision protected OTLP token file: %w", err)
+	}
+	return path, nil
+}
+
+// DeleteOTLPToken removes the materialized Collector bearer idempotently.
+func (s Store) DeleteOTLPToken() error {
+	if strings.TrimSpace(s.directory) == "" {
+		return fmt.Errorf("credential directory is required")
+	}
+	if err := secureDirectory(s.directory); err != nil {
+		return fmt.Errorf("secure credential directory: %w", err)
+	}
+	if err := os.Remove(filepath.Join(s.directory, otlpTokenFileName)); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("delete protected OTLP token file: %w", err)
+	}
+	if err := syncDirectory(s.directory); err != nil {
+		return fmt.Errorf("sync credential directory after OTLP token removal: %w", err)
+	}
+	return nil
 }
 
 // DeleteSupervisorToken removes the materialized bearer token file idempotently.
