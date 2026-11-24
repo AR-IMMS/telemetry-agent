@@ -86,11 +86,19 @@ func TestFleetCollectorFragmentUsesProtectedTokenFileAndTLS(t *testing.T) {
 		t.Fatal(err)
 	}
 	document := decodeYAML(t, rendered)
-	if nested(t, document, "exporters", "otlp/gateway", "tls", "insecure") != false {
+	if nested(t, document, "exporters", "otlphttp/gateway", "tls", "insecure") != false {
 		t.Fatal("Fleet export did not enforce TLS")
 	}
-	if nested(t, document, "exporters", "otlp/gateway", "auth", "authenticator") != "bearertokenauth/otlp" {
+	if nested(t, document, "exporters", "otlphttp/gateway", "auth", "authenticator") != "bearertokenauth/otlp" {
 		t.Fatal("Fleet export did not use file-backed bearer authentication")
+	}
+	if nested(t, document, "exporters", "otlphttp/gateway", "encoding") != "json" {
+		t.Fatal("Fleet export must use inspectable OTLP/HTTP JSON")
+	}
+	for _, signal := range []string{"metrics", "logs", "traces"} {
+		if got := list(t, document, "service", "pipelines", signal, "exporters"); len(got) != 1 || got[0] != "otlphttp/gateway" {
+			t.Fatalf("Fleet %s exporter = %v", signal, got)
+		}
 	}
 	if nested(t, document, "extensions", "bearertokenauth/otlp", "filename") != "${env:AR_IMMS_OTLP_TOKEN_FILE}" {
 		t.Fatal("Fleet token filename must come from the protected path environment")

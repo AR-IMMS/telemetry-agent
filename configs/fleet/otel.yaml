@@ -7,7 +7,9 @@ extensions:
       enabled: false
 
 exporters:
-  otlp/gateway:
+  otlphttp/gateway:
+    endpoint: 'https://${env:OTEL_GATEWAY_ENDPOINT}'
+    encoding: json
     auth:
       authenticator: bearertokenauth/otlp
     tls:
@@ -15,3 +17,10 @@ exporters:
 
 service:
   extensions: [health_check, bearertokenauth/otlp]
+  pipelines:
+    metrics:
+      exporters: [otlphttp/gateway]
+    logs:
+      exporters: [otlphttp/gateway]
+    traces:
+      exporters: [otlphttp/gateway]
