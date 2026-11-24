@@ -92,11 +92,15 @@ func runManagedSupervisorOnce(ctx context.Context, statePath, credentialReferenc
 	processContext, cancel := context.WithCancel(ctx)
 	defer cancel()
 	processDone := make(chan error, 1)
+	environment := []string{"OTEL_GATEWAY_ENDPOINT=" + collector.GatewayEndpoint}
+	if collector.OTLPTokenFile != "" {
+		environment = append(environment, "AR_IMMS_OTLP_TOKEN_FILE="+collector.OTLPTokenFile)
+	}
 	go func() {
 		processDone <- processowner.Run(processContext, processowner.Options{
 			Executable:  managed.BinaryPath,
 			Arguments:   []string{"--feature-gates=opampsupervisor.Extensions", "--config=" + configPath},
-			Environment: []string{"OTEL_GATEWAY_ENDPOINT=" + collector.GatewayEndpoint},
+			Environment: environment,
 		})
 	}()
 	credentialChanged := make(chan struct{}, 1)

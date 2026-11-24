@@ -18,6 +18,8 @@ type Options struct {
 	ConfigPath      string
 	HealthEndpoint  string
 	GatewayEndpoint string
+	// OTLPTokenFile is a protected file path, never the bearer value.
+	OTLPTokenFile string
 	// ReadinessBody identifies the exact Collector configuration generation.
 	// When set, readiness requires this body in addition to HTTP 200.
 	ReadinessBody   string
@@ -90,14 +92,15 @@ func runWith(
 		options.ShutdownTimeout,
 	)
 	runtime.onReady = options.OnReady
+	environment := []string{"OTEL_GATEWAY_ENDPOINT=" + strings.TrimSpace(options.GatewayEndpoint)}
+	if options.OTLPTokenFile != "" {
+		environment = append(environment, "AR_IMMS_OTLP_TOKEN_FILE="+options.OTLPTokenFile)
+	}
 	return runtime.Run(ctx, LaunchOptions{
-		BinaryPath: options.BinaryPath,
-		ConfigPath: options.ConfigPath,
-		Environment: []string{
-			"OTEL_GATEWAY_ENDPOINT=" +
-				strings.TrimSpace(options.GatewayEndpoint),
-		},
-		OnOutput: options.OnOutput,
+		BinaryPath:  options.BinaryPath,
+		ConfigPath:  options.ConfigPath,
+		Environment: environment,
+		OnOutput:    options.OnOutput,
 	})
 }
 

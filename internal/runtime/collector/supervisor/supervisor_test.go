@@ -364,7 +364,7 @@ func TestOptionsValidateRejectsMissingGatewayEndpoint(t *testing.T) {
 	}
 }
 
-func TestRunWithPassesGatewayEndpointToChild(t *testing.T) {
+func TestRunWithPassesGatewayEndpointAndProtectedTokenPathToChild(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -390,6 +390,7 @@ func TestRunWithPassesGatewayEndpointToChild(t *testing.T) {
 				ConfigPath:      "C:/agent/config/otel.yaml",
 				HealthEndpoint:  "http://127.0.0.1:13133",
 				GatewayEndpoint: "gateway.example:4317",
+				OTLPTokenFile:   "C:/agent/credentials/otlp-collector.token",
 				StartupTimeout:  30 * time.Second,
 				ShutdownTimeout: time.Second,
 			},
@@ -402,6 +403,7 @@ func TestRunWithPassesGatewayEndpointToChild(t *testing.T) {
 	case options := <-startedWith:
 		want := []string{
 			"OTEL_GATEWAY_ENDPOINT=gateway.example:4317",
+			"AR_IMMS_OTLP_TOKEN_FILE=C:/agent/credentials/otlp-collector.token",
 		}
 
 		if !reflect.DeepEqual(options.Environment, want) {

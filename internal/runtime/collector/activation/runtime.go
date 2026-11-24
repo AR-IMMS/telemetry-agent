@@ -113,6 +113,10 @@ func runCollectorRuntimeWithReconciliation(
 			"Collector context is incomplete; bootstrap the Collector before running it",
 		)
 	}
+	otlpTokenFile, err := prepareCollectorOTLPToken(statePath, fleetEnrollmentStore)
+	if err != nil {
+		return err
+	}
 	recovery := pendingActivationRecovery{
 		store:    store,
 		lockPath: collector.ConfigPath + ".lifecycle",
@@ -159,6 +163,7 @@ func runCollectorRuntimeWithReconciliation(
 			BinaryPath:      collector.BinaryPath,
 			ConfigPath:      collector.ConfigPath,
 			GatewayEndpoint: collector.GatewayEndpoint,
+			OTLPTokenFile:   otlpTokenFile,
 			HealthEndpoint:  collector.HealthEndpoint,
 			StartupTimeout:  defaultRuntimeStartupTimeout,
 			ShutdownTimeout: defaultRuntimeShutdownTimeout,
