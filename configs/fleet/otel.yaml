@@ -1,0 +1,17 @@
+# Applied only after Fleet enrollment has committed an OTLP credential.
+# AR_IMMS_OTLP_TOKEN_FILE is the protected materialized token path, not a secret.
+extensions:
+  bearertokenauth/otlp:
+    filename: '${env:AR_IMMS_OTLP_TOKEN_FILE}'
+    retry_on_failure:
+      enabled: false
+
+exporters:
+  otlp/gateway:
+    auth:
+      authenticator: bearertokenauth/otlp
+    tls:
+      insecure: false
+
+service:
+  extensions: [health_check, bearertokenauth/otlp]

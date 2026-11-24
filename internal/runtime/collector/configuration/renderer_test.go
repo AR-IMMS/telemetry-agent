@@ -76,6 +76,30 @@ func TestRenderMergesLayers(t *testing.T) {
 	}
 }
 
+func TestFleetCollectorFragmentUsesProtectedTokenFileAndTLS(t *testing.T) {
+	root := filepath.Join("..", "..", "..", "..", "configs")
+	rendered, err := Render(RenderInput{Layers: []Layer{
+		{Name: "base", Path: filepath.Join(root, "base", "otel.yaml")},
+		{Name: "fleet", Path: filepath.Join(root, "fleet", "otel.yaml")},
+	}, Values: map[string]string{"host.name": "test-host", "host.id": "test-host-id"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	document := decodeYAML(t, rendered)
+	if nested(t, document, "exporters", "otlp/gateway", "tls", "insecure") != false {
+		t.Fatal("Fleet export did not enforce TLS")
+	}
+	if nested(t, document, "exporters", "otlp/gateway", "auth", "authenticator") != "bearertokenauth/otlp" {
+		t.Fatal("Fleet export did not use file-backed bearer authentication")
+	}
+	if nested(t, document, "extensions", "bearertokenauth/otlp", "filename") != "${env:AR_IMMS_OTLP_TOKEN_FILE}" {
+		t.Fatal("Fleet token filename must come from the protected path environment")
+	}
+	if !slices.Contains(list(t, document, "service", "extensions"), "bearertokenauth/otlp") {
+		t.Fatal("Fleet bearer extension was not activated")
+	}
+}
+
 func TestRenderReturnsContextualErrors(t *testing.T) {
 	_, err := Render(RenderInput{Layers: []Layer{{Name: "base", Path: "missing.yaml"}}})
 	if err == nil || !strings.Contains(err.Error(), "base") {
