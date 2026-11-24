@@ -1,6 +1,6 @@
 # Secure Agent Telemetry Ingestion — implementation plan
 
-Status: implementation in progress, 2026-11-25. Agent and Fleet slices are implemented locally; deployment, cross-service verification, and UAT remain.
+Status: implementation in progress, 2026-11-25. Agent, Fleet, and Core slices are implemented locally. The selected Gateway authentication path has passed a real pinned Collector → Gateway check. Cross-service contract owner review, integrated official Supervisor UAT, and exact-head hosted CI remain.
 
 ## Observed baseline
 
@@ -66,4 +66,14 @@ Do not call the goal complete until all five steps are implemented and verified.
 - The Core client certificate revoked the Agent. A subsequent introspection of the same token returned inactive. Raw invitation and credential values were kept in process memory and were not recorded.
 - The Fleet process, isolated database, temporary certificates, client script, logs, and test binary were removed after the run.
 
-This is a Fleet lifecycle slice, not end-to-end UAT. Core application, managed Agent/Supervisor, and the updated TLS ingress/Gateway stack were not connected in this run. The existing Docker stack was still running the previous direct Gateway configuration, so it was left untouched. Full UAT and cross-service contract review remain required.
+This Fleet lifecycle slice did not connect the Core application, managed Agent/Supervisor, or the TLS ingress/Gateway stack. It remains separate from the integrated UAT below.
+
+### Core → Fleet → Agent → Collector → Gateway — 2026-11-25
+
+- Passed in an isolated Core database and dedicated Fleet, ingress, and Gateway resources. A human administrator created and placed a Node in Core, requested a Fleet invitation, and synchronized the enrolled Agent back into Core as `BOUND`.
+- The real Agent Fleet enrollment path stored the separate `otlp.write` secret in the protected credential store. The pinned Collector v0.160.0 loaded only the restricted token file and sent OTLP/HTTP JSON over TLS to the ingress. The Gateway metrics exporter showed the Fleet-authenticated `agent_id`; a client supplied spoofed `agent_id` was absent. An unauthenticated OTLP request returned HTTP 401.
+- Core human revocation used the returned opaque `fleet:<invitation-id>` binding ID and delegated to Fleet. A subsequent request using the same protected Agent token returned HTTP 401. Ingress performs Fleet introspection for every request with no positive cache. Its total request deadline is 10 seconds and Fleet HTTP timeout is 4 seconds; the observed post-commit probe was denied immediately. The residual bound is Fleet commit visibility plus at most one already-authorized in-flight request (bounded by the ingress's 10-second request deadline).
+- Core focused tests passed (3 suites, 10 tests), Core TypeScript checking passed with incremental output disabled, and ESLint passed on all changed Core source and test files. Core's combined check script could not write its pre-existing `dist/tsconfig.spec.tsbuildinfo` file (`EPERM`); no generated output was changed.
+- Sanitized result: Core Node/invitation/binding synchronization passed; Fleet enrollment and separate scope passed; anonymous request `401`; authenticated Collector export and identity replacement passed; post-revocation request `401`. Raw invitations, credentials, and certificate private keys were not included in the evidence.
+
+The integrated run used the real Agent enrollment code and pinned Collector but did not start the official Supervisor process. Fleet OpAMP revocation was covered in the separate Fleet lifecycle checks; a single end-to-end run observing both the official Supervisor and Collector after Core revocation remains outstanding. Cross-service contract owner approval remains open. The existing Agent CI workflow already gates the ingress Collector integration, Agent credential provisioning, managed Supervisor lifecycle, Mock Fleet/Supervisor revocation, `go test ./...`, `go vet ./...`, and `go build ./...`; an exact-head hosted CI run remains outstanding. The isolated Core/Fleet databases, UAT containers/network/volumes, temporary certificates, private keys, test Agent state, temporary test source, and imported test root certificate were removed after evidence capture. Pre-existing `.local-verification` artifacts outside the task-specific UAT directory were preserved.
