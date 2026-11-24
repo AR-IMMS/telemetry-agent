@@ -210,6 +210,23 @@ func (r *Repository) CurrentCredentialReference() (string, error) {
 	return "", nil
 }
 
+// CurrentOTLPCredentialReference returns the protected bearer reference only
+// after Fleet enrollment committed a separate OTLP credential.
+func (r *Repository) CurrentOTLPCredentialReference() (string, error) {
+	attempt, err := r.LoadAttempt()
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if attempt.Status == domain.AttemptRegistered && attempt.Result != nil &&
+		attempt.Result.OTLPCredentialID != "" {
+		return attempt.OTLPCredentialRef, nil
+	}
+	return "", nil
+}
+
 func validateAttempt(attempt domain.Attempt) error {
 	if _, err := domain.ParseOrigin(attempt.Origin); err != nil {
 		return err

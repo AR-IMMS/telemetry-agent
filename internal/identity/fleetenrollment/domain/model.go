@@ -63,25 +63,37 @@ type RecoveryRequest struct {
 	RecoveryProof string `json:"recovery_proof"`
 }
 
-// EnrollmentResponse is the Fleet exchange result, including the one-time credential.
+// OTLPCredential is the separate one-time Fleet bearer for telemetry ingestion.
+type OTLPCredential struct {
+	ID        string     `json:"credential_id"`
+	Token     string     `json:"credential"`
+	Scope     string     `json:"credential_scope"`
+	ExpiresAt *time.Time `json:"credential_expires_at"`
+}
+
+// EnrollmentResponse is the Fleet exchange result, including one-time credentials.
 type EnrollmentResponse struct {
-	AgentID             string     `json:"agent_id"`
-	NodeID              string     `json:"node_id"`
-	CredentialID        string     `json:"credential_id"`
-	Credential          string     `json:"credential"`
-	CredentialScope     string     `json:"credential_scope"`
-	OpAMPEndpoint       string     `json:"opamp_endpoint"`
-	CredentialExpiresAt *time.Time `json:"credential_expires_at"`
+	AgentID             string          `json:"agent_id"`
+	NodeID              string          `json:"node_id"`
+	CredentialID        string          `json:"credential_id"`
+	Credential          string          `json:"credential"`
+	CredentialScope     string          `json:"credential_scope"`
+	OpAMPEndpoint       string          `json:"opamp_endpoint"`
+	CredentialExpiresAt *time.Time      `json:"credential_expires_at"`
+	OTLPCredential      *OTLPCredential `json:"otlp_credential,omitempty"`
 }
 
 // Result is the secret-free Fleet enrollment summary persisted in local state.
 type Result struct {
-	AgentID             string     `json:"agent_id"`
-	NodeID              string     `json:"node_id"`
-	CredentialID        string     `json:"credential_id"`
-	CredentialScope     string     `json:"credential_scope"`
-	OpAMPEndpoint       string     `json:"opamp_endpoint"`
-	CredentialExpiresAt *time.Time `json:"credential_expires_at"`
+	AgentID                 string     `json:"agent_id"`
+	NodeID                  string     `json:"node_id"`
+	CredentialID            string     `json:"credential_id"`
+	CredentialScope         string     `json:"credential_scope"`
+	OpAMPEndpoint           string     `json:"opamp_endpoint"`
+	CredentialExpiresAt     *time.Time `json:"credential_expires_at"`
+	OTLPCredentialID        string     `json:"otlp_credential_id,omitempty"`
+	OTLPCredentialScope     string     `json:"otlp_credential_scope,omitempty"`
+	OTLPCredentialExpiresAt *time.Time `json:"otlp_credential_expires_at,omitempty"`
 }
 
 // Validate rejects credential material with an unexpected identity, scope or endpoint.
@@ -108,6 +120,16 @@ func (r EnrollmentResponse) Validate(expectedAgentID string) error {
 	}
 	if r.CredentialExpiresAt != nil && !r.CredentialExpiresAt.After(time.Now()) {
 		return fmt.Errorf("fleet enrollment response credential is expired")
+	}
+	if otlp := r.OTLPCredential; otlp != nil {
+		if strings.TrimSpace(otlp.ID) == "" || len(otlp.ID) > 128 ||
+			strings.TrimSpace(otlp.Token) == "" || otlp.ID == r.CredentialID || otlp.Token == r.Credential ||
+			otlp.Scope != "otlp.write" {
+			return fmt.Errorf("fleet enrollment response OTLP credential is invalid")
+		}
+		if otlp.ExpiresAt != nil && !otlp.ExpiresAt.After(time.Now()) {
+			return fmt.Errorf("fleet enrollment response OTLP credential is expired")
+		}
 	}
 	return nil
 }

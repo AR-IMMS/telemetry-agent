@@ -103,6 +103,7 @@ func (s Service) Start(ctx context.Context, originRaw, agentID, invitationToken 
 		InvitationRef:    "fleet/invitation/" + attemptID.String(),
 		RecoveryProofRef: "fleet/recovery/" + attemptID.String(),
 		CredentialRef:    "fleet/credential/" + agentID + "/" + attemptID.String(), Status: domain.AttemptPending,
+		OTLPCredentialRef: "fleet/otlp/" + agentID + "/" + attemptID.String(),
 	}
 	if err := s.Credentials.Put(attempt.InvitationRef, invitationToken); err != nil {
 		return domain.Result{}, fmt.Errorf("store Fleet invitation securely")
@@ -181,8 +182,21 @@ func (s Service) exchangeOrRecover(ctx context.Context, attempt domain.Attempt) 
 	if err := s.Credentials.Put(attempt.CredentialRef, response.Credential); err != nil {
 		return domain.Result{}, fmt.Errorf("store Fleet OpAMP credential securely")
 	}
+	if response.OTLPCredential != nil {
+		if attempt.OTLPCredentialRef == "" {
+			return domain.Result{}, fmt.Errorf("Fleet OTLP credential reference is unavailable")
+		}
+		if err := s.Credentials.Put(attempt.OTLPCredentialRef, response.OTLPCredential.Token); err != nil {
+			return domain.Result{}, fmt.Errorf("store Fleet OTLP credential securely")
+		}
+	}
 	result := domain.Result{AgentID: response.AgentID, NodeID: response.NodeID, CredentialID: response.CredentialID,
 		CredentialScope: response.CredentialScope, OpAMPEndpoint: response.OpAMPEndpoint, CredentialExpiresAt: response.CredentialExpiresAt}
+	if response.OTLPCredential != nil {
+		result.OTLPCredentialID = response.OTLPCredential.ID
+		result.OTLPCredentialScope = response.OTLPCredential.Scope
+		result.OTLPCredentialExpiresAt = response.OTLPCredential.ExpiresAt
+	}
 	if err := s.Repository.CompleteAttempt(attempt.AttemptID, result); err != nil {
 		return domain.Result{}, fmt.Errorf("fleet credential is protected locally but registration state could not be committed: %w", err)
 	}

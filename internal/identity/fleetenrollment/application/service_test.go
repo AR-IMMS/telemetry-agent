@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -43,6 +44,32 @@ func TestStartPersistsRecoveryMaterialBeforeExchangeAndProtectsCredential(t *tes
 	}
 	if _, ok := credentials[attempt.RecoveryProofRef]; ok {
 		t.Fatal("recovery proof remained after successful enrollment")
+	}
+}
+
+func TestStartStoresSeparateOTLPCredentialOutsideResult(t *testing.T) {
+	const agentID = "11111111-1111-4111-8111-111111111111"
+	repository := &memoryAttemptRepository{}
+	credentials := memoryCredentialStore{}
+	response := validFleetResponse(agentID)
+	response.OTLPCredential = &domain.OTLPCredential{ID: "otlp-1", Token: "otlp-secret", Scope: "otlp.write"}
+	service := Service{Repository: repository, Credentials: credentials, Client: &fakeFleetClient{response: response}}
+	result, err := service.Start(context.Background(), "https://fleet.example.test", agentID, "invitation-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempt, err := repository.LoadAttempt()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if credentials[attempt.OTLPCredentialRef] != "otlp-secret" {
+		t.Fatal("OTLP bearer was not protected under its own reference")
+	}
+	if result.OTLPCredentialID != "otlp-1" || result.OTLPCredentialScope != "otlp.write" {
+		t.Fatalf("OTLP metadata missing: %+v", result)
+	}
+	if strings.Contains(fmt.Sprint(attempt), "otlp-secret") || strings.Contains(fmt.Sprint(result), "otlp-secret") {
+		t.Fatal("OTLP bearer leaked into durable enrollment metadata")
 	}
 }
 

@@ -32,7 +32,7 @@ func TestRepositoryPersistsSecretFreeFleetAttemptAndCredentialReference(t *testi
 	}
 	_ = initialize.Close()
 	repository := New(open, &sync.Mutex{})
-	attempt := domain.Attempt{AttemptID: "11111111-1111-4111-8111-111111111111", AgentID: "22222222-2222-4222-8222-222222222222", Origin: "https://fleet.example.test", InvitationRef: "invite-ref", RecoveryProofRef: "proof-ref", CredentialRef: "credential-ref", Status: domain.AttemptPending}
+	attempt := domain.Attempt{AttemptID: "11111111-1111-4111-8111-111111111111", AgentID: "22222222-2222-4222-8222-222222222222", Origin: "https://fleet.example.test", InvitationRef: "invite-ref", RecoveryProofRef: "proof-ref", CredentialRef: "credential-ref", OTLPCredentialRef: "otlp-ref", Status: domain.AttemptPending}
 	if err := repository.CreateAttempt(attempt); err != nil {
 		t.Fatalf("CreateAttempt(): %v", err)
 	}
@@ -40,7 +40,7 @@ func TestRepositoryPersistsSecretFreeFleetAttemptAndCredentialReference(t *testi
 	if err != nil || loaded != attempt {
 		t.Fatalf("LoadAttempt()=%+v, %v", loaded, err)
 	}
-	result := domain.Result{AgentID: attempt.AgentID, NodeID: "33333333-3333-4333-8333-333333333333", CredentialID: "cred", CredentialScope: "opamp.connect", OpAMPEndpoint: "wss://fleet.example.test/opamp"}
+	result := domain.Result{AgentID: attempt.AgentID, NodeID: "33333333-3333-4333-8333-333333333333", CredentialID: "cred", CredentialScope: "opamp.connect", OpAMPEndpoint: "wss://fleet.example.test/opamp", OTLPCredentialID: "otlp-id", OTLPCredentialScope: "otlp.write"}
 	if err := repository.CompleteAttempt(attempt.AttemptID, result); err != nil {
 		t.Fatalf("CompleteAttempt(): %v", err)
 	}
@@ -50,6 +50,9 @@ func TestRepositoryPersistsSecretFreeFleetAttemptAndCredentialReference(t *testi
 	}
 	if reference, err := repository.CurrentCredentialReference(); err != nil || reference != attempt.CredentialRef {
 		t.Fatalf("CurrentCredentialReference()=%q, %v", reference, err)
+	}
+	if reference, err := repository.CurrentOTLPCredentialReference(); err != nil || reference != attempt.OTLPCredentialRef {
+		t.Fatalf("CurrentOTLPCredentialReference()=%q, %v", reference, err)
 	}
 	databaseBytes, err := os.ReadFile(path)
 	if err != nil {

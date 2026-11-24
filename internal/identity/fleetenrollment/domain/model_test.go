@@ -31,6 +31,28 @@ func TestFleetEnrollmentResponseRequiresMatchingIdentityAndOpAMPOnlyScope(t *tes
 	}
 }
 
+func TestFleetEnrollmentResponseValidatesSeparateOTLPCredential(t *testing.T) {
+	agentID := "11111111-1111-4111-8111-111111111111"
+	response := EnrollmentResponse{
+		AgentID: agentID, NodeID: "22222222-2222-4222-8222-222222222222",
+		CredentialID: "opamp-id", Credential: "opamp-secret", CredentialScope: "opamp.connect",
+		OpAMPEndpoint:  "wss://fleet.example.test/opamp",
+		OTLPCredential: &OTLPCredential{ID: "otlp-id", Token: "otlp-secret", Scope: "otlp.write"},
+	}
+	if err := response.Validate(agentID); err != nil {
+		t.Fatalf("valid separate OTLP credential rejected: %v", err)
+	}
+	response.OTLPCredential.Scope = "opamp.connect"
+	if err := response.Validate(agentID); err == nil {
+		t.Fatal("OTLP credential with OpAMP scope accepted")
+	}
+	response.OTLPCredential.Scope = "otlp.write"
+	response.OTLPCredential.Token = ""
+	if err := response.Validate(agentID); err == nil {
+		t.Fatal("partial OTLP credential accepted")
+	}
+}
+
 func TestFleetEnrollmentResponseRejectsInsecureOrMalformedOpAMPEndpoint(t *testing.T) {
 	agentID := "11111111-1111-4111-8111-111111111111"
 	response := EnrollmentResponse{
