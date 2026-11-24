@@ -7,12 +7,33 @@ services:
       - --config=/etc/otelcol-contrib/config.yaml
     restart: unless-stopped
     ports:
-      # Deliberately reachable by Windows/Linux agents on the LAN.
-      - "0.0.0.0:${OTLP_GRPC_PORT}:4317"
       # Operational health is not exposed to the LAN.
       - "127.0.0.1:${GATEWAY_HEALTH_PORT}:13133"
     volumes:
       - ./otel-gateway/gateway-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    networks:
+      - observability
+
+  otlp-ingress:
+    build:
+      context: ../..
+      dockerfile: infra/observability/otlp-ingress/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - otel-gateway
+    ports:
+      - "0.0.0.0:${OTLP_TLS_PORT}:4317"
+    environment:
+      OTLP_INGRESS_LISTEN: ":4317"
+      OTLP_INGRESS_TLS_CERT_FILE: /run/otlp-ingress/server.crt
+      OTLP_INGRESS_TLS_KEY_FILE: /run/otlp-ingress/server.key
+      OTLP_INGRESS_FLEET_ORIGIN: ${OTLP_INGRESS_FLEET_ORIGIN}
+      OTLP_INGRESS_FLEET_CA_FILE: /run/otlp-ingress/fleet-ca.crt
+      OTLP_INGRESS_FLEET_CLIENT_CERT_FILE: /run/otlp-ingress/fleet-client.crt
+      OTLP_INGRESS_FLEET_CLIENT_KEY_FILE: /run/otlp-ingress/fleet-client.key
+      OTLP_INGRESS_GATEWAY_ORIGIN: http://otel-gateway:4318
+    volumes:
+      - ${OTLP_INGRESS_CERT_DIR}:/run/otlp-ingress:ro
     networks:
       - observability
 

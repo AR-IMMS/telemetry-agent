@@ -1,0 +1,10 @@
+**
+!go.mod
+!go.sum
+!cmd/
+!cmd/otlp-ingress/
+!cmd/otlp-ingress/**
+!internal/
+!internal/otlp/
+!internal/otlp/ingress/
+!internal/otlp/ingress/**

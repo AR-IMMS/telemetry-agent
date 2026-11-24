@@ -1,6 +1,6 @@
 # Secure Agent Telemetry Ingestion — implementation plan
 
-Status: proposed, 2026-11-25. This plan precedes implementation and cross-service contract approval.
+Status: implementation in progress, 2026-11-25. Agent and Fleet slices are implemented locally; deployment, cross-service verification, and UAT remain.
 
 ## Observed baseline
 
@@ -39,7 +39,7 @@ sequenceDiagram
   I->>F: Introspect bearer (authenticated service call)
   F-->>I: active, agent_id, otlp.write, expiry
   I->>I: discard client agent_id; set verified agent_id
-  I->>G: loopback OTLP
+  I->>G: internal Compose network OTLP/HTTP JSON
   G-->>I: result
   I-->>C: result
   Note over F,I: Revocation changes Fleet authority; next request is denied
@@ -55,4 +55,4 @@ sequenceDiagram
 
 ## Acceptance evidence and limits
 
-Do not call the goal complete until all five steps are implemented and verified. The service-to-service introspection authentication mechanism and contract fields require explicit cross-service review. A compromised Agent host can read its own provisioned bearer while its Collector is running; OS ACLs/permissions limit access, but cannot eliminate that exposure. The current shared contracts are draft, and only this repository is writable in the present workspace; Fleet and Core implementation requires their own writable workspace or a reviewed patch handoff.
+Do not call the goal complete until all five steps are implemented and verified. The service-to-service introspection authentication mechanism and contract fields require explicit cross-service review. A compromised Agent host can read its own provisioned bearer while its Collector is running; OS ACLs/permissions limit access, but cannot eliminate that exposure. The current shared contracts are draft. Fleet implementation exists on a local branch, while Core and end-to-end integration remain open.
