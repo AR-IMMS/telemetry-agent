@@ -40,6 +40,15 @@ exporters:
 service:
   extensions: [health_check]
 
+  telemetry:
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 127.0.0.1
+                port: 18889
+
   pipelines:
     metrics:
       receivers: [otlp]
